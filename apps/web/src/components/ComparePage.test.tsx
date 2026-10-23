@@ -41,8 +41,8 @@ describe('ComparePage', () => {
   });
 
   /**
-   * The five parts in their order on every page, and the one a vendor's comparison leaves
-   * out is there: what the other app does better.
+   * The six parts in their order on every page: both sides' strengths, under headings of
+   * the same weight, and the one a vendor's comparison leaves out is there too.
    */
   it.each(PAGES)('draws the %s comparison whole, with the trial as the one filled control', async (slug, page) => {
     const c = comparison(slug);
@@ -52,6 +52,7 @@ describe('ComparePage', () => {
     expect(getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual([
       'The short version',
       'Side by side',
+      'What Unbent does better',
       `What ${c.name} does better`,
       c.switching.title,
       'More comparisons',
@@ -93,6 +94,7 @@ describe('ComparePage', () => {
 /** The rules `comparisons.tsx` sets itself, held where a test can hold them. */
 describe('comparisons', () => {
   it.each(COMPARISONS.map((c) => [c.slug, c] as const))('keeps %s fair and sourced', (_, c) => {
+    expect(c.weDoBetter.length).toBeGreaterThan(0);
     expect(c.theyDoBetter.length).toBeGreaterThan(0);
     expect(c.chooseThem.length).toBeGreaterThan(0);
     expect(c.sources.length).toBeGreaterThan(0);

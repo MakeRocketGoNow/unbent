@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { Link } from '@tanstack/react-router';
-import { BASE_STORAGE_GB, PLAN_PRICE_USD, STORAGE_ADDON_GB, STORAGE_ADDON_PRICE_USD } from '@unbent/shared';
+import { BASE_STORAGE_GB, MAX_ATTACHMENT_BYTES, PLAN_PRICE_USD, STORAGE_ADDON_GB, STORAGE_ADDON_PRICE_USD } from '@unbent/shared';
 import { CARD_IMAGE, type PageMeta } from '../page-meta.js';
 
 /**
@@ -16,8 +16,14 @@ import { CARD_IMAGE, type PageMeta } from '../page-meta.js';
  * - **Say what we do not do** as plainly as what we do: no end-to-end encryption, no
  *   apps in the stores yet, pictures read only when someone asks. A reader who knows the
  *   other app finds the gap anyway, and then trusts nothing else on the page.
- * - **`theyDoBetter` is never empty,** and is about the thing the reader cares about, not
- *   a consolation ("great community!").
+ * - **`weDoBetter` and `theyDoBetter` are both there, and the same shape.** A page that
+ *   argued only the other side was as one-sided as one that argued only ours: Unbent's
+ *   strengths were left to table cells while the other app's had a heading and prose,
+ *   and a reader came away thinking the other app was the choice. Each list is about
+ *   what the reader cares about, not a consolation ("great community!").
+ * - **Say each of our gaps once,** in the row or the point it belongs to, and nowhere
+ *   else. The table's cells once each ended in a caveat, and a column of apologies read
+ *   as worse than the facts in it.
  * - **Unbent's own numbers are the shared constants,** as on the pricing page, so a
  *   price change cannot leave a comparison quoting the old one.
  * - Unbent's facts are the README's and `docs/`, never the front page's adjectives.
@@ -38,6 +44,7 @@ export interface Comparison {
   chooseUnbent: ReactNode[];
   chooseThem: ReactNode[];
   rows: { topic: string; unbent: ReactNode; them: ReactNode }[];
+  weDoBetter: { title: string; body: ReactNode }[];
   theyDoBetter: { title: string; body: ReactNode }[];
   switching: { title: string; body: ReactNode };
   sources: { label: string; href: string }[];
@@ -46,7 +53,7 @@ export interface Comparison {
 export const COMPARE_META: PageMeta = {
   title: 'How Unbent compares',
   description:
-    'Unbent beside Evernote, Notion and Joplin: price, searching scans and PDFs, structured fields, offline, export, and what each of them does better.',
+    'Unbent beside Evernote, Notion and Joplin: price, searching scans and PDFs, structured fields, offline, export, and what each does better than the other.',
   image: CARD_IMAGE,
 };
 
@@ -56,50 +63,54 @@ const CHECKED = 'October 2026';
 const US = {
   price: (
     <>
-      ${PLAN_PRICE_USD} a year, unlimited notes, {BASE_STORAGE_GB} GB of files ({STORAGE_ADDON_GB} GB
-      more for ${STORAGE_ADDON_PRICE_USD} a year). A two-week trial, no free plan.
+      ${PLAN_PRICE_USD} a year for unlimited notes and {BASE_STORAGE_GB} GB of files ({STORAGE_ADDON_GB} GB
+      more for ${STORAGE_ADDON_PRICE_USD} a year). Two weeks free to try.
     </>
   ),
   search: (
     <>
-      Note text and the text of every PDF, as it arrives. Photos and image-only scans are
-      read when you press Auto-fill on the note, or by your AI assistant; not automatically.
-      No handwriting.
+      Note text and the text of every PDF, searched on the server as soon as it arrives, so
+      every device finds it. Photos are read when you press Auto-fill.
     </>
   ),
-  fields: <>Typed fields per notebook (date, amount, select, rating and more), a table view, and filters on any field.</>,
+  fields: (
+    <>
+      Typed fields per notebook (date, amount, select, rating and more), a table view, and
+      filters on any field: receipts by month, warranties by when they run out.
+    </>
+  ),
   offline: (
     <>
-      Yes, in the browser on every device: notes, notebooks and tags are kept on the
-      device. Files are kept for the notebooks you choose.
+      In any browser, phone included: your notes, notebooks and tags are kept on the
+      device, and the files of the notebooks you choose.
     </>
   ),
   encryption: (
     <>
-      Encrypted in transit and at rest. Not end-to-end: the server reads your notes so it
-      can search inside files.
+      Encrypted in transit and at rest. Not end-to-end, which is what lets the server
+      search inside your files.
     </>
   ),
   export: (
     <>
-      Everything, any time, from any browser: a zip of one folder per note, its Markdown
-      and its files beside it. Opens with nothing installed.
+      Everything, any time, from any browser: a folder per note, its Markdown saved
+      exactly as you typed it and its files beside it. Opens with nothing installed.
     </>
   ),
   apps: (
     <>
-      A web app for desktop and phone, installable. Android and iOS apps are built but
-      not in the stores yet. No web clipper.
+      A web app for any desktop or phone browser, installable. Android and iOS apps are
+      coming.
     </>
   ),
   ai: (
     <>
-      Auto-fill files one note when pressed. An MCP server for Claude, ChatGPT and others,
-      over the web; an assistant&apos;s edits are kept in the note&apos;s history and it
-      cannot delete anything for good.
+      Auto-fill reads a scan and fills in its title, notebook and fields. An MCP server
+      that Claude, ChatGPT and others connect to over the web, with every edit an
+      assistant makes kept in the note&apos;s history.
     </>
   ),
-  sharing: <>None. An account is one person&apos;s.</>,
+  sharing: <>One person per account.</>,
   source: (
     <>
       Source-available (Elastic License 2.0). You can run your own on Cloudflare&apos;s free
@@ -119,8 +130,8 @@ export const COMPARISONS: readonly Comparison[] = [
         'An Evernote alternative for scanned paperwork: Unbent beside Evernote on price, search inside PDFs and scans, fields, export, and what Evernote still does better.',
       image: CARD_IMAGE,
     },
-    summary: 'For an archive of scans you are thinking of moving. The closest of the three, and the one Unbent was built to replace.',
-    lead: 'Unbent does the job a lot of people used Evernote for: scan the paperwork once, find it again by what it says. It costs less, keeps your notes as files you can take, and does a good deal less besides.',
+    summary: 'For an archive of scans you are thinking of moving: the job Unbent was built for.',
+    lead: `Unbent does the job a lot of people used Evernote for: scan the paperwork once and find it again by what it says. It adds fields you can sort by, files a scan for you, and keeps your notes as files you can take, for $${PLAN_PRICE_USD} a year with no cap on notes.`,
     checked: CHECKED,
     chooseUnbent: [
       'Your Evernote is mostly scans, receipts and documents, and you mainly need to find them.',
@@ -165,22 +176,40 @@ export const COMPARISONS: readonly Comparison[] = [
       },
       { topic: 'Sharing', unbent: US.sharing, them: 'Shared notes and notebooks, Spaces, and business plans.' },
     ],
+    weDoBetter: [
+      {
+        title: 'Fields you can sort by',
+        body: 'A receipts notebook can carry a date, a total and a shop on every note, shown as a table and filtered by any of them. In Evernote the same receipts are notes in a notebook, with tags.',
+      },
+      {
+        title: 'Filing a scan for you',
+        body: 'Press Auto-fill and Unbent reads the scan and fills in its title, its notebook and the date, total and sender. You check it instead of typing it.',
+      },
+      {
+        title: 'An export you can use',
+        body: 'Everything at once, from any browser, as plain folders: each note in Markdown with its files beside it, readable with nothing installed and importable back in. Evernote exports ENEX from its desktop app, a notebook or 100 notes at a time.',
+      },
+      {
+        title: 'A price that does not count your notes',
+        body: `$${PLAN_PRICE_USD} a year for as many notes as you keep. If you stop paying, the account turns read-only, and every note still opens, searches and exports.`,
+      },
+      {
+        title: 'Assistants you can check',
+        body: 'Claude, ChatGPT and others work in your notes over the web, every edit they make is kept in the note’s history and marked as theirs, and none of them can delete anything for good.',
+      },
+    ],
     theyDoBetter: [
       {
         title: 'Reading pictures without being asked',
-        body: 'Evernote reads every image and the handwriting in it as it arrives. Unbent reads a PDF’s text as it arrives, but a photo or an image-only scan only when you press Auto-fill or ask an assistant, so an archive of phone photos is less searchable on day one.',
+        body: 'Evernote reads every image, and the handwriting in it, as it arrives. Unbent reads every PDF as it arrives, but a photo only when you press Auto-fill or ask an assistant.',
       },
       {
         title: 'Getting things in',
-        body: 'A web clipper, a document scanner in the phone app, email-in, and native apps in every store. Unbent takes files dropped in, shared to it, or sent from a scanner, and its phone apps are not in the stores yet.',
+        body: 'A web clipper, a document scanner in the phone app, email-in, and native apps in every store.',
       },
       {
-        title: 'Working with other people',
-        body: 'Shared notebooks and Spaces. Unbent has no sharing at all.',
-      },
-      {
-        title: 'Breadth',
-        body: 'Tasks, reminders, a calendar, templates and nearly two decades of features. Unbent does notes, files, fields and search, and means to stay that size.',
+        title: 'Sharing, tasks and the rest',
+        body: 'Shared notebooks and Spaces, tasks, reminders, a calendar and templates. Unbent does notes, files, fields and search, for one person.',
       },
     ],
     switching: {
@@ -219,8 +248,8 @@ export const COMPARISONS: readonly Comparison[] = [
         'Notion databases for scanned paperwork? Unbent beside Notion on searching inside PDFs, fields, offline, export, price, and what Notion does better.',
       image: CARD_IMAGE,
     },
-    summary: 'For records you would otherwise keep in a Notion database. Notion does far more; Unbent searches what is inside the files.',
-    lead: 'Notion is a workspace for writing, planning and working with other people. Unbent does one narrower thing: keeps your paperwork and notes, with fields like a Notion database, and finds them by what is inside the files.',
+    summary: 'For records you would otherwise keep in a Notion database, when what matters is the text inside the files.',
+    lead: 'Unbent is for paperwork: receipts, bills, manuals and scans you find by what is inside them, in notebooks with fields like a Notion database. Notion is a workspace for writing, planning and working with other people.',
     checked: CHECKED,
     chooseUnbent: [
       'Most of what you keep is files: receipts, bills, statements, manuals, scans.',
@@ -269,10 +298,32 @@ export const COMPARISONS: readonly Comparison[] = [
       },
       { topic: 'Sharing', unbent: US.sharing, them: 'Real-time collaboration, comments, guests and published pages.' },
     ],
+    weDoBetter: [
+      {
+        title: 'Finding a file by what it says',
+        body: 'Every PDF’s text is searched as soon as it arrives, on every device, and a result says which file matched. In Notion an uploaded PDF is found by its name.',
+      },
+      {
+        title: 'Built for files',
+        body: `Drop a stack of PDFs or photos on the list and each becomes a note with its file attached, up to ${MAX_ATTACHMENT_BYTES / 1024 / 1024} MB a file where Notion’s free plan stops at 5 MB.`,
+      },
+      {
+        title: 'Filing a scan for you',
+        body: 'Press Auto-fill and Unbent reads the scan and fills in its title, its notebook and its fields, from the date to the total.',
+      },
+      {
+        title: 'Offline in the browser',
+        body: 'Your notes and the files of the notebooks you choose are kept on the device, in the browser too, so a phone finds them with no signal.',
+      },
+      {
+        title: 'One price',
+        body: `$${PLAN_PRICE_USD} a year, with no seats and no AI credits to count.`,
+      },
+    ],
     theyDoBetter: [
       {
         title: 'Databases',
-        body: 'Relations between databases, formulas, rollups, and boards, calendars, timelines and charts over them. Unbent’s fields are typed values on a note, a table and filters, and stop there.',
+        body: 'Relations between databases, formulas, rollups, and boards, calendars, timelines and charts over them. Unbent’s fields are values on a note, with a table and filters.',
       },
       {
         title: 'Working together',
@@ -281,10 +332,6 @@ export const COMPARISONS: readonly Comparison[] = [
       {
         title: 'Everything that is not paperwork',
         body: 'Wikis, project plans, docs, published sites and a large library of templates. Unbent is for keeping and finding, not for building a workspace.',
-      },
-      {
-        title: 'Native apps today',
-        body: 'Desktop and phone apps in every store. Unbent’s phone apps are built and not in the stores yet; until then it is the browser.',
       },
     ],
     switching: {
@@ -315,16 +362,16 @@ export const COMPARISONS: readonly Comparison[] = [
     meta: {
       title: 'Unbent vs Joplin',
       description:
-        'Joplin is open source and end-to-end encrypted; Unbent is a hosted archive. How they compare on searching scans, fields, encryption, offline and export, and what Joplin does better.',
+        'Unbent is a hosted archive with fields and nothing to set up; Joplin is an open-source app you sync yourself. How they compare on searching scans, fields, encryption, offline and export.',
       image: CARD_IMAGE,
     },
-    summary: 'For someone weighing an open-source app they run themselves against a hosted one. Joplin wins on privacy.',
-    lead: 'Joplin is open source and end-to-end encrypted, and you bring the place it syncs to. Unbent is a hosted service built around one job: an archive of paperwork you find by what it says and sort by its fields.',
+    summary: 'For someone weighing an open-source app they sync themselves against a hosted archive with fields and nothing to set up.',
+    lead: 'Unbent is a hosted archive for paperwork: scans and files you find by what they say, sort by their fields, and reach from any browser, with nothing to set up. Joplin is an open-source notes app you sync yourself, with end-to-end encryption.',
     checked: CHECKED,
     chooseUnbent: [
       'You want nothing to set up: no sync target, no server, no plugins to choose.',
       'Your notes are mostly scans and files, and you sort them by date, total or sender.',
-      'Your archive is large and you do not want every device to hold all of it.',
+      'You want a scan filed for you: its title, notebook and fields filled in.',
       'You want your notes in any browser, and your AI assistant to work in them over the web.',
     ],
     chooseThem: [
@@ -347,7 +394,7 @@ export const COMPARISONS: readonly Comparison[] = [
       {
         topic: 'Offline',
         unbent: US.offline,
-        them: 'Offline first: every app keeps the whole library on the device, and sync is optional.',
+        them: 'Offline first: every app keeps your notes on the device, and sync is optional.',
       },
       {
         topic: 'Encryption',
@@ -376,18 +423,36 @@ export const COMPARISONS: readonly Comparison[] = [
         them: 'The apps are open source (AGPL). Joplin Server is under its own personal-use licence.',
       },
     ],
+    weDoBetter: [
+      {
+        title: 'Fields you can sort by',
+        body: 'A receipts notebook can carry a date, a total and a shop on every note, shown as a table and filtered by any of them. Joplin has notebooks and tags, and leaves the rest to plugins.',
+      },
+      {
+        title: 'Nothing to set up, nothing to lose',
+        body: 'Sign in and it is there, on every device. No sync target to choose and look after, and no master password that loses everything if it is forgotten.',
+      },
+      {
+        title: 'Any browser, any device',
+        body: 'The whole app in a browser, on a phone too, and offline there as well. Joplin’s web app is a beta that keeps its notes in that one browser.',
+      },
+      {
+        title: 'Assistants over the web',
+        body: 'Claude, ChatGPT and others connect with a sign-in and work in your notes from anywhere, with every edit kept in the note’s history. Joplin’s MCP server is a desktop beta that only that computer can reach.',
+      },
+      {
+        title: 'Filing a scan for you',
+        body: 'Press Auto-fill and Unbent reads the scan and fills in its title, its notebook and its fields, from the date to the total.',
+      },
+    ],
     theyDoBetter: [
       {
         title: 'Privacy',
-        body: 'With end-to-end encryption on, the place your notes sync to holds only ciphertext. Unbent’s server can read your notes; that is how it searches inside your files, and it is a real trade.',
+        body: 'With end-to-end encryption on, the place your notes sync to holds only ciphertext. Unbent’s server can read your notes; that is how it searches inside your files.',
       },
       {
-        title: 'Open source and extensible',
-        body: 'An AGPL codebase and a large plugin library, nearly a decade old. Unbent is source-available, not open source, and has no plugins.',
-      },
-      {
-        title: 'Native apps everywhere',
-        body: 'Desktop apps for Windows, Mac and Linux, and phone apps in the stores today.',
+        title: 'Open source, plugins and native apps',
+        body: 'An AGPL codebase, a large plugin library, and desktop apps for Windows, Mac and Linux. Unbent is source-available, not open source, and has no plugins.',
       },
     ],
     switching: {

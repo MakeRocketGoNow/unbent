@@ -12,9 +12,10 @@ import { COMPARE_META, COMPARISONS, comparison, type Comparison } from './compar
  *
  * Written for someone already weighing the two, who knows the other app better than we
  * do and will stop trusting a table the moment it is one-sided. So every page has the same
- * five parts in the same order, and the third is the one a vendor's comparison usually
- * leaves out: who should pick which (both halves), the facts side by side, what the other
- * app does better, how to move, and when the facts were checked, with their sources. The
+ * six parts in the same order: who should pick which (both halves), the facts side by
+ * side, what Unbent does better, what the other app does better (the part a vendor's
+ * comparison usually leaves out), how to move, and when the facts were checked, with
+ * their sources. The
  * content is data (`comparisons.tsx`) and this is the one layout, so a price that changes
  * is a line to edit and the three pages cannot drift into three designs.
  *
@@ -84,6 +85,19 @@ export function ComparePage({ comparison: c }: { comparison: Comparison }) {
               ))}
             </tbody>
           </table>
+        </section>
+
+        {/* Ours first and theirs straight after, the same shape and weight: the page once
+            had only theirs, and argued the other app's case better than its own. */}
+        <section>
+          <h2>What Unbent does better</h2>
+          <ul>
+            {c.weDoBetter.map((point) => (
+              <li key={point.title}>
+                <strong>{point.title}.</strong> {point.body}
+              </li>
+            ))}
+          </ul>
         </section>
 
         <section>
