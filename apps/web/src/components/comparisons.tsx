@@ -535,8 +535,9 @@ export const COMPARISONS: readonly Comparison[] = [
           on Unbent&apos;s import page, in the browser. Each note keeps its notebook, tags, dates
           and attachments, links between notes still work, and PDFs become searchable by what
           they say. A notebook inside another is named for both, as in Household / Receipts.
-          Running the import twice does not duplicate anything, so you can try it and keep
-          your Joplin library where it is while you decide.
+          Running it again brings in only what is new since: nothing duplicates, and a note
+          you changed in Joplin in between keeps the version first imported. So you can try
+          it and keep your Joplin library where it is while you decide.
         </p>
       ),
     },
