@@ -232,8 +232,12 @@ async function readModel(window: BlobWindow, entries: TarEntry[], signal: AbortS
   return { notes, notebooks, tags, resources, unreadable };
 }
 
-/** A markdown link or image whose destination is a Joplin item: `[text](:/<id>)`, maybe with an anchor or a title. */
-const MD_LINK_RE = /(!?)\[([^\]\n]*)\]\(\s*<?:\/([0-9a-f]{32})(#[^)\s>]*)?>?(?:\s+"[^"\n]*")?\s*\)/gi;
+/**
+ * A markdown link or image whose destination is a Joplin item: `[text](:/<id>)`, maybe with
+ * an anchor or a title. The text may hold one level of brackets, so a picture that is
+ * itself a link (`[![](:/<picture>)](:/<note>)`) is matched whole, outer link first.
+ */
+const MD_LINK_RE = /(!?)\[((?:[^\[\]\n]|\[[^\[\]\n]*\])*)\]\(\s*<?:\/([0-9a-f]{32})(#[^)\s>]*)?>?(?:\s+"[^"\n]*")?\s*\)/gi;
 /** An `<img>` Joplin writes to give a picture a size: `<img src=":/<id>" width="300">`. */
 const IMG_RE = /<img\b[^>]*?\bsrc\s*=\s*(["']):\/([0-9a-f]{32})\1[^>]*>/gi;
 /** An `<a href=":/<id>">`, which an HTML note or a pasted snippet may hold. */
@@ -256,7 +260,9 @@ export function rewriteJoplinLinks(body: string, resolve: (id: string) => Joplin
     target.kind === 'file' ? fileDestination(target.name) : `${target.href}${anchor}`;
 
   return body
-    .replace(MD_LINK_RE, (whole, bang: string, text: string, id: string, anchor: string | undefined) => {
+    .replace(MD_LINK_RE, (_whole, bang: string, raw: string, id: string, anchor: string | undefined) => {
+      // A picture inside the link's text is rewritten too; the outer match hides it from this pass.
+      const text = raw.includes(':/') ? rewriteJoplinLinks(raw, resolve) : raw;
       const target = resolve(id.toLowerCase());
       if (!target) return text;
       return `${target.kind === 'file' ? bang : ''}[${text}](${dest(target, anchor)})`;

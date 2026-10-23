@@ -168,6 +168,12 @@ describe('rewriteJoplinLinks', () => {
     expect(rewriteJoplinLinks(`<img src=":/${gone}" alt="pot"> <img src=":/${gone}"> <a href=":/${gone}"><b>here</b></a> ![](:/${gone})`, resolve)).toBe('pot  here ');
   });
 
+  it('rewrites a picture that is itself a link, both halves', () => {
+    expect(rewriteJoplinLinks(`[![x](:/${'a'.repeat(32)})](:/${'b'.repeat(32)}) [see [1]](:/${'b'.repeat(32)})`, resolve)).toBe(
+      '[![x](<files/Scan (1).pdf>)](/notes/n) [see [1]](/notes/n)',
+    );
+  });
+
   it('drops the bang when an image link turns out to be a note', () => {
     expect(rewriteJoplinLinks(`![n](:/${'b'.repeat(32)})`, resolve)).toBe('[n](/notes/n)');
   });
