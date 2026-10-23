@@ -276,7 +276,7 @@ export function NoteTable({
             <tr>
               {selection && <td className="note-table-check" />}
               {columns.map((col) => (
-                <td key={col.id} data-align={col.align}>
+                <td key={col.id} data-align={col.align} className={col.kind === 'name' ? 'note-table-total-label' : undefined}>
                   {col.kind === 'name'
                     ? totals.label
                     : totalable(col) && totals.sums.has(col.id)

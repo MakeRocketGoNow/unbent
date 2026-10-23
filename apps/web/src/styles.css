@@ -1757,6 +1757,14 @@ button.link {
 }
 .note-table tfoot td:first-child,
 .note-table.selectable tfoot td:nth-child(2) { z-index: 3; }
+/* The label is drawn as the headings are, not as a note's name: at the names' size and
+   colour the footer read as one more note, and the eye stopped on it to find out which.
+   Muted, it is the table's frame; the sums beside it stay at full strength, since they
+   are the answer the notebook is often opened for. */
+.note-table tfoot .note-table-total-label {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
 
 .note-table-check input {
   margin: 0;
