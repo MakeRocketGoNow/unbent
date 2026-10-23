@@ -63,7 +63,7 @@ interface NoteTableProps {
 }
 
 export interface TableTotals {
-  /** "Total", or what the rows are when they are not the whole list ("Top 50 total"). */
+  /** "Total", or what the rows are when they are not the whole list ("Total of top 50"). */
   label: string;
   sums: ReadonlyMap<string, number>;
 }
