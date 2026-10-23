@@ -48,14 +48,16 @@ import { isWhole } from './store/feed.js';
  * Also null, for now, when there is a connection and the library is still opening after
  * `LIBRARY_READ_WAIT_MS`: the read goes to the server, and once the open lands every
  * library query is asked again and reads the copy (`rereadWhenOpen`). Offline the read
- * waits for the open, since the server is no answer then.
+ * waits for the open, since the server is no answer then; so does a caller that has
+ * already asked the server and had no answer (`patient`), which the connectivity state
+ * may not know yet.
  */
-async function library(): Promise<Library | null> {
+async function library(patient = offlineNow()): Promise<Library | null> {
   const open = currentLibrary();
   if (!open) return null;
   let lib: Library | null;
   try {
-    lib = offlineNow() ? await open : await openWithin(open, LIBRARY_READ_WAIT_MS);
+    lib = patient ? await open : await openWithin(open, LIBRARY_READ_WAIT_MS);
   } catch {
     return null;
   }
@@ -771,7 +773,9 @@ export async function search(q: string, filter: NoteFilter = {}, rows = false, s
       if (!api.isOfflineError(err)) throw err;
     }
   }
-  const lib = await library();
+  // Patient: this is only reached once the server has had no answer, or the app knows it
+  // is offline, so the device's index is the only answer there is.
+  const lib = await library(true);
   /*
    * The index opens behind the library (`searchReady`), so a search made in the first
    * moments of a cold start waits for it rather than being told search needs a

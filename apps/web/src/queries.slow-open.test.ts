@@ -23,9 +23,12 @@ vi.mock('./connectivity.js', async (importOriginal) => ({
 vi.mock('./notes-api.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./notes-api.js')>()),
   getNote: vi.fn(async (id: string) => ({ id, title: 'from the server' })),
+  searchNotes: vi.fn(async () => {
+    throw new (await import('./notes-api.js')).OfflineError();
+  }),
 }));
 
-const { installLibraryQueries, keys, noteQuery } = await import('./queries.js');
+const { installLibraryQueries, keys, noteQuery, search } = await import('./queries.js');
 const api = await import('./notes-api.js');
 
 describe('a read while the library is still opening', () => {
@@ -56,6 +59,19 @@ describe('a read while the library is still opening', () => {
     land({});
     await vi.advanceTimersByTimeAsync(0);
     expect(client.getQueryState(keys.note('n1'))?.isInvalidated).toBe(true);
+  });
+
+  it('waits for the open in a search the server could not answer', async () => {
+    // The connectivity state has not caught up with the failed request yet, and the
+    // device's index is the only answer there is.
+    state.open = new Promise(() => {});
+    let settled = false;
+    void search('crumb')
+      .catch(() => {})
+      .finally(() => (settled = true));
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(api.searchNotes).toHaveBeenCalled();
+    expect(settled).toBe(false);
   });
 
   it('waits for the open while offline, since the server is no answer then', async () => {
