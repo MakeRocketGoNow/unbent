@@ -471,7 +471,9 @@ export function encodeFieldValue(
  * The comparisons a list can be narrowed by, on one field.
  *
  * `eq` compares the stored text: a select's option, a checkbox's `true`/`false`, a date
- * as written. `gte`/`lte` compare the numeric shadow that migration 0014 keeps for every
+ * as written. `ne` is its complement, and a note with no value at all matches it: "not
+ * reimbursed" means the box is unticked, and nobody thinks of a box never touched as
+ * different from one ticked and unticked again. `gte`/`lte` compare the numeric shadow that migration 0014 keeps for every
  * number and date, so a range never has to parse text in SQL. `set`/`empty` ask whether
  * the note holds a value at all, which for a record-like notebook ("coupons with no
  * expiry") is the question asked most.
@@ -479,13 +481,13 @@ export function encodeFieldValue(
  * Text "contains" is deliberately not here: search already covers field values, and a
  * substring filter would be a second, worse search box.
  */
-export const FIELD_FILTER_OPS = ['eq', 'gte', 'lte', 'set', 'empty'] as const;
+export const FIELD_FILTER_OPS = ['eq', 'ne', 'gte', 'lte', 'set', 'empty'] as const;
 export type FieldFilterOp = (typeof FIELD_FILTER_OPS)[number];
 
 export interface FieldFilter {
   fieldId: string;
   op: FieldFilterOp;
-  /** Present for `eq`, `gte` and `lte`; absent for `set` and `empty`. */
+  /** Present for `eq`, `ne`, `gte` and `lte`; absent for `set` and `empty`. */
   value?: string;
 }
 

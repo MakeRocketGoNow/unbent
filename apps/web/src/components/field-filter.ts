@@ -39,5 +39,8 @@ export function fieldFilterLabel(raw: string, defs: FieldDef[]): string {
     case 'eq':
       if (def?.type === 'checkbox') return f.value === 'true' ? name : `Not ${name.toLowerCase()}`;
       return `${name}: ${f.value}`;
+    case 'ne':
+      if (def?.type === 'checkbox') return f.value === 'true' ? `Not ${name.toLowerCase()}` : name;
+      return `${name}: not ${f.value}`;
   }
 }

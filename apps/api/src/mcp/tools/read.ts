@@ -122,7 +122,7 @@ const dateOnly = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'expected YYYY-MM-DD').
  * Narrowing by a custom field's value, the MCP's spelling of the web's `field=` filter.
  *
  * Fields are named, not numbered, as everywhere else a model meets them, and the op is
- * one of the shared five. The value is a string whatever the field's type (it is what
+ * one of the shared six. The value is a string whatever the field's type (it is what
  * the URL form carries) and what it means is the field's: an option for `eq` on a select
  * or multiselect, `true`/`false` for a checkbox, `YYYY-MM-DD` or a number for a range.
  */
@@ -139,7 +139,9 @@ const fieldFiltersSchema = z
   .describe(
     'Narrow by custom field values; every filter must hold. Needs notebook, since fields ' +
       'belong to one. op "eq" matches a value exactly (an option of a select, one of the ' +
-      'options a multiselect holds, true or false for a checkbox, case included); "gte" and ' +
+      'options a multiselect holds, true or false for a checkbox, case included); "ne" is ' +
+      'its opposite and also matches notes with no value, so {"op":"ne","value":"true"} is ' +
+      'every note whose checkbox is not ticked, never set included; "gte" and ' +
       '"lte" bound a number or a YYYY-MM-DD date, inclusive; "set" and "empty" ask whether ' +
       'the note has any value, and take no value. Example: ' +
       '{"field":"Expires","op":"lte","value":"2026-12-31"}.',

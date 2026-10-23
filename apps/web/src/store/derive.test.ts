@@ -70,6 +70,8 @@ describe('derive', () => {
     expect(list(s, { field: ['kind:eq:a'] }, {}).map((r) => r.id)).toEqual(['b']);
     expect(list(s, { field: ['amount:set'] }, {}).map((r) => r.id)).toEqual(['b', 'a']);
     expect(list(s, { field: ['amount:empty'] }, {}).map((r) => r.id)).toEqual(['e', 'c']);
+    // `ne` holds for a note with no value, as the server's NOT EXISTS has it.
+    expect(list(s, { field: ['kind:ne:a'] }, {}).map((r) => r.id)).toEqual(['e', 'c', 'a']);
     // created is the default sort's date; under the title sort the range reads updated.
     expect(list(s, { from: '1970-01-01', to: '1970-01-01' }, {}).map((r) => r.id)).toEqual(['e', 'c', 'b', 'a']);
     expect(list(s, { to: '1969-12-31' }, {}).map((r) => r.id)).toEqual([]);

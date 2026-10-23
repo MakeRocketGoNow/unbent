@@ -59,7 +59,9 @@ describe('FieldsPicker', () => {
     const cat = select(await findByLabelText('Category'));
     expect([...cat.options].map((o) => o.textContent)).toEqual(['Any', 'Food', 'Travel', 'Is set', 'Is empty']);
     const paid = select(getByLabelText('Reimbursed'));
-    expect([...paid.options].map((o) => o.textContent)).toEqual(['Any', 'Checked', 'Unchecked', 'Is set', 'Is empty']);
+    // Unchecked already takes in the notes never ticked, so set/empty would ask it twice.
+    expect([...paid.options].map((o) => o.textContent)).toEqual(['Any', 'Checked', 'Unchecked']);
+    expect([...paid.options].map((o) => o.value)).toEqual(['', 'eq:true', 'ne:true']);
     expect(input(getByLabelText('Amount, minimum')).type).toBe('number');
     expect(input(getByLabelText('Paid on, from')).type).toBe('date');
     const who = select(getByLabelText('Merchant'));
@@ -72,6 +74,13 @@ describe('FieldsPicker', () => {
     expect(input(getByLabelText('Amount, minimum')).value).toBe('20');
     expect(input(getByLabelText('Amount, maximum')).value).toBe('');
     expect((select(getByLabelText('Merchant'))).value).toBe('empty');
+  });
+
+  it('still shows a checkbox filter it no longer offers, rather than Any', async () => {
+    const { findByLabelText } = harness(['paid:empty']);
+    const paid = select(await findByLabelText('Reimbursed'));
+    expect(paid.value).toBe('empty');
+    expect(paid.options[paid.selectedIndex]!.textContent).toBe('Reimbursed is empty');
   });
 
   it('writes a choice to the URL and leaves the other fields alone', async () => {

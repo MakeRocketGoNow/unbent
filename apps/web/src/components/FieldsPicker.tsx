@@ -1,5 +1,6 @@
 import { useNavigate } from '@tanstack/react-router';
 import { fieldHasOptions, parseFieldFilter, formatFieldFilter, type FieldDef, type FieldFilter } from '@unbent/shared';
+import { fieldFilterLabel } from './field-filter.js';
 import { FieldTypeIcon } from './icons.js';
 import { writeFieldFilter } from '../routes/notes.js';
 
@@ -75,19 +76,35 @@ type Write = (fieldId: string, ops: FieldFilter['op'][], next: FieldFilter[]) =>
  * A select whose options are the ways this field can be narrowed. Option values carry
  * the op and, for equality, the value after a colon: the same shape as the wire form,
  * so reading one back is `parseFieldFilter` with the id put in front.
+ *
+ * A checkbox offers two answers and no "Is set" or "Is empty". Unchecked is `ne:true`,
+ * which takes in the notes whose box was never touched: a box stores `false` once it has
+ * been ticked and unticked, and nobody looking for "not used" means only those. With
+ * set/empty beside them, Unchecked and Is empty read as the same question and gave
+ * different answers.
  */
 function ChoiceControl({ def, mine, write }: { def: FieldDef; mine: FieldFilter[]; write: Write }) {
   const one = mine[0];
+  const checkbox = def.type === 'checkbox';
   const value = one ? formatFieldFilter(one).slice(def.id.length + 1) : '';
-  const values =
-    fieldHasOptions(def.type)
-      ? def.options.map((o) => ({ value: `eq:${o}`, label: o }))
-      : def.type === 'checkbox'
-        ? [
-            { value: 'eq:true', label: 'Checked' },
-            { value: 'eq:false', label: 'Unchecked' },
-          ]
-        : [];
+  const values = [
+    ...(fieldHasOptions(def.type) ? def.options.map((o) => ({ value: `eq:${o}`, label: o })) : []),
+    ...(checkbox
+      ? [
+          { value: 'eq:true', label: 'Checked' },
+          { value: 'ne:true', label: 'Unchecked' },
+        ]
+      : [
+          { value: 'set', label: 'Is set' },
+          { value: 'empty', label: 'Is empty' },
+        ]),
+  ];
+  // A filter from a link that none of these spell (an older link's `eq:false`, an
+  // assistant's `empty` on a checkbox) is still drawn, in words, rather than as Any while
+  // it narrows the list.
+  if (one && value && !values.some((v) => v.value === value)) {
+    values.push({ value, label: fieldFilterLabel(formatFieldFilter(one), [def]) });
+  }
   return (
     <select
       className="notebook-scope"
@@ -95,7 +112,7 @@ function ChoiceControl({ def, mine, write }: { def: FieldDef; mine: FieldFilter[
       value={value}
       onChange={(e) => {
         const next = e.target.value ? parseFieldFilter(`${def.id}:${e.target.value}`) : null;
-        write(def.id, ['eq', 'set', 'empty', 'gte', 'lte'], next ? [next] : []);
+        write(def.id, ['eq', 'ne', 'set', 'empty', 'gte', 'lte'], next ? [next] : []);
       }}
     >
       <option value="">Any</option>
@@ -104,8 +121,6 @@ function ChoiceControl({ def, mine, write }: { def: FieldDef; mine: FieldFilter[
           {v.label}
         </option>
       ))}
-      <option value="set">Is set</option>
-      <option value="empty">Is empty</option>
     </select>
   );
 }

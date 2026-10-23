@@ -270,12 +270,13 @@ export function matches(note: LocalNote, filter: ListFilter, ordering: ListOrder
       case 'empty':
         if (held) return false;
         break;
-      case 'eq': {
-        if (!held) return false;
-        const v = held.value;
-        const text = Array.isArray(v) ? null : typeof v === 'boolean' ? String(v) : String(v);
-        const ok = Array.isArray(v) ? v.includes(f.value ?? '') : text === (f.value ?? '');
-        if (!ok) return false;
+      case 'eq':
+      case 'ne': {
+        // A note with no value is not equal to anything, so `ne` holds for it.
+        const v = held?.value;
+        const ok =
+          v === undefined ? false : Array.isArray(v) ? v.includes(f.value ?? '') : String(v) === (f.value ?? '');
+        if (ok !== (f.op === 'eq')) return false;
         break;
       }
       case 'gte':
