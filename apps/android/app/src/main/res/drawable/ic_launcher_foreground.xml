@@ -4,12 +4,25 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- A "U" inside the adaptive-icon safe zone (the middle 72x72 of 108x108). -->
-    <path
-        android:strokeColor="#FFFFFF"
-        android:strokeWidth="7"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round"
-        android:fillColor="#00000000"
-        android:pathData="M40,38 L40,60 A14,14 0 0 0 68,60 L68,38" />
+    <!--
+        The same "U" path as the web app's icons and the store icon (apps/android/store/icon.svg),
+        which draw it on the whole 108x108 square. A launcher shows only the middle 72x72 of an
+        adaptive icon, so drawn at that size here the U filled half the icon and looked half as
+        big again as everywhere else. Scaling it by 72/108 about the centre gives it the same
+        share of the visible icon as the web's. The scale goes on a group rather than into the
+        path so the path stays identical to icon.svg's and can be compared at a glance.
+    -->
+    <group
+        android:pivotX="54"
+        android:pivotY="54"
+        android:scaleX="0.6667"
+        android:scaleY="0.6667">
+        <path
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="7"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round"
+            android:fillColor="#00000000"
+            android:pathData="M40,38 L40,60 A14,14 0 0 0 68,60 L68,38" />
+    </group>
 </vector>
