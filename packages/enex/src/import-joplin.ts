@@ -280,9 +280,16 @@ export async function importJoplin(
 
     for (const note of model.notes) {
       if (run.halt.signal.aborted) break;
-      await run.attempt(note.title || 'Untitled', () =>
-        importNote(note, model, { client, run, window, file, options, noteIds, now }),
-      );
+      /*
+         What a note is missing is reported once it has landed, outside `attempt`: a
+         transient failure runs the whole note again, and reporting from inside would log
+         the same missing file once per try. Only the last, successful pass's list counts.
+      */
+      let problems: string[] = [];
+      await run.attempt(note.title || 'Untitled', async () => {
+        problems = await importNote(note, model, { client, run, window, file, options, noteIds, now });
+      });
+      for (const problem of problems) run.problem(note.title || 'Untitled', problem);
     }
   } finally {
     run.release();
@@ -301,9 +308,11 @@ interface NoteContext {
   now: number;
 }
 
-async function importNote(ref: NoteRef, model: Model, ctx: NoteContext): Promise<void> {
+/** Imports one note, and answers what it could not bring with it, for the failure list. */
+async function importNote(ref: NoteRef, model: Model, ctx: NoteContext): Promise<string[]> {
   const { client, run, window, options } = ctx;
   const { progress } = run;
+  const problems: string[] = [];
 
   const { props, body: raw } = parseJoplinItem(await window.text(ref.entry));
   progress.bytesRead += ref.entry.size;
@@ -325,7 +334,7 @@ async function importNote(ref: NoteRef, model: Model, ctx: NoteContext): Promise
     const resource = model.resources.get(id);
     if (!resource) continue;
     if (!resource.entry) {
-      run.problem(ref.title || 'Untitled', `Attachment "${resource.name}" is missing from the export.`);
+      problems.push(`Attachment "${resource.name}" is missing from the export.`);
       continue;
     }
     // `scan.pdf`, then `scan-2.pdf`: two attachments of one note cannot share a name.
@@ -376,15 +385,16 @@ async function importNote(ref: NoteRef, model: Model, ctx: NoteContext): Promise
         await uploadFiles(loadFiles(missing, window, progress), result.id, client, progress, options);
       }
     }
-    return;
+    return problems;
   }
 
   run.created(result.id);
-  if (files.length === 0) return;
+  if (files.length === 0) return problems;
   const renames = await uploadFiles(loadFiles(files, window, progress), result.id, client, progress, options);
   if (renames.size > 0) {
     await client.updateBody?.(result.id, applyRenames(body, renames));
   }
+  return problems;
 }
 
 /** Reads each attachment's bytes only when the upload reaches it. */

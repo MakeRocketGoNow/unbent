@@ -244,6 +244,21 @@ describe('importJoplin', () => {
     expect(names[2]).toBe(`${ID.pasted}.png`);
   });
 
+  it('reports a missing attachment once, however often the note is tried', async () => {
+    const { client } = fakeClient();
+    const create = client.createNote;
+    let calls = 0;
+    client.createNote = async (input) => {
+      calls += 1;
+      // The first try of the receipt meets an overloaded server, the second lands.
+      if (input.title === 'Kettle receipt' && calls === 1) throw Object.assign(new Error('busy'), { status: 503 });
+      return create(input);
+    };
+    const failures: Array<{ title: string; reason: string }> = [];
+    await importJoplin(sample(), client, { onFailure: (f) => failures.push(f), sleep: async () => {} });
+    expect(failures.filter((f) => f.title === 'Kettle receipt')).toHaveLength(1);
+  });
+
   it('reports an item it cannot read and imports the rest', async () => {
     const { client, notes } = fakeClient();
     const failures: Array<{ title: string; reason: string }> = [];
