@@ -180,9 +180,9 @@ export function cursorStore(syncState: Collection<SyncState, string>): Pick<Feed
               draft.epoch = position.epoch;
               draft.resume = position.resume ?? null;
               draft.total = position.total ?? null;
-              draft.format = position.format ?? COPY_FORMAT;
+              draft.format = COPY_FORMAT;
             })
-          : syncState.insert({ id: 'cursor', seq: position.seq, epoch: position.epoch, resume: position.resume ?? null, total: position.total ?? null, format: position.format ?? COPY_FORMAT })
+          : syncState.insert({ id: 'cursor', seq: position.seq, epoch: position.epoch, resume: position.resume ?? null, total: position.total ?? null, format: COPY_FORMAT })
         : syncState.has('cursor')
           ? syncState.delete('cursor')
           : null;
