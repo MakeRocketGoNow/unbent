@@ -48,7 +48,7 @@ export const WELCOME_BODY = `This is a note. Start typing anywhere; it saves as 
 
 - [x] Sign in
 - [ ] Tick this box
-- [ ] [Bring your notes over from Evernote or Notion](/settings/import)
+- [ ] [Bring your notes over from Evernote, Notion or Joplin](/settings/import)
 - [ ] [Connect an assistant or another app](/settings/connected-apps)
 
 ## Keeping things in order

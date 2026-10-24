@@ -1529,8 +1529,8 @@ button.link {
 
 /* A phone held upright: the actions one above the other, each the width of the stack
    (the 44px height is the buttons' own, `btn-large`), the primary on top: the way the
-   app's own primary actions sit under a thumb, and how "Import from Evernote or Notion"
-   fits at all at 320px. */
+   app's own primary actions sit under a thumb, and how a label like "Import your notes"
+   has room at 320px. */
 @media (width < 480px) {
   .empty-state-actions {
     flex-direction: column;
