@@ -33,13 +33,27 @@ describe('useNotesView', () => {
 
   it('follows the URL as it changes', () => {
     const { result, rerender } = renderHook(({ v }) => useNotesView(v), {
-      initialProps: { v: 'table' as 'list' | 'table' | undefined },
+      initialProps: { v: 'table' as 'list' | 'cards' | 'table' | undefined },
     });
     expect(result.current).toBe('table');
     rerender({ v: 'list' });
     expect(result.current).toBe('list');
     rerender({ v: undefined });
     expect(result.current).toBe('list');
+  });
+
+  /* The cards are a third view, and must survive both the URL and storage like the other
+     two: a `view=cards` URL is drawn as cards and seeds the next silent URL with them. */
+  it('round-trips the cards through the URL and storage', () => {
+    renderHook(() => useNotesView('cards'));
+    expect(localStorage.getItem('unbent.notesView')).toBe('"cards"');
+    expect(renderHook(() => useNotesView(undefined)).result.current).toBe('cards');
+    expect(renderHook(() => useNotesView('table')).result.current).toBe('table');
+  });
+
+  it('reads cards stored by an earlier visit', () => {
+    localStorage.setItem('unbent.notesView', '"cards"');
+    expect(renderHook(() => useNotesView(undefined)).result.current).toBe('cards');
   });
 
   it('reads the earlier per-notebook shape as the table it had chosen', () => {

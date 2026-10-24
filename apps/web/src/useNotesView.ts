@@ -8,7 +8,7 @@ import type { NotesViewMode } from './useNotesLayout.js';
  * nothing.
  */
 function parseView(raw: unknown): NotesViewMode | undefined {
-  if (raw === 'list' || raw === 'table') return raw;
+  if (raw === 'list' || raw === 'cards' || raw === 'table') return raw;
   if (typeof raw === 'object' && raw !== null && !Array.isArray(raw)) {
     return Object.values(raw).includes('table') ? 'table' : 'list';
   }
@@ -16,7 +16,8 @@ function parseView(raw: unknown): NotesViewMode | undefined {
 }
 
 /**
- * How the note list is drawn: the sidebar of entries, or the table of a notebook's fields.
+ * How the note list is drawn: the sidebar of entries, the gallery of cards, or the table
+ * of a notebook's fields.
  *
  * The URL's `view` is the answer whenever it is there, and inside a notebook on a desktop
  * it always is: `NotesLayout` writes it into a URL that arrives without one. That is what

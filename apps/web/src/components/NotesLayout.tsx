@@ -16,7 +16,7 @@ import {
   invalidateNoteMembership,
   configQuery,
 } from '../queries.js';
-import { useNotesLayout } from '../useNotesLayout.js';
+import { useNotesLayout, type NotesViewMode } from '../useNotesLayout.js';
 import { ResizeHandle } from './ResizeHandle.js';
 import { NoteListItem } from './NoteListItem.js';
 import { useListKeys, enterList } from '../useListKeys.js';
@@ -619,7 +619,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    * how the list is drawn must not close a note, unlike a filter, which can take the note
    * out of the list and so goes back to `/notes`.
    */
-  const withView = (next: 'list' | 'table', replace: boolean) => {
+  const withView = (next: NotesViewMode, replace: boolean) => {
     const search = (prev: Record<string, unknown>) => ({ ...prev, view: next });
     return layout.open
       ? ({ to: '/notes/$noteId', params: { noteId: layout.open }, search, replace, resetScroll: false } as const)
@@ -648,7 +648,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    * the entry it goes back to says which view it had. The remembered view follows the
    * URL (`useNotesView`), so there is nothing else to write.
    */
-  const chooseView = (next: 'list' | 'table') => void navigate(withView(next, false));
+  const chooseView = (next: NotesViewMode) => void navigate(withView(next, false));
   const columns = noteColumns(fieldDefs.data ?? []);
   const totalIds = columns.filter(totalable).map((c) => c.id);
   const fieldTotals = useQuery({ ...fieldTotalsQuery(filter, totalIds, ordering), enabled: tableMode && totalIds.length > 0 });
