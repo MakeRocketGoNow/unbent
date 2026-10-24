@@ -162,18 +162,19 @@ export const COMPARISONS: readonly Comparison[] = [
     whyTheyDiffer: (
       <>
         <p>
-          Evernote and Unbent do the same job, and Evernote did it first: paper goes in, is
-          read, and is found again by what it said. Evernote still reads more without being
-          asked (a photo, a page of handwriting). The difference is what the archive is made
-          of, and what happens when you want to leave.
+          Evernote and Unbent do the same thing with a scan, and Evernote did it first:
+          paper goes in, its text is read, and it is found again by what it said. Evernote
+          still reads more without being asked (a photo, a page of handwriting). The
+          difference is what your notes are made of, and what happens when you want to
+          leave.
         </p>
         <p>
           Evernote keeps notes in its own format, exports them from its desktop app a
           notebook at a time, and has changed its owner and roughly doubled its price within
           a year. Unbent was built by someone who left it with 13,000 notes, around one
-          rule: the archive is yours. Every note is a Markdown file kept as you typed it,
-          the export is plain folders from any browser, and an account that stops paying
-          turns read-only rather than locked.
+          rule: the archive is yours. Every note is a Markdown file kept exactly as you
+          typed it, the export is plain folders from any browser, and an account that stops
+          paying turns read-only rather than locked.
         </p>
       </>
     ),
@@ -301,9 +302,11 @@ export const COMPARISONS: readonly Comparison[] = [
         Notion a PDF is an attachment on a page: found by its name, opened to know what it
         says, and kept under 5 MB on the free plan. In Unbent the file is the point: the text
         of every PDF is read as it arrives and searched from every device, a photo of a
-        receipt is read on a press, and the note&apos;s fields hold what the paper said.
+        receipt is read when you press Auto-fill, and the note&apos;s fields hold what the
+        paper said.
         Notion&apos;s databases do more than Unbent&apos;s notebooks in every other way, so
-        the question is not which is better but which of the two jobs you have.
+        the question is less which is better than what you are keeping: a workspace of
+        pages, or a drawer of paperwork.
       </p>
     ),
     rows: [
@@ -409,11 +412,11 @@ export const COMPARISONS: readonly Comparison[] = [
       image: CARD_IMAGE,
     },
     summary: 'For someone weighing a free, encrypted notes app they sync themselves against a hosted archive that reads their paperwork for them.',
-    lead: 'Unbent and Joplin are different kinds of app. Unbent is a hosted archive for paperwork: scans and files, read as they arrive, found by what they say and sorted by their fields, with nothing to set up. Joplin is a free, open-source notes app you sync yourself, with end-to-end encryption. If what you keep is mostly writing, use Joplin: it is good, and free. This page is about the paper.',
+    lead: 'Unbent and Joplin are different kinds of app. Unbent is a hosted archive for paperwork: scans and files, read as they arrive, found by what they say and sorted by their fields, with nothing to set up. Joplin is a free, open-source notes app you sync yourself, with end-to-end encryption. If most of what you keep is writing, Joplin is a good choice and costs nothing. If most of it is scanned paperwork, read on.',
     checked: CHECKED,
     chooseUnbent: [
       'What you keep is mostly paper: scans, receipts, bills and manuals you need to find again by what they say.',
-      'You want a scan read the moment it arrives, from a phone as much as a desktop, and filed on a press: title, notebook and fields.',
+      'You want a scan read the moment it arrives, from a phone as much as a desktop, and filed with one press: its title, notebook and fields filled in.',
       'You want fields on your notes (a date, a total, who it was from) and a table to sort them by.',
       'You want nothing to set up and nothing to run (no sync target, no server, no master password), and your AI assistant working in it over the web.',
     ],
@@ -426,20 +429,21 @@ export const COMPARISONS: readonly Comparison[] = [
     whyTheyDiffer: (
       <>
         <p>
-          Joplin&apos;s rule is that no server ever reads your notes: with end-to-end
-          encryption on, the place they sync to holds only ciphertext, and each device
-          decrypts its own copy. It is a good rule, and everything the paperless job needs is
-          on the other side of it. Reading a scan the moment it arrives, filing it from what
-          it says, and searching an archive from a phone that has never downloaded it all
-          need something to read the paper, and that something has to be a server. Joplin
-          does what it can on the desktop (its OCR runs there, and the text syncs out to the
-          phone); Unbent made the other choice.
+          Joplin is built so that no server ever reads your notes. With its end-to-end
+          encryption on, the place your notes sync to holds only scrambled copies, and each
+          device unlocks and searches its own. That is a sound rule for a notes app, and it
+          has a cost for scanned paperwork: something has to read a scan before it can be
+          searched or filed, and in Joplin that something is the desktop app. A receipt
+          photographed on a phone is not searchable until a computer running Joplin has
+          synced it and read it, and every device keeps a copy of every note.
         </p>
         <p>
-          So the server reads your paperwork, and in return leaving is kept trivial: every
-          note is a plain file, the export is plain folders from any browser at any time, and
-          an account that stops paying turns read-only rather than locked. Which rule you
-          want decides this page, and nothing in the table below changes it.
+          Unbent takes the other side of the same trade. Its server reads every scan the
+          moment it arrives, so a receipt is searchable from the phone that took it, and a
+          phone searches the whole archive without downloading it first. The price is that
+          the server can read your notes, and Unbent answers that by making leaving easy:
+          every note is a plain file, the export is plain folders from any browser at any
+          time, and an account that stops paying turns read-only rather than locked.
         </p>
       </>
     ),
@@ -490,7 +494,7 @@ export const COMPARISONS: readonly Comparison[] = [
     weDoBetter: [
       {
         title: 'Reading paper as it arrives',
-        body: 'Every PDF is read on the server the moment it is added, from any device, and a photo on a press, so a receipt scanned on a phone is searchable from that phone straight away. Joplin reads PDFs and images too, but only in its desktop app: nothing is searchable until a desktop has synced it and run over it.',
+        body: 'Every PDF is read on the server the moment it is added, from any device, and a photo when you press Auto-fill, so a receipt scanned on a phone is searchable from that phone straight away. Joplin reads PDFs and images too, but only in its desktop app: nothing is searchable until a desktop has synced it and run over it.',
       },
       {
         title: 'Filing a scan for you',
@@ -559,7 +563,7 @@ export const COMPARISONS: readonly Comparison[] = [
       image: CARD_IMAGE,
     },
     summary: 'For someone who could run a free document system on a machine of their own, and wants to know what a hosted one with notes adds.',
-    lead: 'Paperless-ngx and Unbent do the same job: paper goes in, is read, and is found again by what it says. Paperless-ngx is free, open source and run by you, on a machine of yours that stays on. Unbent is hosted, works on a phone and offline, and keeps notes beside the documents. If you already run a server and want nobody else to hold your paperwork, run Paperless-ngx. This page is for deciding whether to run one at all.',
+    lead: 'Paperless-ngx and Unbent do the same thing with a scan: its text is read as it comes in, and it is found again by what it says. Paperless-ngx is free, open source and run by you, on a machine of yours that stays on. Unbent is hosted, works on a phone and offline, and keeps written notes beside the documents. If you already run a server and want nobody else to hold your paperwork, Paperless-ngx is the better fit. If you would rather not run one, read on.',
     checked: CHECKED,
     chooseUnbent: [
       'You want it hosted: nothing to install, update, back up or keep switched on.',
@@ -576,19 +580,19 @@ export const COMPARISONS: readonly Comparison[] = [
     whyTheyDiffer: (
       <>
         <p>
-          Both read every page that arrives and find it again by what it said; Paperless-ngx
-          has done it for longer and does more of the organising, with correspondents and
-          document types across the whole archive and a pipeline that runs rules as documents
-          come in. The difference is where it runs, and what else is there.
+          Both read a scanned document as it comes in, so that it can be found later by a
+          word inside it. Paperless-ngx has done this for longer and organises more: every
+          document gets a correspondent and a document type, and rules run on each one as it
+          arrives. The differences are where it runs and what sits beside the documents.
         </p>
         <p>
-          Paperless-ngx is software you host: a Docker Compose stack with a database and a
-          broker beside it, on a machine that stays on, reached over your network, with your
+          Paperless-ngx is software you host yourself: a Docker Compose stack with a database
+          and a broker, on a machine that stays on, reached over your own network, with your
           documents on your own disk and nobody else&apos;s. Unbent is a service: the same
-          reading, on a server we run, from any browser and a phone that works offline, with
-          Markdown notes and typed fields beside the files, and an export of plain folders so
-          that leaving is as easy as it is with a folder of your own. Whether running a
-          server is a cost or a feature to you decides this page.
+          reading, done on a server we run, reached from any browser and from a phone that
+          works offline, with written notes and typed fields beside the files, and an export
+          of plain folders, so leaving is as easy as copying a folder. Whether you would
+          rather run that machine, or pay someone else to, is most of the decision.
         </p>
       </>
     ),
@@ -665,7 +669,7 @@ export const COMPARISONS: readonly Comparison[] = [
       },
       {
         title: 'A pipeline',
-        body: 'A watched folder a scanner drops into, mailboxes it fetches attachments from on rules, workflows that tag, file, rename and notify as documents arrive, and a PDF/A copy of everything for the long run. Unbent takes files dropped on it, opened with it from a scanner, or sent by an assistant, and files them on a press.',
+        body: 'A watched folder a scanner drops into, mailboxes it fetches attachments from on rules, workflows that tag, file, rename and notify as documents arrive, and a PDF/A copy of everything for the long run. Unbent takes files dropped on it, opened with it from a scanner, or sent by an assistant, and files each with one press of Auto-fill.',
       },
       {
         title: 'Organising the whole archive',
@@ -679,9 +683,9 @@ export const COMPARISONS: readonly Comparison[] = [
           <p>
             Unbent does not read Paperless-ngx&apos;s export, and does not need to: the export
             is your original files. Run the exporter, drop the originals on Unbent&apos;s note
-            list, and each becomes a note with its file attached and its text read; Auto-fill
-            fills in the date, total and sender on a press, and an assistant can do it across
-            a notebook. Tags, correspondents and custom fields do not come across.
+            list, and each becomes a note with its file attached and its text read; a press
+            of Auto-fill fills in the date, total and sender, and an assistant can do that
+            across a notebook. Tags, correspondents and custom fields do not come across.
           </p>
           <p>
             The other way is as easy, on purpose: Unbent&apos;s export is a folder per note

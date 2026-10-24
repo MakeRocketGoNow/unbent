@@ -158,15 +158,16 @@ export function CompareIndexPage() {
     <FrontShell>
       <section className="front-hero front-width">
         <h1>How Unbent compares</h1>
-        {/* The category first, because most of what follows turns on it: the apps people
-            weigh Unbent against are mostly notes apps that take files, and the honest
-            comparison is about which job someone has, not which app has more. */}
+        {/* What Unbent is, then what the others are, by name: a reader arriving from a
+            search has none of the context the pages below assume, and "the apps it is
+            weighed against" meant nothing until they were named. */}
         <p className="front-lead front-story-lead">
-          Unbent is an archive for paper: scans, receipts and bills, read as they arrive,
-          found by what they say, and kept as files you can take with you. Most of the apps
-          it is weighed against are notes apps that also take files, and one is a document
-          system you run yourself, so the question is usually which job you have. Here is
-          how it stands beside each, including what each of them does better.
+          Unbent keeps scanned paperwork: receipts, bills, manuals and letters, read as they
+          arrive and found again by what they say, as files you can take with you. The apps
+          people compare it with mostly do something broader. Evernote, Notion and Joplin
+          are notes apps that also hold files, and Paperless-ngx is a document system you
+          run on your own machine. Each page below says who the two apps suit, where they
+          differ, and what each does better than the other.
         </p>
       </section>
       <article className="front-story compare front-width">
