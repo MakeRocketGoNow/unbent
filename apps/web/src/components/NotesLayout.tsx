@@ -18,7 +18,7 @@ import {
 } from '../queries.js';
 import { useNotesLayout, type NotesViewMode } from '../useNotesLayout.js';
 import { ResizeHandle } from './ResizeHandle.js';
-import { NoteListItem } from './NoteListItem.js';
+import { NoteListItem, type RowSelection } from './NoteListItem.js';
 import { NoteCard } from './NoteCard.js';
 import { useListKeys, enterList } from '../useListKeys.js';
 import { useFocusSearch } from '../useFocusSearch.js';
@@ -405,6 +405,8 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   const hasPicks = picks.tags.length > 0 || picks.notebooks.length > 0;
 
   const notes = list.data?.pages.flatMap((p) => p.items) ?? [];
+  /** What the cards draw: the matches while a search is on, the loaded notes otherwise. */
+  const cardNotes = results !== null ? (matchRows ?? []) : notes;
   // The list's Load more asks for itself as it nears the bottom; see `useAutoLoad`. The
   // table has its own, on its own button.
   const autoLoad = useAutoLoad({
@@ -540,6 +542,13 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     clearSelection();
   }, [layout.open, clearSelection]);
+
+  /** How one note's row or card takes part in the selection; the same for both. */
+  const rowSelection = (id: string): RowSelection => ({
+    selected: selection.has(id),
+    active: selection.active,
+    onPick: (opts) => selection.pick(id, opts),
+  });
 
   /** Escape and Cmd/Ctrl+A on the list are the selection's; the arrows stay the list's. */
   const onListKeysWithSelection = (event: KeyboardEvent<HTMLElement>) => {
@@ -1377,25 +1386,21 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
             />
           )}
           {results !== null && hasPicks && <li className="list-caption">Notes</li>}
-          {/* The cards draw the matches as cards, selectable as the table's rows are; the
-              list draws them as results, with the snippet that says why each matched. */}
-          {results !== null &&
-            cardsMode &&
-            (searchEmpty !== null && (matchRows ?? []).length === 0 ? (
+          {/* The cards draw the matches as cards, selectable as the table's rows are, and
+              the loaded notes the same way when nothing is searched; the list draws the
+              matches as results, with the snippet that says why each matched. */}
+          {cardsMode &&
+            (results !== null && searchEmpty !== null && cardNotes.length === 0 ? (
               <li className="muted small empty">{searchEmpty}</li>
             ) : (
-              (matchRows ?? []).map((n) => (
+              cardNotes.map((n) => (
                 <NoteCard
                   key={n.id}
                   note={n}
                   sort={sort ?? DEFAULT_NOTE_SORT}
                   replacedByNote={isMobile}
                   hint={cardHints.get(n.id)}
-                  selection={{
-                    selected: selection.has(n.id),
-                    active: selection.active,
-                    onPick: (opts) => selection.pick(n.id, opts),
-                  }}
+                  selection={rowSelection(n.id)}
                 />
               ))
             ))}
@@ -1411,21 +1416,6 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
             ))}
 
           {results === null &&
-            cardsMode &&
-            notes.map((n) => (
-              <NoteCard
-                key={n.id}
-                note={n}
-                sort={sort ?? DEFAULT_NOTE_SORT}
-                replacedByNote={isMobile}
-                selection={{
-                  selected: selection.has(n.id),
-                  active: selection.active,
-                  onPick: (opts) => selection.pick(n.id, opts),
-                }}
-              />
-            ))}
-          {results === null &&
             !cardsMode &&
             notes.map((n) => (
               <NoteListItem
@@ -1435,11 +1425,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
                 sort={sort ?? DEFAULT_NOTE_SORT}
                 replacedByNote={isMobile}
                 tagColor={tagColor}
-                selection={{
-                  selected: selection.has(n.id),
-                  active: selection.active,
-                  onPick: (opts) => selection.pick(n.id, opts),
-                }}
+                selection={rowSelection(n.id)}
               />
             ))}
 
