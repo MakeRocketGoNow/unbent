@@ -7881,9 +7881,14 @@ button.settings-nav-item {
    button's height and the button states it, and the fill matches the box it is on.
    The glyphs themselves do not change size: `HeaderIcon` sizes them against the row's
    text, not against the box.
+
+   The view menu's trigger is an `.overflow-trigger`, the same object as an `.icon-btn`
+   (see `.overflow-trigger, .icon-btn`), so every rule here names both. Naming only
+   `.icon-btn` left it a 44px box with a larger glyph beside the filter and the sort.
 */
 @media (width > 860px) {
-  .list-head-actions .icon-btn {
+  .list-head-actions .icon-btn,
+  .list-head-actions .overflow-trigger {
     min-width: 2.25rem;
     height: 2.25rem;
   }
@@ -7908,7 +7913,8 @@ button.settings-nav-item {
    agree.
 */
 @media (width > 860px) and (hover: hover) and (pointer: fine) {
-  .list-head-actions .icon-btn {
+  .list-head-actions .icon-btn,
+  .list-head-actions .overflow-trigger {
     min-width: 2rem;
     height: 2rem;
     /* `HeaderIcon` draws at 1.25em of this. */
