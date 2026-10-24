@@ -53,7 +53,7 @@ import {
 import { Sheet } from './Sheet.js';
 import { NoteListHead } from './NoteListHead.js';
 import { NotesSort } from './NotesSort.js';
-import { NotesViewToggle } from './NotesViewToggle.js';
+import { NotesViewMenu } from './NotesViewMenu.js';
 import { NoteTable } from './NoteTable.js';
 import { noteColumns, totalable } from './note-columns.js';
 import { tableTotalsFor } from './table-totals.js';
@@ -997,20 +997,21 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
               />
             ) : null
           }
-          /* Hidden where the table is never drawn (a phone) and disabled with the reason
-             outside a notebook, where there are no fields to column. */
+          /* At every width, since the cards are drawn at every width; the table is
+             offered everywhere and faded with the reason where it cannot be drawn. A
+             phone's reason first: it holds inside a notebook too. */
           view={
-            !isMobile ? (
-              <NotesViewToggle
-                value={tableMode ? 'table' : 'list'}
-                onChange={chooseView}
-                tableDisabledReason={
-                  notebookId === undefined
-                    ? 'choose a notebook to see its fields as columns'
+            <NotesViewMenu
+              value={shownView}
+              onChange={chooseView}
+              tableDisabledReason={
+                isMobile
+                  ? 'Needs a wider screen than a phone'
+                  : notebookId === undefined
+                    ? 'Choose a notebook to see its fields as columns'
                     : undefined
-                }
-              />
-            ) : undefined
+              }
+            />
           }
           /* New is a floating button on a phone (below) and the end of this row on a
              desktop, where a column has nothing for a button to float clear of.

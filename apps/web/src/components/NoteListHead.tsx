@@ -73,9 +73,8 @@ interface NoteListHeadProps {
    */
   sort: ReactNode;
   /**
-   * The list/table toggle, after the sort and before New, or nothing where the table is
-   * not on offer: a phone, or a search. Passed in like the sort so this owns no routing
-   * and no storage.
+   * The view menu (list, cards, table), after the sort and before New. Passed in like
+   * the sort so this owns no routing and no storage.
    */
   view?: ReactNode;
   /**

@@ -27,6 +27,7 @@ import {
   Hash,
   Image,
   Inbox,
+  LayoutGrid,
   Link as LinkGlyph,
   List,
   ListChecks,
@@ -266,11 +267,18 @@ export function SearchIcon() {
 }
 
 /**
- * The two ways the note list is drawn, for the view toggle beside the filter and sort
- * icons: rows of entries, or a grid of a notebook's fields.
+ * The three ways the note list is drawn, for the view menu beside the filter and sort
+ * icons: rows of entries, a gallery of cards, or a table of a notebook's fields. The
+ * cards are a grid of squares and the table a grid of cells, which is why the table is
+ * lucide's ruled sheet and the cards its four tiles: at this size the two must not read
+ * as one glyph.
  */
 export function ListViewIcon() {
   return <HeaderIcon icon={List} />;
+}
+
+export function CardsViewIcon() {
+  return <HeaderIcon icon={LayoutGrid} />;
 }
 
 export function TableViewIcon() {

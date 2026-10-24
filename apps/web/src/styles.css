@@ -2154,14 +2154,12 @@ th[aria-sort] .note-th-sort { color: var(--fg); }
 .icon-btn:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 7%, transparent); }
 
 /*
-   List or table, as one icon that flips. Outside a notebook there is no table to switch
-   to, and it fades rather than hides: its name carries the reason (see `NotesViewToggle`).
-   A note's ⋯ fades the same way while offline; see `OverflowMenu`'s `disabled`, and the
-   sort icon over a search in the table; see `NotesSort`'s `disabledReason`.
+   A control that cannot be used right now fades rather than hides, so the row keeps its
+   shape: a note's ⋯ while offline (see `OverflowMenu`'s `disabled`), and the sort icon
+   over a search in the table or the cards (see `NotesSort`'s `disabledReason`).
 */
 .overflow-trigger:disabled,
-.icon-btn.sort-toggle:disabled,
-.icon-btn.view-toggle:disabled {
+.icon-btn.sort-toggle:disabled {
   opacity: 0.4;
   cursor: default;
   background: none;
@@ -2271,6 +2269,26 @@ a.overflow-item { text-decoration: none; }
   opacity: 1;
   color: var(--muted);
 }
+
+/*
+   The view menu's items (`NotesViewMenu`): each view's icon beside its name, so the
+   trigger's icon is learned here, and the table's reason under its name where it cannot
+   be chosen. Wrapped, unlike other items: the reason is a sentence, and on one line it
+   would widen the menu past a phone's edge.
+*/
+.view-menu .overflow-item { white-space: normal; }
+
+.view-option {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  column-gap: 0.6rem;
+}
+
+/* Quiet beside the name, except on the current view, whose icon takes its tick's colour. */
+.overflow-item:not(.selected) > .view-option > svg { color: var(--muted); }
+
+.view-option > .overflow-item-note { grid-column: 2; }
 
 /*
    The error state's header row holds only the back arrow, and that arrow is hidden above
