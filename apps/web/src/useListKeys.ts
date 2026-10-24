@@ -194,22 +194,30 @@ export function useListKeys(opts: {
  * The card above or below `from` in a grid: of the cards on the nearest row in that
  * direction, the one whose middle is closest to `from`'s. A row is the cards sharing a
  * top edge, give or take a pixel of rounding.
+ *
+ * Walked outward from `from` in the order the rows are drawn, and stopped once past the
+ * row it lands on, so a press measures two rows of cards, not every card loaded: after a
+ * long scroll that is thousands of them.
  */
 function across(items: HTMLElement[], from: HTMLElement, down: boolean): HTMLElement | undefined {
   const here = from.getBoundingClientRect();
   const middle = (r: DOMRect) => r.left + r.width / 2;
-  const placed = items.map((el) => ({ el, rect: el.getBoundingClientRect() }));
-  const beyond = placed.filter(({ rect }) => (down ? rect.top > here.top + 1 : rect.top < here.top - 1));
-  if (beyond.length === 0) return undefined;
-  const rowTop = down
-    ? Math.min(...beyond.map(({ rect }) => rect.top))
-    : Math.max(...beyond.map(({ rect }) => rect.top));
-  const row = beyond.filter(({ rect }) => Math.abs(rect.top - rowTop) <= 1);
-  let best = row[0]!;
-  for (const c of row) {
-    if (Math.abs(middle(c.rect) - middle(here)) < Math.abs(middle(best.rect) - middle(here))) best = c;
+  const step = down ? 1 : -1;
+  let rowTop: number | null = null;
+  let best: { el: HTMLElement; off: number } | undefined;
+  for (let i = items.indexOf(from) + step; i >= 0 && i < items.length; i += step) {
+    const rect = items[i]!.getBoundingClientRect();
+    if (rowTop === null) {
+      // Still on `from`'s own row.
+      if (Math.abs(rect.top - here.top) <= 1) continue;
+      rowTop = rect.top;
+    } else if (Math.abs(rect.top - rowTop) > 1) {
+      break;
+    }
+    const off = Math.abs(middle(rect) - middle(here));
+    if (!best || off < best.off) best = { el: items[i]!, off };
   }
-  return best.el;
+  return best?.el;
 }
 
 /**

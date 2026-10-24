@@ -326,9 +326,9 @@ describe('useListKeys with search picks', () => {
  * since jsdom lays nothing out. Up and down are read from those places, so the stub is
  * the grid.
  */
-function Cards() {
+function Cards({ count = 6, measured }: { count?: number; measured?: string[] }) {
   const onKeyDown = useListKeys();
-  const ids = ['a', 'b', 'c', 'd', 'e', 'f'];
+  const ids = 'abcdefghijkl'.slice(0, count).split('');
   return (
     <ul className="note-list cards" data-grid="" data-testid="cards" onKeyDown={onKeyDown}>
       {ids.map((id, i) => (
@@ -341,8 +341,10 @@ function Cards() {
               if (!el) return;
               const left = (i % 3) * 100;
               const top = Math.floor(i / 3) * 150;
-              el.getBoundingClientRect = () =>
-                ({ left, top, width: 90, height: 140, right: left + 90, bottom: top + 140 }) as DOMRect;
+              el.getBoundingClientRect = () => {
+                measured?.push(id);
+                return { left, top, width: 90, height: 140, right: left + 90, bottom: top + 140 } as DOMRect;
+              };
             }}
           >
             {id}
@@ -383,6 +385,18 @@ describe('useListKeys over the cards', () => {
     screen.getByTestId('e').dispatchEvent(event);
     expect(event.defaultPrevented).toBe(false);
     expect(document.activeElement).toBe(screen.getByTestId('e'));
+  });
+
+  /* After a long scroll a list holds thousands of cards; a press reads two rows of them. */
+  it('measures no further than the row it lands on', () => {
+    const measured: string[] = [];
+    render(<Cards count={12} measured={measured} />);
+    screen.getByTestId('b').focus();
+    measured.length = 0;
+    fireEvent.keyDown(screen.getByTestId('cards'), { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(screen.getByTestId('e'));
+    expect(measured).not.toContain('j');
+    expect(measured).not.toContain('l');
   });
 
   /* Left and right belong to the grid alone: in the list they stay the browser's. */
