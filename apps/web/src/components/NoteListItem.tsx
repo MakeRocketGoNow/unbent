@@ -1,21 +1,10 @@
-import { useRef } from 'react';
 import { Link } from '@tanstack/react-router';
 import type { NoteSort, NoteSummary } from '@unbent/shared';
 import { formatWhen } from './format-when.js';
 import { NoteFieldsLine } from './NoteFieldsLine.js';
 import { AttachmentKindIcon } from './icons.js';
 import type { TagColorOf } from './use-tag-colors.js';
-
-/**
- * How long a finger rests on a row before it selects rather than opens.
- *
- * Android's own long-press timeout, and about what iOS uses: a touch that has lasted
- * this long is not a tap that is running late, it is the other gesture.
- */
-const LONG_PRESS_MS = 500;
-
-/** How far a resting finger may drift before it is a scroll and not a press. */
-const PRESS_SLOP_PX = 10;
+import { useNotePress } from './use-note-press.js';
 
 /**
  * How a row takes part in the list's selection. Absent where a row is only a way in:
@@ -93,22 +82,8 @@ export function NoteListItem({
   const when = sort === 'created' ? note.createdAt : note.updatedAt;
   const title = note.title || 'Untitled';
 
-  /*
-     The long press. A timer started on touch-down and cancelled by anything that makes
-     the touch something else: lifting, drifting more than the slop, the browser taking
-     the pointer for a scroll. When it fires, the row is picked and the click that follows
-     the finger lifting is swallowed, since it would open the note that was just selected.
-     The context menu a browser offers for a held link is swallowed for the same press:
-     the press has already meant something.
-  */
-  const press = useRef<{ timer: number; x: number; y: number } | null>(null);
-  const swallowClick = useRef(false);
-  const pointerType = useRef('mouse');
-  const cancelPress = () => {
-    if (!press.current) return;
-    window.clearTimeout(press.current.timer);
-    press.current = null;
-  };
+  // The selection's clicks, presses and keys; shared with the cards (`NoteCard`).
+  const press = useNotePress(selection);
 
   return (
     <li
@@ -133,52 +108,7 @@ export function NoteListItem({
         // so there focus has nowhere to stay and the note opens ready to write in. Read by
         // the pointerdown handler in `useListKeys`.
         {...(replacedByNote ? {} : { 'data-keep-focus': '' })}
-        onPointerDown={(e) => {
-          pointerType.current = e.pointerType;
-          swallowClick.current = false;
-          if (!selection || (e.pointerType !== 'touch' && e.pointerType !== 'pen')) return;
-          cancelPress();
-          const timer = window.setTimeout(() => {
-            press.current = null;
-            swallowClick.current = true;
-            // A nudge, where the platform has one, so the finger knows the press landed.
-            navigator.vibrate?.(15);
-            selection.onPick({ range: false });
-          }, LONG_PRESS_MS);
-          press.current = { timer, x: e.clientX, y: e.clientY };
-        }}
-        onPointerMove={(e) => {
-          const p = press.current;
-          if (p && Math.hypot(e.clientX - p.x, e.clientY - p.y) > PRESS_SLOP_PX) cancelPress();
-        }}
-        onPointerUp={cancelPress}
-        onPointerCancel={cancelPress}
-        onPointerLeave={cancelPress}
-        onContextMenu={(e) => {
-          if (selection && (press.current || swallowClick.current)) e.preventDefault();
-        }}
-        onKeyDown={(e) => {
-          // Space on a link scrolls the page, which nobody focused a note row to do.
-          if (selection && e.key === ' ') {
-            e.preventDefault();
-            selection.onPick({ range: e.shiftKey });
-          }
-        }}
-        onClick={(e) => {
-          if (selection) {
-            if (swallowClick.current) {
-              swallowClick.current = false;
-              e.preventDefault();
-              return;
-            }
-            const touch = pointerType.current === 'touch' || pointerType.current === 'pen';
-            if (e.metaKey || e.ctrlKey || e.shiftKey || (touch && selection.active)) {
-              e.preventDefault();
-              selection.onPick({ range: e.shiftKey });
-              return;
-            }
-          }
-        }}
+        {...press}
       >
         <span className="note-title">{title}</span>
         <span className="note-meta">
