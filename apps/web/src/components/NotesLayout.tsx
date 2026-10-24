@@ -782,19 +782,19 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
     (results ?? []).flatMap((r) => (r.matchedFile ? [[r.id, `in ${r.matchedFile}`] as const] : [])),
   );
   /*
-   * The same for a card, which draws less than a table row: no tags either. A match in
-   * a field is on the card's fields line, and one in the body is the note itself, as in
-   * the table; a match in a tag says so, as the sidebar's results do.
+   * The same for a card, which draws less than a table row: a match in a file says so as
+   * the table's does, and so does one in a field or a tag, as the sidebar's results do.
+   * The table has a column for each field and its tags; a card has neither, and its
+   * fields line is cut to one line, often before the field that matched. A match in the
+   * body is the note itself, as in the table. Built on `matchHints`, so the file's
+   * wording is written once; a file match wins over the rest, as it is listed last.
    */
-  const cardHints = new Map<string, string>(
-    (results ?? []).flatMap((r) =>
-      r.matchedFile
-        ? [[r.id, `in ${r.matchedFile}`] as [string, string]]
-        : r.matchedTag
-          ? [[r.id, `tagged ${r.matchedTag}`] as [string, string]]
-          : [],
+  const cardHints = new Map<string, string>([
+    ...(results ?? []).flatMap((r): [string, string][] =>
+      r.matchedField ? [[r.id, `in ${r.matchedField}`]] : r.matchedTag ? [[r.id, `tagged ${r.matchedTag}`]] : [],
     ),
-  );
+    ...matchHints,
+  ]);
 
   /**
    * Where the list is, for the heading: see `scopeLabel` for the rule, which is the
