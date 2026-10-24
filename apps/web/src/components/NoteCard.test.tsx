@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { render, screen, cleanup, fireEvent } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent, act } from '@testing-library/react';
 import {
   createRootRoute,
   createRoute,
@@ -10,6 +10,7 @@ import {
 import type { NoteSummary } from '@unbent/shared';
 import { NoteCard, coverOf } from './NoteCard.js';
 import type { RowSelection } from './NoteListItem.js';
+import { resetConnectivity, setReachableForTests } from '../connectivity.js';
 
 const note: NoteSummary = {
   id: 'n1',
@@ -37,7 +38,10 @@ function mount(overrides: Partial<NoteSummary> = {}, props: { selection?: RowSel
   return render(<RouterProvider router={router as any} />);
 }
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  resetConnectivity();
+});
 
 describe('coverOf', () => {
   /* A scan filed as a PDF and then photographed: the photo is the one that can be
@@ -115,6 +119,28 @@ describe('NoteCard', () => {
     expect(cover.classList.contains('file')).toBe(true);
     expect(cover.querySelector('img')).toBeNull();
     expect(cover.querySelector('svg')).not.toBeNull();
+  });
+
+  /* Offline is a reason to try again, not a verdict on the file. */
+  it('tries a cover that failed offline again once the app is back online', async () => {
+    setReachableForTests(false);
+    mount({ attachments: [{ filename: 'front.jpg', contentType: 'image/jpeg' }] });
+    await screen.findByText('Acme Hardware');
+    fireEvent.error(document.querySelector('.note-card-cover img')!);
+    expect(document.querySelector('.note-card-cover img')).toBeNull();
+    act(() => setReachableForTests(true));
+    expect(document.querySelector('.note-card-cover img')).not.toBeNull();
+  });
+
+  it('does not try again a cover that failed while online', async () => {
+    mount({ attachments: [{ filename: 'IMG_0001.heic', contentType: 'image/heic' }] });
+    await screen.findByText('Acme Hardware');
+    fireEvent.error(document.querySelector('.note-card-cover img')!);
+    act(() => {
+      setReachableForTests(false);
+      setReachableForTests(true);
+    });
+    expect(document.querySelector('.note-card-cover img')).toBeNull();
   });
 
   it('shows the words of a note with no files where its cover would be', async () => {

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from '@tanstack/react-router';
 import { normalizeContentType, type NoteSort, type NoteSummary } from '@unbent/shared';
 import { formatWhen } from './format-when.js';
@@ -7,6 +7,7 @@ import { AttachmentKindIcon } from './icons.js';
 import { NoteCheck, type RowSelection } from './NoteListItem.js';
 import { useNotePress } from './use-note-press.js';
 import { COVER_PARAM } from '../sw/routes.js';
+import { unavailableOffline, whenBackOnline } from '../offline-file.js';
 
 /** What a card's cover shows; see `coverOf`. */
 export type Cover =
@@ -93,10 +94,19 @@ export function NoteCard({ note, sort, replacedByNote = false, selection, hint }
      iPhone, outside Safari), or bytes this device does not hold while offline. Its glyph
      takes the cover rather than the browser's broken-image box. Remembered by address,
      so a card whose cover changes tries the new one.
+
+     A failure while offline is a reason to try again, not a verdict on the file: the
+     cover is tried once more the moment the app is back online, as a note's own pictures
+     are (`offline-file.ts`). One that failed online (the HEIC) is not retried, or it would
+     be fetched in full again on every reconnect to fail the same way.
   */
   const src = cover.kind === 'image' ? fileSrc(note.id, cover.filename) : null;
-  const [failed, setFailed] = useState<string | null>(null);
-  const drawImage = src !== null && failed !== src;
+  const [failed, setFailed] = useState<{ src: string; offline: boolean } | null>(null);
+  const drawImage = src !== null && failed?.src !== src;
+  useEffect(() => {
+    if (!failed?.offline) return;
+    return whenBackOnline(() => setFailed(null));
+  }, [failed]);
 
   const linkClass = ['note-item', 'note-card', selection?.selected && 'selected'].filter(Boolean).join(' ');
 
@@ -136,7 +146,7 @@ export function NoteCard({ note, sort, replacedByNote = false, selection, hint }
               loading="lazy"
               decoding="async"
               draggable={false}
-              onError={() => setFailed(src)}
+              onError={() => setFailed({ src, offline: unavailableOffline() })}
             />
           ) : cover.kind === 'none' ? (
             /*
