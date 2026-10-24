@@ -42,8 +42,9 @@ export function coverOf(note: Pick<NoteSummary, 'attachments'>): Cover {
  * A cover's address: the file's own, marked as a cover so the service worker draws it
  * from what the device already holds and never keeps it as a file someone opened
  * (`COVER_PARAM`). The whole original, for now: there is no thumbnail of a file to ask
- * for, so a gallery of phone photos downloads each in full, once, and the browser's own
- * cache (the server sends them `immutable`) is what spares the second scroll.
+ * for, so a gallery of phone photos downloads each in full, once. The worker fetches it
+ * at the unmarked address, so the browser's own cache (the server sends files
+ * `immutable`) spares both the second scroll and the first open of the note.
  */
 function fileSrc(noteId: string, filename: string): string {
   return `/api/notes/${encodeURIComponent(noteId)}/files/${encodeURIComponent(filename)}?${COVER_PARAM}=1`;

@@ -517,10 +517,12 @@ registerRoute(
     if (viewed) return openedFiles.handle(options);
     // A card's cover: a copy already kept for someone who opened the file, as it is (no
     // touch, so a gallery scrolled past does not keep it any longer), else the network,
-    // and never kept. See `COVER_PARAM`.
+    // and never kept. See `COVER_PARAM`. Fetched at the unmarked address, so the
+    // browser's own cache holds one copy of the bytes for the cover and for the file
+    // once it is opened, rather than downloading a phone photo twice.
     const cover = coverOf({ url, method: request.method, origin: self.location.origin });
     const kept = cover && (await (await caches.open(FILES_CACHE)).match(cover));
-    return kept || fetch(request);
+    return kept || fetch(cover ?? request);
   },
 );
 
