@@ -2,7 +2,7 @@ import { useRef } from 'react';
 import { Link } from '@tanstack/react-router';
 import type { NoteSort, NoteSummary } from '@unbent/shared';
 import { formatWhen } from './format-when.js';
-import { formatFieldValue } from './format-field.js';
+import { NoteFieldsLine } from './NoteFieldsLine.js';
 import { AttachmentKindIcon } from './icons.js';
 import type { TagColorOf } from './use-tag-colors.js';
 
@@ -210,11 +210,7 @@ export function NoteListItem({
         )}
         {/* The values, named, on one line like the tags under them: what the note *is*
             when its notebook is a collection of records rather than of prose. */}
-        {note.fields && note.fields.length > 0 && (
-          <span className="note-fields-line">
-            {note.fields.map((f) => `${f.name}: ${formatFieldValue(f.type, f.value, f.scale, f.currency)}`).join(' · ')}
-          </span>
-        )}
+        <NoteFieldsLine fields={note.fields} />
         {/* As text with the hash, which is how a tag reads in a line of them, each in
             its own stored colour so the row agrees with the chips in the note's head. */}
         {note.tags.length > 0 && (
