@@ -153,19 +153,28 @@ export function NoteListItem({
           </span>
         )}
       </Link>
-      {selection?.active && (
-        <input
-          type="checkbox"
-          className="note-check"
-          checked={selection.selected}
-          aria-label={`Select ${title}`}
-          // The pick is made on the click, which is what carries Shift; the change handler
-          // is here because a controlled checkbox without one is a React warning.
-          onChange={() => undefined}
-          onClick={(e) => selection.onPick({ range: e.shiftKey })}
-        />
-      )}
+      {selection?.active && <NoteCheck title={title} selection={selection} />}
       {actions}
     </li>
+  );
+}
+
+/**
+ * The checkbox a row or a card shows while the list is in its selection mode: the state,
+ * and for a pointer a way to add notes without a modifier. Outside the link, for the
+ * reason the row gives; positioned by the stylesheet over whichever corner it belongs to.
+ */
+export function NoteCheck({ title, selection }: { title: string; selection: RowSelection }) {
+  return (
+    <input
+      type="checkbox"
+      className="note-check"
+      checked={selection.selected}
+      aria-label={`Select ${title}`}
+      // The pick is made on the click, which is what carries Shift; the change handler
+      // is here because a controlled checkbox without one is a React warning.
+      onChange={() => undefined}
+      onClick={(e) => selection.onPick({ range: e.shiftKey })}
+    />
   );
 }

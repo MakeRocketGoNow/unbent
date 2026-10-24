@@ -127,10 +127,13 @@ function play(list: HTMLElement, before: Snapshot, touched: ReadonlySet<string>)
       // Where it stood in the list against where it stands now; a list that scrolled to
       // keep its place, or moved as a whole, is not a row moving. A row off screen at both
       // ends of the move is left alone: nobody would see it go.
+      // Sideways too: in the cards a card closes up along its row and wraps up into the
+      // row above, where a list row only ever rises.
       const dy = was.rect.top - before.view.top - (rect.top - view.top);
+      const dx = was.rect.left - before.view.left - (rect.left - view.left);
       const seen = onScreen(rect, view) || onScreen(was.rect, before.view);
-      if (Math.abs(dy) >= 1 && seen) {
-        node.animate([{ translate: `0 ${dy}px` }, { translate: '0 0' }], { duration: MOVE_MS, easing: EASE });
+      if ((Math.abs(dy) >= 1 || Math.abs(dx) >= 1) && seen) {
+        node.animate([{ translate: `${dx}px ${dy}px` }, { translate: '0 0' }], { duration: MOVE_MS, easing: EASE });
       }
     } else if (onScreen(rect, view)) {
       node.animate([{ opacity: 0 }, { opacity: 1 }], {
