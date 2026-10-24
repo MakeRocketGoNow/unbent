@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { Link } from '@tanstack/react-router';
 import { normalizeContentType, type NoteSort, type NoteSummary } from '@unbent/shared';
 import { formatWhen } from './format-when.js';
@@ -88,6 +88,14 @@ export function NoteCard({ note, sort, replacedByNote = false, selection, hint }
   const title = note.title || 'Untitled';
   const cover = coverOf(note);
   const press = useNotePress(selection);
+  /*
+     A note with no files shows its words in the cover, and the cover is hidden from a
+     screen reader with the picture it usually holds. The words are the note's content,
+     though, so the link is described by them: read after its name (title, date, fields)
+     rather than before it, which is where they would land if the cover were read.
+  */
+  const excerptId = useId();
+  const describedByExcerpt = cover.kind === 'none' && Boolean(note.excerpt);
 
   /*
      An image that will not draw: a type the browser cannot decode (HEIC from an
@@ -123,6 +131,7 @@ export function NoteCard({ note, sort, replacedByNote = false, selection, hint }
         className={linkClass}
         activeProps={{ className: `${linkClass} active` }}
         aria-selected={selection ? selection.selected : undefined}
+        aria-describedby={describedByExcerpt ? excerptId : undefined}
         {...(replacedByNote ? {} : { 'data-keep-focus': '' })}
         {...press}
       >
@@ -156,7 +165,11 @@ export function NoteCard({ note, sort, replacedByNote = false, selection, hint }
               Keep is its text. Still nothing for a note with no prose either, which is
               rare enough that an empty cover is honest about it.
             */
-            note.excerpt ? <span className="note-card-excerpt">{note.excerpt}</span> : null
+            note.excerpt ? (
+              <span className="note-card-excerpt" id={excerptId}>
+                {note.excerpt}
+              </span>
+            ) : null
           ) : (
             <AttachmentKindIcon contentType={cover.kind === 'image' ? 'image/*' : cover.contentType} />
           )}

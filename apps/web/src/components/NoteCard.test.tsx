@@ -148,6 +148,8 @@ describe('NoteCard', () => {
     const words = await screen.findByText('Remember to ask about the warranty.');
     expect(words.className).toBe('note-card-excerpt');
     expect(words.closest('.note-card-cover')?.classList.contains('none')).toBe(true);
+    // Hidden with the cover, but the link is described by them, after its name.
+    expect(words.closest('a')?.getAttribute('aria-describedby')).toBe(words.id);
   });
 
   it('draws an empty cover for a note with neither files nor words', async () => {
