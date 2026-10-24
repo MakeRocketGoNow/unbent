@@ -768,9 +768,9 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   const offerSampleNotes = Boolean(config.data?.ownStores) && libraryEmpty;
 
   /**
-   * The same for a search drawn as a table, in the sidebar's words for each case. Nothing
-   * while the first answer is on its way: "No matches" would be a claim about the notes,
-   * and the header's count already says it is searching.
+   * The same for a search drawn as a table or as cards, in the sidebar's words for each
+   * case. Nothing while the first answer is on its way: "No matches" would be a claim
+   * about the notes, and the header's count already says it is searching.
    */
   const searchEmpty = searchOffline ? 'Search needs a connection.' : awaiting ? null : 'No matches.';
   /*

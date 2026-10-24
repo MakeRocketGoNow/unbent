@@ -19,17 +19,17 @@ function parseView(raw: unknown): NotesViewMode | undefined {
  * How the note list is drawn: the sidebar of entries, the gallery of cards, or the table
  * of a notebook's fields.
  *
- * The URL's `view` is the answer whenever it is there, and inside a notebook on a desktop
- * it always is: `NotesLayout` writes it into a URL that arrives without one. That is what
- * makes Back honest. While a silent URL meant "whatever this device last chose", every
- * such history entry changed its meaning the moment the toggle was pressed, and Back
+ * The URL's `view` is the answer whenever it is there, and in every list it always is:
+ * `NotesLayout` writes it into a URL that arrives without one. That is what makes Back
+ * honest. While a silent URL meant "whatever this device last chose", every such history
+ * entry changed its meaning the moment the view was changed, and Back
  * landed on a page drawn differently from how it had been left. With the view spelled
  * out in each entry, an entry means what it meant.
  *
  * Storage is only the seed for a URL that has not said yet (a plain `/notes` link, a
  * notebook picked from All notebooks) so those open the way the list was last seen
- * rather than resetting. It follows the URL rather than the toggle alone: the last view
- * *seen* is the one to carry forward, whether it came from the toggle, from Back, or from
+ * rather than resetting. It follows the URL rather than the menu alone: the last view
+ * *seen* is the one to carry forward, whether it came from the menu, from Back, or from
  * a bookmark, so the view never changes under someone who has not asked it to.
  *
  * It was per notebook at first, which was wrong in use (changing notebooks is how you
