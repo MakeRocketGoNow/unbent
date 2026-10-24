@@ -591,8 +591,10 @@ export const COMPARISONS: readonly Comparison[] = [
           documents on your own disk and nobody else&apos;s. Unbent is a service: the same
           reading, done on a server we run, reached from any browser and from a phone that
           works offline, with written notes and typed fields beside the files, and an export
-          of plain folders, so leaving is as easy as copying a folder. Whether you would
-          rather run that machine, or pay someone else to, is most of the decision.
+          of plain folders, so leaving is as easy as copying a folder. (The same app can also
+          be deployed to a Cloudflare account of your own, on its free tier, if you want the
+          files in your account rather than ours.) Whether you would rather run that
+          machine, or pay someone else to, is most of the decision.
         </p>
       </>
     ),
