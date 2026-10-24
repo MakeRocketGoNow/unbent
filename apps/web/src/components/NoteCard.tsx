@@ -117,7 +117,11 @@ export function NoteCard({ note, sort, replacedByNote = false, selection, hint }
           cards and only a screenful is seen; `alt` is empty because the title under it
           already names the card, and a filename read out first would be noise.
         */}
-        <span className={`note-card-cover ${drawImage ? 'image' : cover.kind}`} aria-hidden="true">
+        {/* An image that would not draw is drawn as a file is, glyph and all. */}
+        <span
+          className={`note-card-cover ${drawImage ? 'image' : cover.kind === 'none' ? 'none' : 'file'}`}
+          aria-hidden="true"
+        >
           {drawImage ? (
             <img
               src={src}

@@ -111,6 +111,7 @@ describe('NoteCard', () => {
     await screen.findByText('Acme Hardware');
     fireEvent.error(document.querySelector('.note-card-cover img')!);
     const cover = document.querySelector('.note-card-cover')!;
+    expect(cover.classList.contains('file')).toBe(true);
     expect(cover.querySelector('img')).toBeNull();
     expect(cover.querySelector('svg')).not.toBeNull();
   });
