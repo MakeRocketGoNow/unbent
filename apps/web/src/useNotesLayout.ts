@@ -20,8 +20,24 @@ export const TABLE_DEFAULT = 640;
 export const TABLE_MIN = 320;
 export const TABLE_MAX = 1100;
 
-/** How the list is drawn: the sidebar of entries, or the table of a notebook's fields. */
-export type NotesViewMode = 'list' | 'table';
+/**
+ * And for the cards beside an open note.
+ *
+ * A third range and a third stored width, for the table's reason: a width dragged to
+ * show four cards across is not the width anyone wants six columns of fields at, nor the
+ * list at. The default is two cards across (`.note-list.cards` asks each for about 10rem),
+ * which is the narrowest a gallery still reads as one rather than as a list of pictures;
+ * the floor is the list's, where it becomes a single column of them.
+ */
+export const CARDS_DEFAULT = 384;
+export const CARDS_MIN = SIDEBAR_MIN;
+export const CARDS_MAX = TABLE_MAX;
+
+/**
+ * How the list is drawn: the sidebar of entries, the gallery of cards, or the table of a
+ * notebook's fields.
+ */
+export type NotesViewMode = 'list' | 'cards' | 'table';
 
 const within = (min: number, max: number) => (raw: unknown) =>
   typeof raw === 'number' && raw >= min && raw <= max ? raw : undefined;
@@ -41,8 +57,11 @@ const within = (min: number, max: number) => (raw: unknown) =>
  * consumes it, and the mobile rules deliberately never mention this one.
  *
  * In table mode the grid carries `table-view`, and the width the handle drags is the
- * table's. Both custom properties are always set, whichever mode is on: the desktop
- * filter panel sizes itself from `--sidebar-width` and must keep doing so over a table.
+ * table's; in cards mode it carries `cards-view` and the cards' width. Both are also
+ * `wide-view`, the shape they share: the whole window with no note open, a column of
+ * their own width beside one (see `.notes.wide-view`). Every custom property is always
+ * set, whichever mode is on: the desktop filter panel sizes itself from
+ * `--sidebar-width` and must keep doing so over a table or the cards.
  */
 export function useNotesLayout(
   noteRoute: '/notes/$noteId' | '/trash/$noteId',
@@ -62,6 +81,11 @@ export function useNotesLayout(
     TABLE_DEFAULT,
     within(TABLE_MIN, TABLE_MAX),
   );
+  const [storedCards, setStoredCards] = usePersistentState(
+    'cardsWidth',
+    CARDS_DEFAULT,
+    within(CARDS_MIN, CARDS_MAX),
+  );
 
   /**
    * The width being dragged right now.
@@ -72,20 +96,46 @@ export function useNotesLayout(
    */
   const [sidebarWidth, setSidebarWidth] = useState(storedSidebar);
   const [tableWidth, setTableWidth] = useState(storedTable);
+  const [cardsWidth, setCardsWidth] = useState(storedCards);
   // Another tab (or a reset elsewhere) changing the stored width should win over a stale
   // local one. No-ops during a drag, because the drag is what set the stored one in the
   // first place.
   useEffect(() => setSidebarWidth(storedSidebar), [storedSidebar]);
   useEffect(() => setTableWidth(storedTable), [storedTable]);
+  useEffect(() => setCardsWidth(storedCards), [storedCards]);
 
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const table = mode === 'table';
-  const min = table ? TABLE_MIN : SIDEBAR_MIN;
-  const max = table ? TABLE_MAX : SIDEBAR_MAX;
+  const sizes = {
+    list: {
+      width: sidebarWidth,
+      min: SIDEBAR_MIN,
+      max: SIDEBAR_MAX,
+      defaultValue: SIDEBAR_DEFAULT,
+      set: setSidebarWidth,
+      store: setStoredSidebar,
+    },
+    table: {
+      width: tableWidth,
+      min: TABLE_MIN,
+      max: TABLE_MAX,
+      defaultValue: TABLE_DEFAULT,
+      set: setTableWidth,
+      store: setStoredTable,
+    },
+    cards: {
+      width: cardsWidth,
+      min: CARDS_MIN,
+      max: CARDS_MAX,
+      defaultValue: CARDS_DEFAULT,
+      set: setCardsWidth,
+      store: setStoredCards,
+    },
+  }[mode];
+  const { min, max } = sizes;
   const classes = ['notes'];
   if (open) classes.push('note-open');
-  if (table) classes.push('table-view');
+  if (mode !== 'list') classes.push('wide-view', `${mode}-view`);
 
   return {
     open,
@@ -94,17 +144,16 @@ export function useNotesLayout(
     style: {
       '--sidebar-width': `${sidebarWidth}px`,
       '--table-width': `${tableWidth}px`,
+      '--cards-width': `${cardsWidth}px`,
     } as React.CSSProperties,
     /** The width the handle is dragging in this mode, and its range. */
-    width: table ? tableWidth : sidebarWidth,
+    width: sizes.width,
     min,
     max,
-    defaultValue: table ? TABLE_DEFAULT : SIDEBAR_DEFAULT,
+    defaultValue: sizes.defaultValue,
     /** Every pointermove: state only, no storage. */
-    onResize: (next: number) =>
-      (table ? setTableWidth : setSidebarWidth)(clamp(next, min, max)),
+    onResize: (next: number) => sizes.set(clamp(next, min, max)),
     /** Pointer release, keypress, or reset: the value that should outlive the session. */
-    onResizeCommit: (next: number) =>
-      (table ? setStoredTable : setStoredSidebar)(clamp(next, min, max)),
+    onResizeCommit: (next: number) => sizes.store(clamp(next, min, max)),
   };
 }

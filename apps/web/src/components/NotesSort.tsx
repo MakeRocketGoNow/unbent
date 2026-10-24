@@ -27,10 +27,10 @@ interface NotesSortProps {
    */
   fields?: FieldDef[] | undefined;
   /**
-   * Why there is no order to choose, when there is not: a search drawn as a table, whose
-   * matches are ranked. The icon fades and stays where it was rather than leaving the row,
-   * which would slide the search field along it under the typing (see `NotesViewToggle`
-   * for the same fade).
+   * Why there is no order to choose, when there is not: a search drawn as a table or as
+   * cards, whose matches are ranked. The icon fades and stays where it was rather than
+   * leaving the row, which would slide the search field along it under the typing (the
+   * view menu's table fades with its reason the same way, `NotesViewMenu`).
    */
   disabledReason?: string | undefined;
 }

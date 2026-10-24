@@ -16,9 +16,10 @@ import {
   invalidateNoteMembership,
   configQuery,
 } from '../queries.js';
-import { useNotesLayout } from '../useNotesLayout.js';
+import { useNotesLayout, type NotesViewMode } from '../useNotesLayout.js';
 import { ResizeHandle } from './ResizeHandle.js';
-import { NoteListItem } from './NoteListItem.js';
+import { NoteListItem, type RowSelection } from './NoteListItem.js';
+import { NoteCard } from './NoteCard.js';
 import { useListKeys, enterList } from '../useListKeys.js';
 import { useFocusSearch } from '../useFocusSearch.js';
 import { useCreateNote, useHoldWhileCreating } from '../useCreateNote.js';
@@ -52,7 +53,7 @@ import {
 import { Sheet } from './Sheet.js';
 import { NoteListHead } from './NoteListHead.js';
 import { NotesSort } from './NotesSort.js';
-import { NotesViewToggle } from './NotesViewToggle.js';
+import { NotesViewMenu } from './NotesViewMenu.js';
 import { NoteTable } from './NoteTable.js';
 import { noteColumns, totalable } from './note-columns.js';
 import { tableTotalsFor } from './table-totals.js';
@@ -282,23 +283,30 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   const isMobile = useMediaQuery(MOBILE_QUERY);
 
   /*
-   * The list as a table of the notebook's fields, the URL's `view`, seeded from the
-   * last one seen when the URL has not said yet (`useNotesView`), honoured only where a
-   * table makes sense: inside one notebook (columns are its fields) and at desktop width
-   * (a phone has no room for columns). Everywhere else the list is drawn, the toggle
-   * shows that, and the choice is kept: the table is back the moment there is a
-   * notebook to draw it for.
+   * How the list is drawn, the URL's `view`, seeded from the last one seen when the URL
+   * has not said yet (`useNotesView`).
    *
-   * A search does not leave it. Searching a table is looking for rows, and the columns
-   * are why the table is open; the matches are drawn in it (see `tableRows`). The list
-   * used to take over while searching, and in this notebook that was a different layout
-   * under the field at every keystroke.
+   * The table is honoured only where a table makes sense: inside one notebook (columns
+   * are its fields) and at desktop width (a phone has no room for columns). Everywhere
+   * else the list is drawn, the menu shows that, and the choice is kept: the table is
+   * back the moment there is a notebook to draw it for. The cards are honoured
+   * everywhere the list is, a phone's included: a card needs no notebook (its fields
+   * line is simply absent outside one) and a gallery of photos is good at phone width.
+   *
+   * A search leaves neither. Searching a table is looking for rows, and the columns are
+   * why the table is open; searching the cards is looking for a picture. The matches
+   * are drawn in the view (see `matchRows`). The list used to take over while searching,
+   * and in a notebook drawn another way that was a different layout under the field at
+   * every keystroke.
    */
   const view = useNotesView(viewParam);
-  const tableMode = view === 'table' && !isMobile && notebookId !== undefined;
+  const tableOffered = !isMobile && notebookId !== undefined;
+  const shownView: NotesViewMode = view === 'table' && !tableOffered ? 'list' : view;
+  const tableMode = shownView === 'table';
+  const cardsMode = shownView === 'cards';
 
-  /* The table draws each match as a row of its columns, so it asks for the rows. */
-  const search = useQuery(searchQuery(debounced, filter, tableMode));
+  /* The table and the cards draw each match as the note's own row, so they ask for the rows. */
+  const search = useQuery(searchQuery(debounced, filter, shownView !== 'list'));
 
   const [sheetOpen, setSheetOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -364,7 +372,8 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    * show: they are matched against lists already on the device.
    */
   const searchOffline = needle !== '' && search.isError && isOfflineError(search.error);
-  const answered = search.data !== undefined && (!tableMode || search.data.results.every((r) => 'note' in r));
+  const answered =
+    search.data !== undefined && (shownView === 'list' || search.data.results.every((r) => 'note' in r));
   const awaiting = needle !== '' && !searchOffline && !answered;
   const results = needle === '' ? null : searchOffline || !answered ? [] : search.data.results;
   /*
@@ -374,14 +383,14 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    */
   const covered = results !== null && answered && !searchOffline && !search.isPlaceholderData ? search.data.local : undefined;
   /*
-   * The matches as the table's rows, in the search's order, which is relevance, so the
-   * headers show no sort while a search is on and the table's own order comes back with
-   * the list. Holding a column order over the matches would be a claim the search
-   * cannot back: it returns the best fifty, so "newest first" could leave out the
-   * newest. The rows are only drawn once they are the table's: a search answered before
-   * the view changed carries none (`answered`).
+   * The matches as the table's rows or the cards, in the search's order, which is
+   * relevance, so the headers show no sort while a search is on and the view's own order
+   * comes back with the list. Holding a column order over the matches would be a claim
+   * the search cannot back: it returns the best fifty, so "newest first" could leave out
+   * the newest. The rows are only drawn once they are the view's: a search answered
+   * before the view changed carries none (`answered`).
    */
-  const tableRows = results?.flatMap((r) => ('note' in r ? [r.note] : [])) ?? null;
+  const matchRows = results?.flatMap((r) => ('note' in r ? [r.note] : [])) ?? null;
   /*
    * The matches on screen are the previous term's while the next one's request is out
    * (see `searchQuery`) and are dimmed for it. Only then: a search that has ended is a
@@ -396,6 +405,8 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   const hasPicks = picks.tags.length > 0 || picks.notebooks.length > 0;
 
   const notes = list.data?.pages.flatMap((p) => p.items) ?? [];
+  /** What the cards draw: the matches while a search is on, the loaded notes otherwise. */
+  const cardNotes = results !== null ? (matchRows ?? []) : notes;
   // The list's Load more asks for itself as it nears the bottom; see `useAutoLoad`. The
   // table has its own, on its own button.
   const autoLoad = useAutoLoad({
@@ -492,14 +503,19 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   /** Search results are on screen, which changes what is worth offering beside them. */
   const searching = results !== null;
 
-  const layout = useNotesLayout('/notes/$noteId', { mode: tableMode ? 'table' : 'list' });
+  const layout = useNotesLayout('/notes/$noteId', { mode: shownView });
   /*
-   * The table with no note open is the whole window wide, and a header laid out for a
-   * sidebar stretched with it: a search field a window wide. There the header is one
-   * toolbar row (see `NoteListHead`). Beside an open note the table is a column again
-   * and keeps the stacked header, which is what fits.
+   * The table and the cards with no note open are the whole window wide, and a header
+   * laid out for a sidebar stretched with them: a search field a window wide. There the
+   * header is one toolbar row (see `NoteListHead`). Beside an open note either is a
+   * column again and keeps the stacked header, which is what fits.
+   *
+   * The cards take the table's shape rather than the list's, which is the one place they
+   * do. In the list's 19rem column a gallery is one card across, a list of pictures; the
+   * wall of them is the thing to look at, and "Select a note" beside it would be a pane
+   * saying nothing next to one saying everything, the table's reason exactly.
    */
-  const toolbarHead = tableMode && !layout.open;
+  const toolbarHead = shownView !== 'list' && !layout.open;
 
   /*
    * Which rows are picked for a bulk action (see `useSelection` for the rules). The rows
@@ -507,7 +523,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    * note is the anchor a Shift-click ranges from until something else is picked; and any
    * change of scope drops the selection, since it names rows that are no longer on screen.
    */
-  const rowIds = (tableMode && tableRows ? tableRows : notes).map((n) => n.id);
+  const rowIds = (shownView !== 'list' && matchRows ? matchRows : notes).map((n) => n.id);
   const scopeKey = JSON.stringify([filter, ordering, debounced]);
   const selection = useSelection(rowIds, {
     anchor: layout.open,
@@ -527,6 +543,13 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
     clearSelection();
   }, [layout.open, clearSelection]);
 
+  /** How one note's row or card takes part in the selection; the same for both. */
+  const rowSelection = (id: string): RowSelection => ({
+    selected: selection.has(id),
+    active: selection.active,
+    onPick: (opts) => selection.pick(id, opts),
+  });
+
   /** Escape and Cmd/Ctrl+A on the list are the selection's; the arrows stay the list's. */
   const onListKeysWithSelection = (event: KeyboardEvent<HTMLElement>) => {
     if (event.key === 'Escape' && selection.active) {
@@ -534,7 +557,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
       selection.clear();
       return;
     }
-    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'a' && (results === null || tableMode)) {
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'a' && (results === null || shownView !== 'list')) {
       event.preventDefault();
       selection.selectAll();
       return;
@@ -619,7 +642,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    * how the list is drawn must not close a note, unlike a filter, which can take the note
    * out of the list and so goes back to `/notes`.
    */
-  const withView = (next: 'list' | 'table', replace: boolean) => {
+  const withView = (next: NotesViewMode, replace: boolean) => {
     const search = (prev: Record<string, unknown>) => ({ ...prev, view: next });
     return layout.open
       ? ({ to: '/notes/$noteId', params: { noteId: layout.open }, search, replace, resetScroll: false } as const)
@@ -634,11 +657,12 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    * Back, Forward, a reload and a jump through the history menu all land on what was
    * there. Replaced, not pushed: it records the entry, it is not a move.
    *
-   * Only where a view means anything: a desktop, inside a notebook. Outside one the
-   * list is the only drawing there is, so `/notes` stays the clean link it was and a
-   * phone's URLs are never touched.
+   * Everywhere, now. It was only inside a notebook on a desktop, where the table could
+   * be drawn, so that `/notes` stayed a clean link and a phone's URLs were never
+   * touched; the cards are a second drawing in every list at every width, so a silent
+   * entry anywhere is one Back could bring back wrong.
    */
-  const viewUnsaid = viewParam === undefined && !isMobile && notebookId !== undefined;
+  const viewUnsaid = viewParam === undefined;
   useEffect(() => {
     if (viewUnsaid) void navigate(withView(view, true));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -648,7 +672,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    * the entry it goes back to says which view it had. The remembered view follows the
    * URL (`useNotesView`), so there is nothing else to write.
    */
-  const chooseView = (next: 'list' | 'table') => void navigate(withView(next, false));
+  const chooseView = (next: NotesViewMode) => void navigate(withView(next, false));
   const columns = noteColumns(fieldDefs.data ?? []);
   const totalIds = columns.filter(totalable).map((c) => c.id);
   const fieldTotals = useQuery({ ...fieldTotalsQuery(filter, totalIds, ordering), enabled: tableMode && totalIds.length > 0 });
@@ -656,7 +680,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   const tableTotals = tableMode
     ? tableTotalsFor({
         ids: new Set(totalIds),
-        searchRows: tableRows,
+        searchRows: matchRows,
         whole: fieldTotals.data,
         libraryWhole,
         loaded: notes,
@@ -744,9 +768,9 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   const offerSampleNotes = Boolean(config.data?.ownStores) && libraryEmpty;
 
   /**
-   * The same for a search drawn as a table, in the sidebar's words for each case. Nothing
-   * while the first answer is on its way: "No matches" would be a claim about the notes,
-   * and the header's count already says it is searching.
+   * The same for a search drawn as a table or as cards, in the sidebar's words for each
+   * case. Nothing while the first answer is on its way: "No matches" would be a claim
+   * about the notes, and the header's count already says it is searching.
    */
   const searchEmpty = searchOffline ? 'Search needs a connection.' : awaiting ? null : 'No matches.';
   /*
@@ -757,6 +781,20 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   const matchHints = new Map(
     (results ?? []).flatMap((r) => (r.matchedFile ? [[r.id, `in ${r.matchedFile}`] as const] : [])),
   );
+  /*
+   * The same for a card, which draws less than a table row: a match in a file says so as
+   * the table's does, and so does one in a field or a tag, as the sidebar's results do.
+   * The table has a column for each field and its tags; a card has neither, and its
+   * fields line is cut to one line, often before the field that matched. A match in the
+   * body is the note itself, as in the table. Built on `matchHints`, so the file's
+   * wording is written once; a file match wins over the rest, as it is listed last.
+   */
+  const cardHints = new Map<string, string>([
+    ...(results ?? []).flatMap((r): [string, string][] =>
+      r.matchedField ? [[r.id, `in ${r.matchedField}`]] : r.matchedTag ? [[r.id, `tagged ${r.matchedTag}`]] : [],
+    ),
+    ...matchHints,
+  ]);
 
   /**
    * Where the list is, for the heading: see `scopeLabel` for the rule, which is the
@@ -953,11 +991,11 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
           filtered={sheetFiltered}
           /* Not offered while searching: results come back ranked by relevance, and
              reordering them by date would throw away that ranking. The list hides it;
-             the table fades it, since there it shares a row with the search field and
-             leaving would slide the field under the typing. Nothing else is lost with
+             the table and the cards fade it, since there it shares a row with the search
+             field and leaving would slide the field under the typing. Nothing else is lost with
              it: Settings, which used to share this corner, is on the drawer's floor. */
           sort={
-            results === null || tableMode ? (
+            results === null || shownView !== 'list' ? (
               <NotesSort
                 notebook={notebook}
                 sort={sort}
@@ -968,20 +1006,22 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
               />
             ) : null
           }
-          /* Hidden where the table is never drawn (a phone) and disabled with the reason
-             outside a notebook, where there are no fields to column. */
+          /* At every width, since the cards are drawn at every width; the table is
+             offered everywhere and faded with the reason where it cannot be drawn. A
+             phone's reason first: it holds inside a notebook too. */
           view={
-            !isMobile ? (
-              <NotesViewToggle
-                value={tableMode ? 'table' : 'list'}
-                onChange={chooseView}
-                tableDisabledReason={
-                  notebookId === undefined
-                    ? 'choose a notebook to see its fields as columns'
+            <NotesViewMenu
+              value={shownView}
+              requested={view}
+              onChange={chooseView}
+              tableDisabledReason={
+                isMobile
+                  ? 'Needs a wider screen than a phone'
+                  : notebookId === undefined
+                    ? 'Choose a notebook to see its fields as columns'
                     : undefined
-                }
-              />
-            ) : undefined
+              }
+            />
           }
           /* New is a floating button on a phone (below) and the end of this row on a
              desktop, where a column has nothing for a button to float clear of.
@@ -1291,7 +1331,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
           </div>
         ) : tableMode ? (
           <NoteTable
-            notes={tableRows ?? notes}
+            notes={matchRows ?? notes}
             columns={columns}
             search={{ sort, order, sortField }}
             ranked={searching}
@@ -1320,10 +1360,12 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
           />
         ) : (
         <ul
-          className={selection.active ? 'note-list selecting' : 'note-list'}
+          className={['note-list', cardsMode && 'cards', selection.active && 'selecting'].filter(Boolean).join(' ')}
           ref={listMotionRef}
           aria-busy={(searching ? searchStale : stale) || undefined}
-          aria-multiselectable={results === null ? true : undefined}
+          aria-multiselectable={results === null || cardsMode ? true : undefined}
+          // Arrow keys move in two directions over the cards (`useListKeys`).
+          data-grid={cardsMode ? '' : undefined}
           onKeyDown={onListKeysWithSelection}
         >
           {/*
@@ -1344,7 +1386,26 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
             />
           )}
           {results !== null && hasPicks && <li className="list-caption">Notes</li>}
+          {/* The cards draw the matches as cards, selectable as the table's rows are, and
+              the loaded notes the same way when nothing is searched; the list draws the
+              matches as results, with the snippet that says why each matched. */}
+          {cardsMode &&
+            (results !== null && searchEmpty !== null && cardNotes.length === 0 ? (
+              <li className="muted small empty">{searchEmpty}</li>
+            ) : (
+              cardNotes.map((n) => (
+                <NoteCard
+                  key={n.id}
+                  note={n}
+                  sort={sort ?? DEFAULT_NOTE_SORT}
+                  replacedByNote={isMobile}
+                  hint={cardHints.get(n.id)}
+                  selection={rowSelection(n.id)}
+                />
+              ))
+            ))}
           {results !== null &&
+            !cardsMode &&
             (searchOffline ? (
               <li className="muted small empty">Search needs a connection.</li>
             ) : awaiting ? null : (
@@ -1355,6 +1416,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
             ))}
 
           {results === null &&
+            !cardsMode &&
             notes.map((n) => (
               <NoteListItem
                 key={n.id}
@@ -1363,11 +1425,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
                 sort={sort ?? DEFAULT_NOTE_SORT}
                 replacedByNote={isMobile}
                 tagColor={tagColor}
-                selection={{
-                  selected: selection.has(n.id),
-                  active: selection.active,
-                  onPick: (opts) => selection.pick(n.id, opts),
-                }}
+                selection={rowSelection(n.id)}
               />
             ))}
 

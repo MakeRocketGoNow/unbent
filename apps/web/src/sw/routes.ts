@@ -163,6 +163,19 @@ export const FILES_CHANGED = 'FILES_CHANGED';
 export const VIEW_HEADER = 'X-Unbent-View';
 
 /**
+ * The query a card's cover adds to a file's address (`NoteCard`): `?cover=1`.
+ *
+ * A cover is an `<img>`, which the browser marks as an image like any other, and an
+ * image drawn is a file looked at (`classify`). A cover is not: a gallery of a notebook
+ * draws hundreds of them as it scrolls past, and keeping each would fill the opened
+ * files' budget with pictures nobody opened and push out the ones they did, the
+ * indexer's problem in another form. So a cover is marked, and the worker answers it
+ * from what is already on the device (a shelf, or the cache of opened files) without
+ * keeping it or counting it as opened (`coverOf` here, the cover route in `sw.ts`).
+ */
+export const COVER_PARAM = 'cover';
+
+/**
  * The header the worker adds to a read it answered itself: `cache` for one from its
  * caches, `device` for one from the account's shelves. Its absence on an answer is what
  * `request` in `notes-api.ts` takes as the server having answered, which is what puts
@@ -245,8 +258,9 @@ export interface RequestFacts {
  * archive to extract its text, and an export reads every file; both fetch the same
  * addresses the viewer does, and caching those would fill the budget with the archive and
  * push out what the person actually opened. They carry no mark and pass straight through.
- * A download (`?download=1`) is a save, not a view, and passes through too; so does an
- * image from another site, which the rich editor also draws as an `<img>` but whose size
+ * A download (`?download=1`) is a save, not a view, and passes through too, and so does a
+ * card's cover (`COVER_PARAM`), which is a glance at a gallery; so does an image from
+ * another site, which the rich editor also draws as an `<img>` but whose size
  * an opaque response hides.
  */
 export function classify(request: RequestFacts): 'api' | 'file' | undefined {
@@ -256,11 +270,24 @@ export function classify(request: RequestFacts): 'api' | 'file' | undefined {
   if (
     FILE_BYTES.test(url.pathname) &&
     !url.searchParams.has('download') &&
+    !url.searchParams.has(COVER_PARAM) &&
     (request.destination === 'image' || request.viewed)
   ) {
     return 'file';
   }
   return undefined;
+}
+
+/**
+ * The address of the file a card's cover shows, without the mark, or null for any other
+ * request: what the cache of opened files is keyed by, so a cover of a file someone did
+ * open is drawn from that copy, offline too.
+ */
+export function coverOf(request: Pick<RequestFacts, 'url' | 'method' | 'origin'>): string | null {
+  const { url } = request;
+  if (request.method !== 'GET' || url.origin !== request.origin) return null;
+  if (!FILE_BYTES.test(url.pathname) || !url.searchParams.has(COVER_PARAM)) return null;
+  return `${url.origin}${url.pathname}`;
 }
 
 /**

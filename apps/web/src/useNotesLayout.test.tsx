@@ -8,7 +8,7 @@ import {
   RouterProvider,
   Outlet,
 } from '@tanstack/react-router';
-import { useNotesLayout } from './useNotesLayout.js';
+import { useNotesLayout, type NotesViewMode } from './useNotesLayout.js';
 
 /**
  * The class the mobile layout hangs on.
@@ -21,7 +21,7 @@ import { useNotesLayout } from './useNotesLayout.js';
  * The routes are rebuilt rather than imported from the generated tree so the test needs no
  * session gate, no API and no loaders, the same approach as settings-routing.test.tsx.
  */
-function harness(initial: string, mode: 'list' | 'table' = 'list') {
+function harness(initial: string, mode: NotesViewMode = 'list') {
   const rootRoute = createRootRoute({ component: Outlet });
 
   function Shell() {
@@ -125,14 +125,14 @@ describe('useNotesLayout', () => {
     const router = harness('/notes', 'table');
     await waitFor(() => expect(screen.getByText('empty workspace')).toBeTruthy());
     const grid = screen.getByTestId('grid');
-    expect(grid.className).toBe('notes table-view');
+    expect(grid.className).toBe('notes wide-view table-view');
     expect(grid.style.getPropertyValue('--table-width')).toBe('800px');
     expect(grid.style.getPropertyValue('--sidebar-width')).toBe('360px');
     expect(grid.style.gridTemplateColumns).toBe('');
 
     await router.navigate({ to: '/notes/$noteId', params: { noteId: 'abc123' } });
     await waitFor(() =>
-      expect(screen.getByTestId('grid').className).toBe('notes note-open table-view'),
+      expect(screen.getByTestId('grid').className).toBe('notes note-open wide-view table-view'),
     );
   });
 
@@ -141,5 +141,27 @@ describe('useNotesLayout', () => {
     harness('/notes', 'table');
     await waitFor(() => expect(screen.getByText('empty workspace')).toBeTruthy());
     expect(screen.getByTestId('grid').style.getPropertyValue('--table-width')).toBe('640px');
+  });
+
+  /*
+   * The cards take the table's shape (`wide-view`) with a width of their own, so a width
+   * dragged for one never resizes the other.
+   */
+  it('marks the grid in cards mode with the cards their own width', async () => {
+    localStorage.setItem('unbent.tableWidth', '800');
+    localStorage.setItem('unbent.cardsWidth', '520');
+    harness('/notes', 'cards');
+    await waitFor(() => expect(screen.getByText('empty workspace')).toBeTruthy());
+    const grid = screen.getByTestId('grid');
+    expect(grid.className).toBe('notes wide-view cards-view');
+    expect(grid.style.getPropertyValue('--cards-width')).toBe('520px');
+    expect(grid.style.getPropertyValue('--table-width')).toBe('800px');
+  });
+
+  it('starts the cards two across when nothing has been dragged', async () => {
+    localStorage.setItem('unbent.cardsWidth', '50');
+    harness('/notes', 'cards');
+    await waitFor(() => expect(screen.getByText('empty workspace')).toBeTruthy());
+    expect(screen.getByTestId('grid').style.getPropertyValue('--cards-width')).toBe('384px');
   });
 });

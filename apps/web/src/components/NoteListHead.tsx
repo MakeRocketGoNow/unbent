@@ -73,9 +73,8 @@ interface NoteListHeadProps {
    */
   sort: ReactNode;
   /**
-   * The list/table toggle, after the sort and before New, or nothing where the table is
-   * not on offer: a phone, or a search. Passed in like the sort so this owns no routing
-   * and no storage.
+   * The view menu (list, cards, table), after the sort and before New. Passed in like
+   * the sort so this owns no routing and no storage.
    */
   view?: ReactNode;
   /**
@@ -173,12 +172,13 @@ export function NoteListHead({
    * The field keeps focus across the two layouts.
    *
    * The toolbar draws it inside the row and the stacked header draws it under, so a
-   * change between them is a new element, and the first keystroke of a search is exactly
-   * such a change: results are never drawn as a table, so typing in the table's toolbar
-   * puts the list and its stacked header back. Without this the field would drop focus
-   * after one character. Whether it had focus is read during the render that makes the
-   * change, before the old element is removed; removal does not reliably fire a blur to
-   * track it by. The caret goes to the end, where typing left it.
+   * change between them is a new element. The first keystroke of a search was such a
+   * change while a search over the table was drawn as the list; the table and the cards
+   * both keep their view for a search now, and this stays for any change of layout made
+   * under a focused field, which would otherwise drop its focus mid-word. Whether it had
+   * focus is read during the render that makes the change, before the old element is
+   * removed; removal does not reliably fire a blur to track it by. The caret goes to the
+   * end, where typing left it.
    */
   const lastLayout = useRef(inToolbar);
   const refocus = useRef(false);

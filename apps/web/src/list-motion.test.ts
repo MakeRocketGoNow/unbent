@@ -86,8 +86,8 @@ describe('followLocalChanges', () => {
     await flush();
 
     expect(moved('a')).toEqual([]);
-    expect(moved('c')).toEqual([{ translate: `0 ${ROW}px` }]);
-    expect(moved('d')).toEqual([{ translate: `0 ${ROW}px` }]);
+    expect(moved('c')).toEqual([{ translate: `0px ${ROW}px` }]);
+    expect(moved('d')).toEqual([{ translate: `0px ${ROW}px` }]);
     const ghost = ul.querySelector('.note-ghost') as HTMLElement;
     expect(ghost.textContent).toBe('b');
     expect(ghost.style.top).toBe(`${ROW}px`);
@@ -105,7 +105,7 @@ describe('followLocalChanges', () => {
     await flush();
 
     expect(moved('new')).toEqual([{ opacity: 0 }]);
-    expect(moved('a')).toEqual([{ translate: `0 ${-ROW}px` }]);
+    expect(moved('a')).toEqual([{ translate: `0px ${-ROW}px` }]);
     stop();
   });
 
@@ -183,7 +183,7 @@ describe('followLocalChanges', () => {
     writeHere(['a']);
     ul.querySelector('[data-note-id="a"]')!.remove();
     await flush();
-    expect(moved('more')).toEqual([{ translate: `0 ${ROW}px` }]);
+    expect(moved('more')).toEqual([{ translate: `0px ${ROW}px` }]);
 
     writeHere(['b']);
     ul.querySelector('[data-note-id="b"]')!.remove();

@@ -114,19 +114,20 @@ export const filters = z.object({
    */
   sortField: z.string().uuid().optional().catch(undefined),
   /**
-   * How the list is drawn: the sidebar of entries, or the table of a notebook's fields.
+   * How the list is drawn: the sidebar of entries, the gallery of cards, or the table of a
+   * notebook's fields.
    *
    * In the URL for the reason the sort is: it is how you are looking, and "Coupons as a
    * table, by expiry" is a thing worth bookmarking: a sidebar width is not, which is why
-   * that one lives in storage alone. Absent means "not said yet": inside a notebook on a
-   * desktop `NotesLayout` writes in the view last seen, in place, so that every history
-   * entry names the view it showed and Back returns to it. Outside a notebook and on a
-   * phone it stays absent, and `/notes` stays a clean link.
+   * that one lives in storage alone. Absent means "not said yet": `NotesLayout` writes in
+   * the view last seen, in place, so that every history entry names the view it showed
+   * and Back returns to it. That is every list now, a phone's included: the cards are
+   * drawn everywhere the list is, so there is no list left with only one way to look.
    * Not among the loader's dependencies: it changes what is drawn, never what is fetched.
    * Where a table cannot be drawn (a phone, outside a notebook, over search results)
    * it is ignored rather than stripped, so the link still means it on a screen that can.
    */
-  view: z.enum(['list', 'table']).optional().catch(undefined),
+  view: z.enum(['list', 'cards', 'table']).optional().catch(undefined),
   /** Inclusive `YYYY-MM-DD` bounds, filtering the column the sort uses. */
   from: dateOnlySchema.optional().catch(undefined),
   to: dateOnlySchema.optional().catch(undefined),

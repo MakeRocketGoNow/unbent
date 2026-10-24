@@ -698,7 +698,8 @@ button.link {
 }
 
 /*
-   The list drawn as a table: `NoteTable`, inside a notebook, at desktop width only.
+   The list drawn as a table (`NoteTable`, inside a notebook, at desktop width only) or as
+   cards (`NoteCard`, anywhere): the two wide views, `wide-view` on the grid.
 
    Two shapes. With no note open the table is the whole grid (one track, the handle and
    the empty workspace gone) because a table of a notebook's fields is the thing to look
@@ -706,21 +707,29 @@ button.link {
    everything. With a note open the table keeps its own dragged width on the left and the
    note takes the rest, which is the side-by-side the list already has; `24rem` is the
    floor the note keeps whatever was dragged, so a wide table never squeezes it below a
-   phone's width. The width arrives as `--table-width` from useNotesLayout, the way the
-   sidebar's does, and for the same reason.
+   phone's width. The width arrives as `--table-width` or `--cards-width` from
+   useNotesLayout, the way the sidebar's does, and for the same reason: each view keeps
+   the width dragged for it.
+
+   The cards share the shape for the table's reason: a gallery is the thing to look at,
+   and in the list's 19rem column it is one card across.
 
    Inside the desktop query rather than beside the phone rules further down: these
-   selectors outrank the phone block's `.notes`, and a phone must never get a table.
+   selectors outrank the phone block's `.notes`, and a phone must never get a table. A
+   phone's cards are its list's whole screen, as the list is.
 */
 @media (width > 860px) {
-  .notes.table-view {
-    grid-template-columns: min(var(--table-width, 40rem), calc(100% - 24rem)) 1px 1fr;
+  .notes.table-view { --wide-width: var(--table-width, 40rem); }
+  .notes.cards-view { --wide-width: var(--cards-width, 24rem); }
+
+  .notes.wide-view {
+    grid-template-columns: min(var(--wide-width), calc(100% - 24rem)) 1px 1fr;
   }
 
-  .notes.table-view:not(.note-open) { grid-template-columns: 1fr; }
+  .notes.wide-view:not(.note-open) { grid-template-columns: 1fr; }
 
-  .notes.table-view:not(.note-open) > .resize-handle,
-  .notes.table-view:not(.note-open) > .workspace.empty { display: none; }
+  .notes.wide-view:not(.note-open) > .resize-handle,
+  .notes.wide-view:not(.note-open) > .workspace.empty { display: none; }
 }
 
 /* Text selection while dragging a divider reads as a bug rather than a feature. */
@@ -1647,7 +1656,7 @@ button.link {
 */
 @media (width > 860px) {
   .notes { --list-pull: 0.5rem; }
-  .notes.table-view:not(.note-open) { --list-pull: 1.5rem; }
+  .notes.wide-view:not(.note-open) { --list-pull: 1.5rem; }
 
   /* The list's rows keep ending at the sidebar's edge; the 3px ring gutter they had on
      this side is inside the pull now. The table's rows keep ending at the sidebar's
@@ -2145,14 +2154,12 @@ th[aria-sort] .note-th-sort { color: var(--fg); }
 .icon-btn:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 7%, transparent); }
 
 /*
-   List or table, as one icon that flips. Outside a notebook there is no table to switch
-   to, and it fades rather than hides: its name carries the reason (see `NotesViewToggle`).
-   A note's ⋯ fades the same way while offline; see `OverflowMenu`'s `disabled`, and the
-   sort icon over a search in the table; see `NotesSort`'s `disabledReason`.
+   A control that cannot be used right now fades rather than hides, so the row keeps its
+   shape: a note's ⋯ while offline (see `OverflowMenu`'s `disabled`), and the sort icon
+   over a search in the table or the cards (see `NotesSort`'s `disabledReason`).
 */
 .overflow-trigger:disabled,
-.icon-btn.sort-toggle:disabled,
-.icon-btn.view-toggle:disabled {
+.icon-btn.sort-toggle:disabled {
   opacity: 0.4;
   cursor: default;
   background: none;
@@ -2262,6 +2269,26 @@ a.overflow-item { text-decoration: none; }
   opacity: 1;
   color: var(--muted);
 }
+
+/*
+   The view menu's items (`NotesViewMenu`): each view's icon beside its name, so the
+   trigger's icon is learned here, and the table's reason under its name where it cannot
+   be chosen. Wrapped, unlike other items: the reason is a sentence, and on one line it
+   would widen the menu past a phone's edge.
+*/
+.view-menu .overflow-item { white-space: normal; }
+
+.view-option {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  column-gap: 0.6rem;
+}
+
+/* Quiet beside the name, except on the current view, whose icon takes its tick's colour. */
+.overflow-item:not(.selected) > .view-option > svg { color: var(--muted); }
+
+.view-option > .overflow-item-note { grid-column: 2; }
 
 /*
    The error state's header row holds only the back arrow, and that arrow is hidden above
@@ -10254,6 +10281,197 @@ button.settings-nav-item {
     user-select: none;
   }
 }
+
+/* ---------------------------------------------------------------------------------
+   The cards view: `NoteCard`, a gallery of the notes with their pictures.
+
+   The same `ul.note-list` the rows are drawn in, as a grid: one scroller, one set of
+   keys, one motion, one selection. What is not a card (the search's tag and notebook
+   picks, Load more, the empty line) takes the grid's whole width, as it took the list's.
+
+   About 10.5rem a card on a desktop, as many as fit (`auto-fill`, so a short notebook's
+   three cards keep their size rather than stretching to fill a window); two across on a
+   phone, fixed, since at 375px `auto-fill` would decide between two cramped and one
+   enormous on a few pixels of width.
+
+   On a desktop the cards keep to the header's edges, the title's on the left and New's
+   on the right, as the table does (`.note-table-wrap`): a card is a box with an edge of
+   its own, and boxes that overhang the controls above them by a row's inset read as
+   misplaced, where a row's tint running to the column's edge did not. The scroller keeps
+   its pull, so the scrollbar still lands on the divider. On a phone the rows' width put
+   the cards 4px from the glass, where a box's edge reads as cut off; they keep to the
+   edges of the header's glyphs instead, the ☰ on the left, about 12px in.
+   --------------------------------------------------------------------------------- */
+.note-list.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(10.5rem, 100%), 1fr));
+  align-content: start;
+  gap: 0.75rem;
+}
+
+@media (width > 860px) {
+  .note-list.cards {
+    padding-left: calc(0.7rem + 3px);
+    padding-right: calc(0.7rem + var(--list-pull));
+  }
+}
+
+.note-list.cards > :not(.note-card-entry) { grid-column: 1 / -1; }
+
+@media (width <= 860px) {
+  .note-list.cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem;
+    padding-left: calc(3px + 0.5rem);
+    padding-right: calc(3px + 0.5rem);
+  }
+}
+
+/* The card fills its cell, so a row of cards ends on one line whatever their titles. */
+.note-card-entry { display: flex; }
+
+/*
+   A card is a box of its own, bordered, rather than a row's borderless tint: a picture
+   needs an edge to sit inside, and a grid of pictures with none reads as a collage.
+   `overflow: hidden` clips the cover to the card's corners.
+*/
+.note-item.note-card {
+  flex: 1;
+  min-width: 0;
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 0.6rem;
+}
+
+/*
+   The cover: a fixed 4:3 whatever it holds, so the cards line up. 4:3 because it is the
+   shape a phone's photos are taken in and the middle of what a notebook holds: a business
+   card loses a little at the sides, a portrait receipt is cut from the top down (see
+   `object-position`), and neither decides the row's height.
+*/
+.note-card-cover {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--fg) 4%, transparent);
+  border-bottom: 1px solid var(--border);
+}
+
+.note-card-cover img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  /* From the top: where a receipt has its merchant and a portrait photo its face. */
+  object-position: top;
+}
+
+/* A file that is not a picture: its kind, large and quiet, in the cover's middle. */
+.note-card-cover.file { font-size: 1.9rem; }
+.note-card-cover.file > svg { opacity: 0.7; }
+
+/*
+   A note with no files: its own words, dimmed, from the top-left as a page starts, cut to
+   the cover's height. Prose at the excerpt's size, wrapped, which the row's one-line
+   excerpt never is.
+*/
+.note-card-cover.none { place-items: stretch; }
+
+.note-card-excerpt {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 5;
+  overflow: hidden;
+  margin: 0.6rem 0.7rem;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+/*
+   Under the cover, the row's lines at the row's sizes: the title on up to two lines (a
+   card is narrower than a row, and a title cut at ten characters names nothing), then
+   the date and the fields on one line each.
+*/
+.note-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+  padding: 0.5rem 0.65rem 0.6rem;
+}
+
+.note-card .note-title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.3;
+}
+
+/* One line, like the fields under it: a search's "in <file>" stands here, and a
+   filename is unbounded. */
+.note-card .note-meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+   Hover, open and selected, as marks on the card's edge rather than tints under it: the
+   cover hides anything drawn under the card. Hover darkens the border; the open note's
+   card keeps the row's 14% tint on its body and takes the accent's edge; a selected card
+   has the row's ring, drawn over the cover (`::after`) so it reads on a photo too.
+
+   The list's gliding hover card is off here (it is drawn under the entries, and a card's
+   cover would hide it), and with it the reach its rows' `::after` makes over the gap.
+*/
+.note-list.cards::before { content: none; }
+
+.note-list.cards .note-card:hover {
+  background-image: none;
+  border-color: color-mix(in srgb, var(--fg) 28%, transparent);
+}
+
+.note-item.note-card.active { border-color: color-mix(in srgb, var(--accent) 55%, transparent); }
+
+.note-list.cards .note-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.note-list.cards .note-card { position: relative; }
+
+.note-item.note-card.selected {
+  box-shadow: none;
+  border-color: var(--accent);
+}
+
+.note-list.cards .note-card.selected::after { box-shadow: inset 0 0 0 1.5px var(--accent); }
+
+/*
+   The checkbox over the cover's corner, where a photo's least important pixels are. A
+   shadow under it, since it sits on whatever the picture is. The title keeps its width:
+   it is not on the title's line here.
+*/
+.note-card-entry > .note-check {
+  top: 0.5rem;
+  right: 0.5rem;
+  width: 1.2rem;
+  height: 1.2rem;
+  filter: drop-shadow(0 1px 2px rgb(0 0 0 / 0.35));
+}
+
+.note-list.cards.selecting .note-title { padding-right: 0; }
 
 /*
    The bar: a pill over the foot of the screen, centred, the way Evernote's rises.

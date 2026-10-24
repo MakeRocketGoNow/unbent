@@ -2,7 +2,7 @@ import { PrecacheController, PrecacheRoute } from 'workbox-precaching';
 import { registerRoute } from 'workbox-routing';
 import { CacheFirst, NetworkFirst, type StrategyOptions } from 'workbox-strategies';
 import { ExpirationPlugin } from 'workbox-expiration';
-import { API_CACHE, FILES_CACHE, FILES_CHANGED, MAX_KEPT_FILE, SERVED_HEADER, VIEW_HEADER, classify, commitOf, isAsset, isShellCache, isShellFallback, servesShell, shellCacheName, shelved, within } from './routes.js';
+import { API_CACHE, FILES_CACHE, FILES_CHANGED, MAX_KEPT_FILE, SERVED_HEADER, VIEW_HEADER, classify, commitOf, coverOf, isAsset, isShellCache, isShellFallback, servesShell, shellCacheName, shelved, within } from './routes.js';
 import { createFilesLedger } from './budget.js';
 import { createShellKeeper } from './tidy.js';
 import { findFile } from '../store/files.js';
@@ -514,7 +514,15 @@ registerRoute(
         viewed: request.headers.get(VIEW_HEADER) === '1',
         origin: self.location.origin,
       }) === 'file';
-    return viewed ? openedFiles.handle(options) : fetch(request);
+    if (viewed) return openedFiles.handle(options);
+    // A card's cover: a copy already kept for someone who opened the file, as it is (no
+    // touch, so a gallery scrolled past does not keep it any longer), else the network,
+    // and never kept. See `COVER_PARAM`. Fetched at the unmarked address, so the
+    // browser's own cache holds one copy of the bytes for the cover and for the file
+    // once it is opened, rather than downloading a phone photo twice.
+    const cover = coverOf({ url, method: request.method, origin: self.location.origin });
+    const kept = cover && (await (await caches.open(FILES_CACHE)).match(cover));
+    return kept || fetch(cover ?? request);
   },
 );
 

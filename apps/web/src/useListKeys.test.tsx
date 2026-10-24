@@ -320,3 +320,90 @@ describe('useListKeys with search picks', () => {
     expect(enterList(null)).toBe(false);
   });
 });
+
+/**
+ * The cards: six in two rows of three, placed by a stubbed `getBoundingClientRect`,
+ * since jsdom lays nothing out. Up and down are read from those places, so the stub is
+ * the grid.
+ */
+function Cards({ count = 6, measured }: { count?: number; measured?: string[] }) {
+  const onKeyDown = useListKeys();
+  const ids = 'abcdefghijkl'.slice(0, count).split('');
+  return (
+    <ul className="note-list cards" data-grid="" data-testid="cards" onKeyDown={onKeyDown}>
+      {ids.map((id, i) => (
+        <li key={id}>
+          <a
+            href={`#${id}`}
+            className="note-item note-card"
+            data-testid={id}
+            ref={(el) => {
+              if (!el) return;
+              const left = (i % 3) * 100;
+              const top = Math.floor(i / 3) * 150;
+              el.getBoundingClientRect = () => {
+                measured?.push(id);
+                return { left, top, width: 90, height: 140, right: left + 90, bottom: top + 140 } as DOMRect;
+              };
+            }}
+          >
+            {id}
+          </a>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+describe('useListKeys over the cards', () => {
+  afterEach(cleanup);
+
+  it('moves left and right through the cards in order, across the end of a row', () => {
+    render(<Cards />);
+    screen.getByTestId('b').focus();
+    fireEvent.keyDown(screen.getByTestId('cards'), { key: 'ArrowRight' });
+    expect(document.activeElement).toBe(screen.getByTestId('c'));
+    fireEvent.keyDown(screen.getByTestId('cards'), { key: 'ArrowRight' });
+    expect(document.activeElement).toBe(screen.getByTestId('d'));
+    fireEvent.keyDown(screen.getByTestId('cards'), { key: 'ArrowLeft' });
+    expect(document.activeElement).toBe(screen.getByTestId('c'));
+  });
+
+  it('moves up and down to the card in the same place on the next row', () => {
+    render(<Cards />);
+    screen.getByTestId('b').focus();
+    fireEvent.keyDown(screen.getByTestId('cards'), { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(screen.getByTestId('e'));
+    fireEvent.keyDown(screen.getByTestId('cards'), { key: 'ArrowUp' });
+    expect(document.activeElement).toBe(screen.getByTestId('b'));
+  });
+
+  it('lets the key through past the last row', () => {
+    render(<Cards />);
+    screen.getByTestId('e').focus();
+    const event = new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true });
+    screen.getByTestId('e').dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(false);
+    expect(document.activeElement).toBe(screen.getByTestId('e'));
+  });
+
+  /* After a long scroll a list holds thousands of cards; a press reads two rows of them. */
+  it('measures no further than the row it lands on', () => {
+    const measured: string[] = [];
+    render(<Cards count={12} measured={measured} />);
+    screen.getByTestId('b').focus();
+    measured.length = 0;
+    fireEvent.keyDown(screen.getByTestId('cards'), { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(screen.getByTestId('e'));
+    expect(measured).not.toContain('j');
+    expect(measured).not.toContain('l');
+  });
+
+  /* Left and right belong to the grid alone: in the list they stay the browser's. */
+  it('leaves left and right alone in a list', () => {
+    render(<List />);
+    screen.getByTestId('a').focus();
+    fireEvent.keyDown(screen.getByTestId('a'), { key: 'ArrowRight' });
+    expect(document.activeElement).toBe(screen.getByTestId('a'));
+  });
+});
