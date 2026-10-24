@@ -22,6 +22,14 @@ import { useCallback, useSyncExternalStore, type KeyboardEvent } from 'react';
  * the first keystroke to the note: type, arrow into the picks and the results, Enter.
  * That is Apple Notes' and Finder's shape rather than a combobox's, because the results
  * are the list under the field, not a menu of their own.
+ *
+ * A list drawn as cards (`data-grid` on it) is a grid, and its arrows are a grid's, as in
+ * Finder's icon view and every photo app: Left and Right step through the cards in order,
+ * wrapping from a row's end to the next row's start, and Up and Down go to the card above
+ * or below, the nearest one to where the focus is across the row. Above and below are
+ * read from where the cards are drawn, not counted from a column number, since the
+ * column count is whatever `auto-fill` made of the width and the rows can hold a search's
+ * picks, a full-width row of their own.
  */
 
 /**
@@ -125,7 +133,9 @@ export function useListKeys(opts: {
   const { onLeaveTop } = opts;
   return useCallback(
     (event: KeyboardEvent<HTMLElement>) => {
-      if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp' && event.key !== 'Enter') {
+      const grid = event.currentTarget.hasAttribute('data-grid');
+      const sideways = grid && (event.key === 'ArrowLeft' || event.key === 'ArrowRight');
+      if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp' && event.key !== 'Enter' && !sideways) {
         return;
       }
 
@@ -159,7 +169,9 @@ export function useListKeys(opts: {
       const index = items.indexOf(active);
       if (index === -1) return;
 
-      const next = items[index + (event.key === 'ArrowDown' ? 1 : -1)];
+      const forward = event.key === 'ArrowDown' || event.key === 'ArrowRight';
+      const next =
+        grid && !sideways ? across(items, active, forward) : items[index + (forward ? 1 : -1)];
       if (!next) {
         // Up from the first row goes back to the field the list was entered from.
         if (event.key === 'ArrowUp' && onLeaveTop) {
@@ -176,6 +188,28 @@ export function useListKeys(opts: {
     },
     [onLeaveTop],
   );
+}
+
+/**
+ * The card above or below `from` in a grid: of the cards on the nearest row in that
+ * direction, the one whose middle is closest to `from`'s. A row is the cards sharing a
+ * top edge, give or take a pixel of rounding.
+ */
+function across(items: HTMLElement[], from: HTMLElement, down: boolean): HTMLElement | undefined {
+  const here = from.getBoundingClientRect();
+  const middle = (r: DOMRect) => r.left + r.width / 2;
+  const placed = items.map((el) => ({ el, rect: el.getBoundingClientRect() }));
+  const beyond = placed.filter(({ rect }) => (down ? rect.top > here.top + 1 : rect.top < here.top - 1));
+  if (beyond.length === 0) return undefined;
+  const rowTop = down
+    ? Math.min(...beyond.map(({ rect }) => rect.top))
+    : Math.max(...beyond.map(({ rect }) => rect.top));
+  const row = beyond.filter(({ rect }) => Math.abs(rect.top - rowTop) <= 1);
+  let best = row[0]!;
+  for (const c of row) {
+    if (Math.abs(middle(c.rect) - middle(here)) < Math.abs(middle(best.rect) - middle(here))) best = c;
+  }
+  return best.el;
 }
 
 /**

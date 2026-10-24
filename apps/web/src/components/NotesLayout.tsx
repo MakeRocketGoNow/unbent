@@ -1353,6 +1353,8 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
           ref={listMotionRef}
           aria-busy={(searching ? searchStale : stale) || undefined}
           aria-multiselectable={results === null || cardsMode ? true : undefined}
+          // Arrow keys move in two directions over the cards (`useListKeys`).
+          data-grid={cardsMode ? '' : undefined}
           onKeyDown={onListKeysWithSelection}
         >
           {/*
