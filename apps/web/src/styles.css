@@ -10415,6 +10415,14 @@ button.settings-nav-item {
   line-height: 1.3;
 }
 
+/* One line, like the fields under it: a search's "in <file>" stands here, and a
+   filename is unbounded. */
+.note-card .note-meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /*
    Hover, open and selected, as marks on the card's edge rather than tints under it: the
    cover hides anything drawn under the card. Hover darkens the border; the open note's

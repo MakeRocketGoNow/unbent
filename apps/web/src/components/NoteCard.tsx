@@ -148,7 +148,7 @@ export function NoteCard({ note, sort, replacedByNote = false, selection, hint }
           <span className="note-title" title={title}>
             {title}
           </span>
-          <span className="note-meta">
+          <span className="note-meta" title={hint}>
             {hint ?? formatWhen(when)}
           </span>
           <NoteFieldsLine fields={note.fields} />
