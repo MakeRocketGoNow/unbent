@@ -10,6 +10,14 @@ import {
 } from '@tanstack/react-router';
 import { keys } from './queries.js';
 import { WhyPage, WHY_META } from './components/WhyPage.js';
+import {
+  CompareIndexPage,
+  EvernoteComparison,
+  JoplinComparison,
+  NotionComparison,
+  PaperlessNgxComparison,
+} from './components/ComparePage.js';
+import { COMPARE_META, comparison } from './components/comparisons.js';
 import type { PageMeta } from './page-meta.js';
 
 /**
@@ -26,8 +34,8 @@ import type { PageMeta } from './page-meta.js';
  * Only the pages for people who are not signed in belong here, and not all of those:
  * `/` is served as `index.html`, which is the shell for every route of the app, so a
  * copy of the front page written there would be drawn for a moment on every page load
- * of the notes. The pricing page could join the list; the story is the one a search
- * lands on, so it goes first.
+ * of the notes. The pricing page could join the list; the story and the comparisons are
+ * the ones a search lands on, so they went first.
  *
  * What the page is rendered with is the least the shell needs: a config that says there
  * is a front page, and nothing of the operator (`legal`, `operator`), which the build
@@ -42,8 +50,22 @@ export interface PrerenderedPage {
   file: string;
 }
 
+/**
+ * Each page's file is flat, `compare-joplin.html` rather than `compare/joplin.html`, so no
+ * address the asset layer resolves on its own lands on one. The Worker's `PRERENDERED`
+ * (`apps/api/src/lib/front-pages.ts`) names the same files and must be kept in step.
+ */
 export const PAGES: Record<string, PrerenderedPage> = {
   '/why': { component: WhyPage, meta: WHY_META, file: 'why.html' },
+  '/compare': { component: CompareIndexPage, meta: COMPARE_META, file: 'compare.html' },
+  '/compare/evernote': { component: EvernoteComparison, meta: comparison('evernote').meta, file: 'compare-evernote.html' },
+  '/compare/notion': { component: NotionComparison, meta: comparison('notion').meta, file: 'compare-notion.html' },
+  '/compare/joplin': { component: JoplinComparison, meta: comparison('joplin').meta, file: 'compare-joplin.html' },
+  '/compare/paperless-ngx': {
+    component: PaperlessNgxComparison,
+    meta: comparison('paperless-ngx').meta,
+    file: 'compare-paperless-ngx.html',
+  },
 };
 
 /** The page at `path`, as HTML for the inside of `#root`. */
