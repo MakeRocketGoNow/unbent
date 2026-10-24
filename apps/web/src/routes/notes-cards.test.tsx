@@ -125,7 +125,7 @@ describe('the cards in the notes view', () => {
     localStorage.setItem('unbent.notesView', '"cards"');
     const router = mount('/notes');
     await screen.findByText('Alpha');
-    await waitFor(() => expect(router.state.location.search).toMatchObject({ view: 'cards' }));
+    await waitFor(() => expect(router.state.location.href).toContain('view=cards'));
     expect(list()?.classList.contains('cards')).toBe(true);
   });
 
