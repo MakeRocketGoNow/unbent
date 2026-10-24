@@ -6,7 +6,9 @@ and in tests.
 
 The name predates the second format. `importEnex` reads Evernote's files; `importArchive`
 reads Unbent's own export (the library zip, a single note's zip, or its bare `.md`) through
-`@unbent/shared`'s frontmatter codec. Everything past the reader is shared (`import-run.ts`):
+`@unbent/shared`'s frontmatter codec; `importNotion` reads Notion's Markdown & CSV zip; and
+`importJoplin` reads Joplin's `.jex`, a tar of Joplin's own serialised items, through a small
+tar reader of its own (`tar.ts`). Everything past the reader is shared (`import-run.ts`):
 the request per note, the upload per file, PDF text extraction, and the breaker that ends a
 run when the server has gone away.
 

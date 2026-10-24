@@ -528,14 +528,16 @@ export const COMPARISONS: readonly Comparison[] = [
       },
     ],
     switching: {
-      title: 'Trying Unbent beside Joplin',
+      title: 'Moving from Joplin',
       body: (
         <p>
-          Unbent does not import Joplin&apos;s own export yet. What it takes today is files: drop
-          a folder of PDFs and photos on the note list and each becomes a note with its file
-          attached, searchable by the text in it. If you are mainly here for the paperwork,
-          that is the part worth trying first, and your Joplin library stays where it is
-          while you decide.
+          In Joplin desktop, choose File → Export all → JEX, and open the <code>.jex</code> file
+          on Unbent&apos;s import page, in the browser. Each note keeps its notebook, tags, dates
+          and attachments, links between notes still work, and PDFs become searchable by what
+          they say. A notebook inside another is named for its whole path, as in Household /
+          Receipts. Running it again brings in only what is new since: nothing duplicates, and
+          a note you changed in Joplin in between keeps the version first imported. So you can
+          try it and keep your Joplin library where it is while you decide.
         </p>
       ),
     },

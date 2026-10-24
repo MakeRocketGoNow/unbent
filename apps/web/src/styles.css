@@ -1529,8 +1529,8 @@ button.link {
 
 /* A phone held upright: the actions one above the other, each the width of the stack
    (the 44px height is the buttons' own, `btn-large`), the primary on top: the way the
-   app's own primary actions sit under a thumb, and how "Import from Evernote or Notion"
-   fits at all at 320px. */
+   app's own primary actions sit under a thumb, and how a label like "Import your notes"
+   has room at 320px. */
 @media (width < 480px) {
   .empty-state-actions {
     flex-direction: column;
@@ -10773,9 +10773,9 @@ button.settings-nav-item {
   margin-top: 1.75rem;
 }
 
-/* Four cards two by two, for the section whose cards are a workflow in order: three
-   across would leave the fourth step alone on a row. On a phone it is one column like
-   the rest. */
+/* Four cards two by two, for a section that has four (a workflow in order, the apps to
+   bring notes from): three across would leave the fourth alone on a row. On a phone it
+   is one column like the rest. */
 .front-grid-pairs {
   grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr));
 }

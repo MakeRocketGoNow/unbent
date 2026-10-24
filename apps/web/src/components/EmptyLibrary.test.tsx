@@ -68,7 +68,7 @@ describe('EmptyLibrary', () => {
   /** Navigation stays a link, so it can be opened in a new tab; it is drawn as the primary. */
   it('offers the import as a link to its page, first in the tab order', async () => {
     mount();
-    const link = await screen.findByRole('link', { name: 'Import from Evernote or Notion' });
+    const link = await screen.findByRole('link', { name: 'Import your notes' });
     expect(link.getAttribute('href')).toBe('/settings/import');
     expect(link.className).toContain('btn-primary');
     const button = screen.getByRole('button', { name: 'New note' });
@@ -92,7 +92,7 @@ describe('EmptyLibrary', () => {
     expect(sample.closest('.empty-state-aside')).not.toBeNull();
     expect(sample.closest('.empty-state-actions')).toBeNull();
     const order = [
-      screen.getByRole('link', { name: 'Import from Evernote or Notion' }),
+      screen.getByRole('link', { name: 'Import your notes' }),
       screen.getByRole('button', { name: 'New note' }),
       sample,
     ];

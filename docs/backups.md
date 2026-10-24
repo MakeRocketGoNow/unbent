@@ -139,3 +139,24 @@ exported pages, relative or `notion.so`, become links between the notes. Attachm
 in a folder named for their page and are uploaded as the note's files; callouts become
 quotes. The driver is `importNotion` in `packages/enex`, beside the ENEX and archive
 importers, and shares their requests, resumability and failure log.
+
+## Importing from Joplin
+
+Joplin's JEX export (File → Export all → JEX in the desktop app, or Export → JEX on one
+notebook) goes in through the same Settings → Import, with nothing to choose first. JEX is
+taken rather than Joplin's Markdown + Front Matter export because it is Joplin's own
+lossless backup: a tar of every note, notebook, tag and attachment record, each in the form
+Joplin syncs, with the attachments' bytes in a `resources/` folder. The Markdown export has
+no ids, renames the attachments, and is a folder that would have to be zipped first.
+
+Every note keeps Joplin's id as its note id (32 hex digits, a UUID without its dashes), so
+importing the same file again skips what landed, even a note edited in Joplin since. Its
+dates are the ones Joplin shows (`user_created_time`, `user_updated_time`), its tags come
+from the export's tag assignments, and its notebook is its Joplin notebook, a nested one
+named for its whole path (`Household / Receipts`), since notebooks here do not nest. Links
+of the form `:/<id>` become `files/` links to the note's attachments or links to the
+imported notes; a resized picture's `<img>` becomes a markdown image; HTML notes (web
+clips) go through the ENML converter. Notes in Joplin's trash are left out, and a note
+exported still encrypted, or an attachment whose bytes are missing, is reported in the
+failure log. The driver is `importJoplin` in `packages/enex`, reading the tar through a
+small reader of its own (`tar.ts`).

@@ -6,6 +6,7 @@ import { Readable } from 'node:stream';
 import {
   importArchive,
   importEnex,
+  importJoplin,
   importFormat,
   type ImportFailure,
   type ImportOptions,
@@ -30,7 +31,7 @@ import { createInterface } from 'node:readline/promises';
  */
 
 function usage(): string {
-  return `unbent-migrate: import Evernote .enex files, or Unbent exports, into Unbent
+  return `unbent-migrate: import Evernote .enex files, Joplin .jex files, or Unbent exports, into Unbent
 
 Usage:
   unbent-migrate import <file...> [options]
@@ -39,9 +40,9 @@ Usage:
   unbent-migrate set-url <url>
   unbent-migrate show-config
 
-Files are .enex (Evernote), or .zip and .md (an Unbent export: the library, a
-notebook, or one note). An .enex file's name becomes its notes' notebook; an
-Unbent export's notes each carry their own.
+Files are .enex (Evernote), .jex (Joplin), or .zip and .md (an Unbent export:
+the library, a notebook, or one note). An .enex file's name becomes its notes'
+notebook; a Joplin or Unbent export's notes each carry their own.
 
 Options:
   --url <url>       Use this instance for one command, without storing it
@@ -178,7 +179,7 @@ async function login(url: string): Promise<string> {
 
 async function runImport(args: Args): Promise<number> {
   if (args.files.length === 0) {
-    process.stderr.write('Nothing to import: pass one or more .enex, .zip or .md files.\n');
+    process.stderr.write('Nothing to import: pass one or more .enex, .jex, .zip or .md files.\n');
     return 1;
   }
 
@@ -198,7 +199,7 @@ async function runImport(args: Args): Promise<number> {
 
     const format = importFormat(name);
     if (format === null) {
-      process.stderr.write('  Skipped: not an .enex, .zip or .md file.\n');
+      process.stderr.write('  Skipped: not an .enex, .jex, .zip or .md file.\n');
       exitCode = 1;
       continue;
     }
@@ -233,6 +234,9 @@ async function runImport(args: Args): Promise<number> {
           client,
           options,
         );
+      } else if (format === 'jex') {
+        // A tar, read by byte range from the same lazily read Blob as a zip below.
+        progress = await importJoplin({ name, blob: await openAsBlob(full) }, client, options);
       } else {
         // A lazily read Blob, not the file's bytes: zip.js reads the central directory
         // and then each entry by byte range, so an archive is never held in memory whole.

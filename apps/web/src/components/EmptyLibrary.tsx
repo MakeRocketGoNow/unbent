@@ -52,16 +52,19 @@ export function EmptyLibrary({ heading = 'h2' }: { heading?: 'h2' | 'h3' }) {
       icon={<EmptyLibraryIcon />}
       heading="No notes yet"
       headingLevel={heading}
-      lead="Bring everything over from Evernote or Notion, or start with a blank page."
+      lead="Bring everything over from Evernote, Notion or Joplin, or start with a blank page."
       actions={
         <>
           {/* A link wearing the filled button's shape, as the front page's call to action
               does: it goes to another page (it can be opened in a new tab, middle-clicked
               and copied), so it is a link, and it is the thing this state is for, so it is
               filled. `Button` deliberately renders no anchors; see its header. First, so
-              it is first in the tab order as well as on the left. */}
+              it is first in the tab order as well as on the left. The apps are named in
+              the lead above it, not on it: with Joplin as a third, "Import from Evernote,
+              Notion or Joplin" wrapped to two lines at 320px, and a label listing every
+              importer would grow with each one. */}
           <Link to="/settings/import" className="btn btn-primary btn-large empty-state-action">
-            Import from Evernote or Notion
+            Import your notes
           </Link>
           {/* Exactly what New does from All notes, through the same action: the account is
               empty, so there is no notebook or tag on screen to file the note under. */}

@@ -22,6 +22,6 @@ alternative that was rejected, which is the house style ([AGENTS.md](../AGENTS.m
 - [iOS app](ios.md): the shell, captures, and building it for your own instance.
 - [Architecture](architecture.md): the Stack, Where your notes live, Tenant isolation,
   Durability, and Blob garbage collection.
-- [Backups and export](backups.md): the export, Restoring or moving to another Unbent, and
-  Importing from Notion.
+- [Backups and export](backups.md): the export, Restoring or moving to another Unbent,
+  Importing from Notion, and Importing from Joplin.
 - [Known gaps](known-gaps.md): what is advertised and not yet enforced.
