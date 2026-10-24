@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { SHELL_META_CACHE, WORKER_PAGES, WORKER_PREFIXES, classify, commitOf, fileAddress, isAsset, isShellFallback, servesShell, shellCacheName, shelved, staleShellCaches, within, type RequestFacts } from './routes.js';
+import { SHELL_META_CACHE, WORKER_PAGES, WORKER_PREFIXES, classify, commitOf, coverOf, fileAddress, isAsset, isShellFallback, servesShell, shellCacheName, shelved, staleShellCaches, within, type RequestFacts } from './routes.js';
 
 const at = (path: string) => new URL(path, 'https://unbent.example');
 
@@ -99,6 +99,22 @@ describe('classify', () => {
 
   it('leaves the indexer’s and the export’s reads of the same file alone', () => {
     expect(classify(facts(file))).toBeUndefined();
+  });
+
+  /* A gallery scrolled past is not a file opened: keeping covers would push out what was. */
+  it('does not keep a card’s cover, though it is drawn as an image', () => {
+    expect(classify(facts('/api/notes/8f0c2d1e/files/receipt.png?cover=1', { destination: 'image' }))).toBeUndefined();
+  });
+
+  it('reads a cover from the address the opened file is kept under', () => {
+    const at = (path: string, method = 'GET') => ({ url: new URL(path, ORIGIN), method, origin: ORIGIN });
+    expect(coverOf(at('/api/notes/8f0c2d1e/files/Report%20(final)%20v2.png?cover=1'))).toBe(
+      `${ORIGIN}/api/notes/8f0c2d1e/files/Report%20(final)%20v2.png`,
+    );
+    expect(coverOf(at('/api/notes/8f0c2d1e/files/receipt.png'))).toBeNull();
+    expect(coverOf(at('/api/notes/8f0c2d1e/files/receipt.png/text?cover=1'))).toBeNull();
+    expect(coverOf(at('/api/notes/8f0c2d1e/files/receipt.png?cover=1', 'POST'))).toBeNull();
+    expect(coverOf({ url: new URL('https://images.example/api/notes/a/files/b.png?cover=1'), method: 'GET', origin: ORIGIN })).toBeNull();
   });
 
   it('leaves a download alone', () => {

@@ -89,7 +89,8 @@ describe('NoteCard', () => {
     const link = (await screen.findByText('Acme Hardware')).closest('a')!;
     expect(link.getAttribute('href')).toBe('/notes/n1');
     const img = link.querySelector('img')!;
-    expect(img.getAttribute('src')).toBe('/api/notes/n1/files/front%20photo.jpg');
+    // Marked as a cover, so the worker does not keep it as a file someone opened.
+    expect(img.getAttribute('src')).toBe('/api/notes/n1/files/front%20photo.jpg?cover=1');
     expect(img.getAttribute('loading')).toBe('lazy');
     // The title names the card; the picture is not read out first.
     expect(img.getAttribute('alt')).toBe('');

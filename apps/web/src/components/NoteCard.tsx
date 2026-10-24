@@ -6,6 +6,7 @@ import { NoteFieldsLine } from './NoteFieldsLine.js';
 import { AttachmentKindIcon } from './icons.js';
 import { NoteCheck, type RowSelection } from './NoteListItem.js';
 import { useNotePress } from './use-note-press.js';
+import { COVER_PARAM } from '../sw/routes.js';
 
 /** What a card's cover shows; see `coverOf`. */
 export type Cover =
@@ -36,9 +37,15 @@ export function coverOf(note: Pick<NoteSummary, 'attachments'>): Cover {
   return first ? { kind: 'file', contentType: first.contentType } : { kind: 'none' };
 }
 
-/** A file's bytes, at the address the editor's images use; the worker keeps what is drawn. */
+/**
+ * A cover's address: the file's own, marked as a cover so the service worker draws it
+ * from what the device already holds and never keeps it as a file someone opened
+ * (`COVER_PARAM`). The whole original, for now: there is no thumbnail of a file to ask
+ * for, so a gallery of phone photos downloads each in full, once, and the browser's own
+ * cache (the server sends them `immutable`) is what spares the second scroll.
+ */
 function fileSrc(noteId: string, filename: string): string {
-  return `/api/notes/${encodeURIComponent(noteId)}/files/${encodeURIComponent(filename)}`;
+  return `/api/notes/${encodeURIComponent(noteId)}/files/${encodeURIComponent(filename)}?${COVER_PARAM}=1`;
 }
 
 interface NoteCardProps {
