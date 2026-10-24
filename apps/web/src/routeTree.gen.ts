@@ -30,6 +30,11 @@ import { Route as TermsRouteImport } from './routes/terms'
 import { Route as TrashRouteImport } from './routes/trash'
 import { Route as TurnstileRouteImport } from './routes/turnstile'
 import { Route as WhyRouteImport } from './routes/why'
+import { Route as CompareIndexRouteImport } from './routes/compare.index'
+import { Route as CompareEvernoteRouteImport } from './routes/compare.evernote'
+import { Route as CompareJoplinRouteImport } from './routes/compare.joplin'
+import { Route as CompareNotionRouteImport } from './routes/compare.notion'
+import { Route as ComparePaperlessNgxRouteImport } from './routes/compare.paperless-ngx'
 import { Route as EmbedIndexFilesRouteImport } from './routes/embed.index-files'
 import { Route as NotesIndexRouteImport } from './routes/notes.index'
 import { Route as NotesNoteIdRouteImport } from './routes/notes.$noteId'
@@ -155,6 +160,31 @@ const WhyRoute = WhyRouteImport.update({
   path: '/why',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CompareIndexRoute = CompareIndexRouteImport.update({
+  id: '/compare/',
+  path: '/compare/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CompareEvernoteRoute = CompareEvernoteRouteImport.update({
+  id: '/compare/evernote',
+  path: '/compare/evernote',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CompareJoplinRoute = CompareJoplinRouteImport.update({
+  id: '/compare/joplin',
+  path: '/compare/joplin',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CompareNotionRoute = CompareNotionRouteImport.update({
+  id: '/compare/notion',
+  path: '/compare/notion',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ComparePaperlessNgxRoute = ComparePaperlessNgxRouteImport.update({
+  id: '/compare/paperless-ngx',
+  path: '/compare/paperless-ngx',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const EmbedIndexFilesRoute = EmbedIndexFilesRouteImport.update({
   id: '/embed/index-files',
   path: '/embed/index-files',
@@ -274,6 +304,10 @@ export interface FileRoutesByFullPath {
   '/trash': typeof TrashRouteWithChildren
   '/turnstile': typeof TurnstileRoute
   '/why': typeof WhyRoute
+  '/compare/evernote': typeof CompareEvernoteRoute
+  '/compare/joplin': typeof CompareJoplinRoute
+  '/compare/notion': typeof CompareNotionRoute
+  '/compare/paperless-ngx': typeof ComparePaperlessNgxRoute
   '/embed/index-files': typeof EmbedIndexFilesRoute
   '/notes/$noteId': typeof NotesNoteIdRoute
   '/settings/about': typeof SettingsAboutRoute
@@ -288,6 +322,7 @@ export interface FileRoutesByFullPath {
   '/settings/security': typeof SettingsSecurityRoute
   '/settings/tags': typeof SettingsTagsRoute
   '/trash/$noteId': typeof TrashNoteIdRoute
+  '/compare/': typeof CompareIndexRoute
   '/notes/': typeof NotesIndexRoute
   '/settings/': typeof SettingsIndexRoute
   '/trash/': typeof TrashIndexRoute
@@ -313,6 +348,10 @@ export interface FileRoutesByTo {
   '/terms': typeof TermsRoute
   '/turnstile': typeof TurnstileRoute
   '/why': typeof WhyRoute
+  '/compare/evernote': typeof CompareEvernoteRoute
+  '/compare/joplin': typeof CompareJoplinRoute
+  '/compare/notion': typeof CompareNotionRoute
+  '/compare/paperless-ngx': typeof ComparePaperlessNgxRoute
   '/embed/index-files': typeof EmbedIndexFilesRoute
   '/notes/$noteId': typeof NotesNoteIdRoute
   '/settings/about': typeof SettingsAboutRoute
@@ -327,6 +366,7 @@ export interface FileRoutesByTo {
   '/settings/security': typeof SettingsSecurityRoute
   '/settings/tags': typeof SettingsTagsRoute
   '/trash/$noteId': typeof TrashNoteIdRoute
+  '/compare': typeof CompareIndexRoute
   '/notes': typeof NotesIndexRoute
   '/settings': typeof SettingsIndexRoute
   '/trash': typeof TrashIndexRoute
@@ -356,6 +396,10 @@ export interface FileRoutesById {
   '/trash': typeof TrashRouteWithChildren
   '/turnstile': typeof TurnstileRoute
   '/why': typeof WhyRoute
+  '/compare/evernote': typeof CompareEvernoteRoute
+  '/compare/joplin': typeof CompareJoplinRoute
+  '/compare/notion': typeof CompareNotionRoute
+  '/compare/paperless-ngx': typeof ComparePaperlessNgxRoute
   '/embed/index-files': typeof EmbedIndexFilesRoute
   '/notes/$noteId': typeof NotesNoteIdRoute
   '/settings/about': typeof SettingsAboutRoute
@@ -370,6 +414,7 @@ export interface FileRoutesById {
   '/settings/security': typeof SettingsSecurityRoute
   '/settings/tags': typeof SettingsTagsRoute
   '/trash/$noteId': typeof TrashNoteIdRoute
+  '/compare/': typeof CompareIndexRoute
   '/notes/': typeof NotesIndexRoute
   '/settings/': typeof SettingsIndexRoute
   '/trash/': typeof TrashIndexRoute
@@ -400,6 +445,10 @@ export interface FileRouteTypes {
     | '/trash'
     | '/turnstile'
     | '/why'
+    | '/compare/evernote'
+    | '/compare/joplin'
+    | '/compare/notion'
+    | '/compare/paperless-ngx'
     | '/embed/index-files'
     | '/notes/$noteId'
     | '/settings/about'
@@ -414,6 +463,7 @@ export interface FileRouteTypes {
     | '/settings/security'
     | '/settings/tags'
     | '/trash/$noteId'
+    | '/compare/'
     | '/notes/'
     | '/settings/'
     | '/trash/'
@@ -439,6 +489,10 @@ export interface FileRouteTypes {
     | '/terms'
     | '/turnstile'
     | '/why'
+    | '/compare/evernote'
+    | '/compare/joplin'
+    | '/compare/notion'
+    | '/compare/paperless-ngx'
     | '/embed/index-files'
     | '/notes/$noteId'
     | '/settings/about'
@@ -453,6 +507,7 @@ export interface FileRouteTypes {
     | '/settings/security'
     | '/settings/tags'
     | '/trash/$noteId'
+    | '/compare'
     | '/notes'
     | '/settings'
     | '/trash'
@@ -481,6 +536,10 @@ export interface FileRouteTypes {
     | '/trash'
     | '/turnstile'
     | '/why'
+    | '/compare/evernote'
+    | '/compare/joplin'
+    | '/compare/notion'
+    | '/compare/paperless-ngx'
     | '/embed/index-files'
     | '/notes/$noteId'
     | '/settings/about'
@@ -495,6 +554,7 @@ export interface FileRouteTypes {
     | '/settings/security'
     | '/settings/tags'
     | '/trash/$noteId'
+    | '/compare/'
     | '/notes/'
     | '/settings/'
     | '/trash/'
@@ -524,7 +584,12 @@ export interface RootRouteChildren {
   TrashRoute: typeof TrashRouteWithChildren
   TurnstileRoute: typeof TurnstileRoute
   WhyRoute: typeof WhyRoute
+  CompareEvernoteRoute: typeof CompareEvernoteRoute
+  CompareJoplinRoute: typeof CompareJoplinRoute
+  CompareNotionRoute: typeof CompareNotionRoute
+  ComparePaperlessNgxRoute: typeof ComparePaperlessNgxRoute
   EmbedIndexFilesRoute: typeof EmbedIndexFilesRoute
+  CompareIndexRoute: typeof CompareIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -674,6 +739,41 @@ declare module '@tanstack/react-router' {
       path: '/why'
       fullPath: '/why'
       preLoaderRoute: typeof WhyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/compare/': {
+      id: '/compare/'
+      path: '/compare'
+      fullPath: '/compare/'
+      preLoaderRoute: typeof CompareIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/compare/evernote': {
+      id: '/compare/evernote'
+      path: '/compare/evernote'
+      fullPath: '/compare/evernote'
+      preLoaderRoute: typeof CompareEvernoteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/compare/joplin': {
+      id: '/compare/joplin'
+      path: '/compare/joplin'
+      fullPath: '/compare/joplin'
+      preLoaderRoute: typeof CompareJoplinRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/compare/notion': {
+      id: '/compare/notion'
+      path: '/compare/notion'
+      fullPath: '/compare/notion'
+      preLoaderRoute: typeof CompareNotionRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/compare/paperless-ngx': {
+      id: '/compare/paperless-ngx'
+      path: '/compare/paperless-ngx'
+      fullPath: '/compare/paperless-ngx'
+      preLoaderRoute: typeof ComparePaperlessNgxRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/embed/index-files': {
@@ -896,7 +996,12 @@ const rootRouteChildren: RootRouteChildren = {
   TrashRoute: TrashRouteWithChildren,
   TurnstileRoute: TurnstileRoute,
   WhyRoute: WhyRoute,
+  CompareEvernoteRoute: CompareEvernoteRoute,
+  CompareJoplinRoute: CompareJoplinRoute,
+  CompareNotionRoute: CompareNotionRoute,
+  ComparePaperlessNgxRoute: ComparePaperlessNgxRoute,
   EmbedIndexFilesRoute: EmbedIndexFilesRoute,
+  CompareIndexRoute: CompareIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

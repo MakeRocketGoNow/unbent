@@ -137,12 +137,20 @@ run_worker_first = [
   # an instance that is not production, so its icon on a home screen is not mistaken for
   # the real one, and passed through untouched on production. See src/lib/manifest.ts.
   "/manifest.webmanifest",
-  # The story's static copy, which the build writes as why.html and the Worker hands over
-  # with its addresses completed, only on an instance with a front page; and what a
-  # crawler may read here, which an instance with no front page answers with nothing.
+  # The static copies of the story and the comparisons, which the build writes as why.html
+  # and compare*.html and the Worker hands over with their addresses completed, only on an
+  # instance with a front page; and what a crawler may read here, which an instance with
+  # no front page answers with nothing. Each comparison by name rather than `/compare/*`:
+  # a path the Worker is handed first and does not know is Hono's JSON 404, where the
+  # asset layer would give the app's own not-found.
   # See src/lib/front-pages.ts. The front page, pricing and support are the shell, passed
   # through only so the link-preview picture in its head is a whole address.
   "/why",
+  "/compare",
+  "/compare/evernote",
+  "/compare/notion",
+  "/compare/joplin",
+  "/compare/paperless-ngx",
   "/",
   "/pricing",
   "/support",
@@ -213,6 +221,11 @@ run_worker_first = [
   "/ingest/*",
   "/manifest.webmanifest",
   "/why",
+  "/compare",
+  "/compare/evernote",
+  "/compare/notion",
+  "/compare/joplin",
+  "/compare/paperless-ngx",
   "/",
   "/pricing",
   "/support",
@@ -339,6 +352,11 @@ run_worker_first = [
   "/ingest/*",
   "/manifest.webmanifest",
   "/why",
+  "/compare",
+  "/compare/evernote",
+  "/compare/notion",
+  "/compare/joplin",
+  "/compare/paperless-ngx",
   "/",
   "/pricing",
   "/support",
@@ -430,6 +448,11 @@ run_worker_first = [
   "/ingest/*",
   "/manifest.webmanifest",
   "/why",
+  "/compare",
+  "/compare/evernote",
+  "/compare/notion",
+  "/compare/joplin",
+  "/compare/paperless-ngx",
   "/",
   "/pricing",
   "/support",

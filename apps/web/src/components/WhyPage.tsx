@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { Link } from '@tanstack/react-router';
 import { PLAN_PRICE_USD, TRIAL_DAYS } from '@unbent/shared';
 import { useSession } from '../auth-client.js';
-import { HOME, LOGIN } from '../auth-gate.js';
+import { COMPARE, HOME, LOGIN } from '../auth-gate.js';
 import { CARD_IMAGE, usePageMeta, type PageMeta } from '../page-meta.js';
 import { FrontShell, SOURCE_URL } from './FrontPage.js';
 
@@ -182,6 +182,14 @@ export function WhyPage() {
             Notion has the note but, when I looked, did not search inside an attached PDF.
             Obsidian lives on your own device and is not hosted. The Evernote alternative I
             wanted was the one that had just doubled its price.
+          </p>
+          {/* The one way into the comparisons from a page people are sent to: the front
+              page names no one else, so this is where a reader weighing the others goes
+              next, and where a crawler finds them besides the sitemap. */}
+          <p>
+            How Unbent stands beside Evernote, Notion, Joplin and Paperless-ngx today,
+            including what each of them does better, is{' '}
+            <Link to={COMPARE}>How Unbent compares</Link>.
           </p>
         </Chapter>
 

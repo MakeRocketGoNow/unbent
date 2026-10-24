@@ -1646,7 +1646,7 @@
       "apps/web/src/store/files.ts": "a2ccb0a59753100b",
       "apps/web/src/sw-register.ts": "9b9ebc1a468dbabb",
       "apps/web/src/sw/budget.ts": "ce67bb2a4500d8dc",
-      "apps/web/src/sw/routes.ts": "d5d075d240a86082",
+      "apps/web/src/sw/routes.ts": "c8be44b6143c18f0",
       "apps/web/src/sw/sw.ts": "c9a53419b5c03146",
       "apps/web/src/sw/tidy.ts": "7fa8d8ba9aa95696"
     }
