@@ -6,6 +6,14 @@ import type { NotesViewMode } from '../useNotesLayout.js';
 interface NotesViewMenuProps {
   /** The view in effect, not necessarily the stored choice; see `tableDisabledReason`. */
   value: NotesViewMode;
+  /**
+   * The view the URL asks for, which differs from `value` where the table is asked for
+   * and cannot be drawn. A pick is measured against this, not against what is shown:
+   * choosing List over a remembered table drawn as a list must still record List, or
+   * the table comes back in the next notebook against the last choice made. Defaults to
+   * `value`.
+   */
+  requested?: NotesViewMode | undefined;
   onChange: (next: NotesViewMode) => void;
   /**
    * Why the table cannot be chosen here, when it cannot: outside a single notebook there
@@ -44,7 +52,7 @@ const VIEWS: { mode: NotesViewMode; name: string; showing: string; Icon: Compone
  * with no reason reads as broken. It sits with the filter and sort icons because it is,
  * like them, about what is on screen rather than about adding to it.
  */
-export function NotesViewMenu({ value, onChange, tableDisabledReason }: NotesViewMenuProps) {
+export function NotesViewMenu({ value, requested = value, onChange, tableDisabledReason }: NotesViewMenuProps) {
   const current = VIEWS.find((v) => v.mode === value) ?? VIEWS[0]!;
   const items: OverflowItem[] = VIEWS.map(({ mode, name, Icon }) => {
     const unavailable = mode === 'table' ? tableDisabledReason : undefined;
@@ -58,10 +66,10 @@ export function NotesViewMenu({ value, onChange, tableDisabledReason }: NotesVie
       ),
       selected: mode === value,
       disabled: unavailable !== undefined,
-      // Choosing the view already on screen closes the menu and pushes nothing: a history
+      // Choosing the view already asked for closes the menu and pushes nothing: a history
       // entry that changes nothing is a Back press that seems to do nothing.
       onSelect: () => {
-        if (mode !== value) onChange(mode);
+        if (mode !== requested) onChange(mode);
       },
     };
   });

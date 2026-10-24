@@ -1003,6 +1003,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
           view={
             <NotesViewMenu
               value={shownView}
+              requested={view}
               onChange={chooseView}
               tableDisabledReason={
                 isMobile

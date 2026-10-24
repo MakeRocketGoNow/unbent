@@ -43,6 +43,24 @@ describe('NotesViewMenu', () => {
     expect(onChange).toHaveBeenCalledWith('cards');
   });
 
+  /* A remembered table drawn as a list outside a notebook: List is ticked, and picking it
+     must still record List, or the table comes back in the next notebook. */
+  it('records the view picked when it is shown but another was asked for', () => {
+    const onChange = vi.fn();
+    render(
+      <NotesViewMenu
+        value="list"
+        requested="table"
+        onChange={onChange}
+        tableDisabledReason="Choose a notebook to see its fields as columns"
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Showing as a list' }));
+    expect(screen.getByRole('button', { name: 'List' }).getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(screen.getByRole('button', { name: 'List' }));
+    expect(onChange).toHaveBeenCalledWith('list');
+  });
+
   /* Outside a notebook the table is offered but cannot be chosen, and says why under its
      name, visibly: a faded item with no reason reads as broken, and a phone has no
      tooltip to put one in. The cards stay on offer. */
