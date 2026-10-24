@@ -226,8 +226,8 @@ export interface ImportOptions {
   /**
    * Applied to every note as the notebook column, not a tag.
    *
-   * For an ENEX file this replaces the filename; for an Unbent export it replaces the
-   * notebook each note names for itself.
+   * For an ENEX file this replaces the filename; for an Unbent or Joplin export it
+   * replaces the notebook each note names for itself.
    */
   notebookTag?: string;
   /**

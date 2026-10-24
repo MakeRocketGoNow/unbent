@@ -37,9 +37,11 @@ export function describeImportFile(name: string, kind: ZipKind = 'reading'): Imp
               ? 'Unbent export. Each note keeps its own notebook, tags, dates, fields and files.'
               : 'Reading the zip…',
       };
+    case 'jex':
+      return { format, text: 'Joplin export. Each note keeps its notebook, tags, dates and attachments.' };
     case 'markdown':
       return { format, text: 'One Unbent note.' };
     default:
-      return { format, text: 'Not a file this can import. Choose an .enex, .zip or .md file, or PDFs and images.' };
+      return { format, text: 'Not a file this can import. Choose an .enex, .jex, .zip or .md file, or PDFs and images.' };
   }
 }

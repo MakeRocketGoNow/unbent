@@ -48,9 +48,10 @@ letters once and recycle the paper.
   month, warranties by when they run out.
 - **Works with your AI assistant, and is off until you say so.** Unbent is a full MCP
   server, and never sends your notes to a model on its own. [Below](#works-with-your-ai-assistant).
-- **Imports from Evernote and Notion.** An ENEX export goes in whole, from the browser, and
-  an interrupted import picks up where it stopped. Notion's Markdown and CSV export goes in
-  the same way, each database becoming a notebook with its columns as fields.
+- **Imports from Evernote, Notion and Joplin.** An ENEX export goes in whole, from the
+  browser, and an interrupted import picks up where it stopped. Notion's Markdown and CSV
+  export goes in the same way, each database becoming a notebook with its columns as fields,
+  and so does Joplin's JEX, with its notebooks, tags, dates and attachments.
 - **Exports everything, any time.** A zip of one folder per note, with its files beside it,
   that any computer opens with nothing from us installed and any Unbent reads back in. It is
   [your own backup](docs/backups.md), and the way out.

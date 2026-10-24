@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { configQuery } from '../queries.js';
 import { useSession } from '../auth-client.js';
 import { HOME, LOGIN, SUPPORT, WHY } from '../auth-gate.js';
-import { EnexHelp, NotionHelp } from './ImportHelp.js';
+import { EnexHelp, JoplinHelp, NotionHelp } from './ImportHelp.js';
 import { LegalLink } from './LegalLink.js';
 import { ProviderIcon } from './provider-icons.js';
 import { BASE_STORAGE_GB, PLAN_PRICE_USD, STORAGE_ADDON_GB, STORAGE_ADDON_PRICE_USD, TRIAL_DAYS } from '@unbent/shared';
@@ -184,7 +184,8 @@ export function FrontPage() {
         title="Bring what you have"
         intro="Leaving should be easy, and staying should never depend on it being hard: that goes for the app you are leaving, too."
       >
-        <div className="front-grid">
+        {/* Four cards, so two by two: three across left "Start empty" alone on a row. */}
+        <div className="front-grid front-grid-pairs">
           <Point title="From Evernote" help={<EnexHelp />}>
             Import an .enex export. Each file becomes a notebook, and every note keeps its
             tags, dates and attachments.
@@ -192,6 +193,10 @@ export function FrontPage() {
           <Point title="From Notion" help={<NotionHelp />}>
             Import a Markdown &amp; CSV export. Each database becomes a notebook, with its
             columns as the notebook&apos;s fields.
+          </Point>
+          <Point title="From Joplin" help={<JoplinHelp />}>
+            Import a JEX export. Every note keeps its notebook, tags, dates and attachments,
+            and links between notes still work.
           </Point>
           <Point title="Start empty">
             Nothing to bring? Sign in and write. Notebooks, tags and fields can come later, or

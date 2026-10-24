@@ -5,6 +5,7 @@ import {
   importArchive,
   importEnex,
   importFormat,
+  importJoplin,
   importNotion,
   type ImportClient,
   type ImportFailure,
@@ -27,9 +28,9 @@ import {
  * UI with no progress and no way to cancel. The worker also owns the fetch calls, so
  * uploads do not compete with rendering.
  *
- * Three formats arrive here (Evernote's ENEX, this app's own export, and Notion's), and
- * they share everything past the reader: the same client below, the same progress, the
- * same events. A zip is one of the last two, and only its entries say which, so a picked
+ * Four formats arrive here (Evernote's ENEX, Joplin's JEX, this app's own export and
+ * Notion's), and they share everything past the reader: the same client below, the same
+ * progress, the same events. A zip is one of the last two, and only its entries say which, so a picked
  * zip is described first: the panel learns whether it is Notion's and, if so, what it
  * holds, before Start is pressed.
  *
@@ -185,7 +186,7 @@ async function handle(request: Exclude<ImportRequest, { type: 'abort' }>): Promi
   const format = importFormat(file.name);
   if (format === null) {
     // The picker already refuses these; this is the message for a caller that did not ask.
-    post({ type: 'error', message: 'Choose an .enex, .zip or .md file.' });
+    post({ type: 'error', message: 'Choose an .enex, .jex, .zip or .md file.' });
     return;
   }
 
@@ -202,6 +203,9 @@ async function handle(request: Exclude<ImportRequest, { type: 'abort' }>): Promi
     let progress: ImportProgress;
     if (format === 'enex') {
       progress = await importEnex({ name: file.name, stream: () => file.stream() }, client, options);
+    } else if (format === 'jex') {
+      // A tar, read by byte range like a zip: the File is never copied whole.
+      progress = await importJoplin({ name: file.name, blob: file }, client, options);
     } else if (format === 'zip' && (await detectArchiveKind(file)) === 'notion') {
       // The panel's choices, or everything when it made none.
       progress = await importNotion({ name: file.name, blob: file }, client, {
