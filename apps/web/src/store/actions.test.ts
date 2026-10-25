@@ -667,12 +667,6 @@ describe('a replayed write', () => {
   });
 
   /**
-   * The store's refusal is kept beside the outbox, so a reload starts out knowing it
-   * (MAK-234): a purge made before the kept save is sent again goes round it rather than
-   * behind it. And an outbox opened while the last account's refusal is still in memory
-   * starts, rather than calling its listener before its storage exists.
-   */
-  /**
    * Whether the account was last read as on the free plan is kept beside the outbox, so
    * a page that opens offline, or whose read of the plan fails, still counts its notes
    * before it makes one; this page's own read replaces it, and a read that says otherwise
@@ -723,6 +717,12 @@ describe('a replayed write', () => {
     await after.dispose();
   });
 
+  /**
+   * The store's refusal is kept beside the outbox, so a reload starts out knowing it
+   * (MAK-234): a purge made before the kept save is sent again goes round it rather than
+   * behind it. And an outbox opened while the last account's refusal is still in memory
+   * starts, rather than calling its listener before its storage exists.
+   */
   it('keeps the store\u2019s refusal across a reload, and forgets it once the save has gone', async () => {
     const { lib, fake, note } = library([row('n1', { title: 'old' })]);
     const base = note('n1');
