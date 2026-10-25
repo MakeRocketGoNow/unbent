@@ -117,7 +117,7 @@ export function planInactiveMessage(held?: HeldCounts): string {
 }
 
 /** Bytes as the plan's sentences say them: whole megabytes under a gigabyte, one decimal above. */
-function heldBytes(bytes: number): string {
+export function heldBytes(bytes: number): string {
   return bytes >= GB ? `${(bytes / GB).toFixed(1)} GB` : `${Math.round(bytes / (1024 * 1024))} MB`;
 }
 
