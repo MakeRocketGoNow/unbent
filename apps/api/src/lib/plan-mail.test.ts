@@ -148,8 +148,11 @@ describe('the lapse mail', () => {
     expect(await notifyLapsedPlans({ ...stripe, ...fakeStores({}), DB: fresh.db }, 10 * day + 1000)).toEqual({ told: 0, subrequests: 2 });
     expect(fresh.ran).toHaveLength(1);
     // A day after it could first be due (its end and the renewal's grace) it still waits.
-    const renewing = fakeDb([{ user_id: 'gone', plan: 'active', plan_until: 10 * day, source: 'stripe', billing_status: 'active', email: 'a@example.com' }]);
+    const renewing = fakeDb([{ user_id: 'gone', plan: 'active', plan_until: 10 * day, source: 'stripe', billing_status: 'active', billing_cancels_at: null, email: 'a@example.com' }]);
     expect(await notifyLapsedPlans({ ...stripe, ...fakeStores({}), DB: renewing.db }, 11 * day + 1000)).toEqual({ told: 0, subrequests: 2 });
+    // A cancelling one was due at its end, as the query has it, so its day is up.
+    const cancelling = fakeDb([{ user_id: 'gone', plan: 'active', plan_until: 10 * day, source: 'stripe', billing_status: 'active', billing_cancels_at: 10 * day, email: 'a@example.com' }]);
+    expect(await notifyLapsedPlans({ ...stripe, ...fakeStores({}), DB: cancelling.db }, 11 * day + 1000)).toEqual({ told: 1, subrequests: 4 });
     // A trial is due at its end, so its day is counted from there.
     const stale = fakeDb([{ user_id: 'gone', plan: 'trial', plan_until: 10 * day, source: null, email: 'a@example.com' }]);
     expect(await notifyLapsedPlans({ ...stripe, ...fakeStores({}), DB: stale.db }, 11 * day + 1000)).toEqual({ told: 1, subrequests: 4 });

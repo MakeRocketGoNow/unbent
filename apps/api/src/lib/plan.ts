@@ -369,7 +369,7 @@ export async function updatePlan(db: D1Database, userId: string, patch: PlanPatc
  * `migrations.test.ts` ran the statement against real rows. Binds: now, the most to
  * take, and now less the grace.
  */
-export const LAPSE_DUE_SQL = `SELECT p.user_id, p.plan, p.plan_until, p.source, p.billing_status, u.email
+export const LAPSE_DUE_SQL = `SELECT p.user_id, p.plan, p.plan_until, p.source, p.billing_status, p.billing_cancels_at, u.email
     FROM account_plan p JOIN user u ON u.id = p.user_id
    WHERE p.lapse_notified_at IS NULL AND p.plan_until IS NOT NULL AND p.plan <> 'inactive'
      AND p.plan_until <= ?1

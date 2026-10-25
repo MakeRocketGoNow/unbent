@@ -73,6 +73,7 @@ interface DueRow {
   plan_until: number;
   source: PlanSource | null;
   billing_status: string | null;
+  billing_cancels_at: number | null;
   email: string;
 }
 
@@ -183,9 +184,9 @@ export async function notifyLapsedPlans(
       // From when it could first have been due, not from the end: a renewing
       // subscription is due only once its renewal's grace is up as well (`LAPSE_DUE_SQL`),
       // and measured from the end its day would be over before its first attempt. Only
-      // that row waits out the grace; a cancelling one, which the row does not tell
-      // apart here, waits a day more than it need, which is the safe side.
-      const renewing = row.source === 'stripe' && row.billing_status === 'active';
+      // that row waits out the grace: the query's own rule for a renewing subscription,
+      // so the two cannot disagree about which rows it held back.
+      const renewing = row.source === 'stripe' && row.billing_status === 'active' && row.billing_cancels_at === null;
       if (now - row.plan_until < LAPSE_UNREAD_DEFER_MS + (renewing ? RENEWAL_GRACE_MS : 0)) {
         console.error(`[billing] lapse mail for user=${row.user_id} waits: its store could not say what it holds:`, (err as Error).message);
         continue;
