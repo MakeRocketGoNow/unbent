@@ -1,4 +1,14 @@
-import { BASE_STORAGE_GB, TRIAL_DAYS, type AccountPlan, type PlanSource, type PlanState } from '@unbent/shared';
+import {
+  BASE_STORAGE_GB,
+  FREE_STORAGE_GB,
+  TRIAL_DAYS,
+  fitsFree,
+  type AccountPlan,
+  type AccountState,
+  type HeldCounts,
+  type PlanSource,
+  type PlanState,
+} from '@unbent/shared';
 
 /**
  * The plan an account is on (MAK-108): the `account_plan` row (migration 0045, its
@@ -129,19 +139,46 @@ export function lapsed(row: PlanRow | null, now: number): boolean {
   return planStateOf(row, now) === 'inactive';
 }
 
-/** The row as the Plan page reads it. `usedBytes` is the store's and added by the route. */
-export function accountPlanOf(row: PlanRow, now: number): AccountPlan {
+/**
+ * The gigabytes of files the account may hold: its plan's, or the free plan's while no
+ * plan holds, so a free account's uploads stop at its gigabyte with the same refusal a
+ * full paid plan's do, and its store's room follows from that as every account's does
+ * (`quotaOf`). An account that lapsed holding more is past the free plan and read-only
+ * besides.
+ */
+export function storageGbOf(row: PlanRow, now: number): number {
+  return lapsed(row, now) ? FREE_STORAGE_GB : row.storageGb;
+}
+
+/**
+ * What the account is (`AccountState`): the row's state, with a lapsed row read against
+ * what the account holds, which the store answers (`usage`). A lapsed row with nothing
+ * held to read it against is `inactive`, the row's own word: a caller that has the row
+ * of a lapsed account and wants to tell free from read-only asks the store first.
+ */
+export function accountStateOf(row: PlanRow, now: number, held?: HeldCounts): AccountState {
   const state = planStateOf(row, now);
+  return state === 'inactive' && held && fitsFree(held) ? 'free' : state;
+}
+
+/**
+ * The row as the Plan page reads it, given what the account holds where the caller has
+ * it (a lapsed row needs it to be told free from read-only; see `accountStateOf`). The
+ * figures themselves are the store's and added by the route.
+ */
+export function accountPlanOf(row: PlanRow, now: number, held?: HeldCounts): AccountPlan {
+  const state = accountStateOf(row, now, held);
   const subscription = row.source === 'stripe' && row.subscriptionStatus;
   return {
     state,
     until: row.planUntil,
-    // By the row's word when it says inactive (the operator's end, dated now) and
-    // otherwise where the end falls, which for a renewing subscription whose grace ran
-    // out is the grace's end, the instant it did turn read-only.
-    readOnlyAt: row.plan === 'inactive' ? row.planUntil : readOnlyAtOf(row),
+    // A free account turns read-only at no instant, only by what it holds, so it has
+    // none to lock at. Otherwise by the row's word when it says inactive (the operator's
+    // end, dated now) and where the end falls, which for a renewing subscription whose
+    // grace ran out is the grace's end, the instant it did turn read-only.
+    readOnlyAt: state === 'free' ? null : row.plan === 'inactive' ? row.planUntil : readOnlyAtOf(row),
     source: row.source,
-    storageGb: row.storageGb,
+    storageGb: storageGbOf(row, now),
     subscription: subscription
       ? {
           status: row.subscriptionStatus!,

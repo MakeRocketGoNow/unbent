@@ -1,8 +1,8 @@
-import { FREE_STORAGE_GB, GB, STORAGE_FULL_CODE, storageQuotaBytes, storeLimitBytes } from '@unbent/shared';
+import { GB, STORAGE_FULL_CODE, storageQuotaBytes, storeLimitBytes } from '@unbent/shared';
 import type { AttachmentsRepo } from './attachments-repo.js';
 import { freeLimitsOf } from './free-plan.js';
 import { billingOn, type StripeEnv } from './stripe.js';
-import { lapsed, planFor, type PlanRow } from './plan.js';
+import { planFor, storageGbOf, type PlanRow } from './plan.js';
 import type { WriteLimits } from '../store/user-store.js';
 
 /**
@@ -96,26 +96,16 @@ export async function writeLimitsFor(env: StripeEnv, db: D1Database, userId: str
   return writeLimitsOf(env, await planFor(db, userId));
 }
 
-/**
- * The gigabytes of files the account may hold: its plan's, or the free plan's while no
- * plan holds, so a free account's uploads stop at its gigabyte with the same refusal a
- * full paid plan's do, and its store's room follows from that as every account's does.
- * An account that lapsed holding more is past the free plan and read-only besides.
- */
-export function storageGbOf(plan: PlanRow, now = Date.now()): number {
-  return lapsed(plan, now) ? FREE_STORAGE_GB : plan.storageGb;
-}
-
 /** The account's quota in bytes, or null for none: billing off. */
 export function quotaOf(env: StripeEnv, plan: PlanRow | undefined): number | null {
   if (!billingOn(env) || !plan) return null;
-  return storageQuotaBytes(storageGbOf(plan));
+  return storageQuotaBytes(storageGbOf(plan, Date.now()));
 }
 
 /** The same, read from the database, for a caller without the row on its context. */
 export async function quotaFor(env: StripeEnv, db: D1Database, userId: string): Promise<number | null> {
   if (!billingOn(env)) return null;
-  return storageQuotaBytes(storageGbOf(await planFor(db, userId)));
+  return storageQuotaBytes(storageGbOf(await planFor(db, userId), Date.now()));
 }
 
 /**
