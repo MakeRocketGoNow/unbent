@@ -45,7 +45,8 @@ letters once and recycle the paper.
   shop. [Search](docs/search.md).
 - **Notebooks that work like a spreadsheet.** A notebook can carry typed fields (dates,
   amounts, selects, ratings), be seen as a table and filtered by any of them. Receipts by
-  month, warranties by when they run out.
+  month, warranties by when they run out, and a list worth coming back to is saved under
+  its notebook as a [view](docs/search.md#saved-views).
 - **Works with your AI assistant, and is off until you say so.** Unbent is a full MCP
   server, and never sends your notes to a model on its own. [Below](#works-with-your-ai-assistant).
 - **Imports from Evernote, Notion and Joplin.** An ENEX export goes in whole, from the
