@@ -7499,6 +7499,39 @@ button.settings-nav-item {
   gap: 0.1rem;
 }
 
+/*
+   A notebook's saved views, under its row while it is where you are (`NotebookNav`).
+
+   Indented by the notebook row's glyph and the gap after it, so each view's bookmark
+   stands under the first letter of the notebook's name: the rows read as belonging to
+   the one above, the way a folder's contents do in every sidebar, without a chevron or
+   a rule to say so. The row itself is indented (a margin), not only its contents, so the
+   pill starts at the indent too: drawn across the full column, the current view's fill
+   ran out under the notebook's glyph and read as a row of the notebooks' own level. The
+   margin is the notebook's glyph and gap: both rows keep the same padding, so that is
+   what puts one's bookmark under the other's name. `1.15em` is `RowIcon`'s size and
+   `0.9rem` the row's gap; the rail's denser gap is restated beside the rail's own rows.
+*/
+.drawer-views {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.drawer-view {
+  width: auto;
+  margin-left: calc(1.15em + 0.9rem);
+}
+
+/*
+   The notebook whose view is open. Not `current`, since one place is current at a time
+   and that is the view, but its words and its book take the current row's weight and ink,
+   so the pair reads as one place with the fill on the part that is on screen. Left as a
+   plain row, the notebook read as somewhere else entirely, one row above where you are.
+*/
+.drawer-parent { font-weight: 500; }
+.drawer-parent > svg { color: var(--fg); }
+
 /* A link, drawn as a word rather than a row: it leaves the drawer for the settings page. */
 .drawer-section-action {
   padding: 0.3rem 0.4rem;
@@ -7680,6 +7713,11 @@ button.settings-nav-item {
     min-height: 2.25rem;
     gap: 0.7rem;
   }
+
+  /* The views' indent at the rail's gap: see `.drawer-view`. */
+  .rail .drawer-view {
+    margin-left: calc(1.15em + 0.7rem);
+  }
 }
 
 @media (860px < width < 1200px) {
@@ -7736,6 +7774,7 @@ button.settings-nav-item {
     .drawer-place-notebook,
     .drawer-new,
     .drawer-tags,
+    .drawer-views,
     .drawer-list > .drawer-rule,
     .rail-wordmark
   ) { display: none; }

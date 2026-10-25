@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Link, useRouterState, useSearch } from '@tanstack/react-router';
 import { AccountMenu } from './AccountMenu.js';
 import { InstanceRibbon } from './InstanceRibbon.js';
-import { notebooksQuery, tagsQuery, trashCountQuery } from '../queries.js';
+import { notebooksQuery, tagsQuery, trashCountQuery, viewsQuery } from '../queries.js';
 import { useMediaQuery, prefersReducedMotion, RAIL_SLIDE_QUERY, RAIL_WIDE_QUERY } from '../useMediaQuery.js';
 import { NotebookNav, type NavPlace } from './NotebookNav.js';
 import { ResizeHandle } from './ResizeHandle.js';
@@ -100,6 +100,7 @@ export function Rail({ pref, onPref, email, onSignOut }: RailProps) {
   const notebooks = useQuery(notebooksQuery());
   const trashCount = useQuery(trashCountQuery());
   const tags = useQuery(tagsQuery());
+  const views = useQuery(viewsQuery());
   /*
    * The notes' search params, from wherever the rail is standing. `/notes` is the only
    * route that validates them; from the trash or settings there is no such match and this
@@ -172,6 +173,8 @@ export function Rail({ pref, onPref, email, onSignOut }: RailProps) {
           notebooks={notebooks}
           trashed={trashCount.data ?? 0}
           tags={tags.data ?? []}
+          views={views.data}
+          saved={search?.saved}
           labelsHidden={!open}
           footer={<AccountMenu email={email} onSignOut={onSignOut} withAddress />}
         />

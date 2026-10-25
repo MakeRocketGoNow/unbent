@@ -50,6 +50,8 @@ function harness(props: Partial<Parameters<typeof NotebookDrawer>[0]> = {}) {
     notebooks: NOTEBOOKS,
     trashed: 1,
     tags: [{ name: 'Receipt', count: 3 }],
+    views: [],
+    saved: undefined,
     email: 'someone@example.com',
     onSignOut: () => {},
     ...props,

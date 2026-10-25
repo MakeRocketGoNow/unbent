@@ -15,6 +15,7 @@ import {
   trashCountQuery,
   invalidateNoteMembership,
   configQuery,
+  viewsQuery,
 } from '../queries.js';
 import { useNotesLayout, type NotesViewMode } from '../useNotesLayout.js';
 import { ResizeHandle } from './ResizeHandle.js';
@@ -102,6 +103,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
     from,
     to,
     new: asked,
+    saved,
   } = useSearch({ from: '/notes' });
   /** The tag filter as a list, so the sidebar never has to care that it may be absent. */
   const selectedTags = tag ?? [];
@@ -172,6 +174,8 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   const tags = useQuery(tagsQuery());
   const tagColor = useTagColors();
   const notebooks = useQuery(notebooksQuery());
+  /** Every saved view: the drawer lists them, and the heading names the open one. */
+  const views = useQuery(viewsQuery());
   /*
    * The selected notebook's field definitions, which name the field chips and are what
    * the sheet's Fields page offers. Field definitions belong to a notebook, so with no
@@ -1134,6 +1138,8 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
             notebooks={notebooks}
             trashed={trashed}
             tags={tags.data ?? []}
+            views={views.data}
+            saved={saved}
             email={session?.user.email ?? ''}
             onSignOut={signOutAndLeave}
           />
