@@ -1,6 +1,6 @@
 import { IndexedDBAdapter, NonRetriableError, startOfflineExecutor, type OfflineExecutor, type OnlineDetector, type StorageAdapter } from '@tanstack/offline-transactions';
 import type { Transaction } from '@tanstack/db';
-import { FREE_NOTES_FULL_CODE, MAX_ATTACHMENT_BYTES, PLAN_INACTIVE_CODE, STORAGE_FULL_CODE, filenameSchema, foldNoCase, type FeedNote, type FieldDef, type FieldValue, type Note, type NoteFieldValue, type NotebookDefinition, type RestoredNote } from '@unbent/shared';
+import { FREE_NOTES, FREE_NOTES_FULL_CODE, MAX_ATTACHMENT_BYTES, PLAN_INACTIVE_CODE, STORAGE_FULL_CODE, filenameSchema, foldNoCase, type FeedNote, type FieldDef, type FieldValue, type Note, type NoteFieldValue, type NotebookDefinition, type RestoredNote } from '@unbent/shared';
 import * as api from '../notes-api.js';
 import { ApiError, errorText, isNoteChanged, isOfflineError, NoteChangedError } from '../notes-api.js';
 import { offlineNow, recheck, subscribeConnectivity } from '../connectivity.js';
@@ -11,7 +11,8 @@ import { askToPersist, filesSupported, readFile, removeFile, writeFile } from '.
 import { FILES_CACHE, FILES_CHANGED, MAX_KEPT_FILE } from '../sw/routes.js';
 import { isWhole, refusedForGood, type FeedEngine } from './feed.js';
 import { CallUnsettledError, LibraryMovedError, SEND_ONCE } from './client-library.js';
-import { onPlanActive, planAccepted, planFreed, planHeld, planLapsed, planRefused } from '../plan-refused.js';
+import { onPlanActive, planAccepted, planFree, planFreed, planHeld, planLapsed, planRefused } from '../plan-refused.js';
+import { FreeNotesFullError } from '../free-notes.js';
 import { onStoreFreed, onStoreFull, storeAccepted, storeFreed, storeFull, storeFullMessage, storeRefused } from '../store-full.js';
 import { behindDeploy, heldForReload, onCaughtUp } from '../update-notice.js';
 import { outboxLeaderName, outboxName } from './names.js';
@@ -306,13 +307,17 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
    * entry as a lapsed plan's do.
    *
    * The free plan's count (`FREE_NOTES_FULL`, 2026-10-24) is kept the same way and goes
-   * the same way: a note made on a free account that already holds its hundred, offline
-   * or from a tab that had not heard, is the person's writing, the answer changes the
-   * moment they delete something for good or subscribe, and ending it would delete the
-   * note. Its sentence goes to the strip by the same path, since it is the same kind of
-   * refusal (room the plan does not have) with the same way out (a purge, an emptied
-   * trash). The kept entry is a create, which the server does not hold, so nothing of the
-   * store's purge-round-the-queue applies to it (`roundTheQueue`).
+   * the same way: a note made on a free account that already holds its hundred is the
+   * person's writing, the answer changes the moment they delete something for good or
+   * subscribe, and ending it would delete the note. Its sentence goes to the strip by the
+   * same path, since it is the same kind of refusal (room the plan does not have) with the
+   * same way out (a purge, an emptied trash). The kept entry is a create, which the
+   * server does not hold, so nothing of the store's purge-round-the-queue applies to it
+   * (`roundTheQueue`). Unlike the store's refusal, it holds back saves the server would
+   * take, since the queue runs in order; which is why the actions refuse such a note on
+   * the device before it is queued (`roomForNotes`), and this is only for what the
+   * device could not see: a note made on another device a moment ago, or a count read
+   * before the copy was whole.
    *
    * And any 4xx is kept while this page is behind the deploy (`behindDeploy`): a build
    * that cannot run beside the server's, which has already asked the person to reload
@@ -1514,16 +1519,37 @@ export async function saveNote(input: Save): Promise<'queued' | 'unchanged' | No
 }
 
 /**
+ * Refuses a note the free plan has no room for, before it is queued: when the plan was
+ * last read as `free` and the library holds `FREE_NOTES` notes, live and trashed
+ * together, already. In the tab that holds the outbox, since that is where a note is
+ * queued; a client's call is run there (`forwardable`) and the refusal comes back by its
+ * name (`isFreeNotesFull`). A note made as a request, with no library to queue in, is
+ * the server's to refuse. Nothing is counted on any other plan.
+ *
+ * The server's count is the rule and this is the courtesy, but it is also what keeps the
+ * outbox moving: a create the server refuses is kept at the head of a queue that replays
+ * in order, and every save behind it waits (`refusal`). A copy that is not whole yet
+ * counts short and lets the note through, for the server to decide.
+ */
+function roomForNotes(lib: WritableLibrary, adding = 1): void {
+  if (!planFree()) return;
+  const held = lib.notes.size;
+  if (held + adding > FREE_NOTES) throw new FreeNotesFullError(held, adding);
+}
+
+/**
  * Makes a note, with an id minted here, and answers with it at once. The id is minted
  * before the write is sent anywhere and travels with it, so a write that runs twice
  * (sent to the holder and run here after the library moved, or as a request after a
- * holder answered nothing) makes one note (`createOrFind` on the server).
+ * holder answered nothing) makes one note (`createOrFind` on the server). On a free
+ * account at its count it is refused here instead (`roomForNotes`).
  */
 export async function createNote(input: { title: string; body: string; tags: string[]; notebook: string | null }, id: string = crypto.randomUUID()): Promise<Note> {
   const far = await away();
   if (far) return far('createNote', [input, id], { ids: [], refiles: true });
   const lib = await queueable();
   if (!lib) return pulled(api.createNote({ ...input, id }), { ids: [], refiles: true });
+  roomForNotes(lib);
   const now = Date.now();
   const row: LocalNote = { id, title: input.title, body: input.body, createdAt: now, updatedAt: now, tagIds: [], tagNames: input.tags, notebookId: null, notebookName: input.notebook, files: [] };
   queue(lib, 'createNote', { id, ...input }, () => {
@@ -1549,6 +1575,7 @@ export async function duplicateNote(sourceId: string, copyId: string = crypto.ra
   if (!lib) return direct();
   const source = lib.notes.get(sourceId);
   if (!source) return direct();
+  roomForNotes(lib);
   const now = Date.now();
   queue(lib, 'duplicateNote', { sourceId, copyId }, () => {
     lib.notes.insert({ ...source, id: copyId, createdAt: now, updatedAt: now, files: [] });

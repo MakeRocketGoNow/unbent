@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { Link, useNavigate, useSearch } from '@tanstack/react-router';
 import { useQuery, useInfiniteQuery, useQueryClient, useMutation } from '@tanstack/react-query';
-import { DEFAULT_NOTE_SORT, FREE_NOTES, UNFILED, type FieldDef, type FieldValue } from '@unbent/shared';
+import { DEFAULT_NOTE_SORT, UNFILED, type FieldDef, type FieldValue } from '@unbent/shared';
 import * as api from '../notes-api.js';
 import * as actions from '../store/actions.js';
 import { isOfflineError } from '../notes-api.js';
@@ -34,8 +34,7 @@ import { countMenuItems, offersCountMenu } from './count-menu.js';
 import { startExport, useExportRunning } from '../export-archive.js';
 import { useOffline } from '../connectivity.js';
 import { usePlan } from '../use-plan.js';
-import { useFreeNotesFull } from '../use-free-plan.js';
-import { Snackbar } from './Snackbar.js';
+import { FreeNotesNotice } from './FreeNotesNotice.js';
 import { TagPicker } from './TagPicker.js';
 import { FilterRow } from './FilterRow.js';
 import { DatePicker } from './DatePicker.js';
@@ -909,23 +908,12 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
     notebook: notebook === UNFILED || notebookMissing ? null : (notebook ?? null),
   };
   /**
-   * The New button and the phone's +. Carries the active filter onto the new note.
-   *
-   * On a free account that holds the free plan's count already, New says so instead
-   * (`useFreeNotesFull`): a note made here would only wait in the outbox for the server
-   * to refuse it, saying "Not synced" over the very note the person just started typing
-   * in. Pressable rather than disabled, so the reason reaches a phone, where a disabled
-   * floating + would say nothing at all and a tip is never drawn on touch.
+   * The New button and the phone's +. Carries the active filter onto the new note. On a
+   * free account at the free plan's count the action refuses before it makes anything
+   * and `FreeNotesNotice` says so; pressable rather than disabled, so the reason reaches
+   * a phone, where a disabled floating + would say nothing and a tip is never drawn.
    */
-  const freeFull = useFreeNotesFull();
-  const [freeNotice, setFreeNotice] = useState(false);
-  const newNote = () => {
-    if (freeFull !== null) {
-      setFreeNotice(true);
-      return Promise.resolve(false);
-    }
-    return createNote(filing);
-  };
+  const newNote = () => createNote(filing);
 
   /*
    * Files let go on the list become one note each, filed as New would file them (see
@@ -1566,17 +1554,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
       {/* The routed workspace hears how many rows the column holds; see `ListRowsContext`. */}
       <ListRowsContext.Provider value={list.isPending || stale ? null : notes.length}>{children}</ListRowsContext.Provider>
 
-      {/* Short, as a snackbar is: the count and the two ways out, and the Plan page for
-          the rest, where the meters are. Not an error's red: nothing failed. */}
-      {freeNotice && (
-        <Snackbar
-          message={`The free plan holds ${FREE_NOTES} notes, counting the trash. Delete some and empty the trash, or subscribe for unlimited notes.`}
-          tone="info"
-          link={{ label: 'Plan', to: '/settings/plan' }}
-          duration={10_000}
-          onDismiss={() => setFreeNotice(false)}
-        />
-      )}
+      <FreeNotesNotice />
     </div>
   );
 }

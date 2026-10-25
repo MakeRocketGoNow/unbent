@@ -32,6 +32,12 @@ let lapsed = false;
 let toldAt = 0;
 /** The plan as the page last read it: true once it said inactive, false once it said otherwise. */
 let knownInactive = false;
+/**
+ * And whether it said `free`, for the free plan's count, which the actions check on the
+ * device before they make a note (`roomForNotes` in store/actions.ts). False until the
+ * plan has been read: a guess would refuse a trial's notes.
+ */
+let knownFree = false;
 
 /** How long a refusal's word is kept to itself before the listeners hear it again. */
 export const REFUSAL_TELL_MS = 60_000;
@@ -63,12 +69,18 @@ export function planLapsed(): boolean {
  * changes. Inactive holds the kept entry back from the wire; active again lets it go,
  * at once.
  */
-export function planIs(inactive: boolean): void {
+export function planIs(inactive: boolean, free = false): void {
+  knownFree = free;
   const was = knownInactive;
   knownInactive = inactive;
   if (inactive || !(was || lapsed)) return;
   lapsed = false;
   for (const listener of activeListeners) listener();
+}
+
+/** Whether the plan was last read as `free`: on the free plan, and under its limits then. */
+export function planFree(): boolean {
+  return knownFree;
 }
 
 /** Whether the kept entry should wait rather than be sent: the plan was read, and said inactive. */
@@ -105,6 +117,7 @@ export function onPlanFreed(listener: () => void): () => void {
 export function resetPlanRefused(): void {
   lapsed = false;
   knownInactive = false;
+  knownFree = false;
   toldAt = 0;
   listeners.clear();
   activeListeners.clear();

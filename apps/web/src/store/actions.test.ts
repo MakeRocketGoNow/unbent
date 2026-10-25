@@ -623,6 +623,27 @@ describe('a replayed write', () => {
   });
 
   /**
+   * On a free account at the free plan's count, a note is refused on the device before it
+   * is queued: a create the server refused would sit at the head of the queue and hold
+   * back every save behind it. Counted live and trashed together; nothing is counted on
+   * any other plan.
+   */
+  it('refuses a new note or a copy on the free plan at its count before queueing it, and only there', async () => {
+    const hundred = Array.from({ length: 100 }, (_, i) => row(`n${i}`, i < 3 ? { deletedAt: 5 } : {}));
+    const { fake } = library(hundred);
+    planIs(false, true);
+    await expect(actions.createNote({ title: 'One too many', body: '', tags: [], notebook: null })).rejects.toMatchObject({ name: 'FreeNotesFullError', held: 100 });
+    await expect(actions.duplicateNote('n10')).rejects.toMatchObject({ name: 'FreeNotesFullError', held: 100 });
+    await tick();
+    expect(fake.queue).toHaveLength(0);
+    // A trial, or a plan that holds, counts nothing.
+    planIs(false, false);
+    await actions.createNote({ title: 'On a plan', body: '', tags: [], notebook: null });
+    await tick();
+    expect(fake.queue.map((e) => e.mutationFnName)).toEqual(['createNote']);
+  });
+
+  /**
    * A note made on a free account that already holds the free plan's hundred (2026-10-24)
    * is kept the same way, by the same path: the note is the person's writing, the answer
    * changes once something is deleted for good, and its sentence goes to the strip.

@@ -67,9 +67,11 @@ export function usePlanRefresh(): void {
   // The outbox holds a refused write back while this says inactive, and replays it the
   // moment it says otherwise; see `planIs`. Only once the plan has been read: an answer
   // still on its way is not a plan that is active.
+  // And whether it is on the free plan, for its count (`roomForNotes` in the actions).
+  const free = plan?.state === 'free';
   useEffect(() => {
-    if (plan !== undefined) planIs(inactive);
-  }, [plan, inactive]);
+    if (plan !== undefined) planIs(inactive, free);
+  }, [plan, inactive, free]);
   // The latest boundary passed, so each one passing is one read and a second render at
   // the same moment is none.
   const passed = boundariesOf(plan).filter((t) => t <= now).reduce<number | null>((last, t) => (last === null || t > last ? t : last), null);

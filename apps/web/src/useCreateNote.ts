@@ -4,6 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import * as actions from './store/actions.js';
 import { invalidateNoteMembership } from './queries.js';
 import { markNewNote } from './useNewNote.js';
+import { isFreeNotesFull, showFreeNotesFull } from './free-notes.js';
 
 /** What a control asks to be made: where to file it, and, for a note with content, its text. */
 export interface NewNote {
@@ -70,7 +71,10 @@ export function useCreateNote(): (note: NewNote) => Promise<boolean> {
       await navigate({ to: '/notes/$noteId', params: { noteId: created.id }, search: (p) => p });
       return true;
     } catch (err) {
-      console.error(err);
+      // The free plan full, said by its notice rather than logged: it is an answer, not a
+      // fault (`roomForNotes` in the actions).
+      if (isFreeNotesFull(err)) showFreeNotesFull();
+      else console.error(err);
       return false;
     } finally {
       setCreating(-1);
