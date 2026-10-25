@@ -1218,7 +1218,7 @@ back as well as subscribing. These hold that:
   requires a source for it), and `UserStore` checks it against `databaseSize`, which
   reads no row, on every write that adds the person's or an assistant's text; deletes
   and purges take none. A new write of outside text takes the limit, and a new
-  `reposFor` caller that writes must not pass `noStoreLimit`.
+  `reposFor` caller that writes must not pass `noWriteLimits`.
 
 Where billing is off (every fresh checkout, every fork) none of this exists: every
 account is active for good, the Plan tab is not drawn, nothing reads a plan row, and no
