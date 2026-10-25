@@ -1,4 +1,4 @@
-import { dropFieldFromQuery, renameTagInQuery, type NotebookView, type ViewQuery } from '@unbent/shared';
+import { dropFieldFromQuery, renameOptionInQuery, renameTagInQuery, type NotebookView, type ViewQuery } from '@unbent/shared';
 import type { Change, Feed } from './feed.js';
 import { placeholders, runs } from './notes-shared.js';
 import type { Sql } from './sql.js';
@@ -62,6 +62,10 @@ export interface ViewPatch {
  * `NotesStore` from inside the transaction of the write that renamed or deleted it, so
  * the view and the thing it names change together or not at all. They are private
  * helpers in the sense `Sql.tx` means and open no transaction of their own.
+ *
+ * A select option renamed reaches a view too (`renameOption`), since a filter on a select
+ * compares against the option's text and the notes' values move with the rename; an
+ * option removed does not, for the reason `renameOptionInQuery` gives.
  *
  * What does not reach a view: the purge's sweep of tags no note carries any more
  * (`sweepAfterPurge`). That is housekeeping, not anyone deciding the tag should go, and a
@@ -246,6 +250,15 @@ export class ViewsStore {
    */
   dropField(fieldId: string): void {
     this.rewrite((query) => dropFieldFromQuery(query, fieldId));
+  }
+
+  /**
+   * Respells a renamed option in every filter on its field, with `renameOptionInQuery`,
+   * for `editFieldOptions`, which moves the notes' values in the same transaction. Every
+   * view, as `dropField` reads every view: the field id is the account's.
+   */
+  renameOption(fieldId: string, from: string, to: string): void {
+    this.rewrite((query) => renameOptionInQuery(query, fieldId, from, to));
   }
 
   /**

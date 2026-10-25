@@ -436,6 +436,14 @@ describe('the feed records tag, notebook and field writes', () => {
     await stub.deleteTag(await tagId('personal'));
     expect((await feedRows(stub, seq)).map((r) => r.entity)).toEqual(['tag']);
 
+    // An option renamed is respelled in the view that filters on it, after the notebook's row.
+    const kind = (await stub.createField(nb.id, { name: 'Kind', type: 'select', options: ['fuel', 'food'] })) as { id: string };
+    const fuel = await make('Fuel', { field: [`${kind.id}:eq:fuel`] });
+    seq = await feedSeq(stub);
+    await stub.editFieldOptions(nb.id, kind.id, { rename: [{ from: 'fuel', to: 'petrol' }], remove: ['food'] });
+    expect((await feedRows(stub, seq)).filter((r) => r.entity === 'view')).toEqual([{ entity: 'view', id: fuel }]);
+    expect(await query(fuel)).toEqual({ field: [`${kind.id}:eq:petrol`] });
+
     // A field deleted takes its filters and its sort out of the view that had them.
     seq = await feedSeq(stub);
     expect(await stub.deleteField(nb.id, total.id)).toBe(true);
@@ -452,9 +460,9 @@ describe('the feed records tag, notebook and field writes', () => {
     const gone = await feedRows(stub, seq);
     expect(gone[0]).toEqual({ entity: 'notebook', id: nb.id, deleted: true });
     expect(gone.filter((r) => r.entity === 'view')).toEqual(
-      expect.arrayContaining([acme, business, shops, plain].map((id) => ({ entity: 'view', id, deleted: true }))),
+      expect.arrayContaining([acme, business, shops, plain, fuel].map((id) => ({ entity: 'view', id, deleted: true }))),
     );
-    expect(gone.filter((r) => r.entity === 'view')).toHaveLength(4);
+    expect(gone.filter((r) => r.entity === 'view')).toHaveLength(5);
     expect((await stub.listViews()).map((v) => v.id)).toEqual([kept.id]);
   });
 });

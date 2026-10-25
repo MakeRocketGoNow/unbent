@@ -3317,6 +3317,9 @@ export class NotesStore {
       }
 
       this.feed.record(touched);
+      // A view filtering on the old name would otherwise match nothing from here on; its
+      // rows follow the notes', in the same transaction.
+      for (const { from, to } of applied.renamed) this.views.renameOption(fieldId, from, to);
       return {
         field: updated.field,
         renamed: applied.renamed.map((r) => ({ ...r, notes: movedBy.get(r.from) ?? 0 })),

@@ -4,6 +4,7 @@ import {
   createViewSchema,
   dropFieldFromQuery,
   narrowsList,
+  renameOptionInQuery,
   renameTagInQuery,
   sameViewQuery,
   updateViewSchema,
@@ -109,6 +110,19 @@ describe('dropFieldFromQuery', () => {
 
   it('answers null when the view does not use the field', () => {
     expect(dropFieldFromQuery({ field: [`${OTHER}:set`] }, FIELD)).toBeNull();
+  });
+});
+
+describe('renameOptionInQuery', () => {
+  it('respells the value in every filter on the field that compares against it, and nothing else', () => {
+    expect(
+      renameOptionInQuery({ field: [`${FIELD}:eq:Fuel`, `${FIELD}:ne:Fuel`, `${OTHER}:eq:Fuel`, `${FIELD}:set`] }, FIELD, 'Fuel', 'Petrol'),
+    ).toEqual({ field: [`${OTHER}:eq:Fuel`, `${FIELD}:eq:Petrol`, `${FIELD}:ne:Petrol`, `${FIELD}:set`] });
+  });
+
+  it('answers null when no filter names the option', () => {
+    expect(renameOptionInQuery({ field: [`${FIELD}:eq:Petrol`] }, FIELD, 'Fuel', 'Petrol')).toBeNull();
+    expect(renameOptionInQuery({ tag: ['a'] }, FIELD, 'Fuel', 'Petrol')).toBeNull();
   });
 });
 

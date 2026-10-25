@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { dateOnlySchema } from './dates.js';
-import { parseFieldFilter } from './fields.js';
+import { formatFieldFilter, parseFieldFilter } from './fields.js';
 import { MAX_FIELD_FILTERS, MAX_TAG_LENGTH, NOTE_SORTS, DEFAULT_NOTE_SORT, tagNameSchema } from './schemas.js';
 import type { NoteSort } from './schemas.js';
 
@@ -221,4 +221,25 @@ export function dropFieldFromQuery(query: ViewQuery, fieldId: string): ViewQuery
   else delete out.field;
   if (sortsBy) delete out.sortField;
   return out;
+}
+
+/**
+ * The query with a renamed select option under its new name, in every filter on that
+ * field that compares against the old one, or `null` when it has none: the store applies
+ * it to the account's views when a field's options are edited, as it moves the notes'
+ * values. Only a rename: an option removed from the list leaves the filter, since the
+ * notes that held the value still hold it (`removeFieldOption` without `clear`), and
+ * a filter on a value nothing holds reads as matching nothing, which is the truth.
+ */
+export function renameOptionInQuery(query: ViewQuery, fieldId: string, from: string, to: string): ViewQuery | null {
+  if (!query.field) return null;
+  let changed = false;
+  const fields = query.field.map((raw) => {
+    const f = parseFieldFilter(raw);
+    if (!f || f.fieldId !== fieldId || f.value !== from) return raw;
+    changed = true;
+    return formatFieldFilter({ ...f, value: to });
+  });
+  if (!changed) return null;
+  return { ...query, field: [...new Set(fields)].sort() };
 }
