@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { AccountPlan, BillingConfig } from '@unbent/shared';
 import { onPlanFreed, onPlanRefused, planIs } from './plan-refused.js';
@@ -35,6 +35,8 @@ export function usePlan(): {
   now: number;
   /** The plan could not be read and there is no earlier answer to show: the page's own state, since `plan` is simply undefined. */
   unavailable: boolean;
+  /** When the answer was last read, for `usePlanRefresh`'s read after a passed instant. */
+  readAt: number;
 } {
   const config = useQuery(configQuery());
   const billing = config.data?.billing;
@@ -43,7 +45,7 @@ export function usePlan(): {
 
   const data = plan.data;
   const inactive = data !== undefined && data.state === 'inactive';
-  return { billing, plan: data, inactive, now, unavailable: data === undefined && plan.isError };
+  return { billing, plan: data, inactive, now, unavailable: data === undefined && plan.isError, readAt: plan.dataUpdatedAt };
 }
 
 /** The instants the plan's reading changes at, for a plan that still has one ahead: none for one that has ended, free or read-only. */
@@ -63,7 +65,7 @@ function boundariesOf(plan: AccountPlan | undefined): number[] {
  */
 export function usePlanRefresh(): void {
   const queryClient = useQueryClient();
-  const { plan, now, inactive } = usePlan();
+  const { plan, now, inactive, readAt } = usePlan();
   // The outbox holds a refused write back while this says inactive, and replays it the
   // moment it says otherwise; see `planIs`. Only once the plan has been read: an answer
   // still on its way is not a plan that is active.
@@ -78,6 +80,25 @@ export function usePlanRefresh(): void {
   useEffect(() => {
     if (passed !== null) void queryClient.invalidateQueries({ queryKey: keys.plan() });
   }, [passed, queryClient]);
+  // And again, later and later, for as long as the answer still names an instant this
+  // device has passed: its clock can run ahead of the server's, and the read at the
+  // instant then finds the trial still running, with nothing after it to ask again. That
+  // left a tab on "ends today" past the end, with the free plan's count unchecked, until
+  // a refusal or a focus came. A renewing subscription whose webhook is late is the same
+  // case for longer, and the doubling wait keeps it to a few reads an hour.
+  const retries = useRef(0);
+  useEffect(() => {
+    retries.current = 0;
+  }, [passed]);
+  useEffect(() => {
+    if (passed === null) return;
+    const wait = Math.min(PAST_INSTANT_RETRY_MS * 2 ** retries.current, PAST_INSTANT_RETRY_MAX_MS);
+    const timer = setTimeout(() => {
+      retries.current += 1;
+      void queryClient.invalidateQueries({ queryKey: keys.plan() });
+    }, wait);
+    return () => clearTimeout(timer);
+  }, [passed, readAt, queryClient]);
   useEffect(
     () =>
       onPlanRefused(() => {
@@ -95,6 +116,10 @@ export function usePlanRefresh(): void {
 }
 
 const DAY = 24 * 60 * 60 * 1000;
+
+/** The first wait before the plan is read again while it still names a passed instant, and the most it grows to; see `usePlanRefresh`. */
+export const PAST_INSTANT_RETRY_MS = 30_000;
+export const PAST_INSTANT_RETRY_MAX_MS = 15 * 60_000;
 
 /** The next moment the plan's reading changes: the nearest boundary still ahead, or the next local midnight before it. */
 function nextBoundary(boundaries: number[], now: number): number | null {
