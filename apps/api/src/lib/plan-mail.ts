@@ -58,9 +58,12 @@ export const LAPSE_MAIL_PER_RUN = 2;
 
 /**
  * How long an account whose store will not say what it holds waits for its lapse mail
- * before it is sent the wording with no numbers (`lapseMessage` with null). A day of
- * hourly runs is long enough for a store reset by a deploy or briefly loading, and short
- * enough that a store that never answers holds a slot for a day and not for good.
+ * before it is sent the wording with no numbers (`lapseMessage` with null), counted
+ * from when it could first be due (its end, plus the renewal's grace, which a renewing
+ * subscription waits out first). A day of hourly runs is long enough for a store reset
+ * by a deploy or briefly loading, and short enough that a store that never answers
+ * holds a slot for a day or two and not for good. A backlog of lapses older than that,
+ * when mail is first switched on, gets the wording with no numbers at the first failure.
  */
 export const LAPSE_UNREAD_DEFER_MS = 24 * 60 * 60 * 1000;
 
@@ -177,7 +180,10 @@ export async function notifyLapsedPlans(
       const usage = await reposFor(env, row.user_id, noWriteLimits).attachments.usage();
       held = { notes: usage.notes, attachmentBytes: usage.attachmentBytes };
     } catch (err) {
-      if (now - row.plan_until < LAPSE_UNREAD_DEFER_MS) {
+      // From when it could first have been due, not from the end: a renewing
+      // subscription is due only once its renewal's grace is up as well (`LAPSE_DUE_SQL`),
+      // and measured from the end its day would be over before its first attempt.
+      if (now - row.plan_until < LAPSE_UNREAD_DEFER_MS + RENEWAL_GRACE_MS) {
         console.error(`[billing] lapse mail for user=${row.user_id} waits: its store could not say what it holds:`, (err as Error).message);
         continue;
       }
