@@ -263,3 +263,48 @@ describe('saving a view', () => {
     expect((screen.getByRole('textbox', { name: 'View name' }) as HTMLInputElement).value).toBe('Business 2026');
   });
 });
+
+describe("an open view's menu", () => {
+  it('renames the view in place of its name', async () => {
+    setup();
+    vi.mocked(actions.updateView).mockImplementation(async (id, patch) => {
+      const row = view({ id, name: patch.name!, updatedAt: 2 });
+      lib?.upsert('view', row);
+      return row;
+    });
+    mount(viewAddress());
+    await screen.findByRole('heading', { name: 'Business 2026' });
+    fireEvent.click(screen.getByRole('button', { name: 'View actions' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Rename' }));
+    const field = await screen.findByRole('textbox', { name: 'New name for Business 2026' });
+    expect((field as HTMLInputElement).value).toBe('Business 2026');
+    fireEvent.change(field, { target: { value: 'Business 2027' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Rename' }));
+    await waitFor(() => expect(actions.updateView).toHaveBeenCalledWith(V1, { name: 'Business 2027' }));
+    expect(await screen.findByRole('heading', { name: 'Business 2027' })).toBeTruthy();
+  });
+
+  /* Named, and confirmed in place, then out to the notebook as it is. */
+  it('deletes the view after a confirm that names it, and opens the notebook', async () => {
+    setup();
+    vi.mocked(actions.deleteView).mockImplementation(async (id) => {
+      lib?.remove('view', id);
+    });
+    const { search } = mount(viewAddress('&sort=title'));
+    await screen.findByRole('heading', { name: 'Business 2026' });
+    fireEvent.click(screen.getByRole('button', { name: 'View actions' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Delete' }));
+    const confirm = await screen.findByRole('group', { name: 'Confirm delete view' });
+    expect(confirm.textContent).toContain('Delete the view “Business 2026”?');
+    expect(confirm.textContent).toContain('Its notes stay where they are.');
+    expect(actions.deleteView).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete view' }));
+    await waitFor(() => expect(actions.deleteView).toHaveBeenCalledWith(V1));
+    await waitFor(() => expect(search().saved).toBeUndefined());
+    expect(search().notebook).toBe('Receipts');
+    expect(search().tag).toBeUndefined();
+    expect(search().sort).toBeUndefined();
+    expect(await screen.findByRole('heading', { name: 'Receipts' })).toBeTruthy();
+  });
+});

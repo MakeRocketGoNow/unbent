@@ -80,7 +80,9 @@ import { editOpenNoteField } from '../open-note-fields.js';
 import { keys, type SearchAnswer } from '../queries.js';
 import { SearchCoverage } from './SearchCoverage.js';
 import { ActiveFilters } from './ActiveFilters.js';
-import { ViewActions } from './ViewActions.js';
+import { ViewActions, VIEW_NEEDS_CONNECTION } from './ViewActions.js';
+import { ViewNameField } from './ViewName.js';
+import { OverflowMenu } from './OverflowMenu.js';
 import { viewSearch } from '../view-address.js';
 import { ScopeMatches, scopeMatches } from './ScopeMatches.js';
 import { useMediaQuery, MOBILE_QUERY } from '../useMediaQuery.js';
@@ -1007,6 +1009,87 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
     if (!openView || !notebook) return;
     void navigate({ to: '/notes', search: { ...viewSearch(notebook, openView), q: q || undefined }, replace: true });
   };
+  /*
+   * The open view's own menu, beside its name: Rename, in the name's place, and Delete,
+   * through the confirm above the list. Both need the server, so the ⋯ fades offline
+   * with the reason, as a note's does, rather than leaving the head.
+   */
+  const [renamingView, setRenamingView] = useState(false);
+  const [deletingView, setDeletingView] = useState(false);
+  const [viewBusy, setViewBusy] = useState(false);
+  const [viewError, setViewError] = useState<string | null>(null);
+  // Another view, or none: what was half done to the last one is not for this one.
+  useEffect(() => {
+    setRenamingView(false);
+    setDeletingView(false);
+    setViewError(null);
+  }, [openView?.id]);
+  const renameView = async (name: string) => {
+    if (!openView) return;
+    holdView(await actions.updateView(openView.id, { name }));
+    setRenamingView(false);
+  };
+  /*
+   * Deleted, then out to the notebook as it is: its own row's address, in the order the
+   * notebook remembers. The view's filters go with it rather than staying as an unnamed
+   * narrowing, since what was asked for is the view gone, and a list still narrowed by
+   * it with nothing to say so would look like the delete had not happened.
+   */
+  const deleteOpenView = async () => {
+    if (!openView) return;
+    const gone = openView;
+    setViewBusy(true);
+    setViewError(null);
+    try {
+      await actions.deleteView(gone.id);
+      queryClient.setQueryData(keys.views(), (list: NotebookView[] | undefined) => list?.filter((v) => v.id !== gone.id));
+      setDeletingView(false);
+      void navigate({
+        to: '/notes',
+        search: (prev) => ({
+          ...prev,
+          saved: undefined,
+          tag: undefined,
+          field: undefined,
+          from: undefined,
+          to: undefined,
+          ...rememberedSort(notebook),
+        }),
+      });
+    } catch (err) {
+      setViewError((err as Error).message);
+    } finally {
+      setViewBusy(false);
+    }
+  };
+  const viewMenu = openView ? (
+    <OverflowMenu
+      label="View actions"
+      tip={offline ? VIEW_NEEDS_CONNECTION : 'View actions'}
+      disabled={offline}
+      className="title-menu"
+      triggerClassName="title-menu-trigger"
+      items={[
+        { label: 'Rename', onSelect: () => setRenamingView(true) },
+        { separator: true, label: null },
+        { label: 'Delete', tone: 'danger', onSelect: () => setDeletingView(true) },
+      ]}
+    />
+  ) : undefined;
+  const viewRename =
+    openView && renamingView ? (
+      <ViewNameField
+        key={openView.id}
+        initial={openView.name}
+        label={`New name for ${openView.name}`}
+        commitLabel="Rename"
+        className="view-rename"
+        inputClassName="view-rename-field"
+        onCommit={renameView}
+        onCancel={() => setRenamingView(false)}
+      />
+    ) : undefined;
+
   const viewActions = (className?: string) =>
     viewState && (
       <ViewActions
@@ -1108,6 +1191,8 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
           countMenu={countMenu}
           title={heading}
           eyebrow={eyebrow}
+          titleMenu={viewMenu}
+          renaming={viewRename}
           query={q}
           onQuery={setQuery}
           onArrowDown={() => enterList(listRef.current ?? tableRef.current)}
@@ -1210,6 +1295,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
           <p className="muted small">That change wasn’t saved: the connection dropped.</p>
         )}
         {bulkError && <p className="bad small">{bulkError}</p>}
+        {viewError && <p className="bad small">{viewError}</p>}
 
         {/*
             Under the header rather than only inside the sheet, so what is narrowing the
@@ -1241,6 +1327,20 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
             actions={[
               { label: 'Delete', busyLabel: 'Deleting…', tone: 'danger', onConfirm: trashSelected },
             ]}
+          />
+        )}
+
+        {/* The view's delete, in the same slot and for the same reason: the question is
+            about something on screen (the heading names the view), and a modal would
+            cover it. Its notes are untouched, which is the thing worth saying. */}
+        {deletingView && openView && (
+          <Confirm
+            label="Confirm delete view"
+            question={`Delete the view “${openView.name}”?`}
+            detail="Its notes stay where they are."
+            busy={viewBusy}
+            onCancel={() => setDeletingView(false)}
+            actions={[{ label: 'Delete view', busyLabel: 'Deleting…', tone: 'danger', onConfirm: deleteOpenView }]}
           />
         )}
 

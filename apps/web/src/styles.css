@@ -7911,6 +7911,64 @@ button.settings-nav-item {
   color: var(--muted);
 }
 
+/*
+   A saved view's name and its ⋯ (`NoteListHead`'s `titleMenu`), on the title's one line.
+
+   The name yields to the ⋯ rather than pushing it out of the column, and the ⋯ is drawn at
+   the name's height, not as a 44px square: in a square the title's line would grow by
+   the difference and the count under it would move. Under a finger an invisible layer
+   gives it the full target, as the count's menu does. Its menu hangs from its left edge,
+   since it sits at the start of the row where the default right-anchored list would hang
+   off a phone's left side.
+*/
+.list-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.list-title-row h2 { min-width: 0; }
+
+.title-menu { flex: none; }
+
+.overflow-trigger.title-menu-trigger {
+  position: relative;
+  min-width: 1.6rem;
+  height: 1.45rem;
+  font-size: 1rem;
+}
+
+@media (pointer: coarse) {
+  .title-menu-trigger::after {
+    content: '';
+    position: absolute;
+    inset: -0.65rem -0.4rem;
+  }
+}
+
+.title-menu .overflow-list {
+  left: 0;
+  right: auto;
+}
+
+/*
+   Renaming a view in the heading: the field in the name's place, in the name's type, so
+   the line keeps its height and the count under it stays put. Fenced like the other view
+   name fields, at the heading's size; Rename and Cancel follow on the same line. The
+   fence is not pulled out into the margin to keep the letters exactly where the title's
+   were: the column clips at its edge, and the pull cut the first letter in half.
+*/
+.view-name.view-rename { flex: none; }
+
+.view-name-field.view-rename-field {
+  height: 1.6rem;
+  padding-inline: 0.4rem;
+  font-size: 1.05rem;
+  font-weight: 600;
+  border-radius: 0.35rem;
+}
+
 .list-head-actions {
   display: flex;
   align-items: center;

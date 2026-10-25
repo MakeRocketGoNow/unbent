@@ -44,6 +44,19 @@ interface NoteListHeadProps {
    * Left out otherwise, so a plain notebook's head is exactly as tall as it was.
    */
   eyebrow?: string | undefined;
+  /**
+   * A menu beside the title, for what can be done to the place the title names: a saved
+   * view's Rename and Delete. Drawn after the name rather than among the icons, since it
+   * is about the name and not about how the list is drawn.
+   */
+  titleMenu?: ReactNode;
+  /**
+   * The title being renamed: the field that takes the name's place, in the name's own
+   * line, so nothing under it moves. The row's icons step aside while it is open, as
+   * they do for a phone's search, since a field sharing a phone's row with four icons
+   * has no room to show what is being typed; they are back when the rename ends.
+   */
+  renaming?: ReactNode;
   /** The search box's value, which is the URL's `q`. */
   query: string;
   onQuery: (next: string) => void;
@@ -143,6 +156,8 @@ export function NoteListHead({
   countMenu,
   title,
   eyebrow,
+  titleMenu,
+  renaming,
   query,
   onQuery,
   onArrowDown,
@@ -275,7 +290,15 @@ export function NoteListHead({
               {eyebrow}
             </span>
           )}
-          <h2 title={title}>{title}</h2>
+          {renaming ??
+            (titleMenu ? (
+              <div className="list-title-row">
+                <h2 title={title}>{title}</h2>
+                {titleMenu}
+              </div>
+            ) : (
+              <h2 title={title}>{title}</h2>
+            ))}
           {count === null ? (
             <span className="count" aria-hidden="true">
               {'\u00a0'}
@@ -300,34 +323,36 @@ export function NoteListHead({
             <span className="count">{count}</span>
           )}
         </div>
-        {inToolbar && <div className="list-search">{input}</div>}
-        <div className="list-head-actions">
-          {onOpenSearch && (
-            <button type="button" className="icon-btn" aria-label="Search notes" data-tip="Search notes" onClick={onOpenSearch}>
-              <SearchIcon />
+        {inToolbar && !renaming && <div className="list-search">{input}</div>}
+        {!renaming && (
+          <div className="list-head-actions">
+            {onOpenSearch && (
+              <button type="button" className="icon-btn" aria-label="Search notes" data-tip="Search notes" onClick={onOpenSearch}>
+                <SearchIcon />
+              </button>
+            )}
+            <button
+              ref={filterRef}
+              type="button"
+              className="icon-btn"
+              /*
+               * The state goes in the name, not only in the dot. The dot is the glanceable half
+               * and it is invisible to a screen reader; a control that reads "Filter notes"
+               * either way would leave the one fact worth knowing (that the list is already
+               * narrowed) available to sighted users alone.
+               */
+              aria-label={filtered ? 'Filter notes, filters are active' : 'Filter notes'}
+              data-tip={filtered ? 'Filter notes, some are on' : 'Filter notes'}
+              onClick={onOpenFilters}
+            >
+              <FilterIcon />
+              {filtered && <span className="badge-dot" aria-hidden="true" />}
             </button>
-          )}
-          <button
-            ref={filterRef}
-            type="button"
-            className="icon-btn"
-            /*
-             * The state goes in the name, not only in the dot. The dot is the glanceable half
-             * and it is invisible to a screen reader; a control that reads "Filter notes"
-             * either way would leave the one fact worth knowing (that the list is already
-             * narrowed) available to sighted users alone.
-             */
-            aria-label={filtered ? 'Filter notes, filters are active' : 'Filter notes'}
-            data-tip={filtered ? 'Filter notes, some are on' : 'Filter notes'}
-            onClick={onOpenFilters}
-          >
-            <FilterIcon />
-            {filtered && <span className="badge-dot" aria-hidden="true" />}
-          </button>
-          {sort}
-          {view}
-          {action}
-        </div>
+            {sort}
+            {view}
+            {action}
+          </div>
+        )}
       </div>
       {fieldAlways && !inToolbar && <div className="list-search">{input}</div>}
     </>
