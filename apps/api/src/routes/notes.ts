@@ -14,6 +14,7 @@ import {
 import { NothingToRead } from '../lib/autofill.js';
 import { press } from '../lib/autofill-press.js';
 import { copyAttachments } from '../lib/copy-attachments.js';
+import { PlanRefused, planRefusedBody } from '../lib/free-plan.js';
 import { StorageFull, quotaOf, storageFullBody } from '../lib/quota.js';
 import { canAutofill, JevError, jevFrom } from '../lib/jev.js';
 import { canUseLlm, llmFrom } from '../lib/llm.js';
@@ -250,6 +251,9 @@ export const notes = new Hono<AppEnv>()
         // saying why the files are missing: a 4xx would have the outbox take the copy
         // back as if nothing had been written, and the next pull bring it again.
         if (err instanceof StorageFull) return c.json({ ...note, filesSkipped: storageFullBody(err) }, existing ? 200 : 201);
+        // The same for an account that fell past the free plan between a replay's first
+        // attempt, which made the copy, and this one, which finds it and copies its files.
+        if (err instanceof PlanRefused) return c.json({ ...note, filesSkipped: planRefusedBody(err) }, existing ? 200 : 201);
         throw err;
       }
     }
