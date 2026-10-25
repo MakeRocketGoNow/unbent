@@ -1144,7 +1144,7 @@ function PlanSection({ userId, email, plan }: { userId: string; email: string; p
         <Confirm
           label="Confirm ending the comp"
           question={<>End the comp on {email}?</>}
-          detail="The account turns read-only now: everything still opens and exports, and nothing can be edited until they subscribe."
+          detail="The comp ends now. Within the free plan the account carries on as a free one; past it, it turns read-only until they subscribe or delete down to it, and everything still opens and exports."
           actions={[{ label: 'End comp', busyLabel: 'Ending…', tone: 'danger', onConfirm: () => send({ action: 'end' }) }]}
           busy={busy}
           onCancel={() => setEnding(false)}

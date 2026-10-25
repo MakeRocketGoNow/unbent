@@ -723,7 +723,7 @@ describe('OperatorAccount: the plan', () => {
     expect(section.textContent).toContain('Complimentary.');
     fireEvent.click(within(section).getByRole('button', { name: 'End comp' }));
     const confirm = await screen.findByRole('group', { name: 'Confirm ending the comp' });
-    expect(confirm.textContent).toContain('read-only now');
+    expect(confirm.textContent).toContain('Within the free plan the account carries on as a free one; past it, it turns read-only');
     fireEvent.click(within(confirm).getByRole('button', { name: 'End comp' }));
     await waitFor(() => expect(api.compAccount).toHaveBeenCalledWith('u1', { action: 'end' }));
     cleanup();

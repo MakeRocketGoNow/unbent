@@ -229,9 +229,10 @@ export function WhyPage() {
 
         <Chapter title="What that promise costs us">
           <p>
-            If you stop paying, nothing is held hostage: the account turns read-only, and
-            every note still opens, searches and exports. Your archive is never the reason to
-            renew. Unbent has to earn each year on what it does.
+            If you stop paying, nothing is held hostage: a small account stays free, a larger
+            one turns read-only, and every note still opens, searches and exports. Your
+            archive is never the reason to renew. Unbent has to earn each year on what it
+            does.
           </p>
           {/* The owner was named in "What changed"; the line trusts the reader to have
               read it rather than explaining the name. */}

@@ -81,8 +81,9 @@ export function SupportPage() {
             <Link to="/terms" hash={REFUNDS_ID}>
               refund policy
             </Link>{' '}
-            is in the terms. If you stop paying, nothing is held hostage: the account turns
-            read-only, and every note still opens, searches and exports.
+            is in the terms. If you stop paying, nothing is held hostage: an account within the
+            free plan carries on as a free one, a larger one turns read-only, and every note
+            still opens, searches and exports.
           </p>
         </Topic>
 

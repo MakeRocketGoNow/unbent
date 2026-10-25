@@ -9,7 +9,7 @@ import { FrontShell, Pricing } from './FrontPage.js';
 export const PRICING_META = {
   title: 'Pricing · Unbent',
   description:
-    'One plan, billed yearly, with a free trial that needs no card. If you stop paying, nothing is held hostage: every note still opens, searches and exports.',
+    'Free for a small library, and one plan, billed yearly, for a larger one, with a free trial that needs no card. If you stop paying, nothing is held hostage: every note still opens, searches and exports.',
   image: CARD_IMAGE,
 };
 
@@ -39,8 +39,9 @@ export function PricingPage() {
       <section className="front-hero front-width">
         <h1>Pricing</h1>
         <p className="front-lead">
-          One plan, billed yearly, and a free trial that needs no card. Prices are in US
-          dollars, before any sales tax or VAT your country adds at checkout.
+          Free for a small library. For a larger one, one plan, billed yearly, with a free
+          trial that needs no card. Prices are in US dollars, before any sales tax or VAT
+          your country adds at checkout.
         </p>
       </section>
 

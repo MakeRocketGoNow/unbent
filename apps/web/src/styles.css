@@ -10846,6 +10846,22 @@ button.settings-nav-item {
   font-size: 1.05rem;
 }
 
+/* The free plan beside the paid one: the same card without its border, so the plan being
+   sold is the one that stands out. The lapse's paragraph sits under the free card, which
+   is the shorter, rather than across both at a line length nobody reads; on a phone it
+   comes after both cards, since what happens when a plan lapses follows the plan. */
+.front-plan-free { border-color: transparent; background: color-mix(in srgb, var(--fg) 4%, transparent); }
+.front-pricing {
+  grid-template-areas:
+    'free plan'
+    'lapse plan';
+  grid-template-rows: auto 1fr;
+  row-gap: 2rem;
+}
+.front-pricing .front-plan-free { grid-area: free; }
+.front-pricing .front-plan:not(.front-plan-free) { grid-area: plan; }
+.front-pricing .front-lapse { grid-area: lapse; }
+
 .front-lapse p {
   margin: 0.35rem 0 0;
   color: var(--muted);
@@ -11113,7 +11129,7 @@ button.settings-nav-item {
 
   .front-grid { gap: 1.75rem; }
 
-  .front-pricing { grid-template-columns: minmax(0, 1fr); gap: 2rem; }
+  .front-pricing { grid-template-columns: minmax(0, 1fr); grid-template-areas: 'free' 'plan' 'lapse'; grid-template-rows: none; gap: 2rem; }
 
   .front-plan { padding: 1.25rem; }
 

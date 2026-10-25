@@ -503,7 +503,9 @@ export function describePlan(plan: AccountPlan, voice: 'owner' | 'operator' = 'o
     const ends = `The subscription ends on ${formatDay(sub.cancelsAt)}.`;
     return {
       title: 'Cancelling',
-      sentence: own ? `${ends} Your notes stay readable and exportable after that.` : `${ends} The account turns read-only then.`,
+      sentence: own
+        ? `${ends} Within the free plan's ${FREE_NOTES} notes and ${FREE_STORAGE_GB} GB the account stays free after that; past them it is read-only, and your notes stay readable and exportable.`
+        : `${ends} The account goes to the free plan then, read-only if it is past it.`,
     };
   }
   return { title: 'Subscribed', sentence: plan.until ? `Renews on ${formatDay(plan.until)}.` : 'Active.' };
