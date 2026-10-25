@@ -850,7 +850,6 @@ export class NotesStore {
     });
   }
 
-
   /** A live note with this title in this notebook (or in none), without case. */
   private liveTitleIn(notebook: string | null | undefined, title: string): { id: string; title: string } | null {
     const name = notebook?.trim();
