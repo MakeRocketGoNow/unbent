@@ -13,10 +13,12 @@ import type { LocalStore } from './db.js';
  *
  * `syncState` is a sixth, local-only collection with one row: the feed's cursor and the
  * epoch it belongs to, while the first copy is under way the snapshot page to resume
- * from, and the `seq` the saved views were last known whole at (`viewsAt` on `Position`). In the same file as the rows, and written only once a page's commits have settled
- * (the engine awaits them, since each collection persists on a queue of its own and this
- * one's write would otherwise overtake a notes commit still queued) so a page cut short
- * by a closed tab is applied again rather than skipped; every apply is an upsert.
+ * from, and the `seq` the saved views were last known whole at (`viewsAt` on
+ * `Position`). In the same file as the rows, and written only once a page's commits
+ * have settled (the engine awaits them, since each collection persists on a queue of
+ * its own and this one's write would otherwise overtake a notes commit still queued) so
+ * a page cut short by a closed tab is applied again rather than skipped; every apply is
+ * an upsert.
  */
 /**
  * A note as the collection holds it: the feed's row, plus two things a write made here

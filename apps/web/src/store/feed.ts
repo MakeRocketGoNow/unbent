@@ -472,6 +472,17 @@ export class FeedEngine {
     const limit = this.options.pageSize ?? 200;
     let cursor: string | null = from?.resume ?? null;
     let seeded: Cursor | null = from ? { seq: from.seq, epoch: from.epoch } : null;
+    /*
+     * Whether this walk saw the views: from the start it fetches the first page, which
+     * carries them. A walk resumed from a stored position skips that page, so it has the
+     * views only if the build that applied it kept them, which that build says by
+     * stamping its resume positions (`viewsAt` below). A build from before views applied
+     * the first page and dropped them: its positions carry no stamp (its update merges
+     * into the row and leaves whatever was there; its insert writes none), and a walk it
+     * started and this build finished, after a reload or a takeover mid-copy, would
+     * otherwise have stamped the copy whole and never asked for them.
+     */
+    const viewsFromStart = !from || from.viewsAt === from.seq;
     do {
       if (this.stopped) return;
       let page: SnapshotPage;
@@ -509,16 +520,20 @@ export class FeedEngine {
       // The position once this page's rows have settled on disk, so a walk cut short here
       // continues from the next page; the cursor itself only once the walk is whole.
       if (cursor) {
-        await this.watched('writing the cursor', this.options.writeCursor({ ...seeded, resume: cursor, total: this.state.total }));
+        // Stamped when this walk has the views, so a resume knows (`viewsFromStart`).
+        const viewsAt = viewsFromStart ? seeded.seq : null;
+        await this.watched('writing the cursor', this.options.writeCursor({ ...seeded, resume: cursor, total: this.state.total, viewsAt }));
         this.changed();
       }
     } while (cursor);
-    // A walk is whole for views too: the first page carried every one the server had,
-    // and the feed from its `seq` replays whatever changed during the walk. A walk of a
-    // server from before views carried none because it has none; the feed brings the
-    // first one the moment it is made.
-    this.viewsWhole = true;
+    // A walk that saw the first page is whole for views too: that page carried every one
+    // the server had, and the feed from its `seq` replays whatever changed during the
+    // walk. A walk of a server from before views carried none because it has none; the
+    // feed brings the first one the moment it is made. A walk resumed from a position a
+    // build from before views wrote did not see them, and asks for them now, once.
+    this.viewsWhole = viewsFromStart;
     await this.moveCursor(seeded);
+    if (!this.viewsWhole) await this.seedViews();
   }
 
   /**

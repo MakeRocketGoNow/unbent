@@ -134,7 +134,7 @@ describe('FeedEngine', () => {
     // The position after the first page, then the cursor once the walk is whole: the
     // first page's seq, not the last's, so what was written during the walk is replayed
     // by the feed.
-    expect(h.cursorWrites).toEqual([{ seq: 10, epoch: 'e1', resume: 'b', total: 3 }, { seq: 10, epoch: 'e1', viewsAt: 10 }]);
+    expect(h.cursorWrites).toEqual([{ seq: 10, epoch: 'e1', resume: 'b', total: 3, viewsAt: 10 }, { seq: 10, epoch: 'e1', viewsAt: 10 }]);
     // And each only once the page's commits have settled: the first page wrote the four
     // collections it carried rows for, the second only notes, and no position was
     // written ahead of either.
@@ -152,7 +152,7 @@ describe('FeedEngine', () => {
     const stop = Object.entries(h.c).map(([k, c]) => h.engine.register(k as 'note', c as never));
     await h.engine.settled();
     expect(h.engine.state).toMatchObject({ phase: 'failed', cursor: null, applied: 2, total: 3 });
-    expect(h.cursor()).toEqual({ seq: 10, epoch: 'e1', resume: 'b', total: 3 });
+    expect(h.cursor()).toEqual({ seq: 10, epoch: 'e1', resume: 'b', total: 3, viewsAt: 10 });
 
     await h.engine.pull();
     expect(h.requests).toEqual(['/api/changes/snapshot?limit=2', '/api/changes/snapshot?limit=2&cursor=b', '/api/changes/snapshot?limit=2&cursor=b']);
@@ -188,11 +188,11 @@ describe('FeedEngine', () => {
     const h = harness({
       '/api/changes/snapshot?limit=2&cursor=b': [new Error("You're offline."), { seq: 12, epoch: 'e1', notes: [note('c')], next: null } satisfies SnapshotPage],
     });
-    h.setCursor({ seq: 10, epoch: 'e1', resume: 'b', total: 3 });
+    h.setCursor({ seq: 10, epoch: 'e1', resume: 'b', total: 3, viewsAt: 10 });
     const stop = Object.entries(h.c).map(([k, c]) => h.engine.register(k as 'note', c as never));
     await h.engine.settled();
     expect(h.engine.state.phase).toBe('failed');
-    expect(h.cursor()).toEqual({ seq: 10, epoch: 'e1', resume: 'b', total: 3 });
+    expect(h.cursor()).toEqual({ seq: 10, epoch: 'e1', resume: 'b', total: 3, viewsAt: 10 });
     await h.engine.pull();
     expect(h.engine.state).toMatchObject({ phase: 'current', cursor: { seq: 10, epoch: 'e1' } });
     stop.forEach((s) => s());
@@ -208,11 +208,11 @@ describe('FeedEngine', () => {
       });
       h.c.note.rows.set('a', note('a'));
       h.c.note.rows.set('b', note('b'));
-      h.setCursor({ seq: 10, epoch: 'e1', resume: 'b', total: 3 });
+      h.setCursor({ seq: 10, epoch: 'e1', resume: 'b', total: 3, viewsAt: 10 });
       const stop = Object.entries(h.c).map(([k, c]) => h.engine.register(k as 'note', c as never));
       await h.engine.settled();
       expect(h.engine.state.phase, `${status} should not end the walk`).toBe('failed');
-      expect(h.cursor()).toEqual({ seq: 10, epoch: 'e1', resume: 'b', total: 3 });
+      expect(h.cursor()).toEqual({ seq: 10, epoch: 'e1', resume: 'b', total: 3, viewsAt: 10 });
       expect([...h.c.note.rows.keys()]).toEqual(['a', 'b']);
       expect(h.c.note.log).not.toContain('truncate');
       await h.engine.pull();
@@ -228,7 +228,7 @@ describe('FeedEngine', () => {
     });
     h.c.note.rows.set('a', note('a'));
     h.c.note.rows.set('b', note('b'));
-    h.setCursor({ seq: 10, epoch: 'e1', resume: 'b', total: 3 });
+    h.setCursor({ seq: 10, epoch: 'e1', resume: 'b', total: 3, viewsAt: 10 });
     const stop = Object.entries(h.c).map(([k, c]) => h.engine.register(k as 'note', c as never));
     await h.engine.settled();
     expect(h.requests).toEqual(['/api/changes/snapshot?limit=2&cursor=b']);
@@ -314,7 +314,7 @@ describe('FeedEngine', () => {
 
   it('a walk under way from an older format is resumed, not emptied', async () => {
     const h = harness({ '/api/changes/snapshot?limit=2&cursor=b': { seq: 12, epoch: 'e1', notes: [note('c')], next: null } satisfies SnapshotPage });
-    h.setCursor({ seq: 10, epoch: 'e1', resume: 'b', total: 3, format: COPY_FORMAT - 1 });
+    h.setCursor({ seq: 10, epoch: 'e1', resume: 'b', total: 3, format: COPY_FORMAT - 1, viewsAt: 10 });
     h.c.note.rows.set('a', note('a'));
     for (const k of ['note', 'notebook', 'tag', 'attachment', 'view'] as const) h.engine.register(k, h.c[k] as never);
     await h.engine.settled();
@@ -443,6 +443,36 @@ describe('FeedEngine and saved views', () => {
     expect([...h.c.view.rows.values()].map((v) => v.name)).toEqual(['Business 2025']);
     expect(h.requests).not.toContain('/api/views');
     expect(h.cursor()).toMatchObject({ seq: 11, viewsAt: 11 });
+  });
+
+  it('asks for the views at the end of a walk a build from before views began, whose first page carried them', async () => {
+    // That build fetched the first page from this server, dropped its views, and wrote a
+    // resume position with no stamp; a reload onto this build (or a takeover mid-copy)
+    // finishes the walk from there, past the only page the views ride on.
+    const h = harness({
+      '/api/changes/snapshot?limit=2&cursor=b': { seq: 12, epoch: 'e1', notes: [note('c')], next: 'c' } satisfies SnapshotPage,
+      '/api/changes/snapshot?limit=2&cursor=c': { seq: 12, epoch: 'e1', notes: [note('d')], next: null } satisfies SnapshotPage,
+      '/api/views': { views: [savedView('v1')] },
+    });
+    h.setCursor({ seq: 10, epoch: 'e1', resume: 'b', total: 4 });
+    register(h);
+    await h.engine.settled();
+    expect(h.engine.state.phase).toBe('current');
+    // Its own resume position is not stamped either: the walk has not seen the views.
+    expect(h.cursorWrites[0]).toMatchObject({ resume: 'c', viewsAt: null });
+    // The walk ends unstamped, then the views are asked for and the cursor stamped.
+    expect(h.cursorWrites.slice(1)).toEqual([{ seq: 10, epoch: 'e1' }, { seq: 10, epoch: 'e1', viewsAt: 10 }]);
+    expect(h.requests.at(-1)).toBe('/api/views');
+    expect([...h.c.view.rows.keys()]).toEqual(['v1']);
+  });
+
+  it('trusts the views of a walk this build began and resumes', async () => {
+    const h = harness({ '/api/changes/snapshot?limit=2&cursor=b': { seq: 12, epoch: 'e1', notes: [note('c')], next: null } satisfies SnapshotPage });
+    h.setCursor({ seq: 10, epoch: 'e1', resume: 'b', total: 3, viewsAt: 10 });
+    register(h);
+    await h.engine.settled();
+    expect(h.requests).toEqual(['/api/changes/snapshot?limit=2&cursor=b']);
+    expect(h.cursor()).toEqual({ seq: 10, epoch: 'e1', viewsAt: 10 });
   });
 
   it('reads a page from a server built before views as having none', async () => {
