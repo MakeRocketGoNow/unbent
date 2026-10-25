@@ -163,6 +163,12 @@ export interface Outbox {
   /** Records which notes an entry just queued is about, for `waiting`. */
   trackEntry: (id: string, noteIds: string[]) => void;
   /**
+   * Notes made here that the server never took, now purged: their queued create or copy
+   * ends without being sent when its turn comes, kept across a reload. See `unmake` in
+   * the actions.
+   */
+  unmake: (noteIds: readonly string[]) => void;
+  /**
    * Writes the server's answer to a write made as a request into the local copy, as a
    * replayed entry's answer is written (`took`), waiting on a pull only when the answer
    * names something this device has no id for. For `restoreRevision`.
@@ -210,6 +216,9 @@ type Save = {
 
 /** The key a conflict is kept under in the outbox's storage; its entries are the `tx:` keys. */
 const conflictKey = (noteId: string) => `conflict:${noteId}`;
+
+/** The key a note purged before the server made it is kept under; see `Outbox.unmake`. */
+const unmadeKey = (noteId: string) => `unmade:${noteId}`;
 
 /** An upload waiting in the queue: the note, the id and name its file will have, and what the row shows meanwhile. */
 type Upload = { noteId: string; attachmentId: string; filename: string; contentType: string; size: number };
@@ -282,6 +291,15 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
   const waitingUploads = new Map<string, { id: string; upload: { noteId: string; filename: string }; retire: () => void }>();
   const cancelled = new Set<string>();
   let sending: string | null = null;
+
+  /** The notes whose create or copy is to end unsent; see `Outbox.unmake`. */
+  const unmade = new Set<string>();
+  /** Whether this note's create or copy is to end unsent, which forgets it: it is asked once, by that entry. */
+  const unmadeNow = (noteId: string | undefined): boolean => {
+    if (!noteId || !unmade.delete(noteId)) return false;
+    void storage.delete(unmadeKey(noteId)).catch(() => {});
+    return true;
+  };
 
   /**
    * The server refused the request for good, or for now: which, is the queue's whole question.
@@ -513,6 +531,11 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
       createNote: async ({ transaction }) => {
         const input = transaction.metadata as unknown as Parameters<typeof api.createNote>[0];
         try {
+          // Purged before the server made it: there is nothing to make (`unmake`).
+          if (unmadeNow(input.id)) {
+            ended(transaction.id);
+            return;
+          }
           const created = await api.createNote(input).catch(refusal);
           if (!took(created)) await settled();
           ended(transaction.id);
@@ -526,6 +549,10 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
       duplicateNote: async ({ transaction }) => {
         const { sourceId, copyId } = transaction.metadata as unknown as { sourceId: string; copyId: string };
         try {
+          if (unmadeNow(copyId)) {
+            ended(transaction.id);
+            return;
+          }
           const answer = await api.duplicateNote(sourceId, copyId).catch(refusal);
           // The copy's row goes in now; its files are the server's to make, and the
           // pull brings their rows. A copy whose files had no room (`filesSkipped`,
@@ -730,7 +757,15 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
         const cleanup = (executor as unknown as { cleanupRestorationTransaction?: (id: string, rollback: boolean) => void }).cleanupRestorationTransaction;
         if (m && !waitingSaves.has(m.noteId)) waitingSaves.set(m.noteId, { id: t.id, value: m.value, base: m.base, against: m.against, origin: m.origin, retire: () => cleanup?.call(executor, t.id, true) });
       }
+      const waitingNotes = new Set([...entryNotes.values()].flat());
       for (const key of keys) {
+        if (key.startsWith('unmade:')) {
+          // Only while the note still has something waiting: its create has gone otherwise.
+          const noteId = key.slice('unmade:'.length);
+          if (waitingNotes.has(noteId)) unmade.add(noteId);
+          else void storage.delete(key).catch(() => {});
+          continue;
+        }
         if (key === PLAN_FREE_KEY) {
           planFreeRestored(true);
           continue;
@@ -825,6 +860,12 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
     trackEntry: (id, noteIds) => {
       entryNotes.set(id, noteIds);
       touch();
+    },
+    unmake: (noteIds) => {
+      for (const noteId of noteIds) {
+        unmade.add(noteId);
+        void storage.set(unmadeKey(noteId), '1').catch(() => {});
+      }
     },
     dispose: async () => {
       unsubscribeConnectivity();
@@ -1811,6 +1852,30 @@ function serverHolds(lib: WritableLibrary, noteId: string): boolean {
 }
 
 /**
+ * A purge of notes made here that the server has never taken, while a refusal is kept:
+ * their create (or copy) is told to end unsent (`Outbox.unmake`), and the kept entry is
+ * sent again at once, so a queue held by that very create moves. The free plan's count
+ * is how this happens: a note the device could not count (one made on another device a
+ * moment ago) is refused by the server and kept at the head of the queue, and the
+ * person's first answer to "the free plan holds 100 notes" is to delete the note they
+ * just made. Queued behind its own create, that purge could never be sent, and every
+ * save waited until some other note was deleted for good.
+ *
+ * The purge itself still queues behind, and goes once the create has ended: against a
+ * note the server never made, it is a 404, which is done, as are the note's saves and
+ * trash between. Sent as it is, so a create already on its way when the purge was made,
+ * which the server may yet take, is purged after it rather than left. A trash does not
+ * do this: it promises the note back on a restore, and the create is what would make it.
+ */
+function unmake(lib: WritableLibrary, ids: readonly string[]): void {
+  if (!storeFull()) return;
+  const never = ids.filter((id) => lib.outbox.status().waiting.has(id) && !serverHolds(lib, id));
+  if (never.length === 0) return;
+  lib.outbox.unmake(never);
+  storeFreed();
+}
+
+/**
  * The notes collection's synced rows: what the feed and the server's answers wrote,
  * under any optimistic change made here. A private field of the collection, pinned by
  * `pins.test.ts`, reached through here alone; undefined if a version moves it.
@@ -1875,6 +1940,7 @@ export async function purgeNote(noteId: string): Promise<void> {
   queue(lib, 'purgeNote', { noteId }, () => {
     lib.notes.delete(noteId);
   });
+  unmake(lib, [noteId]);
 }
 
 /**
@@ -1906,6 +1972,9 @@ export async function emptyTrash(ids: readonly string[]): Promise<api.PurgeResul
   if (lib) await trashRoundTheQueue(lib, held);
   const first = held.length > 0 ? await api.deleteNotesPermanently(held) : { deleted: 0 };
   const out = await pulled(api.purgeNotes('trashed'), { ids, refiles: true }, true);
+  // And a note in the trash here that the server never made is not in the server's
+  // trash: its create ends unsent, and its row with it.
+  if (lib) unmake(lib, ids);
   return { ...out, notesDeleted: out.notesDeleted + first.deleted };
 }
 
@@ -1968,6 +2037,7 @@ export async function purgeNotes(ids: string[]): Promise<number> {
     queue(lib, 'purgeNotes', { ids: here }, () => {
       for (const id of here) lib.notes.delete(id);
     });
+    unmake(lib, here);
   }
   return here.length + remote;
 }

@@ -701,6 +701,61 @@ describe('a replayed write', () => {
   });
 
   /**
+   * The note the server refused is the first thing a person deletes to make room, and
+   * its purge queued behind its own create, which never went while the plan had none:
+   * every save waited until some other note was deleted for good. So the create ends
+   * unsent, kept so across a reload, and the kept entry is sent again at once; the trash
+   * and the purge after it are 404s for a note that was never made, which are done.
+   */
+  it('ends the create of a note the free plan refused once that note is purged, and the queue moves', async () => {
+    const { lib, fake, engine } = library([row('n2')]);
+    engine.pull.mockResolvedValue(undefined);
+    const replay = vi.fn();
+    fake.config.onlineDetector.subscribe(replay);
+    const made = await actions.createNote({ title: 'One too many', body: '', tags: [], notebook: null });
+    await tick();
+    vi.mocked(api.createNote).mockRejectedValueOnce(new ApiError(402, '402: The free plan holds up to 100 notes, counting the trash.', 'FREE_NOTES_FULL'));
+    expect(await fake.replayOne()).toBe('kept');
+    await actions.trashNote(made.id);
+    await actions.purgeNote(made.id);
+    await tick();
+    expect(fake.queue.map((e) => e.mutationFnName)).toEqual(['createNote', 'trashNote', 'purgeNote']);
+    expect(replay).toHaveBeenCalledTimes(1);
+    const kept = () => [...MemoryAdapter.databases.values()].some((rows) => rows.has(`unmade:${made.id}`));
+    expect(kept()).toBe(true);
+
+    expect(await fake.replayOne()).toBe('done');
+    expect(api.createNote).toHaveBeenCalledTimes(1);
+    expect(kept()).toBe(false);
+    vi.mocked(api.deleteNote).mockRejectedValueOnce(new ApiError(404, '404: Note not found'));
+    expect(await fake.replayOne()).toBe('done');
+    vi.mocked(api.deleteNotePermanently).mockRejectedValueOnce(new ApiError(404, '404: Note not found'));
+    expect(await fake.replayOne()).toBe('done');
+    await tick();
+    expect(fake.queue).toHaveLength(0);
+    expect(lib.notes.get(made.id)).toBeUndefined();
+    expect(storeFull()).toBe(false);
+  });
+
+  it('leaves a refused note\u2019s create alone when it is only trashed, or when the server already holds the note', async () => {
+    const { fake } = library([row('n2')]);
+    const made = await actions.createNote({ title: 'One too many', body: '', tags: [], notebook: null });
+    await tick();
+    vi.mocked(api.createNote).mockRejectedValueOnce(new ApiError(402, '402: The free plan holds up to 100 notes, counting the trash.', 'FREE_NOTES_FULL'));
+    expect(await fake.replayOne()).toBe('kept');
+    // A trash promises the note back on a restore, and the create is what would make it.
+    await actions.trashNote(made.id);
+    await tick();
+    vi.mocked(api.createNote).mockRejectedValueOnce(new ApiError(402, '402: The free plan holds up to 100 notes, counting the trash.', 'FREE_NOTES_FULL'));
+    expect(await fake.replayOne()).toBe('kept');
+    expect(api.createNote).toHaveBeenCalledTimes(2);
+    // A note the server holds is purged as ever, and asks nothing of the kept create.
+    vi.mocked(api.deleteNotesPermanently).mockResolvedValueOnce({ deleted: 1 });
+    await actions.purgeNotes(['n2']);
+    expect([...MemoryAdapter.databases.values()].some((rows) => [...rows.keys()].some((k) => k.startsWith('unmade:')))).toBe(false);
+  });
+
+  /**
    * Whether the account was last read as on the free plan is kept beside the outbox, so
    * a page that opens offline, or whose read of the plan fails, still counts its notes
    * before it makes one; this page's own read replaces it, and a read that says otherwise

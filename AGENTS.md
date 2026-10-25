@@ -603,7 +603,9 @@ entry again at once. The third holds back saves the server would take, so the ac
 refuse such a note on the device before it is queued (`roomForNotes`), from the plan's
 last answer, which the outbox keeps per account so a page that opens offline still
 counts (`onPlanRead`); only a note the device could not count reaches the queue: one
-made on another device a moment ago, or on a device that has never read the plan. Any
+made on another device a moment ago, or on a device that has never read the plan. A
+purge of that very note cannot go round the queue, since the server has nothing to
+purge, so it ends the note's queued create unsent instead (`unmake`). Any
 4xx is kept too while the page is behind the deploy, until the reload; see
 [Builds side by side](#builds-side-by-side).
 Only the tab holding the account's leader lock replays (`store/leader.ts`); another tab
