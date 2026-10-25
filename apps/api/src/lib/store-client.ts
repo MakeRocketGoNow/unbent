@@ -1,6 +1,7 @@
-import { InvalidFieldValue, STORAGE_FULL_CODE } from '@unbent/shared';
+import { FREE_NOTES_FULL_CODE, InvalidFieldValue, PLAN_INACTIVE_CODE, STORAGE_FULL_CODE } from '@unbent/shared';
 import type { UserStore } from '../store/user-store.js';
 import type { Env } from '../types.js';
+import { PlanRefused } from './free-plan.js';
 import { StorageFull } from './quota.js';
 
 /**
@@ -64,7 +65,21 @@ const TRANSIENT = /overloaded|reset because its code was updated|transient|netwo
  */
 export function translateStoreError(err: unknown): unknown {
   if (err && typeof err === 'object') {
-    const e = err as { name?: unknown; message?: unknown; fieldName?: unknown; retryable?: unknown; overloaded?: unknown; code?: unknown; usedBytes?: unknown; quotaBytes?: unknown; addingBytes?: unknown; of?: unknown };
+    const e = err as {
+      name?: unknown;
+      message?: unknown;
+      fieldName?: unknown;
+      retryable?: unknown;
+      overloaded?: unknown;
+      code?: unknown;
+      usedBytes?: unknown;
+      quotaBytes?: unknown;
+      addingBytes?: unknown;
+      of?: unknown;
+      notes?: unknown;
+      attachmentBytes?: unknown;
+      adding?: unknown;
+    };
     if (e.name === 'InvalidFieldValue' && typeof e.fieldName === 'string') {
       return new InvalidFieldValue(e.fieldName, typeof e.message === 'string' ? e.message : '');
     }
@@ -74,6 +89,11 @@ export function translateStoreError(err: unknown): unknown {
     // a route keeps `instanceof` and the sentence is the right bound's.
     if (e.code === STORAGE_FULL_CODE && typeof e.usedBytes === 'number' && typeof e.quotaBytes === 'number') {
       return new StorageFull(e.usedBytes, e.quotaBytes, typeof e.addingBytes === 'number' ? e.addingBytes : 0, e.of === 'notes' ? 'notes' : 'files');
+    }
+    // The free plan's refusal (`PlanRefusal` in store/user-store.ts): an account past
+    // its limits, or a note past its count, rebuilt with the sentence that names them.
+    if ((e.code === PLAN_INACTIVE_CODE || e.code === FREE_NOTES_FULL_CODE) && typeof e.notes === 'number' && typeof e.attachmentBytes === 'number') {
+      return new PlanRefused(e.code, { notes: e.notes, attachmentBytes: e.attachmentBytes }, typeof e.adding === 'number' ? e.adding : 0);
     }
     if (e.retryable === true || e.overloaded === true) return new StoreUnavailable(err);
     if (typeof e.message === 'string' && TRANSIENT.test(e.message)) return new StoreUnavailable(err);

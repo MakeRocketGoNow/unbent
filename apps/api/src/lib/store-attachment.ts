@@ -6,6 +6,7 @@ import {
 } from '@unbent/shared';
 import type { AttachmentsRepo } from './attachments-repo.js';
 import type { NotesRepo } from './notes-repo.js';
+import { PlanRefused } from './free-plan.js';
 import { assertRoom, StorageFull } from './quota.js';
 import { readAttachment, serverCanRead, uploadReaders } from './read-attachment.js';
 import type { Env } from '../types.js';
@@ -134,7 +135,7 @@ export async function storeAttachment(
   try {
     info = await attachments.record({ id, noteId, filename, contentType, size: object.size, r2Key: key }, { quota: input.quota });
   } catch (err) {
-    if (err instanceof StorageFull) await env.BLOBS.delete(key).catch(() => {});
+    if (err instanceof StorageFull || err instanceof PlanRefused) await env.BLOBS.delete(key).catch(() => {});
     throw err;
   }
 

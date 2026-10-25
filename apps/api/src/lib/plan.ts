@@ -119,6 +119,16 @@ export function planStateOf(row: PlanRow | null, now: number): PlanState {
   return row.plan;
 }
 
+/**
+ * Whether no plan holds at `now`: a trial, a subscription or a comp that ended. Such an
+ * account is on the free plan, and is `free` or `inactive` by what it holds
+ * (`accountStateOf`); `planStateOf` alone cannot say which, since the row knows nothing
+ * of the account's notes.
+ */
+export function lapsed(row: PlanRow | null, now: number): boolean {
+  return planStateOf(row, now) === 'inactive';
+}
+
 /** The row as the Plan page reads it. `usedBytes` is the store's and added by the route. */
 export function accountPlanOf(row: PlanRow, now: number): AccountPlan {
   const state = planStateOf(row, now);

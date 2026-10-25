@@ -1,5 +1,6 @@
 import { PLAN_INACTIVE_MESSAGE } from '@unbent/shared';
 import type { McpServer } from '@modelcontextprotocol/server';
+import { PlanRefused } from '../lib/free-plan.js';
 import { StorageFull } from '../lib/quota.js';
 import { toolError } from './tools/result.js';
 
@@ -67,6 +68,9 @@ export function gatedRegistrar(server: McpServer, gate: PlanGate): Registrar {
         // rather than an exception that ends the conversation. Here, behind every
         // write tool at once, rather than in each handler's own catch.
         if (err instanceof StorageFull) return toolError(err.message);
+        // And the free plan's (an account past it, or a note past its count), which the
+        // store decides from the limits the repos carry: the same kind of sentence.
+        if (err instanceof PlanRefused) return toolError(err.message);
         throw err;
       }
     };

@@ -1290,6 +1290,12 @@ describe('rows read on an archive-sized store', () => {
       // size is the runtime's figure, read once the save is known to write, so a save
       // of a trashed note is still its 404 (3 read, measured 2026-10-17).
       await measure('save refused by the store limit', () => stub.update('n00001', { title: 'Refused' }, 1).catch(() => undefined)),
+      // The free plan's check (decided 2026-10-24) is the counts row, read once ahead of
+      // the write: a save that fits pays that row on top of a save, and a write refused
+      // for an account past the limits reads it and nothing more, however big the store.
+      await measure('save on the free plan', () => stub.update('n00030', { title: 'Free' }, { store: null, free: { notes: 10_000, attachmentBytes: 1 << 30 } })),
+      await measure('create refused by the free plan', () =>
+        stub.create({ id: crypto.randomUUID(), title: 'Refused', body: '', tags: [] }, { store: null, free: { notes: 100, attachmentBytes: 1 << 30 } }).catch(() => undefined)),
       await measure('feed nothing new', async () => stub.changesSince((await stub.changesSince(99_999_999, 1)).seq, 100)),
       await measure('feed reset', () => stub.changesSince(99_999, 100)),
       await measure('snapshot page', () => stub.snapshotPage(null, 100)),
@@ -1522,6 +1528,10 @@ describe('rows read on an archive-sized store', () => {
       // The note's live row, then its fifty copies and their index entries (152).
       'history clear': 180,
       'save refused by the store limit': 10,
+      // A save outside its window with a copy kept, plus the counts row (135, measured 2026-10-25).
+      'save on the free plan': 170,
+      // The counts row alone: refused before anything of the note is read (1).
+      'create refused by the free plan': 3,
     };
     for (const r of results) {
       if (r.label === 'dump') continue;

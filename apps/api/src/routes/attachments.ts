@@ -16,6 +16,7 @@ import { serverCanRead } from '../lib/read-attachment.js';
 import { fetchWebImage } from '../lib/web-image.js';
 import { requireAuth } from '../lib/session.js';
 import { withRepos } from '../lib/repos-middleware.js';
+import { PlanRefused } from '../lib/free-plan.js';
 import { StorageFull, quotaOf, storageFullBody } from '../lib/quota.js';
 import { storeAttachment } from '../lib/store-attachment.js';
 import type { AppEnv } from '../types.js';
@@ -226,8 +227,10 @@ export const attachments = new Hono<AppEnv>()
     try {
       info = await repo.record({ id, noteId, filename, contentType: fetched.contentType, size: object.size, r2Key: key }, { quota });
     } catch (err) {
-      if (!(err instanceof StorageFull)) throw err;
+      if (!(err instanceof StorageFull || err instanceof PlanRefused)) throw err;
       await c.env.BLOBS.delete(key).catch(() => {});
+      // A free plan's refusal goes on to the app's handler, which answers it with its code.
+      if (err instanceof PlanRefused) throw err;
       return c.json(storageFullBody(err), 402);
     }
     return c.json({ ...info, path: `files/${filename}`, url }, 201);

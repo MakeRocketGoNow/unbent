@@ -1,5 +1,5 @@
 import { AttachmentsRepo } from './attachments-repo.js';
-import { NotesRepo, type StoreLimitSource } from './notes-repo.js';
+import { NotesRepo, type WriteLimitsSource } from './notes-repo.js';
 import { storeFor } from './store-client.js';
 import type { Env } from '../types.js';
 
@@ -16,16 +16,16 @@ import type { Env } from '../types.js';
  * holds one connection to the object. Cheap and side-effect free: the notes router runs
  * it twice per request, once from its own `use` and once from a sub-route's.
  *
- * `storeLimit` is where both facades ask how much room the account's store may take
- * before they write a note or a file's text (MAK-234): the plan's, from the context or
- * the database, or `noStoreLimit` for a caller that only reads. Required, so the caller
- * says which.
+ * `limits` is where both facades ask what a write is held to: how much room the
+ * account's store may take before they write a note or a file's text (MAK-234), and the
+ * free plan's limits while no plan holds. The plan's, from the context or the database,
+ * or `noWriteLimits` for a caller that only reads. Required, so the caller says which.
  */
 export function reposFor(
   env: Pick<Env, 'USER_STORE' | 'STORE_JURISDICTION'>,
   userId: string,
-  storeLimit: StoreLimitSource,
+  limits: WriteLimitsSource,
 ): { notes: NotesRepo; attachments: AttachmentsRepo } {
   const store = storeFor(env, userId);
-  return { notes: new NotesRepo(store, userId, storeLimit), attachments: new AttachmentsRepo(store, userId, storeLimit) };
+  return { notes: new NotesRepo(store, userId, limits), attachments: new AttachmentsRepo(store, userId, limits) };
 }

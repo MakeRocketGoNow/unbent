@@ -1,6 +1,6 @@
 import type { ReadBy } from '@unbent/shared';
 import type { AttachmentInfo } from '@unbent/shared';
-import type { StoreLimitSource } from './notes-repo.js';
+import type { WriteLimitsSource } from './notes-repo.js';
 import { StoreRepo } from './store-client.js';
 import type { AttachmentRow, AttachmentsStore, FileRead, PendingFile, AssistantWrite } from '../store/attachments.js';
 import type { UsageEntry } from '../store/llm-usage.js';
@@ -21,17 +21,19 @@ import type { StoreUsage } from '../store/user-store.js';
  */
 export class AttachmentsRepo extends StoreRepo {
   /**
-   * The room the account's store may take, asked for with each write that puts a
-   * file's text in it (MAK-234): the same source `NotesRepo` carries, and for the same
-   * reason. Text was going to be left to the quota on files, but that quota counts
-   * bytes in the bucket, and a text layer is up to half a million characters whatever
-   * its file's size, so a loop of one-byte files with text sent for each would have
-   * filled the store past any limit on notes (found in review).
+   * What a write is held to: the same source `NotesRepo` carries, and for the same
+   * reason. The room the account's store may take is asked for with each write that
+   * puts a file's text in it (MAK-234). Text was going to be left to the quota on
+   * files, but that quota counts bytes in the bucket, and a text layer is up to half a
+   * million characters whatever its file's size, so a loop of one-byte files with text
+   * sent for each would have filled the store past any limit on notes (found in
+   * review). The free plan's limits are asked for with a file's row: an account past
+   * them is read-only, and its uploads are refused with the rest.
    */
   constructor(
     store: ConstructorParameters<typeof StoreRepo>[0],
     userId: string,
-    private readonly storeLimit: StoreLimitSource,
+    private readonly limits: WriteLimitsSource,
   ) {
     super(store, userId);
   }
@@ -96,7 +98,7 @@ export class AttachmentsRepo extends StoreRepo {
   }, opts?: { quota?: number | null }): Promise<AttachmentInfo>;
   record(input: Parameters<AttachmentsStore['record']>[0], opts: { ifAbsent: true; quota?: number | null }): Promise<AttachmentInfo | null>;
   record(input: Parameters<AttachmentsStore['record']>[0], opts?: { ifAbsent?: boolean; quota?: number | null }): Promise<AttachmentInfo | null> {
-    return this.call((s) => s.recordAttachment(input, opts));
+    return this.call(async (s) => s.recordAttachment(input, opts, await this.limits()));
   }
 
   /** Returns the R2 key to delete, or null when there is no such file on a live note. */
@@ -111,7 +113,7 @@ export class AttachmentsRepo extends StoreRepo {
     text: string;
     readBy?: ReadBy | null | undefined;
   }, usage?: UsageEntry): Promise<void> {
-    return this.call(async (s) => s.recordText(input, usage, await this.storeLimit()));
+    return this.call(async (s) => s.recordText(input, usage, await this.limits()));
   }
 
   /**
@@ -120,12 +122,12 @@ export class AttachmentsRepo extends StoreRepo {
    * to the limit like any other text write.
    */
   copyText(fromAttachmentId: string, to: { attachmentId: string; noteId: string; filename: string }, opts: { move?: boolean } = {}): Promise<void> {
-    return this.call(async (s) => s.copyText(fromAttachmentId, to, opts.move ? null : await this.storeLimit()));
+    return this.call(async (s) => s.copyText(fromAttachmentId, to, opts.move ? null : await this.limits()));
   }
 
   /** An assistant's reading of a file, over MCP; see `AttachmentsStore.writeAssistantText` for what yields to it. */
   writeAssistantText(noteId: string, filename: string, text: string): Promise<AssistantWrite> {
-    return this.call(async (s) => s.writeAssistantText(noteId, filename, text, await this.storeLimit()));
+    return this.call(async (s) => s.writeAssistantText(noteId, filename, text, await this.limits()));
   }
 
   needingText(limit: number, noteId?: string): Promise<PendingFile[]> {

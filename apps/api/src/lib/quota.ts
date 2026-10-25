@@ -1,7 +1,9 @@
-import { GB, STORAGE_FULL_CODE, storageQuotaBytes, storeLimitBytes } from '@unbent/shared';
+import { FREE_STORAGE_GB, GB, STORAGE_FULL_CODE, storageQuotaBytes, storeLimitBytes } from '@unbent/shared';
 import type { AttachmentsRepo } from './attachments-repo.js';
+import { freeLimitsOf } from './free-plan.js';
 import { billingOn, type StripeEnv } from './stripe.js';
-import { planFor, type PlanRow } from './plan.js';
+import { lapsed, planFor, type PlanRow } from './plan.js';
+import type { WriteLimits } from '../store/user-store.js';
 
 /**
  * The plan's storage, enforced where bytes come in (MAK-108): an upload, a copy, a
@@ -78,22 +80,42 @@ export function storeLimitOf(env: StripeEnv, plan: PlanRow | undefined): number 
   return quota === null ? null : storeLimitBytes(quota);
 }
 
+/**
+ * Everything a write carries to the store (`WriteLimits`): the store's room, and the
+ * free plan's limits while no plan holds. Null where billing is off, which bounds
+ * nothing. What `reposFor`'s source answers for a request with the row in hand.
+ */
+export function writeLimitsOf(env: StripeEnv, plan: PlanRow | undefined): WriteLimits | null {
+  if (!billingOn(env) || !plan) return null;
+  return { store: storeLimitOf(env, plan), free: freeLimitsOf(env, plan) };
+}
+
 /** The same, read from the database, for a caller without the row on its context. */
-export async function storeLimitFor(env: StripeEnv, db: D1Database, userId: string): Promise<number | null> {
-  const quota = await quotaFor(env, db, userId);
-  return quota === null ? null : storeLimitBytes(quota);
+export async function writeLimitsFor(env: StripeEnv, db: D1Database, userId: string): Promise<WriteLimits | null> {
+  if (!billingOn(env)) return null;
+  return writeLimitsOf(env, await planFor(db, userId));
+}
+
+/**
+ * The gigabytes of files the account may hold: its plan's, or the free plan's while no
+ * plan holds, so a free account's uploads stop at its gigabyte with the same refusal a
+ * full paid plan's do, and its store's room follows from that as every account's does.
+ * An account that lapsed holding more is past the free plan and read-only besides.
+ */
+export function storageGbOf(plan: PlanRow, now = Date.now()): number {
+  return lapsed(plan, now) ? FREE_STORAGE_GB : plan.storageGb;
 }
 
 /** The account's quota in bytes, or null for none: billing off. */
 export function quotaOf(env: StripeEnv, plan: PlanRow | undefined): number | null {
   if (!billingOn(env) || !plan) return null;
-  return storageQuotaBytes(plan.storageGb);
+  return storageQuotaBytes(storageGbOf(plan));
 }
 
 /** The same, read from the database, for a caller without the row on its context. */
 export async function quotaFor(env: StripeEnv, db: D1Database, userId: string): Promise<number | null> {
   if (!billingOn(env)) return null;
-  return storageQuotaBytes((await planFor(db, userId)).storageGb);
+  return storageQuotaBytes(storageGbOf(await planFor(db, userId)));
 }
 
 /**

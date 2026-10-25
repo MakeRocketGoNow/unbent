@@ -3,7 +3,7 @@ import { appLinks } from '../lib/app-links.js';
 import { canUseLlm } from '../lib/llm.js';
 import { billingOn } from '../lib/stripe.js';
 import { planFor, planStateOf, type PlanRow } from '../lib/plan.js';
-import { quotaOf, storeLimitOf } from '../lib/quota.js';
+import { quotaOf, writeLimitsOf } from '../lib/quota.js';
 import { reposFor } from '../lib/repos.js';
 import { UploadGrantsRepo } from '../lib/upload-grants.js';
 import type { Env } from '../types.js';
@@ -48,7 +48,7 @@ export function createUnbentMcpHandler(
       row = undefined;
       throw err;
     }));
-    const { notes, attachments } = reposFor(env, userId, async () => storeLimitOf(env, await plan()));
+    const { notes, attachments } = reposFor(env, userId, async () => writeLimitsOf(env, await plan()));
     registerReadTools(server, notes, attachments, links, { vision: canUseLlm(env) });
     // The write tools go through the plan's gate (mcp/plan-gate.ts): a lapsed account's
     // assistant reads and deletes, and is told why it can do no more. Nothing is asked

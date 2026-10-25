@@ -5,6 +5,7 @@ import {
 } from '@unbent/shared';
 import type { AttachmentsRepo } from './attachments-repo.js';
 import type { NotesRepo } from './notes-repo.js';
+import { PlanRefused } from './free-plan.js';
 import { assertRoom, StorageFull } from './quota.js';
 
 /** One file after a copy: what it was asked for as, and what it is called now. */
@@ -120,7 +121,7 @@ export async function copyAttachments(
     try {
       info = input.skipExisting ? await attachments.record(row, { ifAbsent: true, quota }) : await attachments.record(row, { quota });
     } catch (err) {
-      if (err instanceof StorageFull) await blobs.delete(key).catch(() => {});
+      if (err instanceof StorageFull || err instanceof PlanRefused) await blobs.delete(key).catch(() => {});
       throw err;
     }
     if (!info) {

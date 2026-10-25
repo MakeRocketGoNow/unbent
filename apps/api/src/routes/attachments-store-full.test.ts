@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { describe, expect, it } from 'vitest';
 import { GB, STORE_FLOOR_BYTES } from '@unbent/shared';
 import { onAppError } from '../app.js';
+import type { WriteLimits } from '../store/user-store.js';
 import type { AppEnv } from '../types.js';
 import { attachments } from './attachments.js';
 
@@ -22,7 +23,7 @@ const stripe = {
 /** D1 with one plan row on the base storage, and a store that refuses text past any limit it is given. */
 function fakeEnv({ billing }: { billing: boolean }) {
   const reads: string[] = [];
-  const limits: Array<number | null | undefined> = [];
+  const limits: Array<WriteLimits | null | undefined> = [];
   const row = {
     user_id: 'u1', plan: 'trial', plan_until: Date.now() + 86_400_000, storage_gb: 10, source: null,
     billing_customer_id: null, billing_subscription_id: null, billing_status: null, billing_cancels_at: null,
@@ -40,10 +41,10 @@ function fakeEnv({ billing }: { billing: boolean }) {
   };
   const store = {
     attachmentIdFor: async () => 'a1',
-    recordText: async (_input: unknown, _usage: unknown, limit: number | null | undefined) => {
+    recordText: async (_input: unknown, _usage: unknown, limit: WriteLimits | null | undefined) => {
       limits.push(limit);
-      if (limit !== null && limit !== undefined) {
-        throw Object.assign(new Error('the store holds 2000 bytes'), { name: 'StoreFull', code: 'STORAGE_FULL', of: 'notes', usedBytes: limit + 1, quotaBytes: limit });
+      if (limit?.store != null) {
+        throw Object.assign(new Error('the store holds 2000 bytes'), { name: 'StoreFull', code: 'STORAGE_FULL', of: 'notes', usedBytes: limit.store + 1, quotaBytes: limit.store });
       }
     },
   };
@@ -70,7 +71,8 @@ describe('the text layer and the store limit', () => {
     const res = await put(env, { text: 'x'.repeat(1000) });
     expect(res.status).toBe(402);
     expect(await res.json()).toMatchObject({ code: 'STORAGE_FULL', of: 'notes' });
-    expect(limits).toEqual([STORE_FLOOR_BYTES + GB]);
+    // A trial's row: the store's room, and no free plan's limits while the trial holds.
+    expect(limits).toEqual([{ store: STORE_FLOOR_BYTES + GB, free: null }]);
     expect(reads).toHaveLength(1);
   });
 

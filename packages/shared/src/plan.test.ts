@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { PLAN_PRICE_USD, STORAGE_ADDON_PRICE_USD } from './plan.js';
+import {
+  FREE_NOTES,
+  FREE_STORAGE_GB,
+  GB,
+  PLAN_INACTIVE_MESSAGE,
+  PLAN_PRICE_USD,
+  STORAGE_ADDON_PRICE_USD,
+  fitsFree,
+  freeNotesFullMessage,
+  planInactiveMessage,
+} from './plan.js';
 
 /*
  * The prices are pinned on purpose, and this test is the reminder, not a check on
@@ -22,5 +32,25 @@ describe('the plan’s prices', () => {
   it('stay what the subscribers were told, until they are told otherwise', () => {
     expect(PLAN_PRICE_USD, promise).toBe(60);
     expect(STORAGE_ADDON_PRICE_USD, promise).toBe(12);
+  });
+});
+
+describe('the free plan', () => {
+  it('fits an account at its numbers and not past them, counting notes and files apart', () => {
+    expect(fitsFree({ notes: FREE_NOTES, attachmentBytes: FREE_STORAGE_GB * GB })).toBe(true);
+    expect(fitsFree({ notes: FREE_NOTES + 1, attachmentBytes: 0 })).toBe(false);
+    expect(fitsFree({ notes: 0, attachmentBytes: FREE_STORAGE_GB * GB + 1 })).toBe(false);
+  });
+
+  it('names only what is over in the read-only sentence', () => {
+    expect(planInactiveMessage({ notes: 1000, attachmentBytes: 0 })).toContain("1,000 notes, more than the free plan's 100");
+    expect(planInactiveMessage({ notes: 1000, attachmentBytes: 0 })).not.toContain('of files');
+    expect(planInactiveMessage({ notes: 5, attachmentBytes: 3 * GB })).toContain('3.0 GB of files, more than the free plan');
+    expect(planInactiveMessage()).toBe(PLAN_INACTIVE_MESSAGE);
+  });
+
+  it('says how much room a batch had when it would pass the count', () => {
+    expect(freeNotesFullMessage(100)).toContain('this account holds 100.');
+    expect(freeNotesFullMessage(97, 5)).toContain('this account holds 97, with room for 3 more.');
   });
 });

@@ -38,7 +38,7 @@ import {
   type StripeDispute,
   type StripeInvoice,
 } from '../lib/stripe.js';
-import { noStoreLimit } from '../lib/notes-repo.js';
+import { noWriteLimits } from '../lib/notes-repo.js';
 import { roomOf } from '../lib/quota.js';
 import { reposFor } from '../lib/repos.js';
 import { requireAuth } from '../lib/session.js';
@@ -123,7 +123,7 @@ export const billing = new Hono<AppEnv>()
     let held: { usedBytes: number; storeBytes: number } | undefined;
     if (c.req.query('usage') === '1') {
       try {
-        const usage = await reposFor(c.env, userId, noStoreLimit).attachments.usage();
+        const usage = await reposFor(c.env, userId, noWriteLimits).attachments.usage();
         held = { usedBytes: usage.attachmentBytes, storeBytes: usage.databaseSize };
       } catch (err) {
         console.warn(`[billing] storage used for user=${userId} unavailable:`, (err as Error).message);
@@ -228,7 +228,7 @@ export const billing = new Hono<AppEnv>()
     const storage = c.req.valid('json').storage;
     const after = BASE_STORAGE_GB + STORAGE_ADDON_GB * storage;
     if (after < row.storageGb) {
-      const held = await reposFor(c.env, userId, noStoreLimit).attachments.usage();
+      const held = await reposFor(c.env, userId, noWriteLimits).attachments.usage();
       if (held.attachmentBytes > storageQuotaBytes(after)) {
         return c.json({ error: `This account holds ${(held.attachmentBytes / GB).toFixed(1)} GB, more than the ${after} GB it would have. Delete some files first.` }, 409);
       }

@@ -23,6 +23,7 @@ import type {
 import { StoreRepo } from './store-client.js';
 import type { FileSummary } from '../store/attachments.js';
 import type { PressLimits, UsageEntry } from '../store/llm-usage.js';
+import type { WriteLimits } from '../store/user-store.js';
 import type { CountOptions, ListOptions, SearchFilters } from '../store/notes.js';
 import {
   keysOfDeletedNotes,
@@ -41,18 +42,18 @@ export { keysOfDeletedNotes, nextCursor, toFtsQuery, type ExportedNote };
 export type { CountOptions, FileSummary, ListOptions, SearchFilters };
 
 /**
- * Where a repo asks how much room the account's store may take before a write
- * (MAK-234): the limit in bytes, null for none, or a promise of either. See the
- * constructor below.
+ * Where a repo asks what a write is held to (`WriteLimits`): the room the account's
+ * store may take (MAK-234) and, while no plan holds, the free plan's limits; null for
+ * none, or a promise of either. See the constructor below.
  */
-export type StoreLimitSource = () => number | null | Promise<number | null>;
+export type WriteLimitsSource = () => WriteLimits | null | Promise<WriteLimits | null>;
 
 /**
- * No limit, for a caller that only reads. A write made through a repo built with this
- * is unbounded whatever the plan says, which is the one way to get round the bound by
+ * No limits, for a caller that only reads. A write made through a repo built with this
+ * is unbounded whatever the plan says, which is the one way to get round the bounds by
  * accident: a new `reposFor` call that passes it and then writes is a review finding.
  */
-export const noStoreLimit: StoreLimitSource = () => null;
+export const noWriteLimits: WriteLimitsSource = () => null;
 
 /**
  * All note access for one user, answered by that user's store.
@@ -71,19 +72,19 @@ export const noStoreLimit: StoreLimitSource = () => null;
  */
 export class NotesRepo extends StoreRepo {
   /**
-   * The room the account's store may take, asked for with each write that adds to it
-   * (MAK-234), as `AttachmentsRepo.record` is given the quota on files. A source rather
-   * than a number because the plan row is on the request's context where there is one
-   * (`withRepos`) and a database read where there is not (the MCP endpoint), and the
-   * repo is built before either has been read. Carried here so every route that writes
-   * a note is bounded without saying so, and a new one cannot forget: the methods below
-   * that pass it are the ones `UserStore` takes a limit on, and the two that do not,
-   * `appendFileLink` and the deletes, say why.
+   * What each write is held to: the room the account's store may take (MAK-234), as
+   * `AttachmentsRepo.record` is given the quota on files, and the free plan's limits
+   * while no plan holds. A source rather than a value because the plan row is on the
+   * request's context where there is one (`withRepos`) and a database read where there
+   * is not (the MCP endpoint), and the repo is built before either has been read.
+   * Carried here so every route that writes is bounded without saying so, and a new one
+   * cannot forget: the methods below that pass it are the ones `UserStore` takes a
+   * limit on, and the two that do not, `appendFileLink` and the deletes, say why.
    */
   constructor(
     store: ConstructorParameters<typeof StoreRepo>[0],
     userId: string,
-    private readonly storeLimit: StoreLimitSource,
+    private readonly limits: WriteLimitsSource,
   ) {
     super(store, userId);
   }
@@ -127,16 +128,16 @@ export class NotesRepo extends StoreRepo {
     notebook?: string | null | undefined;
     fields?: NoteFieldsPatch | undefined;
   }): Promise<Note> {
-    return this.call(async (s) => s.create(input, await this.storeLimit()));
+    return this.call(async (s) => s.create(input, await this.limits()));
   }
 
   duplicate(id: string, newId: string): Promise<Note | null> {
-    return this.call(async (s) => s.duplicate(id, newId, await this.storeLimit()));
+    return this.call(async (s) => s.duplicate(id, newId, await this.limits()));
   }
 
   /** `create` for an id the client chose, which may be a replay's; see `NotesStore.createOrFind`. */
   createOrFind(input: Parameters<NotesRepo['create']>[0]): Promise<{ note: Note; existing: boolean }> {
-    return this.call(async (s) => s.createOrFind(input, await this.storeLimit()));
+    return this.call(async (s) => s.createOrFind(input, await this.limits()));
   }
 
   /** Many notes in one transaction, all or none; see `NotesStore.createMany`. */
@@ -144,12 +145,12 @@ export class NotesRepo extends StoreRepo {
     inputs: Array<Parameters<NotesRepo['create']>[0]>,
     opts: { skipExisting?: boolean | undefined } = {},
   ): Promise<Array<{ id: string; title: string; skipped: boolean }>> {
-    return this.call(async (s) => s.createMany(inputs, opts, await this.storeLimit()));
+    return this.call(async (s) => s.createMany(inputs, opts, await this.limits()));
   }
 
   /** `duplicate` with the same replay rule for the copy's id. */
   duplicateOrFind(id: string, newId: string): Promise<{ note: Note; existing: boolean } | null> {
-    return this.call(async (s) => s.duplicateOrFind(id, newId, await this.storeLimit()));
+    return this.call(async (s) => s.duplicateOrFind(id, newId, await this.limits()));
   }
 
   update(
@@ -165,7 +166,7 @@ export class NotesRepo extends StoreRepo {
       by?: 'assistant' | undefined;
     },
   ): Promise<Note | StaleNote | null> {
-    return this.call(async (s) => s.update(id, patch, await this.storeLimit()));
+    return this.call(async (s) => s.update(id, patch, await this.limits()));
   }
 
   /** A live note's history, newest first, without bodies; null when there is no such note. */
@@ -184,11 +185,11 @@ export class NotesRepo extends StoreRepo {
 
   /** Puts a copy back, keeping what it replaces; see `NotesStore.restoreRevision`. */
   restoreRevision(id: string, revisionId: number, ifUpdatedAt?: number): Promise<RestoredNote | StaleNote | null> {
-    return this.call(async (s) => s.restoreRevision(id, revisionId, ifUpdatedAt, await this.storeLimit()));
+    return this.call(async (s) => s.restoreRevision(id, revisionId, ifUpdatedAt, await this.limits()));
   }
 
   appendToBody(id: string, markdown: string): Promise<boolean> {
-    return this.call(async (s) => s.appendToBody(id, markdown, await this.storeLimit()));
+    return this.call(async (s) => s.appendToBody(id, markdown, await this.limits()));
   }
 
   /**
@@ -236,7 +237,7 @@ export class NotesRepo extends StoreRepo {
       by?: 'assistant' | undefined;
     },
   ): Promise<{ matched: string[]; changed: string[] }> {
-    return this.call(async (s) => s.updateMany(ids, patch, await this.storeLimit()));
+    return this.call(async (s) => s.updateMany(ids, patch, await this.limits()));
   }
 
   importNote(input: {
@@ -251,11 +252,11 @@ export class NotesRepo extends StoreRepo {
     sourceEnex?: string | undefined;
     fields?: Record<string, FieldValue> | undefined;
   }): Promise<{ id: string; created: boolean; skippedFields: string[] }> {
-    return this.call(async (s) => s.importNote(input, await this.storeLimit()));
+    return this.call(async (s) => s.importNote(input, await this.limits()));
   }
 
   setBody(id: string, body: string): Promise<void> {
-    return this.call(async (s) => s.setBody(id, body, await this.storeLimit()));
+    return this.call(async (s) => s.setBody(id, body, await this.limits()));
   }
 
   search(rawQuery: string, limit: number, filters: SearchFilters = {}): Promise<SearchResult[]> {
@@ -323,7 +324,7 @@ export class NotesRepo extends StoreRepo {
     name: string,
     opts?: { merge?: boolean | undefined },
   ): Promise<{ id: string; name: string; merged: boolean } | 'conflict' | 'missing'> {
-    return this.call(async (s) => s.renameTag(id, name, opts));
+    return this.call(async (s) => s.renameTag(id, name, opts, await this.limits()));
   }
 
   deleteTag(id: string): Promise<boolean> {
@@ -331,7 +332,7 @@ export class NotesRepo extends StoreRepo {
   }
 
   recolorTag(id: string, color: number): Promise<boolean> {
-    return this.call((s) => s.recolorTag(id, color));
+    return this.call(async (s) => s.recolorTag(id, color, await this.limits()));
   }
 
   countUnfiledNotes(): Promise<number> {
@@ -343,14 +344,14 @@ export class NotesRepo extends StoreRepo {
   }
 
   createNotebook(name: string): Promise<{ id: string; name: string } | null> {
-    return this.call((s) => s.createNotebook(name));
+    return this.call(async (s) => s.createNotebook(name, await this.limits()));
   }
 
   updateNotebook(
     id: string,
     patch: { name?: string | undefined; purpose?: string | null | undefined; emoji?: string | null | undefined },
   ): Promise<'ok' | 'conflict' | 'missing'> {
-    return this.call((s) => s.updateNotebook(id, patch));
+    return this.call(async (s) => s.updateNotebook(id, patch, await this.limits()));
   }
 
   deleteNotebook(id: string, opts?: { trashNotes?: boolean | undefined }): Promise<boolean> {
@@ -373,7 +374,7 @@ export class NotesRepo extends StoreRepo {
     notebookId: string,
     input: { name: string; type: FieldType; options: string[]; scale?: FieldScale | null | undefined; currency?: string | null | undefined },
   ): Promise<FieldDef | 'missing' | 'conflict' | 'full'> {
-    return this.call(async (s) => s.createField(notebookId, input));
+    return this.call(async (s) => s.createField(notebookId, input, await this.limits()));
   }
 
   updateField(
@@ -387,7 +388,7 @@ export class NotesRepo extends StoreRepo {
       currency?: string | null | undefined;
     },
   ): Promise<{ field: FieldDef; cleared: number } | 'missing' | 'conflict'> {
-    return this.call(async (s) => s.updateField(notebookId, fieldId, patch));
+    return this.call(async (s) => s.updateField(notebookId, fieldId, patch, await this.limits()));
   }
 
   previewConversion(
@@ -400,7 +401,7 @@ export class NotesRepo extends StoreRepo {
   }
 
   reorderFields(notebookId: string, ids: string[]): Promise<boolean> {
-    return this.call((s) => s.reorderFields(notebookId, ids));
+    return this.call(async (s) => s.reorderFields(notebookId, ids, await this.limits()));
   }
 
   deleteField(notebookId: string, fieldId: string): Promise<boolean> {
@@ -436,7 +437,7 @@ export class NotesRepo extends StoreRepo {
     | 'conflict'
     | { refused: string; merge?: true }
   > {
-    return this.call(async (s) => s.editFieldOptions(notebookId, fieldId, edit, patch));
+    return this.call(async (s) => s.editFieldOptions(notebookId, fieldId, edit, patch, await this.limits()));
   }
 
   importNotebook(
@@ -449,7 +450,7 @@ export class NotesRepo extends StoreRepo {
       }
     | 'conflict'
   > {
-    return this.call(async (s) => s.importNotebook(definition, opts));
+    return this.call(async (s) => s.importNotebook(definition, opts, await this.limits()));
   }
 
   // --- Composites ----------------------------------------------------------------------
@@ -509,7 +510,7 @@ export class NotesRepo extends StoreRepo {
   autofillPrelude(id: string, ownFilesToRead: number, press?: PressLimits) {
     // The press passes no limits when Auto-fill is not set up on the instance, and that
     // answer comes first: a store with no room is not what stops such a press.
-    return this.call(async (s) => s.autofillPrelude(id, ownFilesToRead, press, press === undefined ? null : await this.storeLimit()));
+    return this.call(async (s) => s.autofillPrelude(id, ownFilesToRead, press, press === undefined ? null : await this.limits()));
   }
 
   /** What a press cost beyond its files' readings; see `UserStore.recordLlmUsage`. */
