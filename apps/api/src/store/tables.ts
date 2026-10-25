@@ -10,6 +10,13 @@
  */
 export const DATA_TABLES = [
   'notebooks',
+  /*
+   * A notebook's saved views (0010). Right after the notebooks because a view names one,
+   * and a dump loads in this order; counted and dumped as any data table is, since they
+   * are the person's own arrangement of their library and a store rebuilt without them
+   * would lose every one.
+   */
+  'notebook_views',
   'notebook_fields',
   'tags',
   'notes',

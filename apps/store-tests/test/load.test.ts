@@ -65,6 +65,15 @@ async function populate(stub: ReturnType<typeof freshStore>['stub']) {
   // An Auto-fill press and what its title cost, so `llm_usage` has rows to carry.
   await stub.autofillPrelude(kept.id, 5, { cap: null, yearlyCents: null });
   await stub.recordLlmUsage([{ job: 'title', model: 'claude-opus-5', inputTokens: 400, outputTokens: 20, cacheReadTokens: 0, cacheWriteTokens: 0 }]);
+  // A saved view of the notebook, so `notebook_views` has a row to carry.
+  await runInDurableObject(stub, (_i, state) => {
+    state.storage.sql.exec(
+      `INSERT INTO notebook_views (id, notebook_id, name, position, query, created_at, updated_at) VALUES (?1, ?2, 'Acme only', 0, ?3, 1, 1)`,
+      crypto.randomUUID(),
+      notebook.id,
+      JSON.stringify({ field: [`${field.id}:eq:Acme`], layout: 'table' }),
+    );
+  });
   return { kept, trashed, notebook };
 }
 
@@ -234,11 +243,11 @@ describe('loading a dump', () => {
     const text = await dumpOf(stub, userId);
     // The dump as a store at 0004 would have written it: no deleted_blobs table, no rows
     // for it, no record of 0005, and none of what came after (0006's index, 0007's table,
-    // 0008's column and triggers, 0009's two columns).
+    // 0008's column and triggers, 0009's two columns, 0010's table).
     const scan = scanStatements(text);
     const older =
       scan.statements
-        .filter((s) => !/deleted_blobs|0005-deleted-blobs|idx_tags_name_nocase|0006-tags-nocase|llm_usage|0007-llm-usage|attachments_bytes_|0008-attachment-bytes|0009-colours/.test(s))
+        .filter((s) => !/deleted_blobs|0005-deleted-blobs|idx_tags_name_nocase|0006-tags-nocase|llm_usage|0007-llm-usage|attachments_bytes_|0008-attachment-bytes|0009-colours|notebook_views|0010-notebook-views/.test(s))
         // 0008's column on the totals row: off the table, and off its one row.
         .map((s) => s.replace(/,\s*attachment_bytes INTEGER NOT NULL DEFAULT 0/, '').replace(/, attachment_bytes\) VALUES \((.*), \d+\);/, ') VALUES ($1);'))
         // 0009's colour on each tag and each field: off both tables (SQLite splices an
@@ -249,10 +258,10 @@ describe('loading a dump', () => {
         .join('') + scan.rest;
     expect(older).not.toBe(text);
     const result = await load(stub, older);
-    expect(result.migrated).toEqual(['0005-deleted-blobs', '0006-tags-nocase', '0007-llm-usage', '0008-attachment-bytes', '0009-colours']);
+    expect(result.migrated).toEqual(['0005-deleted-blobs', '0006-tags-nocase', '0007-llm-usage', '0008-attachment-bytes', '0009-colours', '0010-notebook-views']);
     expect(result.stats.migrations).toEqual(SCHEMA.map((f) => f.name));
     // 0009 told the feed about the colours it gave: a row per tag and one for the notebook.
-    expect(result.stats.counts).toEqual({ ...before.counts, deleted_blobs: 0, llm_usage: 0, changes: before.counts.changes + 3 });
+    expect(result.stats.counts).toEqual({ ...before.counts, deleted_blobs: 0, llm_usage: 0, notebook_views: 0, changes: before.counts.changes + 3 });
     // The table the file added is there to be written.
     await stub.removeAttachment((await stub.list({ limit: 1 }))[0]!.id, 'scan.pdf');
     expect((await stub.stats()).counts.deleted_blobs).toBe(1);
