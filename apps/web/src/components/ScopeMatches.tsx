@@ -135,7 +135,9 @@ export function ScopeMatches({
             className="scope-match-btn"
             aria-label={`Show notebook: ${nb.name}`}
             onClick={() =>
-              pick({ notebook: nb.name, tag: undefined, field: undefined, ...rememberedSort(nb.name) })
+              // A place, like the rail's row for it: out of any saved view, which named the
+              // notebook being left.
+              pick({ notebook: nb.name, tag: undefined, field: undefined, saved: undefined, ...rememberedSort(nb.name) })
             }
           >
             <span className="scope-match-icon">

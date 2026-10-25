@@ -78,10 +78,10 @@ export function ActiveFilters({
            * notebook boundaries, so leaving one selected here routinely yields an empty list
            * with no visible cause. The field filters too: they belong to this notebook.
            * The list opens in the order All notes was last left in, as the drawer's link
-           * to it would.
+           * to it would, and out of any saved view, which belonged to the notebook.
            */
           onClick={() =>
-            drop({ notebook: undefined, tag: undefined, field: undefined, ...rememberedSort(undefined) })
+            drop({ notebook: undefined, tag: undefined, field: undefined, saved: undefined, ...rememberedSort(undefined) })
           }
         >
           {notebook === UNFILED ? 'Inbox' : notebook}

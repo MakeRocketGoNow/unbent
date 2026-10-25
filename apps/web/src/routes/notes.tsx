@@ -143,6 +143,25 @@ export const filters = z.object({
    * `?new=0` or a stray `?new` is dropped rather than read as yes.
    */
   new: z.literal(1).optional().catch(undefined),
+  /**
+   * `?saved=<id>`: the saved view this list was opened from (`@unbent/shared`'s
+   * `views.ts`). A view is a bookmark, not a mode: opening one writes its filters into the
+   * params above, where the chips show them as they always have, and this id rides beside
+   * them only so the heading can name the place and say when the list has wandered from
+   * the view (`sameViewQuery`).
+   *
+   * Who keeps it decides what it means. The writers that change *place* (the rail's
+   * notebooks and tags, the notebook chip, a notebook picked from search, the way out of
+   * "Notebook not found") clear it, since the list they lead to is not the view's. The
+   * writers that *edit* the list (the tag, date and field pickers, the sort, a column
+   * header, Clear all) keep it, which is how the edit shows as one. A view's own link
+   * writes every param itself rather than spreading the current ones, so nothing leaks in.
+   *
+   * Not among the loader's dependencies: it changes no fetch. An id that names no view (one
+   * deleted on another device, an old link) is dropped by `NotesLayout` once the views are
+   * known, as a stale `sortField` is.
+   */
+  saved: z.string().uuid().optional().catch(undefined),
 });
 
 export const Route = createFileRoute('/notes')({
