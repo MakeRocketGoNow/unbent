@@ -1,4 +1,4 @@
-import type { FeedNotebook, FeedTag, Note } from '@unbent/shared';
+import type { FeedNotebook, FeedTag, FeedView, Note } from '@unbent/shared';
 import { COMPAT_LEVEL } from '@unbent/shared/compat';
 import { behindDeploy } from '../update-notice.js';
 import type { NoteDraft } from '../note-patch.js';
@@ -17,7 +17,7 @@ export type CallName = keyof typeof forwardable | HolderCall;
  * mirrored, and the holder's door for everything else. See `library-channel.ts` for why
  * a mirror rather than a query a message away.
  *
- * The rows are four maps, filled from the holder's `rows` on attach and kept by its
+ * The rows are five maps, filled from the holder's `rows` on attach and kept by its
  * `changes` after; `version` moves with each, so the queries' per-version cache
  * (`view` in `queries.ts`) works here as it does over the holder's collections. The
  * feed's state, the outbox's status and the keeper's are mirrored the same way, so the
@@ -169,6 +169,7 @@ export interface ClientLibrary {
   notebooks: Rows<FeedNotebook>;
   tags: Rows<FeedTag>;
   attachments: Rows<LocalAttachment>;
+  views: Rows<FeedView>;
   version: () => number;
   state: () => FeedState;
   subscribe: (listener: (state: FeedState) => void) => () => void;
@@ -206,8 +207,8 @@ class Mirror<T extends object> implements Rows<T> {
   }
 }
 
-type Maps = { note: Mirror<LocalNote>; notebook: Mirror<FeedNotebook>; tag: Mirror<FeedTag>; attachment: Mirror<LocalAttachment> };
-const freshMaps = (): Maps => ({ note: new Mirror(), notebook: new Mirror(), tag: new Mirror(), attachment: new Mirror() });
+type Maps = { note: Mirror<LocalNote>; notebook: Mirror<FeedNotebook>; tag: Mirror<FeedTag>; attachment: Mirror<LocalAttachment>; view: Mirror<FeedView> };
+const freshMaps = (): Maps => ({ note: new Mirror(), notebook: new Mirror(), tag: new Mirror(), attachment: new Mirror(), view: new Mirror() });
 
 const starting: FeedState = { phase: 'starting', cursor: null, lastError: null, total: null, applied: 0, pulls: 0, resets: 0 };
 const nothingWaiting: SyncStatus = { pending: 0, durable: false, waiting: new Set(), conflicts: new Map(), uploadNotices: new Map(), storeFull: null };
@@ -602,6 +603,9 @@ export function attachClientLibrary(userId: string, me: string, port: Port, hook
     },
     get attachments() {
       return maps.attachment;
+    },
+    get views() {
+      return maps.view;
     },
     version: () => version,
     state: () => feed,

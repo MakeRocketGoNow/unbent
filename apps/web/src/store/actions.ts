@@ -1141,7 +1141,7 @@ function connectivityDetector(): OnlineDetector {
 }
 
 function snapshot(lib: Collections): Snapshot {
-  return { notes: lib.notes.values(), notebooks: lib.notebooks.values(), tags: lib.tags.values(), attachments: lib.attachments.values() };
+  return { notes: lib.notes.values(), notebooks: lib.notebooks.values(), tags: lib.tags.values(), attachments: lib.attachments.values(), views: lib.views.values() };
 }
 
 // --- The actions ----------------------------------------------------------------------

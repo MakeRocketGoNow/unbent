@@ -65,7 +65,7 @@ async function library(patient = offlineNow()): Promise<Library | null> {
     rereadWhenOpen(open);
     return null;
   }
-  await Promise.all([lib.notes.preload(), lib.notebooks.preload(), lib.tags.preload(), lib.attachments.preload()]);
+  await Promise.all([lib.notes.preload(), lib.notebooks.preload(), lib.tags.preload(), lib.attachments.preload(), lib.views.preload()]);
   return lib;
 }
 
@@ -153,6 +153,7 @@ function view(lib: Library): View {
       notebooks: [...lib.notebooks.values()],
       tags: [...lib.tags.values()],
       attachments: [...lib.attachments.values()],
+      views: [...lib.views.values()],
     };
     v = { version, snapshot, lookups: lookups(snapshot), lists: new Map() };
     views.set(lib, v);

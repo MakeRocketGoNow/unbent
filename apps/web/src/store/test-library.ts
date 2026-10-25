@@ -1,11 +1,11 @@
 import { createCollection, type Collection } from '@tanstack/db';
-import type { FeedAttachment, FeedEntity, FeedNote, FeedNotebook, FeedTag } from '@unbent/shared';
+import type { FeedAttachment, FeedEntity, FeedNote, FeedNotebook, FeedTag, FeedView } from '@unbent/shared';
 import type { Cursor, FeedState } from './feed.js';
 import { setLibraryForTests, type ReadableLibrary, notifyLibraryChange, notifyLibraryReset } from './library.js';
-import { LIBRARY_ROOTS, rootsOfNoteChanges } from './library-roots.js';
+import { LIBRARY_ROOTS, VIEW_ROOTS, rootsOfNoteChanges } from './library-roots.js';
 
 /**
- * An in-memory library for component tests: the four collections with no persistence
+ * An in-memory library for component tests: the five collections with no persistence
  * and no feed, seeded with rows, and a way to change them the way a feed page would:
  * through the collections' sync path, and told to the query bridge as the real library
  * tells it (`open` in `library.ts`: the same roots, the same subscription options, one
@@ -18,6 +18,7 @@ type Rows = {
   notebooks?: FeedNotebook[];
   tags?: FeedTag[];
   attachments?: FeedAttachment[];
+  views?: FeedView[];
   /** The feed's cursor; `null` is a library that has never taken a snapshot. */
   cursor?: Cursor | null;
 };
@@ -30,7 +31,7 @@ interface Controls<T extends object> {
 
 export interface TestLibrary extends ReadableLibrary {
   /** Puts a row in, as a feed page would. */
-  upsert: (entity: FeedEntity, row: FeedNote | FeedNotebook | FeedTag | FeedAttachment) => void;
+  upsert: (entity: FeedEntity, row: FeedNote | FeedNotebook | FeedTag | FeedAttachment | FeedView) => void;
   remove: (entity: FeedEntity, id: string) => void;
   subscribe: (listener: (state: FeedState) => void) => () => void;
   /** The engine's `reset`: the count moves, the library is not whole until `settle`, and every subscriber hears it; the rows are the caller's to replace. */
@@ -62,11 +63,12 @@ export function installTestLibrary(rows: Rows = {}): TestLibrary {
     notebooks: make<FeedNotebook>('notebook', rows.notebooks ?? [], (n) => n.id),
     tags: make<FeedTag>('tag', rows.tags ?? [], (t) => t.id),
     attachments: make<FeedAttachment>('attachment', rows.attachments ?? [], (a) => a.id),
+    views: make<FeedView>('view', rows.views ?? [], (v) => v.id),
   };
   const cursor = rows.cursor === undefined ? { seq: 1, epoch: 'test' } : rows.cursor;
   const state: FeedState = { phase: cursor ? 'current' : 'starting', cursor, lastError: null, total: null, applied: 0, pulls: 1, resets: 0 };
   const listeners = new Set<(s: FeedState) => void>();
-  const of = (entity: FeedEntity) => ({ note: lib.notes, notebook: lib.notebooks, tag: lib.tags, attachment: lib.attachments })[entity] as Collection<object, string>;
+  const of = (entity: FeedEntity) => ({ note: lib.notes, notebook: lib.notebooks, tag: lib.tags, attachment: lib.attachments, view: lib.views })[entity] as Collection<object, string>;
   let version = 0;
   // Told to the bridge as the real library tells it (`changed` in `library.ts`): the
   // roots a task's changes reach, in one call on a microtask, so a test sees one
@@ -90,6 +92,7 @@ export function installTestLibrary(rows: Rows = {}): TestLibrary {
     lib.notebooks.subscribeChanges(() => changed(LIBRARY_ROOTS), every),
     lib.tags.subscribeChanges(() => changed(LIBRARY_ROOTS), every),
     lib.attachments.subscribeChanges(() => changed(LIBRARY_ROOTS), every),
+    lib.views.subscribeChanges(() => changed(VIEW_ROOTS), every),
   ];
   const test: TestLibrary = {
     ...lib,

@@ -265,8 +265,9 @@ function library(notes: LocalNote[], notebooks: FeedNotebook[] = []) {
   const nb = collection(notebooks, (r) => r.id);
   const t = collection<{ id: string }>([], (r) => r.id);
   const a = collection<{ id: string }>([], (r) => r.id);
+  const v = collection<{ id: string }>([], (r) => r.id);
   const s = collection<{ id: string }>([], (r) => r.id);
-  const collections = { notes: n.c, notebooks: nb.c, tags: t.c, attachments: a.c, syncState: s.c } as unknown as Collections;
+  const collections = { notes: n.c, notebooks: nb.c, tags: t.c, attachments: a.c, views: v.c, syncState: s.c } as unknown as Collections;
   let release: (() => void) | null = null;
   const engine = {
     // A whole copy unless a test says the first one is still walking.
@@ -289,7 +290,7 @@ function library(notes: LocalNote[], notebooks: FeedNotebook[] = []) {
     engine,
     /** Lets a pull the actions are waiting on land. */
     landPull: () => release?.(),
-    note: (id: string): Note => toNote(lib.notes.get(id)!, lookups({ notes: lib.notes.values(), notebooks: [], tags: [], attachments: [] })),
+    note: (id: string): Note => toNote(lib.notes.get(id)!, lookups({ notes: lib.notes.values(), notebooks: [], tags: [], attachments: [], views: [] })),
   };
 }
 
@@ -302,7 +303,7 @@ function library(notes: LocalNote[], notebooks: FeedNotebook[] = []) {
 async function fedLibrary(notes: LocalNote[]) {
   /** What the server has written, in order: a note as it now stands, or a purge. */
   const log: { seq: number; note?: FeedNote; purged?: string }[] = [];
-  let position: Position | null = { seq: 1, epoch: 'test' };
+  let position: Position | null = { seq: 1, epoch: 'test', viewsAt: 1 };
   const page = (path: string): FeedPage => {
     const since = Number(new URL(path, 'http://x').searchParams.get('since'));
     const after = log.filter((e) => e.seq > since);
@@ -344,6 +345,7 @@ async function fedLibrary(notes: LocalNote[]) {
     notebooks: fed<{ id: string }>('notebook', [], (r) => r.id),
     tags: fed<{ id: string }>('tag', [], (r) => r.id),
     attachments: fed<{ id: string }>('attachment', [], (r) => r.id),
+    views: fed<{ id: string }>('view', [], (r) => r.id),
     syncState: collection<{ id: string }>([], (r) => r.id).c,
   } as unknown as Collections;
   const outbox = createOutbox('u1', { ...collections, userId: 'u1', engine });
@@ -1084,7 +1086,7 @@ describe('a replayed write', () => {
     vi.mocked(api.deleteNote).mockImplementationOnce(real.deleteNote);
     vi.mocked(api.deleteNotePermanently).mockImplementationOnce(real.deleteNotePermanently);
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ error: 'Not found' }), { status: 404, headers: { 'Content-Type': 'application/json' } })));
-    vi.mocked(api.restoreNote).mockResolvedValueOnce(toNote(row('n3'), lookups({ notes: [], notebooks: [], tags: [], attachments: [] })));
+    vi.mocked(api.restoreNote).mockResolvedValueOnce(toNote(row('n3'), lookups({ notes: [], notebooks: [], tags: [], attachments: [], views: [] })));
     await actions.trashNote('n1');
     await actions.purgeNote('n2');
     await actions.restoreNote('n3');

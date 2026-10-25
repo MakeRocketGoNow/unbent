@@ -15,12 +15,14 @@ import {
   type FeedNote,
   type FeedNotebook,
   type FeedTag,
+  type FeedView,
   type FieldDef,
   type Note,
   type NoteFieldValue,
   type NoteSort,
   type NoteSummary,
   type NotebookSummary,
+  type NotebookView,
   splitExt,
 } from '@unbent/shared';
 import { filesOf } from './keep.js';
@@ -46,6 +48,11 @@ export interface Snapshot {
   notebooks: Iterable<FeedNotebook>;
   tags: Iterable<FeedTag>;
   attachments: Iterable<FeedAttachment>;
+  /**
+   * The saved views. Required, so every place that builds a snapshot says what it holds
+   * of them rather than leaving them out by accident; one that has none passes `[]`.
+   */
+  views: Iterable<FeedView>;
 }
 
 /** The lookups every derivation shares, built once per read. */
@@ -422,6 +429,26 @@ export function notebookList(s: Snapshot): { notebooks: NotebookSummary[]; unfil
     notebooks.push({ id: nb.id, name: nb.name, purpose: nb.purpose, emoji: nb.emoji, count: counts.get(nb.id) ?? 0, fields: nb.fieldDefs.length });
   }
   return { notebooks: notebooks.sort((a, b) => byNameNoCase(a.name, b.name)), unfiled };
+}
+
+/**
+ * `GET /views`: every saved view of the account, in the order the server answers them:
+ * by notebook, then by place within it, with the name to break a tie two devices could
+ * leave for a moment (a reorder on one meeting a create on the other before the feed has
+ * brought either back).
+ *
+ * Only the views whose notebook the snapshot holds. A notebook deleted tombstones its
+ * views in the same feed page, so this is never wrong for long; but a page applied a
+ * collection at a time, or a client tab whose holder is mid-page, can hold a view a
+ * moment past its notebook, and a view listed under a notebook the rail no longer draws
+ * would open an address that answers "not found".
+ */
+export function viewList(s: Snapshot): NotebookView[] {
+  const notebooks = new Set<string>();
+  for (const nb of s.notebooks) notebooks.add(nb.id);
+  const out: NotebookView[] = [];
+  for (const v of s.views) if (notebooks.has(v.notebookId)) out.push(v);
+  return out.sort((a, b) => (a.notebookId < b.notebookId ? -1 : a.notebookId > b.notebookId ? 1 : 0) || a.position - b.position || byNameNoCase(a.name, b.name));
 }
 
 /**

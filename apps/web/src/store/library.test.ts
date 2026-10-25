@@ -116,7 +116,7 @@ function page(opts: { ready?: Promise<void>; pending?: number; notes?: Collectio
   }
   vi.stubGlobal('WebSocket', FakeSocket);
   const collection = () => ({ subscribeChanges: () => ({ unsubscribe() {} }), values: () => [], cleanup: vi.fn(async () => {}), preload: async () => {}, get: () => undefined, has: () => false });
-  const collections = { notes: collection(), notebooks: collection(), tags: collection(), attachments: collection(), syncState: collection() };
+  const collections = { notes: collection(), notebooks: collection(), tags: collection(), attachments: collection(), views: collection(), syncState: collection() };
   vi.mocked(createCollections).mockReturnValue({ ...collections, ...(opts.notes ? { notes: opts.notes } : {}) } as never);
   let pending = opts.pending ?? 0;
   const listeners = new Set<(s: { pending: number }) => void>();
@@ -453,7 +453,7 @@ describe('acquireLibrary', () => {
       const outbox = { status: () => ({ pending: 3, durable: true, waiting: new Set(), conflicts: new Map(), uploadNotices: new Map(), storeFull: null }), subscribe: () => () => {}, onAcknowledged: () => () => {} };
       const keeper = { status: () => ({ supported: true, kept: new Set(['nb1']) }), subscribe: () => () => {} };
       const server = serveLibrary(port, {
-        collections: { notes: collection(), notebooks: collection(), tags: collection(), attachments: collection(), syncState: collection() } as never,
+        collections: { notes: collection(), notebooks: collection(), tags: collection(), attachments: collection(), views: collection(), syncState: collection() } as never,
         state: () => ({ phase: 'current', cursor: { seq: 9, epoch: 'e' }, lastError: null, total: null, applied: 0, pulls: 1, resets: 0 }),
         onState: () => () => {},
         outbox: outbox as never,

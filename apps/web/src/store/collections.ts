@@ -1,18 +1,19 @@
 import { createCollection, type Collection } from '@tanstack/db';
 import { persistedCollectionOptions } from '@tanstack/browser-db-sqlite-persistence';
-import type { FeedAttachment, FeedEntity, FeedNote, FeedNotebook, FeedTag } from '@unbent/shared';
+import type { FeedAttachment, FeedEntity, FeedNote, FeedNotebook, FeedTag, FeedView } from '@unbent/shared';
 import { COPY_FORMAT, FeedEngine, type Controls, type FeedOptions, type Position } from './feed.js';
 import type { LocalStore } from './db.js';
 
 /**
- * The four collections one account's library is made of, persisted into its local store
+ * The five collections one account's library is made of, persisted into its local store
  * and kept current by the feed engine. Their rows are the feed's shapes (a note by its
- * `tagIds` and `notebookId`, a notebook with its definitions, a tag, a file) and the
- * list rows, counts and names the components read are derived from them in `queries.ts`.
+ * `tagIds` and `notebookId`, a notebook with its definitions, a tag, a file, a saved
+ * view) and the list rows, counts and names the components read are derived from them in
+ * `queries.ts`.
  *
- * `syncState` is a fifth, local-only collection with one row: the feed's cursor and the
- * epoch it belongs to, and while the first copy is under way, the snapshot page to resume
- * from. In the same file as the rows, and written only once a page's commits have settled
+ * `syncState` is a sixth, local-only collection with one row: the feed's cursor and the
+ * epoch it belongs to, while the first copy is under way the snapshot page to resume
+ * from, and the `seq` the saved views were last known whole at (`viewsAt` on `Position`). In the same file as the rows, and written only once a page's commits have settled
  * (the engine awaits them, since each collection persists on a queue of its own and this
  * one's write would otherwise overtake a notes commit still queued) so a page cut short
  * by a closed tab is applied again rather than skipped; every apply is an upsert.
@@ -45,6 +46,7 @@ export interface Collections {
   notebooks: Collection<FeedNotebook, string>;
   tags: Collection<FeedTag, string>;
   attachments: Collection<LocalAttachment, string>;
+  views: Collection<FeedView, string>;
   syncState: Collection<SyncState, string>;
 }
 
@@ -52,7 +54,11 @@ interface SyncState extends Position {
   id: 'cursor';
 }
 
-/** The stored row format; bump when a row's shape changes and the wrapper resets the rows, which the feed then reloads. */
+/**
+ * The stored row format; bump when a row's shape changes and the wrapper resets the rows,
+ * which the feed then reloads. Not for a new collection: that is a table of its own,
+ * created empty, and the views' was filled by the walk or by `seedViews` in `feed.ts`.
+ */
 const SCHEMA_VERSION = 1;
 
 export function createCollections(store: LocalStore, engine: FeedEngine): Collections {
@@ -86,6 +92,7 @@ export function createCollections(store: LocalStore, engine: FeedEngine): Collec
     notebooks: fed<FeedNotebook>('notebooks', 'notebook', (n) => n.id),
     tags: fed<FeedTag>('tags', 'tag', (t) => t.id),
     attachments: fed<LocalAttachment>('attachments', 'attachment', (a) => a.id),
+    views: fed<FeedView>('notebook-views', 'view', (v) => v.id),
     syncState,
   };
 }
@@ -170,7 +177,8 @@ export function cursorStore(syncState: Collection<SyncState, string>): Pick<Feed
       await syncState.preload();
       const row = syncState.get('cursor');
       // A cursor stored before positions carried a format is the first format's.
-      return row ? { seq: row.seq, epoch: row.epoch, resume: row.resume ?? null, total: row.total ?? null, format: row.format ?? 1 } : null;
+      // One stored by a build from before views has no `viewsAt`, which reads as views not whole.
+      return row ? { seq: row.seq, epoch: row.epoch, resume: row.resume ?? null, total: row.total ?? null, format: row.format ?? 1, viewsAt: row.viewsAt ?? null } : null;
     },
     writeCursor: async (position) => {
       const tx = position
@@ -181,8 +189,9 @@ export function cursorStore(syncState: Collection<SyncState, string>): Pick<Feed
               draft.resume = position.resume ?? null;
               draft.total = position.total ?? null;
               draft.format = COPY_FORMAT;
+              draft.viewsAt = position.viewsAt ?? null;
             })
-          : syncState.insert({ id: 'cursor', seq: position.seq, epoch: position.epoch, resume: position.resume ?? null, total: position.total ?? null, format: COPY_FORMAT })
+          : syncState.insert({ id: 'cursor', seq: position.seq, epoch: position.epoch, resume: position.resume ?? null, total: position.total ?? null, format: COPY_FORMAT, viewsAt: position.viewsAt ?? null })
         : syncState.has('cursor')
           ? syncState.delete('cursor')
           : null;

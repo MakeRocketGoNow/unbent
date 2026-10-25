@@ -1,11 +1,11 @@
-import type { FeedAttachment, FeedEntity, FeedNote, FeedNotebook, FeedPage, FeedReset, FeedTag, SnapshotPage } from '@unbent/shared';
+import type { FeedAttachment, FeedEntity, FeedNote, FeedNotebook, FeedPage, FeedReset, FeedTag, FeedView, SnapshotPage } from '@unbent/shared';
 
 /**
  * The reader of the change feed: what keeps the local copy of the library current.
  *
- * Four collections (notes, notebooks, tags, files) each hand the engine their sync
- * controls when they start, and the engine applies every page of the feed across all
- * four in one go, then moves the cursor. The engine knows nothing about SQLite or React:
+ * Five collections (notes, notebooks, tags, files, saved views) each hand the engine
+ * their sync controls when they start, and the engine applies every page of the feed
+ * across all five in one go, then moves the cursor. The engine knows nothing about SQLite or React:
  * it is given a way to fetch JSON, a place to keep the cursor, and the controls, which
  * is what lets a test drive it with a fake server and fake collections.
  *
@@ -16,7 +16,7 @@ import type { FeedAttachment, FeedEntity, FeedNote, FeedNotebook, FeedPage, Feed
  * and the feed is then followed from that `seq`, so anything written during the walk is
  * replayed by it afterwards (every apply is an upsert). With a cursor and no page to
  * resume, pages of the feed are pulled until one is not full. A `reset` (the cursor from
- * another epoch, past the counter, or pruned) empties all four collections and walks
+ * another epoch, past the counter, or pruned) empties all five collections and walks
  * again; the feed is never applied over a stale cursor.
  *
  * When to pull is the caller's: on open, when the tab is shown again, when the
@@ -41,6 +41,19 @@ export interface Position extends Cursor {
   total?: number | null;
   /** The `COPY_FORMAT` the rows beside it were written in, as the cursor store read it; the store stamps the current one on every write. */
   format?: number;
+  /**
+   * The `seq` at which the saved views beside this cursor were last known whole: equal
+   * to `seq` when the build that moved the cursor applied the views it passed, and
+   * anything else (absent, or an older `seq`) when it did not. See `seedViews`.
+   *
+   * A number rather than a flag because a build from before views moves `seq` without
+   * reading `page.views` and without knowing this key is there, and the persistence
+   * layer merges its write into the stored row, so a flag set once would survive it.
+   * That happens: a tab on the older build, waiting in the library lock's queue as a
+   * client, takes the library over when the newer tab holding it closes, and follows the
+   * feed past view rows it drops. Compared with `seq`, its write reads as what it is.
+   */
+  viewsAt?: number | null;
 }
 
 /**
@@ -77,6 +90,26 @@ export interface FeedControls {
   notebook: Controls<FeedNotebook>;
   tag: Controls<FeedTag>;
   attachment: Controls<FeedAttachment>;
+  view: Controls<FeedView>;
+}
+
+/**
+ * What one page applies across the collections. One object rather than a positional
+ * argument per collection and per kind of tombstone: at eight it was already a row of
+ * empty arrays at every call that wrote only notes, and a fifth collection made it ten.
+ * Absent is none.
+ */
+interface PageRows {
+  notes?: FeedNote[];
+  noteTombstones?: string[];
+  notebooks?: FeedNotebook[];
+  notebookTombstones?: string[];
+  tags?: FeedTag[];
+  tagTombstones?: string[];
+  attachments?: FeedAttachment[];
+  attachmentTombstones?: string[];
+  views?: FeedView[];
+  viewTombstones?: string[];
 }
 
 export interface FeedState {
@@ -177,6 +210,13 @@ export class FeedEngine {
    * from it would stamp the new format on the old rows.
    */
   private staleCopy = false;
+  /**
+   * Whether the views collection holds every view the server had at `state.cursor`. Read
+   * from the stored position on the first pull (`viewsAt`), set at the end of a walk, and
+   * by `seedViews`; every cursor this engine writes carries it on, so a later open reads
+   * it back. False until the stored position has been read.
+   */
+  private viewsWhole = false;
   private stopped = false;
   private readonly stopping = new AbortController();
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
@@ -184,7 +224,7 @@ export class FeedEngine {
 
   constructor(private readonly options: FeedOptions) {}
 
-  /** A collection's sync function calls this when it starts; the first pull runs once all four have. */
+  /** A collection's sync function calls this when it starts; the first pull runs once all five have. */
   register<K extends FeedEntity>(entity: K, controls: FeedControls[K]): () => void {
     (this.controls as Record<string, unknown>)[entity] = controls;
     // Ready as soon as persistence has restored the rows (the wrapper holds this call
@@ -225,14 +265,14 @@ export class FeedEngine {
    */
   applyNotes(notes: FeedNote[]): boolean {
     if (!this.all()) return false;
-    this.apply(notes, [], [], [], [], [], [], []);
+    this.apply({ notes });
     return true;
   }
 
-  /** The four collections' controls once every one has registered, else null. */
+  /** The five collections' controls once every one has registered, else null. */
   private all(): FeedControls | null {
     const c = this.controls;
-    return c.note && c.notebook && c.tag && c.attachment ? (c as FeedControls) : null;
+    return c.note && c.notebook && c.tag && c.attachment && c.view ? (c as FeedControls) : null;
   }
 
   /** Brings the copy current. Coalesced; never rejects: the outcome is in `state`. */
@@ -340,6 +380,7 @@ export class FeedEngine {
         return;
       }
       this.state.cursor = { seq: stored.seq, epoch: stored.epoch };
+      this.viewsWhole = stored.viewsAt === stored.seq;
     }
     const limit = this.options.pageSize ?? 200;
     for (;;) {
@@ -356,10 +397,69 @@ export class FeedEngine {
         await this.snapshot(null);
         return;
       }
-      await this.apply(page.notes, page.tombstones.filter((t) => t.entity === 'note').map((t) => t.id), page.notebooks, page.tombstones.filter((t) => t.entity === 'notebook').map((t) => t.id), page.tags, page.tombstones.filter((t) => t.entity === 'tag').map((t) => t.id), page.attachments, page.tombstones.filter((t) => t.entity === 'attachment').map((t) => t.id));
+      const gone = (entity: FeedEntity) => page.tombstones.filter((t) => t.entity === entity).map((t) => t.id);
+      await this.apply({
+        notes: page.notes,
+        noteTombstones: gone('note'),
+        notebooks: page.notebooks,
+        notebookTombstones: gone('notebook'),
+        tags: page.tags,
+        tagTombstones: gone('tag'),
+        attachments: page.attachments,
+        attachmentTombstones: gone('attachment'),
+        // Absent from a server built before views, which has none to send.
+        views: page.views ?? [],
+        viewTombstones: gone('view'),
+      });
       await this.moveCursor({ seq: page.next, epoch: page.epoch });
-      if (!page.more) return;
+      if (!page.more) break;
     }
+    if (!this.viewsWhole) await this.seedViews();
+  }
+
+  /**
+   * Fills the views collection from the server once, for a copy made by a build that did
+   * not keep them.
+   *
+   * A page on the build before views follows the feed while the server already records
+   * view rows: it drops `page.views` and moves the cursor all the same. Reloaded onto
+   * this build, its cursor is past every view's row, and the feed would never name those
+   * views again, so the collection would stay empty for good (or hold only the views
+   * changed since). Raising `COPY_FORMAT` would mend it by copying every archive on every
+   * device again, minutes on a phone, for a list of a few rows; this is one small request
+   * per device, once.
+   *
+   * After the feed, not before: the feed's answer is what says this copy is whole and
+   * current (a `reset` or an older format walks again instead, and the walk carries the
+   * views), and it proves the server can be reached. Every view row the feed carries is
+   * the row as it is now, so the order of the two does not matter for what is applied.
+   *
+   * Upserts every view the server answers and deletes every one held here that it does
+   * not name: a view deleted while the cursor was passing over its tombstone is otherwise
+   * on this device for good. Then the cursor is written with `viewsAt`, so this happens
+   * once. A server that refuses the request for good (one from before views, during a
+   * rollback, which may answer the app's page in its place) has no views to give and is
+   * not a failed pull: the copy is left as it is and asked again on a later pull. Any
+   * other failure fails the pull as a feed page's would, and the next pull asks again.
+   */
+  private async seedViews(): Promise<void> {
+    const all = this.all();
+    const cursor = this.state.cursor;
+    if (!all || !cursor) return;
+    let answer: { views?: unknown };
+    try {
+      answer = await this.options.fetchJson<{ views?: unknown }>('/api/views', this.stopping.signal);
+    } catch (err) {
+      if (answeredForGood(err) || err instanceof SyntaxError) return;
+      throw err;
+    }
+    if (!Array.isArray(answer.views)) return;
+    const views = answer.views as FeedView[];
+    const named = new Set(views.map((v) => v.id));
+    const stale = [...all.view.values()].map((v) => v.id).filter((id) => !named.has(id));
+    await this.apply({ views, viewTombstones: stale });
+    this.viewsWhole = true;
+    await this.moveCursor(cursor);
   }
 
   /** The whole library, page by page: from the start, or from where an earlier walk stopped. */
@@ -390,7 +490,7 @@ export class FeedEngine {
          * its `seq`, and kept it would have stayed on the device for good (review of
          * #232). Refused for now, the position is kept and tried again.
          */
-        if (from && cursor && deadCursor(err)) {
+        if (from && cursor && answeredForGood(err)) {
           await this.truncateAll();
           await this.snapshot(null);
           return;
@@ -401,7 +501,9 @@ export class FeedEngine {
         seeded = { seq: page.seq, epoch: page.epoch };
         this.state.total = page.total ?? null;
       }
-      await this.apply(page.notes, [], page.notebooks ?? [], [], page.tags ?? [], [], [], []);
+      // The views ride on the first page beside the notebooks and tags; absent from a
+      // server built before views.
+      await this.apply({ notes: page.notes, notebooks: page.notebooks ?? [], tags: page.tags ?? [], views: page.views ?? [] });
       this.state.applied += page.notes.length;
       cursor = page.next;
       // The position once this page's rows have settled on disk, so a walk cut short here
@@ -411,12 +513,23 @@ export class FeedEngine {
         this.changed();
       }
     } while (cursor);
+    // A walk is whole for views too: the first page carried every one the server had,
+    // and the feed from its `seq` replays whatever changed during the walk. A walk of a
+    // server from before views carried none because it has none; the feed brings the
+    // first one the moment it is made.
+    this.viewsWhole = true;
     await this.moveCursor(seeded);
   }
 
+  /**
+   * Moves the cursor, and stores it with `viewsAt` when the views are whole at it. Every
+   * cursor write but a walk's resume positions goes through here, so the stamp follows
+   * the cursor and a build that moves it without the stamp is told apart (`Position`).
+   */
   private async moveCursor(cursor: Cursor | null): Promise<void> {
     this.state.cursor = cursor;
-    await this.watched('writing the cursor', this.options.writeCursor(cursor));
+    const position: Position | null = cursor && this.viewsWhole ? { ...cursor, viewsAt: cursor.seq } : cursor;
+    await this.watched('writing the cursor', this.options.writeCursor(position));
     this.changed();
   }
 
@@ -437,8 +550,11 @@ export class FeedEngine {
     const all = this.all();
     if (!all) return;
     this.state.resets += 1;
+    this.viewsWhole = false;
     this.changed();
-    for (const c of Object.values(all)) {
+    // Every registered collection, the views included, by iterating the controls rather
+    // than naming them: a collection added later is emptied without anyone remembering to.
+    for (const c of Object.values(all) as Controls<object>[]) {
       c.begin();
       c.truncate();
       await this.watched('emptying the copy', Promise.resolve(c.commit()));
@@ -448,7 +564,7 @@ export class FeedEngine {
   }
 
   /**
-   * One page across the four collections. A note row replaces the note and its files
+   * One page across the five collections. A note row replaces the note and its files
    * (the feed carries them with the note); a note tombstone takes its files with it, as
    * the server's cascade did. Each collection gets one transaction for the page.
    *
@@ -464,19 +580,12 @@ export class FeedEngine {
    * this pull, and an outbox entry's replay waits on a pull: a single trash waited on
    * itself.
    */
-  private async apply(
-    notes: FeedNote[],
-    noteTombstones: string[],
-    notebooks: FeedNotebook[],
-    notebookTombstones: string[],
-    tags: FeedTag[],
-    tagTombstones: string[],
-    attachments: FeedAttachment[],
-    attachmentTombstones: string[],
-  ): Promise<void> {
+  private async apply(rows: PageRows): Promise<void> {
     const all = this.all();
     if (!all) return;
-    const { note, notebook, tag, attachment } = all;
+    const { note, notebook, tag, attachment, view } = all;
+    const { notes = [], noteTombstones = [], notebooks = [], notebookTombstones = [], tags = [], tagTombstones = [] } = rows;
+    const { attachments = [], attachmentTombstones = [], views = [], viewTombstones = [] } = rows;
 
     // The files each touched note holds now, so a note's change can drop the ones that went.
     const touched = new Set([...notes.map((n) => n.id), ...noteTombstones]);
@@ -494,6 +603,7 @@ export class FeedEngine {
       upsertAll(note, notes, (n) => n.id, noteTombstones),
       upsertAll(notebook, notebooks, (n) => n.id, notebookTombstones),
       upsertAll(tag, tags, (t) => t.id, tagTombstones),
+      upsertAll(view, views, (v) => v.id, viewTombstones),
     ];
 
     const files: FeedAttachment[] = [...attachments];
@@ -525,8 +635,12 @@ export function refusedForGood(status: number): boolean {
   return status >= 400 && status < 500 && ![401, 408, 429].includes(status);
 }
 
-/** The engine is given its fetch, so the error is read for a status rather than typed. */
-function deadCursor(err: unknown): boolean {
+/**
+ * Whether a fetch failed with a status the server would answer again (`refusedForGood`):
+ * a stored walk position that is dead, or a server with no views route. The engine is
+ * given its fetch, so the error is read for a status rather than typed.
+ */
+function answeredForGood(err: unknown): boolean {
   const status = (err as { status?: unknown } | null)?.status;
   return typeof status === 'number' && refusedForGood(status);
 }

@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { FeedAttachment, FeedNote, FeedNotebook, FeedPage, FeedReset, FeedTag, SnapshotPage } from '@unbent/shared';
+import type { FeedAttachment, FeedNote, FeedNotebook, FeedPage, FeedReset, FeedTag, FeedView, SnapshotPage } from '@unbent/shared';
 import { COPY_FORMAT, FeedEngine, FeedStallError, isWhole, type Controls, type Position } from './feed.js';
 
 /**
  * The feed's reader against a fake server and fake collections: what a page does to the
- * four collections, where the cursor goes and when, and what a `reset` undoes.
+ * five collections, where the cursor goes and when, and what a `reset` undoes.
  */
 
 interface Fake<T extends object> extends Controls<T> {
@@ -85,7 +85,7 @@ function harness(answers: Record<string, unknown[] | unknown>) {
   let cursor: Position | null = null;
   const cursorWrites: Array<Position | null> = [];
   const seq: string[] = [];
-  const c = { note: fake<FeedNote>('note', (n) => n.id, seq), notebook: fake<FeedNotebook>('notebook', (n) => n.id, seq), tag: fake<FeedTag>('tag', (t) => t.id, seq), attachment: fake<FeedAttachment>('attachment', (a) => a.id, seq) };
+  const c = { note: fake<FeedNote>('note', (n) => n.id, seq), notebook: fake<FeedNotebook>('notebook', (n) => n.id, seq), tag: fake<FeedTag>('tag', (t) => t.id, seq), attachment: fake<FeedAttachment>('attachment', (a) => a.id, seq), view: fake<FeedView>('view', (v) => v.id, seq) };
   const engine = new FeedEngine({
     onTruncated: () => seq.push('truncated'),
     fetchJson: async <T,>(path: string): Promise<T> => {
@@ -108,7 +108,11 @@ function harness(answers: Record<string, unknown[] | unknown>) {
     },
     pageSize: 2,
   });
-  return { engine, c, requests, cursorWrites, seq, cursor: () => cursor, setCursor: (p: Position | null) => void (cursor = p) };
+  // A whole copy's position is stamped with the views beside it unless a test says
+  // otherwise (`viewsAt`, spelled out, absent for a copy from before views): a copy made
+  // by this build, which is the case every test not about the views is about.
+  const stamped = (p: Position | null): Position | null => (p && !p.resume && !('viewsAt' in p) ? { ...p, viewsAt: p.seq } : p);
+  return { engine, c, requests, cursorWrites, seq, cursor: () => cursor, setCursor: (p: Position | null) => void (cursor = stamped(p)) };
 }
 
 const snapshotFirst = (notes: FeedNote[], next: string | null, seq = 10): SnapshotPage => ({ seq, epoch: 'e1', notes, next, notebooks: [{ id: 'nb1', name: 'Receipts', purpose: null, emoji: null, fieldDefs: [] }], tags: [{ id: 't1', name: 'home', color: 0 }], total: 3 });
@@ -120,8 +124,8 @@ describe('FeedEngine', () => {
       '/api/changes/snapshot?limit=2': snapshotFirst([note('a', { files: [file('f1', 'a')] }), note('b')], 'b'),
       '/api/changes/snapshot?limit=2&cursor=b': { seq: 12, epoch: 'e1', notes: [note('c')], next: null } satisfies SnapshotPage,
     });
-    const stop = { note: h.engine.register('note', h.c.note), notebook: h.engine.register('notebook', h.c.notebook), tag: h.engine.register('tag', h.c.tag), attachment: h.engine.register('attachment', h.c.attachment) };
-    // Registering the fourth collection starts the first pull itself.
+    const stop = { note: h.engine.register('note', h.c.note), notebook: h.engine.register('notebook', h.c.notebook), tag: h.engine.register('tag', h.c.tag), attachment: h.engine.register('attachment', h.c.attachment), view: h.engine.register('view', h.c.view) };
+    // Registering the fifth collection starts the first pull itself.
     await h.engine.settled();
     expect([...h.c.note.rows.keys()]).toEqual(['a', 'b', 'c']);
     expect([...h.c.notebook.rows.keys()]).toEqual(['nb1']);
@@ -130,9 +134,10 @@ describe('FeedEngine', () => {
     // The position after the first page, then the cursor once the walk is whole: the
     // first page's seq, not the last's, so what was written during the walk is replayed
     // by the feed.
-    expect(h.cursorWrites).toEqual([{ seq: 10, epoch: 'e1', resume: 'b', total: 3 }, { seq: 10, epoch: 'e1' }]);
-    // And each only once the page's commits have settled: the first page wrote all four
-    // collections, the second only notes, and no position was written ahead of either.
+    expect(h.cursorWrites).toEqual([{ seq: 10, epoch: 'e1', resume: 'b', total: 3 }, { seq: 10, epoch: 'e1', viewsAt: 10 }]);
+    // And each only once the page's commits have settled: the first page wrote the four
+    // collections it carried rows for, the second only notes, and no position was
+    // written ahead of either.
     expect(h.seq).toEqual(['note committed', 'notebook committed', 'tag committed', 'attachment committed', 'cursor 10', 'note committed', 'cursor 10']);
     expect(h.engine.state).toMatchObject({ phase: 'current', total: 3, applied: 3, lastError: null, pulls: 1 });
     expect(h.c.note.ready).toBe(1);
@@ -153,7 +158,7 @@ describe('FeedEngine', () => {
     expect(h.requests).toEqual(['/api/changes/snapshot?limit=2', '/api/changes/snapshot?limit=2&cursor=b', '/api/changes/snapshot?limit=2&cursor=b']);
     expect([...h.c.note.rows.keys()]).toEqual(['a', 'b', 'c']);
     expect(h.engine.state).toMatchObject({ phase: 'current', cursor: { seq: 10, epoch: 'e1' }, applied: 3, total: 3 });
-    expect(h.cursor()).toEqual({ seq: 10, epoch: 'e1' });
+    expect(h.cursor()).toEqual({ seq: 10, epoch: 'e1', viewsAt: 10 });
     stop.forEach((s) => s());
   });
 
@@ -174,7 +179,7 @@ describe('FeedEngine', () => {
     expect(h.requests).toEqual(['/api/changes/snapshot?limit=2&cursor=stale', '/api/changes/snapshot?limit=2']);
     expect([...h.c.note.rows.keys()]).toEqual(['a', 'b']);
     expect([...h.c.attachment.rows.keys()]).toEqual([]);
-    expect(h.cursorWrites).toEqual([null, { seq: 20, epoch: 'e1' }]);
+    expect(h.cursorWrites).toEqual([null, { seq: 20, epoch: 'e1', viewsAt: 20 }]);
     expect(h.engine.state).toMatchObject({ phase: 'current', cursor: { seq: 20, epoch: 'e1' } });
     stop.forEach((s) => s());
   });
@@ -236,14 +241,14 @@ describe('FeedEngine', () => {
       '/api/changes?since=10&epoch=e1&limit=2': feedPage({ next: 12, more: true, notes: [note('a', { title: 'A2' }), note('d')] }),
       '/api/changes?since=12&epoch=e1&limit=2': feedPage({ next: 13, more: false, tombstones: [{ entity: 'note', id: 'd' }], tags: [{ id: 't2', name: 'new', color: 1 }] }),
     });
-    await h.engine['options'].writeCursor({ seq: 10, epoch: 'e1' });
+    await h.engine['options'].writeCursor({ seq: 10, epoch: 'e1', viewsAt: 10 });
     h.c.note.rows.set('a', note('a'));
-    for (const k of ['note', 'notebook', 'tag', 'attachment'] as const) h.engine.register(k, h.c[k] as never);
+    for (const k of ['note', 'notebook', 'tag', 'attachment', 'view'] as const) h.engine.register(k, h.c[k] as never);
     await h.engine.settled();
     expect(h.requests).toEqual(['/api/changes?since=10&epoch=e1&limit=2', '/api/changes?since=12&epoch=e1&limit=2']);
     expect(h.c.note.log).toEqual(['begin', 'update a', 'insert d', 'commit', 'begin', 'delete d', 'commit']);
     expect(h.c.note.rows.get('a')?.title).toBe('A2');
-    expect(h.cursorWrites.slice(1)).toEqual([{ seq: 12, epoch: 'e1' }, { seq: 13, epoch: 'e1' }]);
+    expect(h.cursorWrites.slice(1)).toEqual([{ seq: 12, epoch: 'e1', viewsAt: 12 }, { seq: 13, epoch: 'e1', viewsAt: 13 }]);
   });
 
   it('on reset, empties every collection and walks the snapshot again', async () => {
@@ -251,13 +256,13 @@ describe('FeedEngine', () => {
       '/api/changes?since=10&epoch=old&limit=2': { reset: true, seq: 50, epoch: 'e2' } satisfies FeedReset,
       '/api/changes/snapshot?limit=2': snapshotFirst([note('z')], null, 50),
     });
-    await h.engine['options'].writeCursor({ seq: 10, epoch: 'old' });
+    await h.engine['options'].writeCursor({ seq: 10, epoch: 'old', viewsAt: 10 });
     h.c.note.rows.set('stale', note('stale'));
-    for (const k of ['note', 'notebook', 'tag', 'attachment'] as const) h.engine.register(k, h.c[k] as never);
+    for (const k of ['note', 'notebook', 'tag', 'attachment', 'view'] as const) h.engine.register(k, h.c[k] as never);
     await h.engine.settled();
-    for (const k of ['note', 'notebook', 'tag', 'attachment'] as const) expect(h.c[k].log.slice(0, 3)).toEqual(['begin', 'truncate', 'commit']);
+    for (const k of ['note', 'notebook', 'tag', 'attachment', 'view'] as const) expect(h.c[k].log.slice(0, 3)).toEqual(['begin', 'truncate', 'commit']);
     expect([...h.c.note.rows.keys()]).toEqual(['z']);
-    expect(h.cursor()).toEqual({ seq: 50, epoch: 'e1' });
+    expect(h.cursor()).toEqual({ seq: 50, epoch: 'e1', viewsAt: 50 });
     // Counted, for a view holding a copy of a row the reset may have made newer than the truth (MAK-196).
     expect(h.engine.state.resets).toBe(1);
     // The cursor is cleared only once every collection's truncate has settled on disk: a
@@ -265,11 +270,11 @@ describe('FeedEngine', () => {
     // The library is told the rows are gone only once every truncate has committed, and
     // before the cursor goes: what the query bridge drops its cached answers on.
     const truncated = h.seq.indexOf('truncated');
-    expect(h.seq.slice(0, truncated).filter((e) => e.endsWith('committed'))).toHaveLength(4);
+    expect(h.seq.slice(0, truncated).filter((e) => e.endsWith('committed'))).toHaveLength(5);
     expect(truncated).toBeLessThan(h.seq.indexOf('cursor null'));
     const cleared = h.seq.indexOf('cursor null');
     expect(cleared).toBeGreaterThan(-1);
-    expect(h.seq.slice(0, cleared).filter((e) => e.endsWith('committed'))).toHaveLength(4);
+    expect(h.seq.slice(0, cleared).filter((e) => e.endsWith('committed'))).toHaveLength(5);
   });
 
   it('a cursor stored beside rows of an older format empties every collection and walks again once the feed answers', async () => {
@@ -279,9 +284,9 @@ describe('FeedEngine', () => {
     });
     h.setCursor({ seq: 10, epoch: 'e1', format: COPY_FORMAT - 1 });
     h.c.note.rows.set('a', note('a', { deletedAt: 5 }));
-    for (const k of ['note', 'notebook', 'tag', 'attachment'] as const) h.engine.register(k, h.c[k] as never);
+    for (const k of ['note', 'notebook', 'tag', 'attachment', 'view'] as const) h.engine.register(k, h.c[k] as never);
     await h.engine.settled();
-    for (const k of ['note', 'notebook', 'tag', 'attachment'] as const) expect(h.c[k].log.slice(0, 3)).toEqual(['begin', 'truncate', 'commit']);
+    for (const k of ['note', 'notebook', 'tag', 'attachment', 'view'] as const) expect(h.c[k].log.slice(0, 3)).toEqual(['begin', 'truncate', 'commit']);
     // The feed's page is not applied: it is only the sign that the server can be reached.
     expect(h.requests).toEqual(['/api/changes?since=10&epoch=e1&limit=2', '/api/changes/snapshot?limit=2']);
     expect([...h.c.note.rows.keys()]).toEqual(['a']);
@@ -295,11 +300,11 @@ describe('FeedEngine', () => {
     });
     h.setCursor({ seq: 10, epoch: 'e1', format: COPY_FORMAT - 1 });
     h.c.note.rows.set('a', note('a', { deletedAt: 5 }));
-    for (const k of ['note', 'notebook', 'tag', 'attachment'] as const) h.engine.register(k, h.c[k] as never);
+    for (const k of ['note', 'notebook', 'tag', 'attachment', 'view'] as const) h.engine.register(k, h.c[k] as never);
     await h.engine.settled();
     expect(h.c.note.log).not.toContain('truncate');
     expect(h.c.note.rows.get('a')?.deletedAt).toBe(5);
-    expect(h.cursor()).toEqual({ seq: 10, epoch: 'e1', format: COPY_FORMAT - 1 });
+    expect(h.cursor()).toEqual({ seq: 10, epoch: 'e1', format: COPY_FORMAT - 1, viewsAt: 10 });
 
     // The cursor is held in the engine from here on; the copy is still emptied once.
     await h.engine.pull();
@@ -311,7 +316,7 @@ describe('FeedEngine', () => {
     const h = harness({ '/api/changes/snapshot?limit=2&cursor=b': { seq: 12, epoch: 'e1', notes: [note('c')], next: null } satisfies SnapshotPage });
     h.setCursor({ seq: 10, epoch: 'e1', resume: 'b', total: 3, format: COPY_FORMAT - 1 });
     h.c.note.rows.set('a', note('a'));
-    for (const k of ['note', 'notebook', 'tag', 'attachment'] as const) h.engine.register(k, h.c[k] as never);
+    for (const k of ['note', 'notebook', 'tag', 'attachment', 'view'] as const) h.engine.register(k, h.c[k] as never);
     await h.engine.settled();
     expect(h.c.note.log).not.toContain('truncate');
     expect([...h.c.note.rows.keys()]).toEqual(['a', 'c']);
@@ -320,7 +325,7 @@ describe('FeedEngine', () => {
   it('a cursor of the current format is followed as it is', async () => {
     const h = harness({ '/api/changes?since=10&epoch=e1&limit=2': feedPage({ next: 10 }) });
     h.setCursor({ seq: 10, epoch: 'e1', format: COPY_FORMAT });
-    for (const k of ['note', 'notebook', 'tag', 'attachment'] as const) h.engine.register(k, h.c[k] as never);
+    for (const k of ['note', 'notebook', 'tag', 'attachment', 'view'] as const) h.engine.register(k, h.c[k] as never);
     await h.engine.settled();
     expect(h.requests).toEqual(['/api/changes?since=10&epoch=e1&limit=2']);
     expect(h.c.note.log).not.toContain('truncate');
@@ -335,13 +340,13 @@ describe('FeedEngine', () => {
         attachments: [file('f3', 'c')],
       }),
     });
-    await h.engine['options'].writeCursor({ seq: 10, epoch: 'e1' });
+    await h.engine['options'].writeCursor({ seq: 10, epoch: 'e1', viewsAt: 10 });
     h.c.note.rows.set('a', note('a'));
     h.c.note.rows.set('b', note('b'));
     h.c.attachment.rows.set('f1', file('f1', 'a'));
     h.c.attachment.rows.set('f8', file('f8', 'b'));
     h.c.attachment.rows.set('f9', file('f9', 'c'));
-    for (const k of ['note', 'notebook', 'tag', 'attachment'] as const) h.engine.register(k, h.c[k] as never);
+    for (const k of ['note', 'notebook', 'tag', 'attachment', 'view'] as const) h.engine.register(k, h.c[k] as never);
     await h.engine.settled();
     expect([...h.c.attachment.rows.keys()].sort()).toEqual(['f2', 'f3']);
     expect([...h.c.note.rows.keys()]).toEqual(['a']);
@@ -349,8 +354,8 @@ describe('FeedEngine', () => {
 
   it('a failed pull leaves the collections ready, keeps the cursor, and reports the error', async () => {
     const h = harness({ '/api/changes?since=10&epoch=e1&limit=2': [new Error("You're offline.")] });
-    await h.engine['options'].writeCursor({ seq: 10, epoch: 'e1' });
-    for (const k of ['note', 'notebook', 'tag', 'attachment'] as const) h.engine.register(k, h.c[k] as never);
+    await h.engine['options'].writeCursor({ seq: 10, epoch: 'e1', viewsAt: 10 });
+    for (const k of ['note', 'notebook', 'tag', 'attachment', 'view'] as const) h.engine.register(k, h.c[k] as never);
     await h.engine.settled();
     expect(h.engine.state).toMatchObject({ phase: 'failed', lastError: "You're offline.", cursor: { seq: 10, epoch: 'e1' } });
     expect(h.c.note.ready).toBe(1);
@@ -363,7 +368,7 @@ describe('FeedEngine', () => {
     const errors: unknown[] = [];
     h.engine['options'].onError = (err) => errors.push(err);
     h.setCursor({ seq: 10, epoch: 'e1' });
-    for (const k of ['note', 'notebook', 'tag', 'attachment'] as const) h.engine.register(k, h.c[k] as never);
+    for (const k of ['note', 'notebook', 'tag', 'attachment', 'view'] as const) h.engine.register(k, h.c[k] as never);
     await h.engine.settled();
     await h.engine.pull();
     expect(errors).toEqual([refused]);
@@ -378,7 +383,7 @@ describe('FeedEngine', () => {
     };
     const errors: unknown[] = [];
     h.engine['options'].onError = (err) => errors.push(err);
-    for (const k of ['note', 'notebook', 'tag', 'attachment'] as const) h.engine.register(k, h.c[k] as never);
+    for (const k of ['note', 'notebook', 'tag', 'attachment', 'view'] as const) h.engine.register(k, h.c[k] as never);
     await vi.waitFor(() => expect(seen?.aborted).toBe(false));
     h.engine.stop();
     await h.engine.settled();
@@ -398,8 +403,8 @@ describe('FeedEngine', () => {
     // The first answer is a promise the fake resolves; make fetchJson await it.
     const original = h.engine['options'].fetchJson;
     h.engine['options'].fetchJson = async <T,>(path: string) => (await original<T | Promise<T>>(path)) as T;
-    await h.engine['options'].writeCursor({ seq: 10, epoch: 'e1' });
-    for (const k of ['note', 'notebook', 'tag', 'attachment'] as const) h.engine.register(k, h.c[k] as never);
+    await h.engine['options'].writeCursor({ seq: 10, epoch: 'e1', viewsAt: 10 });
+    for (const k of ['note', 'notebook', 'tag', 'attachment', 'view'] as const) h.engine.register(k, h.c[k] as never);
     const first = h.engine.settled();
     const second = h.engine.pull();
     const third = h.engine.pull();
@@ -414,6 +419,140 @@ describe('FeedEngine', () => {
 });
 
 /**
+ * Saved views: a fifth collection, on the snapshot's first page and in the feed like the
+ * others, plus the one thing the others do not need: a copy whose cursor a build from
+ * before views moved past their rows is filled once from `GET /api/views`.
+ */
+describe('FeedEngine and saved views', () => {
+  const savedView = (id: string, name = id, over: Partial<FeedView> = {}): FeedView => ({ id, notebookId: 'nb1', name, position: 0, query: {}, updatedAt: 1, ...over });
+  const register = (h: ReturnType<typeof harness>) => {
+    for (const k of ['note', 'notebook', 'tag', 'attachment', 'view'] as const) h.engine.register(k, h.c[k] as never);
+  };
+
+  it('takes the views from the snapshot\'s first page, then follows their rows and tombstones in the feed', async () => {
+    const h = harness({
+      '/api/changes/snapshot?limit=2': { ...snapshotFirst([note('a')], null), views: [savedView('v1', 'Business'), savedView('v2', 'Personal')] },
+      '/api/changes?since=10&epoch=e1&limit=2': feedPage({ next: 11, views: [savedView('v1', 'Business 2025', { updatedAt: 2 })], tombstones: [{ entity: 'view', id: 'v2' }] }),
+    });
+    register(h);
+    await h.engine.settled();
+    expect([...h.c.view.rows.values()].map((v) => v.name)).toEqual(['Business', 'Personal']);
+    // A walk is whole for views too: the cursor says so, and no seed is asked for.
+    expect(h.cursor()).toMatchObject({ seq: 10, viewsAt: 10 });
+    await h.engine.pull();
+    expect([...h.c.view.rows.values()].map((v) => v.name)).toEqual(['Business 2025']);
+    expect(h.requests).not.toContain('/api/views');
+    expect(h.cursor()).toMatchObject({ seq: 11, viewsAt: 11 });
+  });
+
+  it('reads a page from a server built before views as having none', async () => {
+    const h = harness({ '/api/changes?since=10&epoch=e1&limit=2': feedPage({ next: 11, views: undefined }) });
+    h.setCursor({ seq: 10, epoch: 'e1' });
+    h.c.view.rows.set('v1', savedView('v1'));
+    register(h);
+    await h.engine.settled();
+    expect(h.engine.state.phase).toBe('current');
+    expect([...h.c.view.rows.keys()]).toEqual(['v1']);
+  });
+
+  it('fills the views once for a copy whose cursor was moved without them, and deletes what the server no longer has', async () => {
+    const h = harness({
+      '/api/changes?since=10&epoch=e1&limit=2': [feedPage({ next: 12 }), feedPage({ next: 12, seq: 12 })],
+      '/api/views': { views: [savedView('v1', 'Business', { updatedAt: 5 }), savedView('v2', 'Personal')] },
+      '/api/changes?since=12&epoch=e1&limit=2': feedPage({ next: 12, seq: 12 }),
+    });
+    // A copy from a build before views, then a cursor that build moved on past the view
+    // rows it dropped: what this device holds is one view that has since been deleted and
+    // one an edit ago.
+    h.setCursor({ seq: 10, epoch: 'e1', viewsAt: null });
+    h.c.view.rows.set('old', savedView('old'));
+    h.c.view.rows.set('v1', savedView('v1', 'Busines'));
+    register(h);
+    await h.engine.settled();
+    expect(h.engine.state.phase).toBe('current');
+    // After the feed, so the feed's answer has said the copy is whole and current.
+    expect(h.requests).toEqual(['/api/changes?since=10&epoch=e1&limit=2', '/api/views']);
+    expect([...h.c.view.rows.values()].map((v) => v.name).sort()).toEqual(['Business', 'Personal']);
+    expect(h.cursor()).toMatchObject({ seq: 12, viewsAt: 12 });
+    // Once: the next pull follows the feed alone.
+    await h.engine.pull();
+    expect(h.requests.filter((r) => r === '/api/views')).toHaveLength(1);
+  });
+
+  it('fills them for a cursor an older build moved after this one had stamped it', async () => {
+    // The stamp is the seq it was true at, so a build that moves only the seq leaves it behind.
+    const h = harness({
+      '/api/changes?since=10&epoch=e1&limit=2': feedPage({ next: 10 }),
+      '/api/views': { views: [savedView('v1')] },
+    });
+    h.setCursor({ seq: 10, epoch: 'e1', viewsAt: 8 });
+    register(h);
+    await h.engine.settled();
+    expect(h.requests).toContain('/api/views');
+    expect([...h.c.view.rows.keys()]).toEqual(['v1']);
+  });
+
+  it('asks nothing more of a copy whose views are whole', async () => {
+    const h = harness({ '/api/changes?since=10&epoch=e1&limit=2': feedPage({ next: 10 }) });
+    h.setCursor({ seq: 10, epoch: 'e1', viewsAt: 10 });
+    register(h);
+    await h.engine.settled();
+    expect(h.requests).toEqual(['/api/changes?since=10&epoch=e1&limit=2']);
+  });
+
+  it('leaves the copy as it is when the server has no views to give, and asks again on a later pull', async () => {
+    const missing = Object.assign(new Error('/api/views answered 404'), { status: 404 });
+    const h = harness({
+      '/api/changes?since=10&epoch=e1&limit=2': feedPage({ next: 10 }),
+      '/api/views': [missing, new SyntaxError('Unexpected token <'), { views: [] }],
+    });
+    h.setCursor({ seq: 10, epoch: 'e1', viewsAt: null });
+    h.c.view.rows.set('v1', savedView('v1'));
+    register(h);
+    await h.engine.settled();
+    // Not a failed pull: a server from before views has none to send.
+    expect(h.engine.state).toMatchObject({ phase: 'current', lastError: null });
+    expect([...h.c.view.rows.keys()]).toEqual(['v1']);
+    expect(h.cursor()?.viewsAt ?? null).toBeNull();
+    // An answer that is the app's page rather than JSON is the same server.
+    await h.engine.pull();
+    expect(h.engine.state.phase).toBe('current');
+    await h.engine.pull();
+    expect(h.requests.filter((r) => r === '/api/views')).toHaveLength(3);
+    expect(h.c.view.rows.size).toBe(0);
+    expect(h.cursor()).toMatchObject({ viewsAt: 10 });
+  });
+
+  it('fails the pull when the views could not be fetched for now, as a page of the feed would', async () => {
+    const h = harness({
+      '/api/changes?since=10&epoch=e1&limit=2': feedPage({ next: 10 }),
+      '/api/views': [new Error("You're offline."), { views: [savedView('v1')] }],
+    });
+    h.setCursor({ seq: 10, epoch: 'e1', viewsAt: null });
+    register(h);
+    await h.engine.settled();
+    expect(h.engine.state).toMatchObject({ phase: 'failed', lastError: "You're offline." });
+    await h.engine.pull();
+    expect(h.engine.state.phase).toBe('current');
+    expect([...h.c.view.rows.keys()]).toEqual(['v1']);
+  });
+
+  it('a reset empties the views with the rest, and the walk after it fills them again', async () => {
+    const h = harness({
+      '/api/changes?since=10&epoch=old&limit=2': { reset: true, seq: 50, epoch: 'e2' } satisfies FeedReset,
+      '/api/changes/snapshot?limit=2': { ...snapshotFirst([note('z')], null, 50), views: [savedView('v9')] },
+    });
+    h.setCursor({ seq: 10, epoch: 'old' });
+    h.c.view.rows.set('v1', savedView('v1'));
+    register(h);
+    await h.engine.settled();
+    expect(h.c.view.log.slice(0, 3)).toEqual(['begin', 'truncate', 'commit']);
+    expect([...h.c.view.rows.keys()]).toEqual(['v9']);
+    expect(h.requests).not.toContain('/api/views');
+  });
+});
+
+/**
  * A copy that is not whole is the one thing the engine pulls for on its own: a first walk
  * that failed used to wait for focus, the socket or the connection to come back, none of
  * which happens to a tab someone is sitting in front of, and the list stayed empty.
@@ -424,7 +563,7 @@ describe('FeedEngine retry', () => {
   });
 
   const register = (h: ReturnType<typeof harness>) => {
-    for (const k of ['note', 'notebook', 'tag', 'attachment'] as const) h.engine.register(k, h.c[k] as never);
+    for (const k of ['note', 'notebook', 'tag', 'attachment', 'view'] as const) h.engine.register(k, h.c[k] as never);
   };
 
   it('tries a failed first walk again, waiting twice as long each time, until it is whole', async () => {
@@ -491,7 +630,7 @@ describe('FeedEngine stall reports', () => {
     const stalls: FeedStallError[] = [];
     h.engine['options'].onStall = (err) => stalls.push(err);
     h.engine['options'].stallMs = 1000;
-    for (const k of ['note', 'notebook', 'tag', 'attachment'] as const) h.engine.register(k, h.c[k] as never);
+    for (const k of ['note', 'notebook', 'tag', 'attachment', 'view'] as const) h.engine.register(k, h.c[k] as never);
     await vi.advanceTimersByTimeAsync(5000);
     expect(stalls.map((s) => s.message)).toEqual(['Library copy: applying a page has not settled after 1 s']);
     expect(h.engine.state.phase).toBe('hydrating');
@@ -509,7 +648,7 @@ describe('FeedEngine stall reports', () => {
     const stalls: FeedStallError[] = [];
     h.engine['options'].onStall = (err) => stalls.push(err);
     h.engine['options'].stallMs = 1000;
-    for (const k of ['note', 'notebook', 'tag', 'attachment'] as const) h.engine.register(k, h.c[k] as never);
+    for (const k of ['note', 'notebook', 'tag', 'attachment', 'view'] as const) h.engine.register(k, h.c[k] as never);
     await vi.advanceTimersByTimeAsync(1000);
     expect(stalls.map((s) => s.message)).toEqual(['Library copy: emptying the copy has not settled after 1 s']);
   });
@@ -520,7 +659,7 @@ describe('FeedEngine stall reports', () => {
     const stalls: FeedStallError[] = [];
     h.engine['options'].onStall = (err) => stalls.push(err);
     h.engine['options'].stallMs = 1000;
-    for (const k of ['note', 'notebook', 'tag', 'attachment'] as const) h.engine.register(k, h.c[k] as never);
+    for (const k of ['note', 'notebook', 'tag', 'attachment', 'view'] as const) h.engine.register(k, h.c[k] as never);
     await h.engine.settled();
     await vi.advanceTimersByTimeAsync(5000);
     expect(stalls).toEqual([]);

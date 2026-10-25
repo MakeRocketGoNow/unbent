@@ -1,7 +1,7 @@
 import { COMPAT_LEVEL } from '@unbent/shared/compat';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createCollection, type Collection } from '@tanstack/db';
-import type { FeedNote, FeedNotebook, FeedTag, FeedAttachment } from '@unbent/shared';
+import type { FeedNote, FeedNotebook, FeedTag, FeedAttachment, FeedView } from '@unbent/shared';
 import { ApiError, NoteChangedError, OfflineError } from '../notes-api.js';
 import { attachClientLibrary, ATTACH_STALL_MS, CallUnsettledError, HELLO_RETRY_MAX_MS, HELLO_RETRY_MS, HOLDER_SILENT_MS, LibraryMovedError, ORPHANED_MS, PING_MS, type ClientHooks, type ClientLibrary } from './client-library.js';
 import { serveLibrary, HELLO_DEDUPE_MS, ROWS_PER_MESSAGE, type Serving, type Server } from './library-serve.js';
@@ -68,7 +68,7 @@ const status = (over: Partial<SyncStatus> = {}): SyncStatus => ({ pending: 0, du
 const keeping = (over: Partial<KeepStatus> = {}): KeepStatus => ({ supported: true, kept: new Set(['nb1']), counted: true, wanted: { files: 2, bytes: 20 }, have: { files: 1, bytes: 10 }, fetching: false, problem: null, ...over });
 
 /** A holder: collections in memory and stand-ins for the engine's state, the outbox and the keeper, each with a way to move. */
-function holder(channel: ReturnType<typeof fakeChannel>, rows: { notes?: FeedNote[]; notebooks?: FeedNotebook[]; tags?: FeedTag[]; attachments?: FeedAttachment[] } = {}, opts: { index?: boolean; level?: number } = {}) {
+function holder(channel: ReturnType<typeof fakeChannel>, rows: { notes?: FeedNote[]; notebooks?: FeedNotebook[]; tags?: FeedTag[]; attachments?: FeedAttachment[]; views?: FeedView[] } = {}, opts: { index?: boolean; level?: number } = {}) {
   const id = crypto.randomUUID();
   const own: Port = channel.port(id);
   // A holder on another build: the level it states in `attached` is the only difference.
@@ -80,6 +80,7 @@ function holder(channel: ReturnType<typeof fakeChannel>, rows: { notes?: FeedNot
   const notebooks = collection<FeedNotebook>('notebooks', rows.notebooks ?? []);
   const tags = collection<FeedTag>('tags', rows.tags ?? []);
   const attachments = collection<FeedAttachment>('attachments', rows.attachments ?? []);
+  const views = collection<FeedView>('views', rows.views ?? []);
   let feed = state();
   const feedListeners = new Set<(s: FeedState) => void>();
   let sync = status();
@@ -99,7 +100,7 @@ function holder(channel: ReturnType<typeof fakeChannel>, rows: { notes?: FeedNot
     cancelUpload: vi.fn(async () => 'cancelled' as const),
   };
   const serving: Serving = {
-    collections: { notes, notebooks, tags, attachments, syncState: null as never },
+    collections: { notes, notebooks, tags, attachments, views, syncState: null as never },
     state: () => feed,
     onState: (l) => (feedListeners.add(l), () => void feedListeners.delete(l)),
     outbox: outbox as never,
@@ -115,6 +116,7 @@ function holder(channel: ReturnType<typeof fakeChannel>, rows: { notes?: FeedNot
     notebooks,
     tags,
     attachments,
+    views,
     index,
     sync_,
     keeper,
@@ -792,6 +794,7 @@ describe('a client of the holding tab', () => {
     const answers = channel.posted.filter((m): m is Extract<Message, { type: 'answer' }> => m.type === 'answer');
     expect(answers).toHaveLength(1);
   });
+
 });
 
 describe('carry and revive', () => {
