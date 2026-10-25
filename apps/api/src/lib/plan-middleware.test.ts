@@ -49,6 +49,8 @@ const HELD: Array<[string, string]> = [
   ['PUT', '/api/notebooks/:id/fields/order'],
   ['PATCH', '/api/notebooks/:id/fields/:fieldId'],
   ['POST', '/api/notebooks/:id/fields/:fieldId/options'],
+  ['POST', '/api/views'],
+  ['PATCH', '/api/views/:id'],
   ['PATCH', '/api/tags/:id'],
   ['PUT', '/api/notes/:id/files'],
   ['POST', '/api/notes/:id/files/copy'],
