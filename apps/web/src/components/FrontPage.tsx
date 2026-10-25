@@ -336,9 +336,10 @@ export function FrontShell({ children }: { children: ReactNode }) {
  *
  * Free first and quieter: it is the floor under the plan, not a second product, so its
  * card has no border to compete with the one being sold, and lists what it holds and
- * that everything else comes with it rather than repeating the plan's list. The free
- * plan's Auto-fill is a number the instance sets (`AUTOFILL_FREE_PRESSES`), so it is
- * said without one here.
+ * that every feature comes with it rather than repeating the plan's list. Its Auto-fill
+ * is the one feature with a limit of its own, a pool of presses (`AUTOFILL_FREE_PRESSES`),
+ * said as that and without the number, which is the instance's to set; "everything
+ * else, Auto-fill included" said more than the free plan gives.
  */
 export function Pricing() {
   return (
@@ -350,7 +351,7 @@ export function Pricing() {
         <ul>
           <li>Up to {FREE_NOTES} notes, counting the trash, in as many notebooks as you like</li>
           <li>{FREE_STORAGE_GB} GB of attachments</li>
-          <li>Everything else the plan has, Auto-fill included</li>
+          <li>Every feature the plan has, with a set number of Auto-fill presses</li>
         </ul>
         <p className="muted">For a small library, for as long as you like. No card.</p>
       </div>
