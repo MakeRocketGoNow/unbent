@@ -143,7 +143,8 @@ describe('an account whose plan has ended', () => {
     expect((await call('DELETE', `/api/notes/${extra}/permanent`)).ok).toBe(true);
     expect(((await (await call('GET', '/api/me/plan')).json()) as { state: string }).state).toBe('free');
     expect((await call('PATCH', `/api/notes/${noteId}`, { title: 'renamed once under' })).status).toBe(200);
-  });
+    // Twenty requests, one an export of the hundred notes above: the bound its sibling has.
+  }, 60_000);
 
   it('cannot be comped by anyone but an operator', async (ctx) => {
     if (!billing) return ctx.skip();
