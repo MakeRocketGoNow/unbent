@@ -1,6 +1,6 @@
 import { IndexedDBAdapter, NonRetriableError, startOfflineExecutor, type OfflineExecutor, type OnlineDetector, type StorageAdapter } from '@tanstack/offline-transactions';
 import type { Transaction } from '@tanstack/db';
-import { FREE_NOTES, FREE_NOTES_FULL_CODE, MAX_ATTACHMENT_BYTES, PLAN_INACTIVE_CODE, STORAGE_FULL_CODE, filenameSchema, foldNoCase, type FeedNote, type FieldDef, type FieldValue, type Note, type NoteFieldValue, type NotebookDefinition, type RestoredNote } from '@unbent/shared';
+import { FREE_NOTES, FREE_NOTES_FULL_CODE, MAX_ATTACHMENT_BYTES, PLAN_INACTIVE_CODE, STORAGE_FULL_CODE, filenameSchema, foldNoCase, type FeedNote, type FeedView, type FieldDef, type FieldValue, type Note, type NoteFieldValue, type NotebookDefinition, type NotebookView, type RestoredNote, type ViewQuery } from '@unbent/shared';
 import * as api from '../notes-api.js';
 import { ApiError, errorText, isNoteChanged, isOfflineError, NoteChangedError } from '../notes-api.js';
 import { offlineNow, recheck, subscribeConnectivity } from '../connectivity.js';
@@ -10,7 +10,7 @@ import type { Collections, LocalNote } from './collections.js';
 import { askToPersist, filesSupported, readFile, removeFile, writeFile } from './files.js';
 import { FILES_CACHE, FILES_CHANGED, MAX_KEPT_FILE } from '../sw/routes.js';
 import { isWhole, refusedForGood, type FeedEngine } from './feed.js';
-import { CallUnsettledError, LibraryMovedError, SEND_ONCE } from './client-library.js';
+import { CallUnsettledError, LibraryMovedError, SEND_ONCE, type Rows } from './client-library.js';
 import { onPlanActive, onPlanRead, planAccepted, planFree, planFreeRestored, planFreed, planHeld, planIs, planLapsed, planRefused, readOnlyKnown } from '../plan-refused.js';
 import { FreeNotesFullError } from '../free-notes.js';
 import { onStoreFreed, onStoreFull, storeAccepted, storeFreed, storeFull, storeFullMessage, storeRefused, storeRefusedFor, type StoreRefusal } from '../store-full.js';
@@ -27,10 +27,10 @@ import { OutboxLeader } from './leader.js';
  * to the account's `pending` shelf, a row for it at once, and its upload an entry here,
  * behind whatever its note already has waiting.
  *
- * Otherwise only note writes go this way. Notebook, tag and field management (renames, merges,
- * deletes, field definitions, option removal, conversions) are settings-page actions
- * with uniqueness and conversion rules the server decides, and stay direct calls that
- * need a connection; the feed delivers what they did to every device.
+ * Otherwise only note writes go this way. Notebook, tag, field and saved view management
+ * (renames, merges, deletes, field definitions, option removal, conversions, a view saved
+ * or reordered) are actions with uniqueness and conversion rules the server decides, and
+ * stay direct calls that need a connection; the feed delivers what they did to every device.
  *
  * The outbox (`@tanstack/offline-transactions`) is one queue, replayed in order, one
  * entry at a time, with a growing wait between attempts. Two rules keep the queue from
@@ -2316,6 +2316,84 @@ export async function applyNotebookTemplate(
   if (lib && isWhole(lib.engine.state)) await lib.engine.pull();
   else if (lib) void lib.engine.pull();
   return out;
+}
+
+/**
+ * How a view saved in a tab that does not hold the library waits for its row; set by
+ * `store/library.ts`. Resolves once `until` holds of the views this tab reads, or after
+ * `ms`, and at once in a tab with no library or one that holds it.
+ */
+let mirrored: (until: (views: Rows<FeedView>) => boolean, ms: number) => Promise<void> = async () => {};
+
+export function provideMirrorWait(fn: typeof mirrored): void {
+  mirrored = fn;
+}
+
+/**
+ * How long a client tab waits for a view it saved to arrive from the holder. The holder
+ * pulls on the socket's nudge, which follows the write by well under a second; past
+ * this the action returns all the same, since the view is saved and the rail lists it
+ * when the row lands, and a person must not be kept waiting on a slow socket.
+ */
+export const VIEW_LANDED_MS = 3000;
+
+/**
+ * A view write has been answered: waits until this tab's library holds what it did, so
+ * the caller can open the view's address and find the rail already listing it.
+ *
+ * The tab that holds the library pulls, as `applyNotebookTemplate` does and for its
+ * reasons: awaited while the library is whole, only asked for while a walk is under way
+ * (the walk ends by following the feed past this write). A client tab cannot pull: its
+ * rows are the holder's, which pulls when the socket says the feed moved, so it watches
+ * its own rows for the change instead, bounded by `VIEW_LANDED_MS`. Not forwarded to the
+ * holder as the note writes are: a view write is a request either way, any tab can make
+ * it, and what a client needs from the holder is only the row, which comes anyway.
+ */
+async function viewLanded(until: (views: Rows<FeedView>) => boolean): Promise<void> {
+  directListeners.forEach((l) => l());
+  const lib = await resolve();
+  if (lib && isWhole(lib.engine.state)) await lib.engine.pull();
+  else if (lib) void lib.engine.pull();
+  else await mirrored(until, VIEW_LANDED_MS);
+}
+
+/** A row of the view at least as new as the server's answer: the write, or a later one. */
+const holdsView = (view: NotebookView) => (views: Rows<FeedView>) => (views.get(view.id)?.updatedAt ?? -Infinity) >= view.updatedAt;
+
+/**
+ * Saves a notebook's list as a view, and returns once the library holds it. Throws an
+ * `ApiError` with status 409 when the notebook has a view of that name already.
+ */
+export async function createView(body: { notebookId: string; name: string; query: ViewQuery }): Promise<NotebookView> {
+  const view = await api.createView(body);
+  await viewLanded(holdsView(view));
+  return view;
+}
+
+/**
+ * Renames a view, changes what it keeps, or moves it among its notebook's views, and
+ * returns once the library holds the change. A move shifts its neighbours too; they come
+ * in the same page of the feed as the view itself.
+ */
+export async function updateView(id: string, patch: { name?: string; query?: ViewQuery; position?: number }): Promise<NotebookView> {
+  const view = await api.updateView(id, patch);
+  await viewLanded(holdsView(view));
+  return view;
+}
+
+/**
+ * Deletes a view, and returns once the library no longer holds it. A view another device
+ * deleted first (a 404) is the outcome asked for, not a failure: the tombstone is on its
+ * way, and the person would otherwise be told a view they can still see could not be
+ * deleted.
+ */
+export async function deleteView(id: string): Promise<void> {
+  try {
+    await api.deleteView(id);
+  } catch (err) {
+    if (!(err instanceof ApiError && err.status === 404)) throw err;
+  }
+  await viewLanded((views) => !views.has(id));
 }
 
 /*

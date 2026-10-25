@@ -4,11 +4,11 @@ import {
   keepPreviousData,
   type QueryClient,
 } from '@tanstack/react-query';
-import type { AttachmentInfo, BackupsStatus, OperatorOrder, FieldDef, Note, NoteSort, NoteSummary, NotebookSummary } from '@unbent/shared';
+import type { AttachmentInfo, BackupsStatus, OperatorOrder, FieldDef, Note, NoteSort, NoteSummary, NotebookSummary, NotebookView } from '@unbent/shared';
 import * as api from './notes-api.js';
 import { ApiError, OfflineError } from './notes-api.js';
 import { offlineNow } from './connectivity.js';
-import { count, fieldSums, list, lookups, notebookFields, notebookFiles, notebookList, summaries, tagSummaries, toAttachmentInfo, toNote, type LocalAttachmentInfo, type Lookups, type Snapshot } from './store/derive.js';
+import { count, fieldSums, list, lookups, notebookFields, notebookFiles, notebookList, summaries, tagSummaries, toAttachmentInfo, toNote, viewList, type LocalAttachmentInfo, type Lookups, type Snapshot } from './store/derive.js';
 import type { LocalNote } from './store/collections.js';
 import { currentLibrary, onLibraryChange, onLibraryReset, onSearchIndexed, type ReadableLibrary as Library } from './store/library.js';
 import { LIBRARY_ROOTS } from './store/library-roots.js';
@@ -271,6 +271,14 @@ export const keys = {
   attachments: (noteId: string) => ['attachments', noteId] as const,
   tags: () => ['tags'] as const,
   notebooks: () => ['notebooks'] as const,
+  /**
+   * Every saved view of the account, under a root of its own (`VIEW_ROOTS`): a view
+   * saved or renamed reaches this and nothing else, and the notebook list, which every
+   * save invalidates, does not take the views with it. One list rather than one per
+   * notebook, since the rail draws every notebook's views at once and the whole set is
+   * a few rows.
+   */
+  views: () => ['views'] as const,
   /**
    * Under its own root rather than `['notebooks', id]`: invalidating the notebook list
    * (which happens on every save) must not refetch every open notebook's definitions.
@@ -648,6 +656,19 @@ export const notebooksQuery = () =>
     queryFn: async (): Promise<{ notebooks: NotebookSummary[]; unfiled: number }> => {
       const lib = await library();
       return lib ? notebookList(view(lib).snapshot) : api.listNotebooks();
+    },
+  });
+
+/**
+ * Every saved view, by notebook then place (`viewList`). From the library like the
+ * notebooks, and from the server only on a device with none, as every read here.
+ */
+export const viewsQuery = () =>
+  queryOptions({
+    queryKey: keys.views(),
+    queryFn: async (): Promise<NotebookView[]> => {
+      const lib = await library();
+      return lib ? viewList(view(lib).snapshot) : (await api.listViews()).views;
     },
   });
 

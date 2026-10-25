@@ -205,6 +205,9 @@ vi.mock('../notes-api.js', async (importOriginal) => ({
   restoreRevision: vi.fn(),
   clearRevisions: vi.fn(),
   importNotebook: vi.fn(),
+  createView: vi.fn(),
+  updateView: vi.fn(),
+  deleteView: vi.fn(),
   purgeNotes: vi.fn(),
   // No read of the plan answers unless a test gives it one (`roomForNotes`).
   getPlan: vi.fn(() => Promise.reject(new Error('no plan read in this test'))),
@@ -2070,6 +2073,57 @@ describe('applying a notebook template', () => {
     const { engine } = library([]);
     await expect(actions.applyNotebookTemplate(definition, { create: true })).resolves.toBe('taken');
     expect(engine.pull).not.toHaveBeenCalled();
+  });
+});
+
+/*
+ * Saved views are requests, like a notebook's management, and the caller opens the
+ * view's address straight after: the action answers once this tab's library holds it.
+ */
+describe('saving a view', () => {
+  const saved = { id: 'v1', notebookId: 'nb1', name: 'Business', position: 0, query: { tag: ['tax'] }, updatedAt: 5 };
+  afterEach(() => actions.provideMirrorWait(async () => {}));
+
+  it('waits for the library to hold the view before answering, in the tab that holds it', async () => {
+    vi.mocked(api.createView).mockResolvedValueOnce(saved);
+    const { engine, landPull } = library([]);
+    let answered = false;
+    const done = actions.createView({ notebookId: 'nb1', name: 'Business', query: { tag: ['tax'] } }).then(() => (answered = true));
+    await tick();
+    await tick();
+    expect(engine.pull).toHaveBeenCalledOnce();
+    expect(answered).toBe(false);
+    landPull();
+    await done;
+  });
+
+  it('in a client tab, waits for the holder to bring the row rather than pulling', async () => {
+    provideLibrary(async () => null);
+    const views = new Map<string, typeof saved>();
+    const rows = { values: () => views.values(), get: (id: string) => views.get(id), has: (id: string) => views.has(id), preload: async () => {}, size: 0 };
+    const waits: Array<{ ms: number; held: () => boolean }> = [];
+    actions.provideMirrorWait(async (until, ms) => void waits.push({ ms, held: () => until(rows) }));
+    vi.mocked(api.updateView).mockResolvedValueOnce(saved);
+    await actions.updateView('v1', { name: 'Business' });
+    expect(waits.map((w) => w.ms)).toEqual([actions.VIEW_LANDED_MS]);
+    // The row as it was before the write is not it; the server's answer, or later, is.
+    views.set('v1', { ...saved, updatedAt: 4 });
+    expect(waits[0]!.held()).toBe(false);
+    views.set('v1', saved);
+    expect(waits[0]!.held()).toBe(true);
+  });
+
+  it('takes a view another device deleted first as deleted, and passes any other refusal on', async () => {
+    const { engine, landPull } = library([]);
+    vi.mocked(api.deleteView).mockRejectedValueOnce(new ApiError(404, 'Not found'));
+    const done = actions.deleteView('v1');
+    await tick();
+    await tick();
+    landPull();
+    await expect(done).resolves.toBeUndefined();
+    expect(engine.pull).toHaveBeenCalledOnce();
+    vi.mocked(api.deleteView).mockRejectedValueOnce(new ApiError(403, 'Forbidden'));
+    await expect(actions.deleteView('v1')).rejects.toMatchObject({ status: 403 });
   });
 });
 

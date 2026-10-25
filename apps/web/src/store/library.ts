@@ -4,7 +4,7 @@ import { reportError } from '../report-error.js';
 import { offlineNow, recheck, subscribeConnectivity } from '../connectivity.js';
 import { openLocalStore, openSearchDatabase, closeLocalStore } from './db.js';
 import { createCollections, cursorStore, type Collections, type LocalAttachment, type LocalNote } from './collections.js';
-import { countStoredWrites, createOutbox, provideForwarder, provideLibrary, type Outbox } from './actions.js';
+import { countStoredWrites, createOutbox, provideForwarder, provideLibrary, provideMirrorWait, type Outbox } from './actions.js';
 import { FeedEngine, isWhole, type FeedState } from './feed.js';
 import { createKeeper, type Keeper } from './keep.js';
 import { askToPersist, readKeptNotebooks } from './files.js';
@@ -133,6 +133,34 @@ provideForwarder(async () => {
   } catch {
     return null;
   }
+});
+
+/*
+ * A client tab's wait for a view it saved to reach its rows (`viewLanded` in
+ * `actions.ts`): they change only when the holder's do, so the wait is on this tab's
+ * change listeners, bounded by the caller. Nothing to wait for in a tab that holds the
+ * library (the action pulls there) or has none.
+ */
+provideMirrorWait(async (until, ms) => {
+  if (forTests || !current) return;
+  let lib: AnyLibrary;
+  try {
+    lib = await current.library;
+  } catch {
+    return;
+  }
+  if (!lib.remote || until(lib.views)) return;
+  await new Promise<void>((done) => {
+    const finish = () => {
+      clearTimeout(timer);
+      stop();
+      done();
+    };
+    const timer = setTimeout(finish, ms);
+    const stop = onLibraryChange(() => {
+      if (until(lib.views)) finish();
+    });
+  });
 });
 
 /** The library open now, or null before anyone has signed in on this tab. */
