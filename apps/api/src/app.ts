@@ -3,6 +3,7 @@ import { logger } from 'hono/logger';
 import { COMPAT_HEADER, COMPAT_LEVEL } from '@unbent/shared/compat';
 import type { AppEnv } from './types.js';
 import { StoreUnavailable } from './lib/store-client.js';
+import { PlanRefused, planRefusedBody } from './lib/free-plan.js';
 import { StorageFull, storageFullBody } from './lib/quota.js';
 import { sessionMiddleware } from './lib/session.js';
 import { requireActivePlan } from './lib/plan-middleware.js';
@@ -89,6 +90,10 @@ export const onAppError: ErrorHandler<AppEnv> = (err, c) => {
   // the routes do not know they carry it; the upload routes still catch their own,
   // because they have an object to delete first.
   if (err instanceof StorageFull) return c.json(storageFullBody(err), 402);
+  // A write the free plan refused, for the same reason: the free plan's limits travel
+  // with the repo, and the store decides. An account past them is read-only (the code
+  // the page turns read-only on); one at its count is refused only a new note.
+  if (err instanceof PlanRefused) return c.json(planRefusedBody(err), 402);
   console.error('Unhandled error:', err);
   return c.json({ error: 'Internal error' }, 500);
 };

@@ -33,7 +33,8 @@ import { NotebookMissing, isNotebookMissing } from './NotebookMissing.js';
 import { countMenuItems, offersCountMenu } from './count-menu.js';
 import { startExport, useExportRunning } from '../export-archive.js';
 import { useOffline } from '../connectivity.js';
-import { usePlan } from '../use-plan.js';
+import { usePlan, READ_ONLY_TIP } from '../use-plan.js';
+import { FreeNotesNotice } from './FreeNotesNotice.js';
 import { TagPicker } from './TagPicker.js';
 import { FilterRow } from './FilterRow.js';
 import { DatePicker } from './DatePicker.js';
@@ -858,7 +859,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
      follow; the banner above says the rest.
   */
   const { inactive: planInactive } = usePlan();
-  const noNewNotes = planInactive ? 'Not while the plan has ended' : undefined;
+  const noNewNotes = planInactive ? READ_ONLY_TIP : undefined;
   const countMenu =
     offersCountMenu({
       searching: results !== null,
@@ -906,7 +907,12 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
     tags: tag ?? [],
     notebook: notebook === UNFILED || notebookMissing ? null : (notebook ?? null),
   };
-  /** The New button and the phone's +. Carries the active filter onto the new note. */
+  /**
+   * The New button and the phone's +. Carries the active filter onto the new note. On a
+   * free account at the free plan's count the action refuses before it makes anything
+   * and `FreeNotesNotice` says so; pressable rather than disabled, so the reason reaches
+   * a phone, where a disabled floating + would say nothing and a tip is never drawn.
+   */
   const newNote = () => createNote(filing);
 
   /*
@@ -1547,6 +1553,8 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
 
       {/* The routed workspace hears how many rows the column holds; see `ListRowsContext`. */}
       <ListRowsContext.Provider value={list.isPending || stale ? null : notes.length}>{children}</ListRowsContext.Provider>
+
+      <FreeNotesNotice />
     </div>
   );
 }

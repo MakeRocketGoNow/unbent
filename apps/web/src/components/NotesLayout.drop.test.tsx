@@ -11,6 +11,7 @@ import { claimFileNotesFor, resetFileNotesForTests } from '../file-notes.js';
 import { NotesLayout } from './NotesLayout.js';
 import { FileNotesSnackbar } from './FileNotesSnackbar.js';
 import { filters } from '../routes/notes.js';
+import { FreeNotesFullError } from '../free-notes.js';
 
 /**
  * Files let go on the list column become one note each, filed where the list is, and are
@@ -40,7 +41,7 @@ vi.mock('../notes-api.js', async (importOriginal) => ({
 }));
 vi.mock('../index-files.js', () => ({ indexUploadedFile: vi.fn(), useIndexing: () => ({ queued: 0, running: false, failed: 0 }) }));
 let planInactive = false;
-vi.mock('../use-plan.js', () => ({ usePlan: () => ({ inactive: planInactive }) }));
+vi.mock('../use-plan.js', async (importOriginal) => ({ ...(await importOriginal<typeof import('../use-plan.js')>()), usePlan: () => ({ inactive: planInactive }) }));
 
 const note = (id: string, over: Partial<FeedNote> = {}): FeedNote => ({
   id,
@@ -262,5 +263,22 @@ describe('files dropped on the note list', () => {
     const undo = await screen.findByRole('button', { name: 'Undo' });
     undo.click();
     await waitFor(() => expect(actions.trashNotes).toHaveBeenCalledWith(['new1', 'new2']));
+  });
+});
+
+/**
+ * New on the free plan (2026-10-24): an account that holds the free plan's hundred is
+ * told so at the press. The count is the action's (`roomForNotes`, tested with the
+ * actions); here, that the list shows the notice when the action refuses.
+ */
+describe('New on the free plan', () => {
+  it('says the free plan is full when the action refuses the note, with the way to the plan', async () => {
+    vi.mocked(actions.createNote).mockRejectedValueOnce(new FreeNotesFullError(100));
+    lib = installTestLibrary({ notes: [note('a', { title: 'Alpha' })] });
+    mount('/notes');
+    await screen.findByText('Alpha');
+    (await screen.findByRole('button', { name: 'New' })).click();
+    expect(await screen.findByText(/The free plan holds 100 notes, counting the trash\./)).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Plan' })).toBeTruthy();
   });
 });

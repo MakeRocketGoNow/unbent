@@ -19,6 +19,7 @@ import { Button } from './Button';
 import { Disclosure } from './Disclosure.js';
 import { NotePicker, type PickedNote } from './NotePicker.js';
 import { OverflowMenu } from './OverflowMenu.js';
+import { READ_ONLY_TIP } from '../use-plan.js';
 
 interface AttachmentsProps {
   noteId: string;
@@ -72,7 +73,7 @@ export function Attachments({
 }: AttachmentsProps) {
   /** The writes a lapsed account cannot make, and why; `readOnly`'s word wins when both hold. */
   const noWrites = readOnly || lapsed;
-  const noWritesTip = readOnly ? 'Not available offline' : lapsed ? 'Not while the plan has ended' : undefined;
+  const noWritesTip = readOnly ? 'Not available offline' : lapsed ? READ_ONLY_TIP : undefined;
   const queryClient = useQueryClient();
   const { data: files = [], isLoading, error } = useQuery(attachmentsQuery(noteId));
   /*

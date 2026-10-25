@@ -6,6 +6,7 @@ import {
 } from '@unbent/shared';
 import type { AttachmentsRepo } from './attachments-repo.js';
 import type { NotesRepo } from './notes-repo.js';
+import { PlanRefused } from './free-plan.js';
 import { assertRoom, StorageFull } from './quota.js';
 import { readAttachment, serverCanRead, uploadReaders } from './read-attachment.js';
 import type { Env } from '../types.js';
@@ -66,6 +67,8 @@ export interface StoreAttachmentInput {
    * checked again after, since this is a claim.
    */
   declaredBytes?: number | undefined;
+  /** The files' sum, when the caller read it already this request (`refuseIfPastFree`), so the check on `declaredBytes` does not ask again. */
+  usedBytes?: number | undefined;
 }
 
 /**
@@ -114,7 +117,7 @@ export async function storeAttachment(
   // stops sending into a refusal it has already been given.
   if (input.declaredBytes !== undefined) {
     try {
-      await assertRoom(attachments, input.quota, input.declaredBytes);
+      await assertRoom(attachments, input.quota, input.declaredBytes, input.usedBytes);
     } catch (err) {
       if (err instanceof StorageFull && input.body instanceof ReadableStream) await input.body.cancel().catch(() => {});
       throw err;
@@ -134,7 +137,7 @@ export async function storeAttachment(
   try {
     info = await attachments.record({ id, noteId, filename, contentType, size: object.size, r2Key: key }, { quota: input.quota });
   } catch (err) {
-    if (err instanceof StorageFull) await env.BLOBS.delete(key).catch(() => {});
+    if (err instanceof StorageFull || err instanceof PlanRefused) await env.BLOBS.delete(key).catch(() => {});
     throw err;
   }
 

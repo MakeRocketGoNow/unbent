@@ -1,5 +1,5 @@
 {
-  "level": 3,
+  "level": 4,
   "requests": {
     "attachmentTextsSchema": {
       "type": "object",
@@ -1541,8 +1541,10 @@
       "packages/shared/src/operator.ts › OperatorSortDir": "a8c295cf0c5f6b4d",
       "packages/shared/src/operator.ts › StoreRestore": "99f8c5ecda55b11b|144e7e3823|1c6a062c27|1d69844d2f|2e50124cb8|43d8b9ccab|5959155758|7cbd8dd1ac|87cda41db3|a79a1b0dee|d8ff8d4fa2|e984500b8e|ea07aa87cb",
       "packages/shared/src/operator.ts › StoreRestores": "c25a7f538d84ac7d|08925ff99f|e1ae277a39",
-      "packages/shared/src/plan.ts › AccountPlan": "a09590552f9e53b2|28a1635b92|2b2e768c60|946818ab68|99afab4ff8|bc746780c3|be5b74c8c5|dcac7a9c69|fa407a537c",
+      "packages/shared/src/plan.ts › AccountPlan": "a09590552f9e53b2|1eda7d88f3|28a1635b92|2b2e768c60|42d283fa62|946818ab68|99afab4ff8|bc746780c3|dcac7a9c69|fa407a537c",
+      "packages/shared/src/plan.ts › AccountState": "5d17cd8277411232",
       "packages/shared/src/plan.ts › BillingConfig": "cd77120f83acad19|e206dde585",
+      "packages/shared/src/plan.ts › HeldCounts": "d4f06fb5a96284ad|3e041963a9|ad8b4c76fa",
       "packages/shared/src/plan.ts › PlanSource": "9e6e8c836c5ce8a6",
       "packages/shared/src/plan.ts › PlanState": "c0b18497eb78933a",
       "packages/shared/src/schemas.ts › AppConfig": "3240b34429212939|33b05c364b|4297c0093e|4e5c9e67bb|5e101fa39a|8295cd56d4|9a8a7858f3|9c2b2c3516|9d9a0890b0|b627c14bc9|c5f694d33a|d10a72a173|d540b1135f|d93bc21dd2|edb1f6de4f|f012f636b9",
@@ -1550,7 +1552,7 @@
       "packages/shared/src/schemas.ts › AttachmentTexts": "30f98a978cb1c40a|af9c9c55d7|d80fc1cbfe",
       "packages/shared/src/schemas.ts › AuthProvider": "3f515100bbaba9c2",
       "packages/shared/src/schemas.ts › AutofillSuggestion": "b076982f94208da6|1f50c12073|285633a55c|64b2a62639|8a30fdbc14|8f95f548e1|de5604a9e5",
-      "packages/shared/src/schemas.ts › AutofillUsage": "b44fbf625b2f8cc1|15b1975a7d|354cfa2710|cb90dfbcfa|cef716aa47|d48ae02086|ff86109a5a",
+      "packages/shared/src/schemas.ts › AutofillUsage": "b44fbf625b2f8cc1|15b1975a7d|354cfa2710|cb90dfbcfa|cef716aa47|d48ae02086|e1d7820965|ff86109a5a",
       "packages/shared/src/schemas.ts › CreateNoteInput": "74ead43e7ff1c3c2",
       "packages/shared/src/schemas.ts › FieldDef": "eeb129de12992dfc",
       "packages/shared/src/schemas.ts › FieldValue": "ea6fecde1bd176fc",
@@ -1589,7 +1591,7 @@
       "apps/web/src/store/actions.ts › LocalWrite": "748b6f5d2d806ff7|74469c8971|cc6c2cc4d2",
       "apps/web/src/store/actions.ts › MutationFn": "ffb99680903e58b1",
       "apps/web/src/store/actions.ts › Out": "637a647dbcabe119",
-      "apps/web/src/store/actions.ts › Outbox": "b2bff80e91a964be|0761a23ca9|127ea0ca09|289c9aef4b|29c4319001|312adc39d6|718143a248|9ba48bb5aa|a4d2935dd1|a5c5b6b5cc|bab29c56cc|c39ab01ed3|e1e66be6e8|e7d3acbc6b|ef97d2d275|fe7e6de3b9",
+      "apps/web/src/store/actions.ts › Outbox": "b2bff80e91a964be|0761a23ca9|127ea0ca09|289c9aef4b|29c4319001|312adc39d6|718143a248|97b00c9d9d|9ba48bb5aa|a4d2935dd1|a5c5b6b5cc|bab29c56cc|c39ab01ed3|e1e66be6e8|e7d3acbc6b|ef97d2d275|fe7e6de3b9",
       "apps/web/src/store/actions.ts › OutboxEvents": "02c22550791afd0d|406ae9ec53",
       "apps/web/src/store/actions.ts › Save": "1edebba6bbe38acf",
       "apps/web/src/store/actions.ts › SyncStatus": "cdb5c3b403518b46|608af5a5de|aed4a88360|d475b97e6b|dd33cc4188|ecd0a1057f|f001cbc75b",

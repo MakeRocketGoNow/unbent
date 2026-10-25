@@ -298,6 +298,14 @@ ALLOWED_EMAILS=
 # STRIPE_* settings are set, falls back to the first. unbent.app sets 5000 and 300.
 # AUTOFILL_YEARLY_CENTS=
 # AUTOFILL_TRIAL_YEARLY_CENTS=
+#
+# The free plan's Auto-fill, where the STRIPE_* settings are set: the presses an account
+# may make while it has no plan holding (an ended trial, subscription or comp, small enough
+# for the free plan), for its whole life. Counted only while it is free, so a trial's
+# presses never come out of it, and refused past it with the number in the sentence. Unset,
+# there is no pool, and a free account is held to the trial's two numbers above alone.
+# unbent.app sets 100.
+# AUTOFILL_FREE_PRESSES=
 
 # The User-Agent add_attachment sends when it fetches a file for an assistant. Unset, it is
 # a current desktop Chrome (DEFAULT_FETCH_USER_AGENT in src/lib/fetch-attachment.ts); set

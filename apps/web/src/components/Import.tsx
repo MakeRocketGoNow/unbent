@@ -16,7 +16,7 @@ import { describeImportFile } from './import-file.js';
 import { importPercent } from './import-progress.js';
 import { formatBytes } from '../format-bytes.js';
 import { ImportSkips } from './ImportSkips.js';
-import { usePlan } from '../use-plan.js';
+import { usePlan, READ_ONLY_TIP } from '../use-plan.js';
 import { isNoteFile, notesFromFiles, resetFileNotes, undoFileNotes, useFileNotes } from '../file-notes.js';
 import { NotebookPicker } from './FilingRows.js';
 import { notebooksQuery } from '../queries.js';
@@ -285,7 +285,7 @@ export function Import() {
                 <span className="muted">Notebook</span>
                 <NotebookPicker className="search-field" notebook={batchNotebook} notebooks={notebooks.data?.notebooks} onChange={setBatchNotebook} />
               </label>
-              <Button variant="primary" disabled={planInactive} tip={planInactive ? 'Not while the plan has ended' : undefined} onClick={startBatch}>
+              <Button variant="primary" disabled={planInactive} tip={planInactive ? READ_ONLY_TIP : undefined} onClick={startBatch}>
                 {batch.length === 1 ? 'Add note' : `Add ${batch.length} notes`}
               </Button>
             </div>
@@ -333,7 +333,7 @@ export function Import() {
                 </span>
               </label>
 
-              <Button variant="primary" disabled={!canStart || planInactive} tip={planInactive ? 'Not while the plan has ended' : undefined} onClick={start}>
+              <Button variant="primary" disabled={!canStart || planInactive} tip={planInactive ? READ_ONLY_TIP : undefined} onClick={start}>
                 Start import
               </Button>
             </>

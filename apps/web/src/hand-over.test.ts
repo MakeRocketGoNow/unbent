@@ -3,6 +3,7 @@ import { QueryClient } from '@tanstack/react-query';
 import { handOver } from './hand-over.js';
 import { claimImportFor } from './import-run.js';
 import { claimFileNotesFor } from './file-notes.js';
+import { planFree, planIs, resetPlanRefused } from './plan-refused.js';
 
 vi.mock('./import-run.js', () => ({ claimImportFor: vi.fn() }));
 vi.mock('./file-notes.js', () => ({ claimFileNotesFor: vi.fn() }));
@@ -32,6 +33,20 @@ describe('handOver', () => {
     handOver(new QueryClient(), undefined);
     expect(claimImportFor).not.toHaveBeenCalled();
     expect(claimFileNotesFor).not.toHaveBeenCalled();
+  });
+
+  /*
+   * The free plan's last answer, which the outbox keeps and the actions count notes by:
+   * a different person signed in without a reload must not have the last one's.
+   */
+  it('forgets the free plan\u2019s answer for a different person, and keeps it for the same one', () => {
+    handOver(new QueryClient(), 'user-a');
+    planIs(false, true);
+    handOver(new QueryClient(), 'user-a');
+    expect(planFree()).toBe(true);
+    handOver(new QueryClient(), 'user-b');
+    expect(planFree()).toBe(false);
+    resetPlanRefused();
   });
 
   it('empties the cache for a different person, and keeps it for the same one', () => {

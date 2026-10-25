@@ -2,6 +2,7 @@ import { Hono, type Context } from 'hono';
 import { createMiddleware } from 'hono/factory';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
+import { accountPlanFor } from '../lib/account-plan.js';
 import { accountPlanOf, planFor, planRow, updatePlan } from '../lib/plan.js';
 import { billingOn } from '../lib/stripe.js';
 import { requireAuth } from '../lib/session.js';
@@ -874,9 +875,11 @@ export const admin = new Hono<AppEnv>()
     // page shows it and comps from it. Read, never made: `planFor` would start a dormant
     // account's fortnight at the operator's glance, and the sweep would mail them about
     // a trial they were never shown. Absent means no trial has started.
+    // A lapsed row is told free from read-only by what the account holds, which is one
+    // call to its store; one that cannot answer leaves the plan out rather than guess.
     if (billingOn(c.env)) {
       const row = await planRow(c.env.DB, id);
-      if (row) account.plan = accountPlanOf(row, Date.now());
+      if (row) account.plan = await accountPlanFor(c.env, id, row, Date.now()).catch(() => undefined);
     }
     return c.json(account);
   })
@@ -915,7 +918,11 @@ export const admin = new Hono<AppEnv>()
       );
     }
     console.log(`[billing] operator=${c.get('user')?.email} ${body.action === 'end' ? 'ended the comp of' : 'comped'} user=${target}`);
-    return c.json(accountPlanOf(await planFor(c.env.DB, target, now), now));
+    // The change has landed whatever the store says next: an ended comp's state is read
+    // against the store (`accountPlanFor`), and a store that cannot answer leaves the
+    // row's own word rather than a 503 for a change that took.
+    const after = await planFor(c.env.DB, target, now);
+    return c.json(await accountPlanFor(c.env, target, after, now).catch(() => accountPlanOf(after, now)));
   })
 
   /**

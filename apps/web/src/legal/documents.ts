@@ -140,7 +140,7 @@ const READ_AT_A_PRESS =
   ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'][OWN_FILES_TO_READ] ??
   String(OWN_FILES_TO_READ);
 
-const EFFECTIVE = '2026-10-22';
+const EFFECTIVE = '2026-10-25';
 
 /**
  * How many "other kinds of service" the policy lists, as the word the sentence needs. Two
@@ -197,8 +197,16 @@ const COUNT = ['', '', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven'] as const;
  * the instance sells a plan: a different company receives the name, address and card at
  * checkout and holds the record of the purchase, which is how information is handled,
  * and the policy people had agreed to named the other one.
+ *
+ * Both moved on 25 October 2026 for the free plan: the terms' "Plans and payment" says
+ * that an account within its limits goes on writing without a plan, and that a lapsed one
+ * past them is read-only until it subscribes or deletes down to them; the policy's
+ * retention sentence says it is that account, not every lapsed one, that is kept
+ * read-only. The version did not move: the change only adds a way to keep writing, which
+ * nobody needs asking about, and takes nothing an account had agreed to away. If this
+ * ships on a later day, the two dates move to that day.
  */
-const PRIVACY_EFFECTIVE = '2026-10-22';
+const PRIVACY_EFFECTIVE = '2026-10-25';
 
 export interface LegalDocuments {
   privacy: LegalDocument;
@@ -454,8 +462,9 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
             : []),
           ...(opts.sellsPlan
             ? [
-                `An account whose trial or plan has ended is kept, read-only, for ${KEPT}, ` +
-                  `and may then be deleted, after we have emailed you to export it first. Stripe ` +
+                `An account whose trial or plan has ended and that holds more than the free plan ` +
+                  `allows is kept, read-only, for ${KEPT}, and may then be deleted, after we have ` +
+                  `emailed you to export it first. Stripe ` +
                   `keeps its own record of what you bought for as long as tax law requires.`,
               ]
             : []),
@@ -798,9 +807,11 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
  *
  * What a merchant of record's review reads for (Paddle's did, by address; Stripe's
  * Managed Payments reads the same): that there is a price, that Stripe is the merchant of
- * record, that the plan renews and how to stop it, and a refund policy.
+ * record, that the plan renews and how to stop it, and a refund policy. And, since 25
+ * October 2026, that there is a free plan under the paid one, and what an ended plan
+ * leaves an account as by what it holds.
  *
- * No numbers: not the price, the storage or the trial's length. The front page and the
+ * No numbers: not the price, the storage, the trial's length or the free plan's limits. The front page and the
  * checkout state those, and terms that quoted `plan.ts`'s constants would be rewritten by a
  * price change without their effective date moving or anyone being asked to agree, which
  * is the one way legal text must never change. The refund window and how long a lapsed
@@ -820,11 +831,12 @@ function payment(operator: Operator): LegalSection[] {
     {
       heading: 'Plans and payment',
       body: [
-        'A new account starts with a free trial, with no card asked for. After that, writing ' +
-          'in Unbent needs a plan, billed yearly, and more storage can be added to it. The ' +
-          'price, and what a plan includes, are the ones shown on our pricing page and at ' +
-          'checkout when you subscribe. Prices are in US dollars, and sales tax or VAT is ' +
-          'added where it applies.',
+        'A new account starts with a free trial, with no card asked for. After that, an ' +
+          'account within the limits of the free plan can go on writing in Unbent without ' +
+          'paying; a larger one needs a plan, billed yearly, to write, and more storage can be ' +
+          'added to the plan. The free plan’s limits, the price, and what a plan includes are ' +
+          'the ones shown on our pricing page and at checkout when you subscribe. Prices are ' +
+          'in US dollars, and sales tax or VAT is added where it applies.',
         'Our order process is conducted by Stripe, through its Managed Payments service. Stripe is the ' +
           'merchant of record for every order, under its Link name: it takes the payment, issues ' +
           'the receipt and handles tax, and its own buyer terms apply to the purchase alongside ' +
@@ -835,11 +847,13 @@ function payment(operator: Operator): LegalSection[] {
         'You can cancel at any time, on the website, from Settings, then Plan, then Manage ' +
           'subscription. Cancelling stops the next renewal; the account keeps everything it had until the end ' +
           'of the year already paid for.',
-        `When a trial ends without a plan, or a plan ends, the account becomes read-only rather ` +
-          `than disappearing: every note still opens, searches and exports, and you can still ` +
-          `delete, but nothing new can be written until you subscribe again. A read-only ` +
-          `account is kept for ${KEPT}, and we will email you to export it before then. After ` +
-          `that we may delete it, as if you had deleted it yourself.`,
+        `When a trial ends without a plan, or a plan ends, an account within the free plan’s ` +
+          `limits carries on as a free account. One past them becomes read-only rather than ` +
+          `disappearing: every note still opens, searches and exports, and you can still ` +
+          `delete, but nothing new can be written until you subscribe again or delete down to ` +
+          `the free plan’s limits. A read-only account is kept for ${KEPT}, and we will email ` +
+          `you to export it before then. After that we may delete it, as if you had deleted it ` +
+          `yourself.`,
       ],
     },
     {

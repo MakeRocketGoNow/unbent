@@ -2,7 +2,8 @@
  * The plan an account is on, as the Worker reports it and the web app draws it (MAK-108).
  *
  * The numbers are unbent.app's offer (MAK-47): one plan, billed yearly, a fortnight free
- * first, and storage sold in blocks on top. They are here rather than in the API because
+ * first, storage sold in blocks on top, and a free plan underneath for an account small
+ * enough to fit it. They are here rather than in the API because
  * the front page quotes them before anyone has signed in and the Plan page quotes them
  * again beside the buttons, and two copies of a price drift. Stripe's catalog holds the
  * prices that are charged; these are what the pages say, and the two have to be changed
@@ -18,6 +19,40 @@ export const TRIAL_DAYS = 14;
 
 /** The attachments an account may hold on the plan alone. */
 export const BASE_STORAGE_GB = 10;
+
+/**
+ * The free plan: what an account with no plan holding may keep and still write (decided
+ * 2026-10-24). Not a sign-up path and not a product with a Stripe object: every account
+ * starts on the full trial, and when the trial, a subscription or a comp ends, the
+ * account is `free` if what it holds fits under these, and `inactive` (read-only) if it
+ * does not, until it subscribes or deletes its way under. One rule, decided by what the
+ * account holds, for every way of lapsing.
+ *
+ * Quantity only, never features: notebooks, fields, the offline library, history, an
+ * assistant, export and search all stay on, because scale is what the plan sells and the
+ * rest is the demo. A hundred notes because Evernote's free tier is fifty notes and one
+ * notebook and UpNote's is fifty notes; twice theirs with no cap on notebooks is a
+ * sentence the comparison can say plainly. Held at any one time and counted live and
+ * trashed together, as Evernote counts it, so the trash is not free overflow: the way
+ * under the number is deleting for good and emptying the trash. Restoring from the trash
+ * changes no count and is always allowed.
+ *
+ * The cost is not the constraint (an account this size is cents a month to host); the
+ * support inbox, the abuse surface of accounts with no card, and the mail allowance are,
+ * which is why the number is small and why an importer who brought a thousand notes into
+ * the trial is read-only when it ends, as before: the free plan changes the outcome only
+ * for the small account.
+ */
+export const FREE_NOTES = 100;
+
+/**
+ * The free plan's files, in whole gigabytes so it stands where `storage_gb` stands for a
+ * paid plan (`AccountPlan.storageGb` reports it while the account has no plan holding)
+ * and the store's own room follows from it through `storeLimitBytes`, as it does for
+ * every account. A gigabyte is a hundred notes' scans with room to spare; a free account
+ * that needs more has outgrown the free plan, which is the point of having one.
+ */
+export const FREE_STORAGE_GB = 1;
 
 /** What each storage add-on adds. Sold by the block, never metered. */
 export const STORAGE_ADDON_GB = 25;
@@ -64,21 +99,102 @@ export const MAX_STORAGE_UNITS = 40;
  * it is the sentence for a client that does not.
  */
 export const PLAN_INACTIVE_CODE = 'PLAN_INACTIVE';
-export const PLAN_INACTIVE_MESSAGE =
-  'This account is read-only: its plan has ended. Everything still opens, searches and exports, and anything can be deleted; subscribe under Settings → Plan to edit again.';
+export const PLAN_INACTIVE_MESSAGE = `This account is read-only: its plan has ended, and it holds more than the free plan's ${FREE_NOTES} notes or ${FREE_STORAGE_GB} GB of files. Everything still opens, searches and exports. Delete down to the free plan and empty the trash, or subscribe under Settings → Plan, to edit again.`;
+
+/**
+ * The same sentence with the account's own numbers, which the store's refusal has: what
+ * it holds against the free plan, so the person knows how far over it is and which of
+ * the two to delete. Without them, the general sentence.
+ */
+export function planInactiveMessage(held?: HeldCounts): string {
+  const over = held ? overFree(held) : [];
+  if (over.length === 0) return PLAN_INACTIVE_MESSAGE;
+  return `This account is read-only: its plan has ended, and it holds ${over.join(', and ')}. Everything still opens, searches and exports. Delete down to the free plan and empty the trash, or subscribe under Settings → Plan, to edit again.`;
+}
+
+/** A count of notes as the plan's sentences say it: `1,000 notes`, `1 note`. */
+export function notesOf(n: number): string {
+  return `${n.toLocaleString('en-US')} ${n === 1 ? 'note' : 'notes'}`;
+}
+
+/**
+ * What an account holds past the free plan, a phrase for each of the two that is over
+ * and nothing for one that is not, so a sentence never sends a person to delete files
+ * when it is the notes: `1,000 notes, more than the free plan's 100`. The 402 and the
+ * lapse mail are built from these; `more: false` leaves the comparison off, for a
+ * sentence that says the numbers itself (the Plan page's trial line).
+ */
+export function overFree(held: HeldCounts, opts: { more?: boolean; bytes?: (bytes: number) => string } = {}): string[] {
+  const more = opts.more ?? true;
+  const bytes = opts.bytes ?? heldBytes;
+  const over: string[] = [];
+  if (held.notes > FREE_NOTES) over.push(more ? `${notesOf(held.notes)}, more than the free plan's ${FREE_NOTES}` : notesOf(held.notes));
+  if (held.attachmentBytes > FREE_STORAGE_GB * GB) {
+    over.push(more ? `${bytes(held.attachmentBytes)} of files, more than the free plan's ${FREE_STORAGE_GB} GB` : `${bytes(held.attachmentBytes)} of files`);
+  }
+  return over;
+}
+
+/** Bytes as the plan's sentences say them: whole megabytes under a gigabyte, one decimal above. */
+export function heldBytes(bytes: number): string {
+  return bytes >= GB ? `${(bytes / GB).toFixed(1)} GB` : `${Math.round(bytes / (1024 * 1024))} MB`;
+}
 
 /** The `code` on the 402 an upload past the plan's storage is answered with. */
 export const STORAGE_FULL_CODE = 'STORAGE_FULL';
 
 /**
- * Where an account stands.
- *
- * `trial` and `active` can do everything; `inactive` (a trial that ran out, a
- * subscription that lapsed, a comp that ended) reads, searches, exports and deletes, and
- * is refused every other write with a 402 (`requireActivePlan` in the API). One state for
- * all three ways of lapsing, so there is one code path and one banner.
+ * The `code` on the 402 a free account's new note is answered with once it holds
+ * `FREE_NOTES`. Its own, rather than the read-only one, because the account is not
+ * read-only: every other write still goes, and only a note that would be the hundred and
+ * first is refused, so the page keeps the editor open and says this one sentence where
+ * the note waits (the outbox keeps it, as it keeps a store-full refusal).
+ */
+export const FREE_NOTES_FULL_CODE = 'FREE_NOTES_FULL';
+
+/**
+ * The sentence for that refusal, with the numbers and the two ways out: the 402's, and
+ * the device's own when it refuses the note before queueing it (`FreeNotesFullError` in
+ * the web app), which a batch of dropped files shows as it is. In the shared package so
+ * the two say the same. The notice New shows says a shorter one of its own, in a
+ * snackbar, and leaves the numbers to the Plan page.
+ */
+export function freeNotesFullMessage(held: number, adding = 1): string {
+  const room = Math.max(0, FREE_NOTES - held);
+  const holds = room > 0 && adding > room ? `${held}, with room for ${room} more` : String(held);
+  return `The free plan holds up to ${FREE_NOTES} notes, counting the trash, and this account holds ${holds}. Delete some notes and empty the trash, or subscribe under Settings → Plan for unlimited notes.`;
+}
+
+/** What the free plan's rule is read against: the account's notes, live and trashed together, and its files' bytes. */
+export interface HeldCounts {
+  notes: number;
+  attachmentBytes: number;
+}
+
+/** Whether an account holding this fits the free plan: at most `FREE_NOTES` notes and `FREE_STORAGE_GB` of files. */
+export function fitsFree(held: HeldCounts): boolean {
+  return held.notes <= FREE_NOTES && held.attachmentBytes <= FREE_STORAGE_GB * GB;
+}
+
+/**
+ * Where the plan row stands against the clock: a trial, a plan that holds (a subscription
+ * or a comp), or `inactive`, no plan holding (a trial that ran out, a subscription that
+ * lapsed, a comp that ended). One state for all three ways of lapsing, so there is one
+ * code path. The row's word, and the operator's: `inactive` here says nothing yet about
+ * whether the account may write, which is what it holds that decides (`AccountState`).
  */
 export type PlanState = 'trial' | 'active' | 'inactive';
+
+/**
+ * What the account is, as `GET /api/me/plan` answers it: the row's state, with a lapsed
+ * row read against what the account holds. `trial` and `active` can do everything.
+ * `free` is a lapsed account that fits the free plan (`fitsFree`): it writes as before,
+ * up to `FREE_NOTES` notes and `FREE_STORAGE_GB` of files, with Auto-fill from a pool of
+ * its own. `inactive` is a lapsed account that does not: it reads, searches, exports and
+ * deletes, and is refused every other write with a 402, until it subscribes or deletes
+ * its way under, when it is `free` again with nothing to switch.
+ */
+export type AccountState = PlanState | 'free';
 
 /** Who said the account is paid for: Stripe, or an operator who comped it. */
 export type PlanSource = 'stripe' | 'comp';
@@ -88,7 +204,7 @@ export type PlanSource = 'stripe' | 'comp';
  * against the clock, plus what the subscription behind it is doing.
  */
 export interface AccountPlan {
-  state: PlanState;
+  state: AccountState;
   /**
    * When the state ends, in epoch milliseconds, or null for a comp with no end. For a
    * trial, when it runs out; for a subscription, the end of the period paid for, which is
@@ -105,10 +221,20 @@ export interface AccountPlan {
    */
   readOnlyAt: number | null;
   source: PlanSource | null;
-  /** The attachments the account may hold: `BASE_STORAGE_GB` plus the add-ons bought. */
+  /**
+   * The attachments the account may hold: `BASE_STORAGE_GB` plus the add-ons bought, or
+   * `FREE_STORAGE_GB` while no plan holds (`free` or `inactive`), which is what its
+   * uploads are then held to.
+   */
   storageGb: number;
   /** What it holds now, as the account's store counts it. Absent when the store could not say. */
   usedBytes?: number;
+  /**
+   * Its notes, live and trashed together, as the free plan counts them: read with
+   * `usedBytes`, from the same call, and absent with it. The Plan page says from these
+   * what a trial's end will leave the account as (`fitsFree`), and meters a free one.
+   */
+  notes?: number;
   /**
    * How much room the account's own store takes: its notes, the copies their history
    * keeps, the text read from its files, and the search index over them (MAK-234). Read

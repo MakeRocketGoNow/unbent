@@ -13,6 +13,8 @@ import {
   type NotebookDefinition,
   type OptionEdit,
   type SnapshotPage,
+  FREE_NOTES_FULL_CODE,
+  PLAN_INACTIVE_CODE,
   STORAGE_FULL_CODE,
 } from '@unbent/shared';
 import { AttachmentsStore, type FileSummary } from './attachments.js';
@@ -123,12 +125,71 @@ export interface DumpSlice {
 export type DumpStart = { mark: string; unchanged: true } | ({ mark: string; unchanged: false; schema: string[] } & DumpSlice);
 
 /**
- * The room the store itself may take, in bytes, or null for none (MAK-234). What the
- * Worker passes with a note write where billing is on (`storeLimitOf` in lib/quota.ts),
- * as `recordAttachment` is passed the quota on files; the object holds no plan of its
- * own, so a method given nothing checks nothing.
+ * The free plan's limits (`FREE_NOTES` and `FREE_STORAGE_GB` in `@unbent/shared`), as
+ * the Worker passes them with a write while the account has no plan holding: its notes,
+ * live and trashed together, and its files' bytes. The object holds no plan of its own,
+ * so it is told, with each write, as it is told the store's room.
  */
-export type StoreLimit = number | null | undefined;
+export interface FreeLimits {
+  notes: number;
+  attachmentBytes: number;
+}
+
+/**
+ * What a write is held to: the room the store itself may take, in bytes (MAK-234), and
+ * the free plan's limits while no plan holds, each null for none. What the Worker passes
+ * where billing is on (`writeLimitsOf` in lib/quota.ts), as `recordAttachment` is passed
+ * the quota on files.
+ */
+export interface WriteLimits {
+  store: number | null;
+  free: FreeLimits | null;
+  /**
+   * The room a file's text may fill, where it is not `store`: for an account no plan
+   * holds, the room its own plan's storage gave it. `store` is then the free plan's
+   * (`storeLimitBytes` of its gigabyte), right for notes; but a file's text is derived
+   * from a file already held and exempt from the read-only rule, and a read-only archive
+   * past the free plan would otherwise have its text pass refused at a fraction of the
+   * room it had, with its files left unsearchable. Absent means `store`.
+   */
+  text?: number | null;
+}
+
+/**
+ * A write's limits as a method takes them: the pair, or a bare number for the store's
+ * room alone, which is what every caller passed before the free plan and what the store
+ * tests still pass; null or nothing for none. A method given nothing checks nothing.
+ */
+export type StoreLimit = WriteLimits | number | null | undefined;
+
+function limitsOf(limit: StoreLimit): WriteLimits | null {
+  if (limit === undefined || limit === null) return null;
+  return typeof limit === 'number' ? { store: limit, free: null } : limit;
+}
+
+/**
+ * A write refused by the free plan, in the shape a class needs to cross RPC (own
+ * properties, as `StoreFull` below): `PLAN_INACTIVE` for an account past the free
+ * plan's limits, which is read-only until it deletes its way under or subscribes, and
+ * `FREE_NOTES_FULL` for a new note on one that fits but holds `FREE_NOTES` already.
+ * The Worker rebuilds `PlanRefused` from `code` and the counts, and the sentence there
+ * names them.
+ */
+export class PlanRefusal extends Error {
+  constructor(
+    readonly code: typeof PLAN_INACTIVE_CODE | typeof FREE_NOTES_FULL_CODE,
+    readonly notes: number,
+    readonly attachmentBytes: number,
+    readonly adding: number,
+  ) {
+    super(
+      code === PLAN_INACTIVE_CODE
+        ? `the account holds ${notes} notes and ${attachmentBytes} bytes of files, past the free plan`
+        : `the account holds ${notes} notes, and ${adding} more would pass the free plan`,
+    );
+    this.name = 'PlanRefusal';
+  }
+}
 
 /**
  * A note write refused because the store is past the room its plan allows (MAK-234).
@@ -902,12 +963,73 @@ export class UserStore extends DurableObject<StoreEnv> {
    * they pull the page themselves, which keeps the push an optimisation the feed is
    * complete without.
    */
-  private writing<T>(fn: () => T, limit?: StoreLimit): T {
+  private writing<T>(fn: () => T, limit?: StoreLimit, adding = 0): T {
     this.ready();
-    if (limit !== undefined && limit !== null) this.assertRoom(limit);
+    this.admit(limit, adding);
     const result = fn();
     this.announce();
     return result;
+  }
+
+  /**
+   * The limits a write is held to, checked ahead of it: the free plan's first, since an
+   * account past it is read-only whatever room its store has, then the store's room.
+   * `adding` is how many notes the write would make, for the free plan's count; a write
+   * that makes none is held only to the plan's being under its limits at all.
+   */
+  private admit(limit: StoreLimit, adding = 0): void {
+    const limits = limitsOf(limit);
+    if (!limits) return;
+    if (limits.free) this.assertFree(limits.free, adding);
+    if (limits.store !== null) this.assertRoom(limits.store);
+  }
+
+  /**
+   * Refuses the write when the account has no plan holding and the free plan does not
+   * cover it (decided 2026-10-24): every write when what the account holds is past the
+   * free plan's limits, since it is then read-only, and a write that makes notes when
+   * the count would pass the limit. One row, the account's counts (`note_counts`,
+   * kept by the triggers), read in the same synchronous call as the write, so nothing
+   * lands between the check and the commit; `assertRoom` below says why that is enough.
+   *
+   * Live and trashed together, so the trash is not free overflow: trashing frees
+   * nothing, and deleting for good and emptying the trash, which pass no limits, are
+   * the way back under. A restore from the trash passes none either: it changes no
+   * count. Bytes are the files' sum, which the quota on files keeps a free account
+   * under (`quotaOf` gives it the free plan's) so they are past it only for an account
+   * that lapsed holding more.
+   */
+  private assertFree(free: FreeLimits, adding: number): void {
+    const counts = this.sql.first<{ live: number; trashed: number; attachment_bytes: number }>(
+      `SELECT live, trashed, attachment_bytes FROM note_counts WHERE id = 1`,
+    );
+    const notes = (counts?.live ?? 0) + (counts?.trashed ?? 0);
+    const attachmentBytes = counts?.attachment_bytes ?? 0;
+    if (notes > free.notes || attachmentBytes > free.attachmentBytes) throw new PlanRefusal(PLAN_INACTIVE_CODE, notes, attachmentBytes, adding);
+    if (adding > 0 && notes + adding > free.notes) throw new PlanRefusal(FREE_NOTES_FULL_CODE, notes, attachmentBytes, adding);
+  }
+
+  /**
+   * The free plan's half of a write's limits alone: what the writes that never asked for
+   * the store's room are held to (a notebook's, a tag's or a field's management, a
+   * file's row), since an account past the free plan is read-only for those too, while
+   * what they write is still rows of their own size and not the person's text.
+   */
+  private freeOnly(limit: StoreLimit): StoreLimit {
+    const limits = limitsOf(limit);
+    return limits?.free ? { store: null, free: limits.free } : null;
+  }
+
+  /** The free plan's count alone, for a write that learns how many notes it makes as it goes (`createMany`); nothing without free limits. */
+  private freeCount(limit: StoreLimit): ((adding: number) => void) | undefined {
+    const free = this.freeOnly(limit);
+    return free ? (adding) => this.admit(free, adding) : undefined;
+  }
+
+  /** The other half alone: the store's room for a file's text (`WriteLimits.text`), for the text writes the read-only rule exempts (`recordText`). */
+  private roomOnly(limit: StoreLimit): StoreLimit {
+    const limits = limitsOf(limit);
+    return (limits?.text !== undefined ? limits.text : limits?.store) ?? null;
   }
 
   /**
@@ -929,9 +1051,13 @@ export class UserStore extends DurableObject<StoreEnv> {
     if (size > limit) throw new StoreFull(size, limit);
   }
 
-  /** The same check as a step a method runs itself, on the path that writes; nothing when there is no limit. */
-  private room(limit: StoreLimit): (() => void) | undefined {
-    return limit === undefined || limit === null ? undefined : () => this.assertRoom(limit);
+  /**
+   * The same checks as a step a method runs itself, on the path that writes; nothing when
+   * there is no limit. `adding` as for `admit`: one for the replay-safe creates, which
+   * run this only once they know they will make the note.
+   */
+  private room(limit: StoreLimit, adding = 0): (() => void) | undefined {
+    return limitsOf(limit) ? () => this.admit(limit, adding) : undefined;
   }
 
   private announce(): void {
@@ -965,10 +1091,20 @@ export class UserStore extends DurableObject<StoreEnv> {
   // (MAK-234), and so do the writes of a file's text below, which is as long as the
   // sender makes it whatever the file's size. A delete, a purge and a cleared history
   // take none: they are the way back under the limit. A trashing takes none either,
-  // and frees nothing until the trash is emptied. Neither do a notebook's, a tag's or a
-  // field's management, which write rows of their own size and not the person's text,
-  // nor a file's row, which the quota on files bounds. A new write that takes text from
-  // outside has to decide which it is, and say so here.
+  // and frees nothing until the trash is emptied. A notebook's, a tag's or a field's
+  // management, and a file's row, take a limit for the free plan alone (`freeOnly`):
+  // they write rows of their own size and not the person's text, so the store's room
+  // does not hold them, but an account past the free plan is read-only for them too.
+  // A file's text is the other way round (`roomOnly`): exempt from the read-only rule,
+  // and as long as its sender makes it. A new write that takes text from outside has to
+  // decide which it is, and say so here.
+  //
+  // The free plan's count is asked only by the writes that make notes (`adding`): a
+  // create, a duplicate, an import, a batch of creates; the replay-safe creates, an
+  // import and a batch ask it only on the path that makes one, so a note already here
+  // is found rather than refused. Putting a copy from the history
+  // back never makes one (`restoreRevision` changes a live note in place), and a restore
+  // from the trash changes no count, so neither is held to it.
   //
   // Most check the room before they run. A save, a create and a duplicate with an id
   // the client chose check it only once they know they will write, so a replay finds
@@ -984,17 +1120,24 @@ export class UserStore extends DurableObject<StoreEnv> {
   count(opts: CountOptions = {}) { this.ready(); return this.notes.count(opts); }
   recountNotes() { return this.writing(() => this.notes.recountNotes()); }
   get(id: string, opts?: { includeTrashed?: boolean | undefined }) { this.ready(); return this.notes.get(id, opts); }
-  create(input: Parameters<NotesStore['create']>[0], limit?: StoreLimit) { return this.writing(() => this.notes.create(input), limit); }
-  duplicate(id: string, newId: string, limit?: StoreLimit) { return this.writing(() => this.notes.duplicate(id, newId), limit); }
+  create(input: Parameters<NotesStore['create']>[0], limit?: StoreLimit) { return this.writing(() => this.notes.create(input), limit, 1); }
+  duplicate(id: string, newId: string, limit?: StoreLimit) { return this.writing(() => this.notes.duplicate(id, newId), limit, 1); }
   /**
    * The two replay-safe writes check the room only on the path that creates: a replay
    * of a request whose answer was lost must find the note its first attempt made
    * (AGENTS.md, "Ids may come from the client"), and a 402 for a note the server holds
    * would have the client roll back a row the next pull brings back.
    */
-  createOrFind(input: Parameters<NotesStore['createOrFind']>[0], limit?: StoreLimit) { return this.writing(() => this.notes.createOrFind(input, this.room(limit))); }
-  createMany(inputs: Parameters<NotesStore['createMany']>[0], opts?: Parameters<NotesStore['createMany']>[1], limit?: StoreLimit) { return this.writing(() => this.notes.createMany(inputs, opts), limit); }
-  duplicateOrFind(id: string, newId: string, limit?: StoreLimit) { return this.writing(() => this.notes.duplicateOrFind(id, newId, this.room(limit))); }
+  createOrFind(input: Parameters<NotesStore['createOrFind']>[0], limit?: StoreLimit) { return this.writing(() => this.notes.createOrFind(input, this.room(limit, 1))); }
+  /**
+   * The store's room and an account past the free plan are checked up front, and the
+   * free plan's count for the notes the batch will make, once it knows which, so the
+   * notes it skips take none.
+   */
+  createMany(inputs: Parameters<NotesStore['createMany']>[0], opts?: Parameters<NotesStore['createMany']>[1], limit?: StoreLimit) {
+    return this.writing(() => this.notes.createMany(inputs, opts, this.freeCount(limit)), limit);
+  }
+  duplicateOrFind(id: string, newId: string, limit?: StoreLimit) { return this.writing(() => this.notes.duplicateOrFind(id, newId, this.room(limit, 1))); }
   /**
    * A save checks the room inside, once it knows the save will write, for the replay's
    * reason above: the web outbox keeps a save the store refused, and a note trashed
@@ -1013,7 +1156,10 @@ export class UserStore extends DurableObject<StoreEnv> {
   restoreMany(ids: string[]) { return this.writing(() => this.notes.restoreMany(ids)); }
   purgeMany(ids: string[]) { return this.writing(() => this.notes.purgeMany(ids)); }
   updateMany(ids: string[], patch: Parameters<NotesStore['updateMany']>[1], limit?: StoreLimit) { return this.writing(() => this.notes.updateMany(ids, patch), limit); }
-  importNote(input: Parameters<NotesStore['importNote']>[0], limit?: StoreLimit) { return this.writing(() => this.notes.importNote(input), limit); }
+  /** The same split as `createMany`: the free plan's count only on the path that makes the note. */
+  importNote(input: Parameters<NotesStore['importNote']>[0], limit?: StoreLimit) {
+    return this.writing(() => this.notes.importNote(input, this.room(this.freeOnly(limit), 1)), limit);
+  }
   setBody(id: string, body: string, limit?: StoreLimit) { return this.writing(() => this.notes.setBody(id, body), limit); }
   search(rawQuery: string, limit: number, filters: SearchFilters = {}, scopeDrivenSearchMax?: number) {
     this.ready();
@@ -1025,38 +1171,38 @@ export class UserStore extends DurableObject<StoreEnv> {
   notebookByName(name: string) { this.ready(); return this.sql.tx(() => this.notes.notebookByName(name)); }
   fieldTargets(ids: string[]) { this.ready(); return this.sql.tx(() => this.notes.fieldTargets(ids)); }
   sampleTitles(exclude: string, perGroup: number, tagLimit: number) { this.ready(); return this.notes.sampleTitles(exclude, perGroup, tagLimit); }
-  renameTag(id: string, name: string, opts?: { merge?: boolean | undefined }) { return this.writing(() => this.notes.renameTag(id, name, opts)); }
+  renameTag(id: string, name: string, opts?: { merge?: boolean | undefined }, limit?: StoreLimit) { return this.writing(() => this.notes.renameTag(id, name, opts), this.freeOnly(limit)); }
   deleteTag(id: string) { return this.writing(() => this.notes.deleteTag(id)); }
-  recolorTag(id: string, color: number) { return this.writing(() => this.notes.recolorTag(id, color)); }
+  recolorTag(id: string, color: number, limit?: StoreLimit) { return this.writing(() => this.notes.recolorTag(id, color), this.freeOnly(limit)); }
   countUnfiledNotes() { this.ready(); return this.notes.countUnfiledNotes(); }
   listNotebooks() { this.ready(); return this.notes.listNotebooks(); }
-  createNotebook(name: string) { return this.writing(() => this.notes.createNotebook(name)); }
-  updateNotebook(id: string, patch: Parameters<NotesStore['updateNotebook']>[1]) { return this.writing(() => this.notes.updateNotebook(id, patch)); }
+  createNotebook(name: string, limit?: StoreLimit) { return this.writing(() => this.notes.createNotebook(name), this.freeOnly(limit)); }
+  updateNotebook(id: string, patch: Parameters<NotesStore['updateNotebook']>[1], limit?: StoreLimit) { return this.writing(() => this.notes.updateNotebook(id, patch), this.freeOnly(limit)); }
   deleteNotebook(id: string, opts?: { trashNotes?: boolean | undefined }) { return this.writing(() => this.notes.deleteNotebook(id, opts)); }
   listFields(notebookId: string, opts?: { counts?: boolean | undefined }) { this.ready(); return this.notes.listFields(notebookId, opts); }
   fieldById(id: string) { this.ready(); return this.notes.fieldById(id); }
   listAllFields() { this.ready(); return this.notes.listAllFields(); }
-  createField(notebookId: string, input: { name: string; type: FieldType; options: string[]; scale?: FieldScale | null | undefined; currency?: string | null | undefined }) {
-    return this.writing(() => this.notes.createField(notebookId, input));
+  createField(notebookId: string, input: { name: string; type: FieldType; options: string[]; scale?: FieldScale | null | undefined; currency?: string | null | undefined }, limit?: StoreLimit) {
+    return this.writing(() => this.notes.createField(notebookId, input), this.freeOnly(limit));
   }
-  updateField(notebookId: string, fieldId: string, patch: Parameters<NotesStore['updateField']>[2]) {
-    return this.writing(() => this.notes.updateField(notebookId, fieldId, patch));
+  updateField(notebookId: string, fieldId: string, patch: Parameters<NotesStore['updateField']>[2], limit?: StoreLimit) {
+    return this.writing(() => this.notes.updateField(notebookId, fieldId, patch), this.freeOnly(limit));
   }
   previewConversion(notebookId: string, fieldId: string, to: FieldType, toScale?: FieldScale | null | 'fit' | undefined) {
     this.ready();
     return this.notes.previewConversion(notebookId, fieldId, to, toScale);
   }
-  reorderFields(notebookId: string, ids: string[]) { return this.writing(() => this.notes.reorderFields(notebookId, ids)); }
+  reorderFields(notebookId: string, ids: string[], limit?: StoreLimit) { return this.writing(() => this.notes.reorderFields(notebookId, ids), this.freeOnly(limit)); }
   deleteField(notebookId: string, fieldId: string) { return this.writing(() => this.notes.deleteField(notebookId, fieldId)); }
   countOptionUsage(notebookId: string, fieldId: string, option: string) { this.ready(); return this.notes.countOptionUsage(notebookId, fieldId, option); }
   removeFieldOption(notebookId: string, fieldId: string, option: string, clear: boolean) {
     return this.writing(() => this.notes.removeFieldOption(notebookId, fieldId, option, clear));
   }
-  editFieldOptions(notebookId: string, fieldId: string, edit: OptionEdit, patch: Parameters<NotesStore['editFieldOptions']>[3] = {}) {
-    return this.writing(() => this.notes.editFieldOptions(notebookId, fieldId, edit, patch));
+  editFieldOptions(notebookId: string, fieldId: string, edit: OptionEdit, patch: Parameters<NotesStore['editFieldOptions']>[3] = {}, limit?: StoreLimit) {
+    return this.writing(() => this.notes.editFieldOptions(notebookId, fieldId, edit, patch), this.freeOnly(limit));
   }
 
-  importNotebook(definition: NotebookDefinition, opts: { create?: boolean } = {}) { return this.writing(() => this.notes.importNotebook(definition, opts)); }
+  importNotebook(definition: NotebookDefinition, opts: { create?: boolean } = {}, limit?: StoreLimit) { return this.writing(() => this.notes.importNotebook(definition, opts), this.freeOnly(limit)); }
 
   // --- Attachments: the repository, one for one -----------------------------------------
   //
@@ -1068,7 +1214,9 @@ export class UserStore extends DurableObject<StoreEnv> {
   listAttachments(noteId: string) { this.ready(); return this.attachments.listForNote(noteId); }
   ownsNote(noteId: string) { this.ready(); return this.attachments.noteIsLive(noteId); }
   availableFilename(noteId: string, desired: string) { this.ready(); return this.attachments.availableFilename(noteId, desired); }
-  recordAttachment(input: Parameters<AttachmentsStore['record']>[0], opts?: Parameters<AttachmentsStore['record']>[1]) { return this.writing(() => this.attachments.record(input, opts)); }
+  recordAttachment(input: Parameters<AttachmentsStore['record']>[0], opts?: Parameters<AttachmentsStore['record']>[1], limit?: StoreLimit) {
+    return this.writing(() => this.attachments.record(input, opts), this.freeOnly(limit));
+  }
   removeAttachment(noteId: string, filename: string) { return this.writing(() => this.attachments.remove(noteId, filename)); }
   /**
    * A file's text, and (when the language model read it) what the reading cost, in one
@@ -1082,15 +1230,23 @@ export class UserStore extends DurableObject<StoreEnv> {
           if (usage) this.llmUsage.add(usage, Date.now());
         }),
       // An empty text (`unusable`, or a scan the model found nothing on) is a row that
-      // stops the next pass retrying, and takes no room worth refusing.
-      input.text ? limit : undefined,
+      // stops the next pass retrying, and takes no room worth refusing. The store's room
+      // alone: a file's text is derived from a file already held, which an account past
+      // the free plan may still record (the browser's pass and an assistant's reading
+      // are exempt from the read-only rule, `exemptFromPlan` and `ALLOWED_INACTIVE`).
+      input.text ? this.roomOnly(limit) : undefined,
     );
   }
+  /**
+   * A file's text, like the two around it, so the store's text room alone (`roomOnly`):
+   * the copy's file row was held to the free plan when it was recorded, and the copy
+   * route refuses an account past it before anything is copied (`refuseIfPastFree`).
+   */
   copyText(fromAttachmentId: string, to: { attachmentId: string; noteId: string; filename: string }, limit?: StoreLimit) {
-    return this.writing(() => this.attachments.copyText(fromAttachmentId, to), limit);
+    return this.writing(() => this.attachments.copyText(fromAttachmentId, to), this.roomOnly(limit));
   }
   writeAssistantText(noteId: string, filename: string, text: string, limit?: StoreLimit) {
-    return this.writing(() => this.attachments.writeAssistantText(noteId, filename, text), limit);
+    return this.writing(() => this.attachments.writeAssistantText(noteId, filename, text), this.roomOnly(limit));
   }
   needingText(limit: number, noteId?: string) { this.ready(); return this.attachments.needingText(limit, noteId); }
   pendingTextCount(noteId?: string) { this.ready(); return this.attachments.pendingTextCount(noteId); }
@@ -1297,7 +1453,7 @@ export class UserStore extends DurableObject<StoreEnv> {
       // rest of one press's files, once, and the next press is refused here. Letting
       // a press's readings past the limit instead was weighed and left: it is a way
       // round the bound, priced by the model, for a waste of a few readings.
-      if (limit !== undefined && limit !== null) this.assertRoom(limit);
+      this.admit(limit);
       const counted = press ? this.llmUsage.press(press, Date.now()) : null;
       if (counted && !counted.allowed) return { note, forText: [], forVision: [], press: counted };
       return {
@@ -1326,7 +1482,9 @@ export class UserStore extends DurableObject<StoreEnv> {
   /** `GET /api/autofill/usage`: this calendar year's presses and tokens; see `AutofillUsage`. */
   autofillUsage() {
     this.ready();
-    return this.llmUsage.year(Date.now());
+    // The free plan's pool beside the year: one more row off the key, and the account's
+    // whole life rather than this year's, since the pool never refills.
+    return { ...this.llmUsage.year(Date.now()), freeUsed: this.llmUsage.freePressesUsed() };
   }
 
   /** The second half: everything the model is shown beside the note. */

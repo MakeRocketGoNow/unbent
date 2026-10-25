@@ -1,6 +1,6 @@
 import { IndexedDBAdapter, NonRetriableError, startOfflineExecutor, type OfflineExecutor, type OnlineDetector, type StorageAdapter } from '@tanstack/offline-transactions';
 import type { Transaction } from '@tanstack/db';
-import { MAX_ATTACHMENT_BYTES, PLAN_INACTIVE_CODE, STORAGE_FULL_CODE, filenameSchema, foldNoCase, type FeedNote, type FieldDef, type FieldValue, type Note, type NoteFieldValue, type NotebookDefinition, type RestoredNote } from '@unbent/shared';
+import { FREE_NOTES, FREE_NOTES_FULL_CODE, MAX_ATTACHMENT_BYTES, PLAN_INACTIVE_CODE, STORAGE_FULL_CODE, filenameSchema, foldNoCase, type FeedNote, type FieldDef, type FieldValue, type Note, type NoteFieldValue, type NotebookDefinition, type RestoredNote } from '@unbent/shared';
 import * as api from '../notes-api.js';
 import { ApiError, errorText, isNoteChanged, isOfflineError, NoteChangedError } from '../notes-api.js';
 import { offlineNow, recheck, subscribeConnectivity } from '../connectivity.js';
@@ -11,8 +11,9 @@ import { askToPersist, filesSupported, readFile, removeFile, writeFile } from '.
 import { FILES_CACHE, FILES_CHANGED, MAX_KEPT_FILE } from '../sw/routes.js';
 import { isWhole, refusedForGood, type FeedEngine } from './feed.js';
 import { CallUnsettledError, LibraryMovedError, SEND_ONCE } from './client-library.js';
-import { onPlanActive, planAccepted, planHeld, planLapsed, planRefused } from '../plan-refused.js';
-import { onStoreFreed, onStoreFull, storeAccepted, storeFreed, storeFull, storeFullMessage, storeRefused } from '../store-full.js';
+import { onPlanActive, onPlanRead, planAccepted, planFree, planFreeRestored, planFreed, planHeld, planIs, planLapsed, planRefused, readOnlyKnown } from '../plan-refused.js';
+import { FreeNotesFullError } from '../free-notes.js';
+import { onStoreFreed, onStoreFull, storeAccepted, storeFreed, storeFull, storeFullMessage, storeRefused, storeRefusedFor, type StoreRefusal } from '../store-full.js';
 import { behindDeploy, heldForReload, onCaughtUp } from '../update-notice.js';
 import { outboxLeaderName, outboxName } from './names.js';
 import { OutboxLeader } from './leader.js';
@@ -162,6 +163,12 @@ export interface Outbox {
   /** Records which notes an entry just queued is about, for `waiting`. */
   trackEntry: (id: string, noteIds: string[]) => void;
   /**
+   * Notes made here that the server never took, now purged: their queued create or copy
+   * ends without being sent when its turn comes, kept across a reload. See `unmake` in
+   * the actions.
+   */
+  unmake: (noteIds: readonly string[]) => void;
+  /**
    * Writes the server's answer to a write made as a request into the local copy, as a
    * replayed entry's answer is written (`took`), waiting on a pull only when the answer
    * names something this device has no id for. For `restoreRevision`.
@@ -210,6 +217,9 @@ type Save = {
 /** The key a conflict is kept under in the outbox's storage; its entries are the `tx:` keys. */
 const conflictKey = (noteId: string) => `conflict:${noteId}`;
 
+/** The key a note purged before the server made it is kept under; see `Outbox.unmake`. */
+const unmadeKey = (noteId: string) => `unmade:${noteId}`;
+
 /** An upload waiting in the queue: the note, the id and name its file will have, and what the row shows meanwhile. */
 type Upload = { noteId: string; attachmentId: string; filename: string; contentType: string; size: number };
 
@@ -218,6 +228,20 @@ const noticeKey = (attachmentId: string) => `upload-notice:${attachmentId}`;
 
 /** The key the store's refusal is kept under, beside them; see `createOutbox`. */
 const STORE_FULL_KEY = 'store-full';
+
+/** The kept refusal as written under it, or, from a build before the free plan, the bare sentence of the store's room. */
+function keptRefusal(raw: string): { message: string; of: StoreRefusal } {
+  try {
+    const parsed = JSON.parse(raw) as { message?: unknown; of?: unknown };
+    if (typeof parsed?.message === 'string') return { message: parsed.message, of: parsed.of === 'notes' ? 'notes' : 'room' };
+  } catch {
+    // Not JSON: the sentence itself.
+  }
+  return { message: raw, of: 'room' };
+}
+
+/** The key the account's last read of the free plan is kept under, beside them; see `onPlanRead`. */
+const PLAN_FREE_KEY = 'plan-free';
 
 /** What an outbox entry runs; the library does not export the name. */
 type MutationFn = Parameters<typeof startOfflineExecutor>[0]['mutationFns'][string];
@@ -279,6 +303,15 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
   const cancelled = new Set<string>();
   let sending: string | null = null;
 
+  /** The notes whose create or copy is to end unsent; see `Outbox.unmake`. */
+  const unmade = new Set<string>();
+  /** Whether this note's create or copy is to end unsent, which forgets it: it is asked once, by that entry. */
+  const unmadeNow = (noteId: string | undefined): boolean => {
+    if (!noteId || !unmade.delete(noteId)) return false;
+    void storage.delete(unmadeKey(noteId)).catch(() => {});
+    return true;
+  };
+
   /**
    * The server refused the request for good, or for now: which, is the queue's whole question.
    *
@@ -305,6 +338,20 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
    * sentence goes to the strip (`storeRefused`), and the deletes go round the kept
    * entry as a lapsed plan's do.
    *
+   * The free plan's count (`FREE_NOTES_FULL`, 2026-10-24) is kept the same way and goes
+   * the same way: a note made on a free account that already holds its hundred is the
+   * person's writing, the answer changes the moment they delete something for good or
+   * subscribe, and ending it would delete the note. Its sentence goes to the strip by the
+   * same path, since it is the same kind of refusal (room the plan does not have) with the
+   * same way out (a purge, an emptied trash). The kept entry is a create, which the
+   * server does not hold, so nothing of the store's purge-round-the-queue applies to it
+   * (`roundTheQueue`). Unlike the store's refusal, it holds back saves the server would
+   * take, since the queue runs in order; which is why the actions refuse such a note on
+   * the device before it is queued (`roomForNotes`, from the plan's last answer, which
+   * the outbox keeps across a reload), and this is only for what the device could not
+   * see: a note made on another device a moment ago, a count read before the copy was
+   * whole, or a device that has never read the plan.
+   *
    * And any 4xx is kept while this page is behind the deploy (`behindDeploy`): a build
    * that cannot run beside the server's, which has already asked the person to reload
    * (`UpdateSnackbar`). The refusal may be the server no longer taking the shape this
@@ -328,8 +375,8 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
       planRefused();
       throw err;
     }
-    if (err instanceof ApiError && err.code === STORAGE_FULL_CODE && err.of === 'notes') {
-      storeRefused(errorText(err));
+    if (err instanceof ApiError && ((err.code === STORAGE_FULL_CODE && err.of === 'notes') || err.code === FREE_NOTES_FULL_CODE)) {
+      storeRefused(errorText(err), err.code === FREE_NOTES_FULL_CODE ? 'notes' : 'room');
       throw err;
     }
     if (err instanceof ApiError && refusedForGood(err.status)) {
@@ -357,6 +404,8 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
    * it to match, and the error it came from as its `cause`. `NonRetriableError` passes as
    * it is: that is the one way an entry ends.
    */
+  /** The queued writes that delete for good, after which a read-only account may be free again; see `planFreed`. */
+  const PURGES: ReadonlySet<string> = new Set(['purgeNote', 'purgeNotes']);
   const decided = (fns: Record<string, MutationFn>): Record<string, MutationFn> =>
     Object.fromEntries(
       Object.entries(fns).map(([name, fn]) => [
@@ -376,6 +425,9 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
             // see `planLapsed` and `storeFull`.
             planAccepted();
             storeAccepted();
+            // A purge from the queue may have taken a read-only account under the free
+            // plan, as a direct one may (`pulled`): the plan is read again.
+            if (PURGES.has(name)) planFreed();
             return out;
           } catch (err) {
             // Ended for good, the head of the queue is gone either way, and the next
@@ -414,8 +466,21 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
    */
   const offStoreFull = onStoreFull(() => {
     const said = storeFullMessage();
-    void (said ? storage.set(STORE_FULL_KEY, said) : storage.delete(STORE_FULL_KEY)).catch(() => {});
+    // The sentence and what it was for; a plain sentence is what builds before the free
+    // plan wrote, and reads as the store's room, which was the one refusal then.
+    const kept = said ? JSON.stringify({ message: said, of: storeRefusedFor() ?? 'room' }) : null;
+    void (kept ? storage.set(STORE_FULL_KEY, kept) : storage.delete(STORE_FULL_KEY)).catch(() => {});
     touch();
+  });
+  /*
+   * And whether the account was last read as on the free plan, so a page that opens
+   * offline, or whose read of the plan fails, counts a free account's notes before it
+   * makes one (`roomForNotes`), rather than queueing a create the server refuses at the
+   * head of the queue. Kept by the account's outbox because the outbox is the account's,
+   * and is wiped with it when the device changes hands.
+   */
+  const offPlanRead = onPlanRead((free) => {
+    void (free ? storage.set(PLAN_FREE_KEY, '1') : storage.delete(PLAN_FREE_KEY)).catch(() => {});
   });
   const executor = startOfflineExecutor({
     // Both, so a reload restores an upload's row as it restores a save's text.
@@ -480,6 +545,11 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
       createNote: async ({ transaction }) => {
         const input = transaction.metadata as unknown as Parameters<typeof api.createNote>[0];
         try {
+          // Purged before the server made it: there is nothing to make (`unmake`).
+          if (unmadeNow(input.id)) {
+            ended(transaction.id);
+            return;
+          }
           const created = await api.createNote(input).catch(refusal);
           if (!took(created)) await settled();
           ended(transaction.id);
@@ -493,6 +563,10 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
       duplicateNote: async ({ transaction }) => {
         const { sourceId, copyId } = transaction.metadata as unknown as { sourceId: string; copyId: string };
         try {
+          if (unmadeNow(copyId)) {
+            ended(transaction.id);
+            return;
+          }
           const answer = await api.duplicateNote(sourceId, copyId).catch(refusal);
           // The copy's row goes in now; its files are the server's to make, and the
           // pull brings their rows. A copy whose files had no room (`filesSkipped`,
@@ -697,12 +771,26 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
         const cleanup = (executor as unknown as { cleanupRestorationTransaction?: (id: string, rollback: boolean) => void }).cleanupRestorationTransaction;
         if (m && !waitingSaves.has(m.noteId)) waitingSaves.set(m.noteId, { id: t.id, value: m.value, base: m.base, against: m.against, origin: m.origin, retire: () => cleanup?.call(executor, t.id, true) });
       }
+      const waitingNotes = new Set([...entryNotes.values()].flat());
       for (const key of keys) {
+        if (key.startsWith('unmade:')) {
+          // Only while the note still has something waiting: its create has gone otherwise.
+          const noteId = key.slice('unmade:'.length);
+          if (waitingNotes.has(noteId)) unmade.add(noteId);
+          else void storage.delete(key).catch(() => {});
+          continue;
+        }
+        if (key === PLAN_FREE_KEY) {
+          planFreeRestored(true);
+          continue;
+        }
         if (key === STORE_FULL_KEY) {
           // Only while something is waiting: a refusal whose entry has gone is over.
           const raw = await storage.get(key);
-          if (raw && storage.held() > 0) storeRefused(raw);
-          else void storage.delete(key).catch(() => {});
+          if (raw && storage.held() > 0) {
+            const { message, of } = keptRefusal(raw);
+            storeRefused(message, of);
+          } else void storage.delete(key).catch(() => {});
           continue;
         }
         if (key.startsWith('upload-notice:')) {
@@ -789,9 +877,16 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
       entryNotes.set(id, noteIds);
       touch();
     },
+    unmake: (noteIds) => {
+      for (const noteId of noteIds) {
+        unmade.add(noteId);
+        void storage.set(unmadeKey(noteId), '1').catch(() => {});
+      }
+    },
     dispose: async () => {
       unsubscribeConnectivity();
       offStoreFull();
+      offPlanRead();
       executor.dispose();
       /*
        * The adapter opens its database once and never closes it, and a `deleteDatabase`
@@ -1252,7 +1347,11 @@ async function pulled<T>(write: Promise<T>, local: LocalWrite, frees = false): P
   // kept entry is sent again at once rather than on the executor's clock; see
   // `store-full.ts`. A purge or an emptied trash makes room. Nothing else nudges: a
   // replay refused again is a wasted request, and most direct writes free nothing.
-  if (frees) storeFreed();
+  if (frees) {
+    storeFreed();
+    // And a read-only account may now be under the free plan: the plan is read again.
+    planFreed();
+  }
   aboutToWrite(local);
   directListeners.forEach((l) => l());
   const lib = await resolve();
@@ -1496,16 +1595,63 @@ export async function saveNote(input: Save): Promise<'queued' | 'unchanged' | No
 }
 
 /**
+ * Refuses a note the free plan has no room for, before it is queued: when the plan was
+ * last read as `free` and the library holds `FREE_NOTES` notes, live and trashed
+ * together, already. In the tab that holds the outbox, since that is where a note is
+ * queued; a client's call is run there (`forwardable`) and the refusal comes back by its
+ * name (`isFreeNotesFull`). A note made as a request, with no library to queue in, is
+ * the server's to refuse. Nothing is counted on any other plan.
+ *
+ * The server's count is the rule and this is the courtesy, but it is also what keeps the
+ * outbox moving: a create the server refuses is kept at the head of a queue that replays
+ * in order, and every save behind it waits (`refusal`). A copy that is not whole yet
+ * counts short and lets the note through, for the server to decide.
+ *
+ * At the count, and with a connection, the plan is read again before the refusal. What
+ * this tab knows of it is from its own last read, and the tab that holds the outbox is
+ * often one left in the background, whose read is from before a subscription made in
+ * another tab or on another device: a client's New is run here, so that subscriber was
+ * refused by a tab they were not looking at, until it was next focused. One read, and
+ * only on the press that would otherwise be refused; bounded, so a slow answer is the
+ * refusal it would have been. Offline the last answer stands.
+ *
+ * A read-only account is counted too. Its New is faded, but the apps' New note
+ * shortcut and a scan from the launch queue do not ask, and a create queued then is
+ * kept as the plan's refusal and replays once deleting takes the account under: at
+ * the count, as the free plan's refusal, holding back the saves the server takes
+ * again. Refused here instead, with the same notice, which names the way out.
+ */
+async function roomForNotes(lib: WritableLibrary, adding = 1): Promise<void> {
+  if (!(planFree() || readOnlyKnown()) || lib.notes.size + adding <= FREE_NOTES) return;
+  if (!offlineNow()) {
+    const plan = await api.getPlan({ timeout: PLAN_RECHECK_MS }).catch(() => null);
+    if (plan) {
+      planIs(plan.state === 'inactive', plan.state === 'free');
+      // A plan that holds counts nothing. A read-only account is refused here too: the
+      // server would refuse its note all the same, and keep it at the queue's head.
+      if (plan.state !== 'free' && plan.state !== 'inactive') return;
+    }
+  }
+  const held = lib.notes.size;
+  if (held + adding > FREE_NOTES) throw new FreeNotesFullError(held, adding);
+}
+
+/** How long a press at the free plan's count waits for the plan to be read again (`roomForNotes`). */
+const PLAN_RECHECK_MS = 3000;
+
+/**
  * Makes a note, with an id minted here, and answers with it at once. The id is minted
  * before the write is sent anywhere and travels with it, so a write that runs twice
  * (sent to the holder and run here after the library moved, or as a request after a
- * holder answered nothing) makes one note (`createOrFind` on the server).
+ * holder answered nothing) makes one note (`createOrFind` on the server). On a free
+ * account at its count it is refused here instead (`roomForNotes`).
  */
 export async function createNote(input: { title: string; body: string; tags: string[]; notebook: string | null }, id: string = crypto.randomUUID()): Promise<Note> {
   const far = await away();
   if (far) return far('createNote', [input, id], { ids: [], refiles: true });
   const lib = await queueable();
   if (!lib) return pulled(api.createNote({ ...input, id }), { ids: [], refiles: true });
+  await roomForNotes(lib);
   const now = Date.now();
   const row: LocalNote = { id, title: input.title, body: input.body, createdAt: now, updatedAt: now, tagIds: [], tagNames: input.tags, notebookId: null, notebookName: input.notebook, files: [] };
   queue(lib, 'createNote', { id, ...input }, () => {
@@ -1531,6 +1677,7 @@ export async function duplicateNote(sourceId: string, copyId: string = crypto.ra
   if (!lib) return direct();
   const source = lib.notes.get(sourceId);
   if (!source) return direct();
+  await roomForNotes(lib);
   const now = Date.now();
   queue(lib, 'duplicateNote', { sourceId, copyId }, () => {
     lib.notes.insert({ ...source, id: copyId, createdAt: now, updatedAt: now, files: [] });
@@ -1591,10 +1738,12 @@ export async function clearHistory(noteId: string): Promise<number> {
     // not true then: the edit waits for the subscription.
     throw new Error(
       planLapsed()
-        ? 'This note has an edit waiting for the plan to be active again; its history can be cleared once that has gone.'
-        : storeFull()
+        ? 'This note has an edit waiting until the account can write again; its history can be cleared once that has gone.'
+        : storeRefusedFor() === 'room'
           ? 'This note has an edit waiting for room in the account. Delete some notes and empty the trash, or clear another note’s history, and it will go.'
-          : 'This note has changes that have not synced yet. Try again in a moment.',
+          : storeRefusedFor() === 'notes'
+            ? 'This note has an edit waiting behind a note the free plan has no room for. Delete some notes and empty the trash, and it will go.'
+            : 'This note has changes that have not synced yet. Try again in a moment.',
     );
   }
   const cleared = await api.clearRevisions(noteId);
@@ -1727,6 +1876,36 @@ function serverHolds(lib: WritableLibrary, noteId: string): boolean {
 }
 
 /**
+ * A purge of notes made here that the server has never taken, while a refusal is kept:
+ * their create (or copy) is told to end unsent (`Outbox.unmake`), and the kept entry is
+ * sent again at once, so a queue held by that very create moves. The free plan's count
+ * is how this happens: a note the device could not count (one made on another device a
+ * moment ago) is refused by the server and kept at the head of the queue, and the
+ * person's first answer to "the free plan holds 100 notes" is to delete the note they
+ * just made. Queued behind its own create, that purge could never be sent, and every
+ * save waited until some other note was deleted for good.
+ *
+ * The purge itself still queues behind, and goes once the create has ended: against a
+ * note the server never made, it is a 404, which is done, as are the note's saves and
+ * trash between. Sent as it is, so a create already on its way when the purge was made,
+ * which the server may yet take, is purged after it rather than left. A trash does not
+ * do this: it promises the note back on a restore, and the create is what would make it.
+ *
+ * Under the plan's refusal as well as the store's: a create kept as `PLAN_INACTIVE`
+ * replays once deleting takes the account under, and at the count it is the free
+ * plan's refusal then, so the purge that takes the account under is the one that must
+ * end it. The check that the note is waiting is for `emptyTrash`, whose ids are every
+ * trashed note on screen; a purge of one has just queued its own entry and always passes.
+ */
+function unmake(lib: WritableLibrary, ids: readonly string[]): void {
+  if (!storeFull() && !planLapsed()) return;
+  const never = ids.filter((id) => lib.outbox.status().waiting.has(id) && !serverHolds(lib, id));
+  if (never.length === 0) return;
+  lib.outbox.unmake(never);
+  storeFreed();
+}
+
+/**
  * The notes collection's synced rows: what the feed and the server's answers wrote,
  * under any optimistic change made here. A private field of the collection, pinned by
  * `pins.test.ts`, reached through here alone; undefined if a version moves it.
@@ -1759,9 +1938,29 @@ export async function restoreNote(noteId: string): Promise<void> {
   });
 }
 
+/**
+ * A purge sent to the holder, from a tab whose plan reads read-only: the holder hears the
+ * server take it (`planFreed`, from the queue or the request) and reads its own plan
+ * again, but this is the tab the person deleted in, and its banner and editor are drawn
+ * from its own read. So once the holder's outbox has nothing waiting for these notes,
+ * this tab reads the plan again too. One note of a batch is enough: a bulk purge is one
+ * entry. Nothing is asked while the plan reads otherwise.
+ */
+function freedAfter(ids: readonly string[]): void {
+  if (!readOnlyKnown() || ids.length === 0) return;
+  void synced(ids[0]!, FREED_WAIT_MS).then(() => planFreed(), () => {});
+}
+
+/** How long `freedAfter` waits for a forwarded purge to reach the server before reading the plan anyway. */
+const FREED_WAIT_MS = 10_000;
+
 export async function purgeNote(noteId: string): Promise<void> {
   const far = await away();
-  if (far) return far('purgeNote', [noteId], { ids: [noteId], refiles: true });
+  if (far) {
+    await far('purgeNote', [noteId], { ids: [noteId], refiles: true });
+    freedAfter([noteId]);
+    return;
+  }
   const lib = await queueable();
   if (!lib || notCopiedYet(lib, noteId)) return pulled(api.deleteNotePermanently(noteId), { ids: [noteId], refiles: true }, true);
   if (roundTheQueue(lib, noteId, true)) {
@@ -1771,6 +1970,7 @@ export async function purgeNote(noteId: string): Promise<void> {
   queue(lib, 'purgeNote', { noteId }, () => {
     lib.notes.delete(noteId);
   });
+  unmake(lib, [noteId]);
 }
 
 /**
@@ -1787,6 +1987,8 @@ export async function emptyTrash(ids: readonly string[]): Promise<api.PurgeResul
     // queued write is told.
     const out = await far('emptyTrash', [ids]);
     aboutToWrite({ ids, refiles: true });
+    // A request on the holder, so the server has it by now: this tab's plan, read again.
+    planFreed();
     return out;
   }
   // A note whose trash waits behind a save the store refused (MAK-234) is in the trash
@@ -1800,6 +2002,9 @@ export async function emptyTrash(ids: readonly string[]): Promise<api.PurgeResul
   if (lib) await trashRoundTheQueue(lib, held);
   const first = held.length > 0 ? await api.deleteNotesPermanently(held) : { deleted: 0 };
   const out = await pulled(api.purgeNotes('trashed'), { ids, refiles: true }, true);
+  // And a note in the trash here that the server never made is not in the server's
+  // trash: its create ends unsent, and its row with it.
+  if (lib) unmake(lib, ids);
   return { ...out, notesDeleted: out.notesDeleted + first.deleted };
 }
 
@@ -1846,7 +2051,11 @@ export async function restoreNotes(ids: string[]): Promise<number> {
 
 export async function purgeNotes(ids: string[]): Promise<number> {
   const far = await away();
-  if (far) return far('purgeNotes', [ids], { ids, refiles: true });
+  if (far) {
+    const out = await far('purgeNotes', [ids], { ids, refiles: true });
+    freedAfter(ids);
+    return out;
+  }
   const lib = await queueable();
   if (!lib) return pulled(api.deleteNotesPermanently(ids).then((r) => r.deleted), { ids, refiles: true }, true);
   const { here: held, there } = split(lib, ids);
@@ -1858,6 +2067,7 @@ export async function purgeNotes(ids: string[]): Promise<number> {
     queue(lib, 'purgeNotes', { ids: here }, () => {
       for (const id of here) lib.notes.delete(id);
     });
+    unmake(lib, here);
   }
   return here.length + remote;
 }
@@ -2046,6 +2256,8 @@ export async function deleteOrCancelAttachment(noteId: string, filename: string)
   // the tab that holds the outbox, since this is a request made from whichever tab it is
   // called in; another tab's delete releases the kept write when the clock comes round.
   storeFreed();
+  // Its bytes go too, which may take a read-only account under the free plan's gigabyte.
+  planFreed();
 }
 
 /**

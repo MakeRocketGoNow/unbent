@@ -5,7 +5,9 @@
 unbent.app sells one plan, $60 a year, with 10 GB of attachments and 25 GB more for $12 a
 year: about a third of Evernote's cheapest plan with no cap on notes, in the range of Bear
 and Obsidian Sync, and well above the few dollars a year an account costs to serve, since
-the price is positioning rather than cost recovery (the comparison is in MAK-47). Stripe
+the price is positioning rather than cost recovery (the comparison is in MAK-47). Under
+it is a free plan, for an account of up to 100 notes and 1 GB of files; see
+[The free plan](#the-free-plan) below. Stripe
 is the merchant of record, through Managed Payments: it takes the payment as the seller
 (the buyer sees "Sold through Link" and a `LINK.COM*` descriptor), works out, withholds
 and remits VAT and sales tax, handles disputes and transaction-level support, and tells
@@ -25,10 +27,12 @@ as they were, and the row's provider columns are named `billing_*` for that reas
 Every account starts with a fortnight's trial, no card asked for, counted from its first
 request after billing is on, so an account that existed before the keys went on gets its
 fortnight from then, not from the deploy. When it runs out, or a subscription lapses, the
-account turns **inactive**: everything still opens, searches and
-exports, and every write but a delete is refused with a 402 that the app shows as a
-read-only banner. The same state, and the same code path, for an expired trial, a lapsed
-subscription and a comp that ended (`requireActivePlan` in the API). After a year inactive
+account is on the free plan: **free** if what it holds fits it, and writing as before, or
+**inactive** if not. An inactive account still opens, searches and exports everything,
+and every write but a delete is refused with a 402 that the app shows as a read-only
+banner, until it subscribes or deletes its way under the free plan. The same states, and
+the same code path, for an expired trial, a lapsed subscription and a comp that ended
+(`requireActivePlan` and the store's `assertFree` in the API). After a year inactive
 the account *may* be deleted, after a reminder to export first (a right the terms reserve,
 not a job): nothing deletes on a timer, by decision, since deleting a paperless archive
 because someone missed a year of mail would be holding it hostage after all, and a
@@ -71,7 +75,9 @@ worth. `AUTOFILL_TRIAL_DAILY_CAP` is the number a trial gets instead, sized for 
 fortnight's free account should be able to spend before it is a customer; unset, a trial
 gets the ordinary number, so an instance that sets one setting behaves as it did. The
 account's Maintenance page and the button's refusal both quote the number that applies
-to it. Where billing is off nobody is on a trial, and only the ordinary cap is read.
+to it. An account on the free plan gets the trial's numbers too, and the free plan's pool
+beside them (see [The free plan](#the-free-plan)). Where billing is off nobody is on a
+trial or the free plan, and only the ordinary cap is read.
 
 The year has a cap of its own, in money rather than presses, because a day's cap bounds a
 loop and not a year of days just under it, and because what a press costs varies with
@@ -96,6 +102,59 @@ account, 50 presses and 300 cents (three dollars) for a trial. Fifty dollars is 
 the plan costs and still a ceiling on a loop that never trips the day's cap; three dollars
 files a fortnight's worth of scans and bounds what a trial made in bulk can spend.
 
+### The free plan
+
+Decided on 2026-10-24. Free is a state, not a sign-up path: every account still starts on
+the same full trial, so an importer sees a whole archive searchable, and when the trial,
+a subscription or a comp ends, an account that holds at most `FREE_NOTES` (100) notes,
+live and trashed together, and `FREE_STORAGE_GB` (1) gigabyte of files keeps writing, for
+good. One past either is inactive as before, and is free again with nothing to press once
+it subscribes or deletes for good and empties the trash down to them. One rule, decided
+by what the account holds, for every way of lapsing; there is no "go free" control, and
+free has no Stripe object.
+
+The limits are on quantity, never on features: notebooks, fields, the offline library,
+history, assistants, export and search all stay on, because scale is what the plan sells
+and the rest is the demo. A hundred notes because Evernote's free tier is fifty notes and
+one notebook and UpNote's is fifty notes; the trash counts, as Evernote counts it, so it is
+not free overflow. Cost is not the constraint (a capped account is cents a month to host)
+but the support inbox, the abuse surface of accounts with no card and the mail allowance
+are. An importer who brought a thousand notes into the trial is read-only when it ends,
+which is intended: the free plan changes the outcome only for the small account. A cheaper
+paid tier was weighed and not built: the same engineering, support and tax plumbing as the
+plan, and the terms' thirty days' notice of a price change twice over.
+
+What the account holds is the store's (`note_counts`, kept by triggers), so the store
+decides, in the call that would write. The Worker passes the free plan's limits with each
+write of an account no plan holds, the way it passes the store's room (`writeLimitsOf`),
+and `UserStore` refuses there: `PLAN_INACTIVE` for every write but a delete when the
+account is past the limits, and `FREE_NOTES_FULL` for a write that makes notes (a create,
+a duplicate, an import, an assistant's `create_note` and `create_notes`) once the count
+would pass 100. No request pays a second call to the object to ask first. The middleware
+lets an account no plan holds through only on the routes whose writes the store holds to
+the free plan (`HELD_IN_STORE` in `plan-middleware.ts`), and refuses it every other
+mutating route, so a new one is read-only for it until someone classifies it. The plan
+read (`GET /api/me/plan`) is the one read that asks the store what a lapsed account holds,
+to answer `free` or `inactive`. Uploads are bounded by the quota, which for an account no
+plan holds is the free plan's gigabyte; its store's room follows from that, as every
+account's does. The web app keeps a refused note in the outbox, as it keeps a store-full
+refusal, and New says the free plan is full before it makes one the server would refuse.
+
+Auto-fill on the free plan is a lifetime pool of presses, `AUTOFILL_FREE_PRESSES` (100 on
+unbent.app), counted only while the account is free, so the trial's presses never come out
+of it, beside the trial's daily and yearly numbers, since a free account is as free to
+make as a trial. A pool rather than a monthly allowance: it reads as Auto-fill for every
+note the free plan holds, it costs at most seventy cents an account, it converts because
+it ends, and it needs nothing the counter does not already keep (one row of `llm_usage`,
+on the empty day, which no year's range reads). Unset, there is no pool. The refusal
+names the pool's number and says a subscription comes with more; Maintenance says how many
+are left, and the Plan page meters it beside the notes and files.
+
+The lapse mail says which an end leaves the account as, from what its store holds: a free
+account is told it carries on, with its own numbers and what the plan adds, and an
+inactive one that it is read-only and that deleting down to the free plan is a way back
+as well as subscribing.
+
 ### Changing the price
 
 The terms promise every subscriber an email at least 30 days before the renewal a price
@@ -115,8 +174,9 @@ reminder, not a check. The order is:
    the Plan page quote the constants; the terms deliberately do not, and their effective
    date does not move for a price.
 
-A lapsed account is the other promise the terms make by hand: it is kept read-only for a
-year and may then be deleted, after an email asking its owner to export it. Nothing
+An inactive account is the other promise the terms make by hand: one past the free plan
+is kept read-only for a year and may then be deleted, after an email asking its owner to
+export it. A free account is not inactive and is kept like any other. Nothing
 deletes on a timer and nothing sends that mail either. The operator's delete confirm says
 so on an account whose plan has lapsed, which is the moment it matters.
 

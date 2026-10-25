@@ -346,6 +346,11 @@ export interface Env {
   /** The same for an account on its trial; unset, a trial gets `AUTOFILL_YEARLY_CENTS`. */
   AUTOFILL_TRIAL_YEARLY_CENTS?: string;
   /**
+   * The free plan's Auto-fill: the presses an account may make while it is on the free
+   * plan, for its whole life. Unset, there is no pool. See `UsageEnv` in lib/llm-usage.ts.
+   */
+  AUTOFILL_FREE_PRESSES?: string;
+  /**
    * Stripe, which sells the plan (MAK-108). All four or none: with all of them set the
    * instance has a plan to sell, every account is on its trial, paid or lapsed, and a
    * lapsed one is refused writes; with any missing, nothing here is read and every

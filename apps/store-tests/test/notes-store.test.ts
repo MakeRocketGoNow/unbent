@@ -1290,6 +1290,12 @@ describe('rows read on an archive-sized store', () => {
       // size is the runtime's figure, read once the save is known to write, so a save
       // of a trashed note is still its 404 (3 read, measured 2026-10-17).
       await measure('save refused by the store limit', () => stub.update('n00001', { title: 'Refused' }, 1).catch(() => undefined)),
+      // The free plan's check (decided 2026-10-24) is the counts row, read once ahead of
+      // the write: a save that fits pays that row on top of a save, and a write refused
+      // for an account past the limits reads it and nothing more, however big the store.
+      await measure('save on the free plan', () => stub.update('n00030', { title: 'Free' }, { store: null, free: { notes: 10_000, attachmentBytes: 1 << 30 } })),
+      await measure('create refused by the free plan', () =>
+        stub.create({ id: crypto.randomUUID(), title: 'Refused', body: '', tags: [] }, { store: null, free: { notes: 100, attachmentBytes: 1 << 30 } }).catch(() => undefined)),
       await measure('feed nothing new', async () => stub.changesSince((await stub.changesSince(99_999_999, 1)).seq, 100)),
       await measure('feed reset', () => stub.changesSince(99_999, 100)),
       await measure('snapshot page', () => stub.snapshotPage(null, 100)),
@@ -1301,6 +1307,8 @@ describe('rows read on an archive-sized store', () => {
       // the year read back for Maintenance.
       await measure('autofill press, year first summed', () => stub.autofillPrelude('n01500', 5, { cap: 1000, yearlyCents: 5000 })),
       await measure('autofill press', () => stub.autofillPrelude('n01500', 5, { cap: 1000, yearlyCents: 5000 })),
+      // On the free plan: the pool's one row, off the key, read and counted on top (21, measured 2026-10-25).
+      await measure('autofill press on the free plan', () => stub.autofillPrelude('n01500', 5, { cap: 1000, yearlyCents: 5000, freePresses: 100 })),
       await measure('autofill usage', () => stub.autofillUsage()),
       // History. A save inside the window asks for the newest copy and keeps nothing;
       // one outside it keeps a copy and prunes the note's oldest. Then the sheet's
@@ -1444,6 +1452,7 @@ describe('rows read on an archive-sized store', () => {
       // press after it is the plain number.
       'autofill press, year first summed': 1600,
       'autofill press': 30,
+      'autofill press on the free plan': 32,
       // A year used every day is 1,460 rows, and that is what it reads: this year's, off
       // the primary key, and none of last year's 1,460 (1,460, measured 2026-10-08).
       // Maintenance's, once a visit, so a whole year is fine; a scan would be double.
@@ -1522,6 +1531,10 @@ describe('rows read on an archive-sized store', () => {
       // The note's live row, then its fifty copies and their index entries (152).
       'history clear': 180,
       'save refused by the store limit': 10,
+      // A save outside its window with a copy kept, plus the counts row (135, measured 2026-10-25).
+      'save on the free plan': 170,
+      // The counts row alone: refused before anything of the note is read (1).
+      'create refused by the free plan': 3,
     };
     for (const r of results) {
       if (r.label === 'dump') continue;

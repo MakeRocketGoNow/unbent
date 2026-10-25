@@ -3,6 +3,7 @@ import { claimCacheFor } from './queries.js';
 import { claimImportFor } from './import-run.js';
 import { claimFileNotesFor } from './file-notes.js';
 import { acquireLibrary } from './store/library.js';
+import { claimPlanFor } from './plan-refused.js';
 
 /**
  * Hands what the tab holds for one person to whoever the route guard found signed in.
@@ -32,6 +33,9 @@ export function handOver(queryClient: QueryClient, userId: string | undefined): 
     // The batch of notes made from files is the import run's kind of leftover, and
     // claimed on the same terms; see `claimFileNotesFor`.
     claimFileNotesFor(userId);
+    // The plan's last answer, before the library and its outbox open, which are told it;
+    // see `claimPlanFor`.
+    claimPlanFor(userId);
     // The local copy of the library, opened here so a route's loader finds it: every
     // note query reads it (`queries.ts`), and the guard is the last moment before the
     // loaders run. Not awaited (opening takes a few milliseconds on a warm device and

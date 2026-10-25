@@ -188,6 +188,16 @@ describe('Maintenance: Auto-fill this year', () => {
     );
   });
 
+  it('says how much of the free plan\u2019s pool is left, with the account\u2019s own number', async () => {
+    answering({ year: 2026, presses: 37, today: 2, dailyCap: 50, yearUsed: null, models: [], freePresses: { used: 37, of: 100 } });
+    harness({ accountDeletion: true, autofill: true });
+    expect((await screen.findByText(/37 presses since/)).textContent).toContain('On the free plan this account has 100 presses in all, and 63 of them are left.');
+    cleanup();
+    answering({ year: 2026, presses: 100, today: 0, dailyCap: 50, yearUsed: null, models: [], freePresses: { used: 100, of: 100 } });
+    harness({ accountDeletion: true, autofill: true });
+    expect((await screen.findByText(/100 presses since/)).textContent).toContain("The free plan's 100 presses have been used; a subscription comes with more.");
+  });
+
   it('says it is not available offline, rather than that it failed', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('Failed to fetch'); }));
     harness({ accountDeletion: true, autofill: true });

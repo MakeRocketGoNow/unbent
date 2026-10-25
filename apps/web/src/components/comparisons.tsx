@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { Link } from '@tanstack/react-router';
-import { BASE_STORAGE_GB, MAX_ATTACHMENT_BYTES, PLAN_PRICE_USD, STORAGE_ADDON_GB, STORAGE_ADDON_PRICE_USD } from '@unbent/shared';
+import { BASE_STORAGE_GB, FREE_NOTES, FREE_STORAGE_GB, MAX_ATTACHMENT_BYTES, PLAN_PRICE_USD, STORAGE_ADDON_GB, STORAGE_ADDON_PRICE_USD } from '@unbent/shared';
 import { CARD_IMAGE, type PageMeta } from '../page-meta.js';
 
 /**
@@ -77,8 +77,10 @@ const CHECKED = 'October 2026';
 const US = {
   price: (
     <>
-      ${PLAN_PRICE_USD} a year for unlimited notes and {BASE_STORAGE_GB} GB of files ({STORAGE_ADDON_GB} GB
-      more for ${STORAGE_ADDON_PRICE_USD} a year). Two weeks free to try.
+      Free for up to {FREE_NOTES} notes and {FREE_STORAGE_GB} GB of files, with no cap on
+      notebooks. ${PLAN_PRICE_USD} a year for unlimited notes and {BASE_STORAGE_GB} GB of files
+      ({STORAGE_ADDON_GB} GB more for ${STORAGE_ADDON_PRICE_USD} a year), with two weeks of it free to
+      try.
     </>
   ),
   search: (
@@ -150,6 +152,7 @@ export const COMPARISONS: readonly Comparison[] = [
     chooseUnbent: [
       'Your Evernote is mostly scans, receipts and documents, and you mainly need to find them.',
       `You want to pay $${PLAN_PRICE_USD} a year for unlimited notes rather than $99 for 1,000 or $249.99 for no cap.`,
+      `You keep a small library, and want a free plan of ${FREE_NOTES} notes in as many notebooks as you like rather than 50 in one.`,
       'You want fields on your notes (a date, a total, who it was from) and a table to sort them by.',
       'You want an export you can open without the app, from any browser, as often as you like.',
     ],
@@ -174,7 +177,7 @@ export const COMPARISONS: readonly Comparison[] = [
           a year. Unbent was built by someone who left it with 13,000 notes, around one
           rule: the archive is yours. Every note is a Markdown file kept exactly as you
           typed it, the export is plain folders from any browser, and an account that stops
-          paying turns read-only rather than locked.
+          paying stays free if it is small and turns read-only rather than locked if not.
         </p>
       </>
     ),
@@ -223,8 +226,8 @@ export const COMPARISONS: readonly Comparison[] = [
         body: 'Everything at once, from any browser, as plain folders: each note in Markdown with its files beside it, readable with nothing installed and importable back in. Evernote exports ENEX from its desktop app, a notebook or 100 notes at a time.',
       },
       {
-        title: 'A price that does not count your notes',
-        body: `$${PLAN_PRICE_USD} a year for as many notes as you keep. If you stop paying, the account turns read-only, and every note still opens, searches and exports.`,
+        title: 'More free, and no count on the plan',
+        body: `Free for up to ${FREE_NOTES} notes in as many notebooks as you like, where Evernote's free plan is 50 notes in one; then $${PLAN_PRICE_USD} a year for as many notes as you keep. If you stop paying, a small account stays free and a larger one turns read-only, with every note still opening, searching and exporting.`,
       },
       {
         title: 'Assistants you can check',
@@ -443,7 +446,8 @@ export const COMPARISONS: readonly Comparison[] = [
           phone searches the whole archive without downloading it first. The price is that
           the server can read your notes, and Unbent answers that by making leaving easy:
           every note is a plain file, the export is plain folders from any browser at any
-          time, and an account that stops paying turns read-only rather than locked.
+          time, and an account that stops paying stays free if it is small and turns
+          read-only rather than locked if not.
         </p>
       </>
     ),

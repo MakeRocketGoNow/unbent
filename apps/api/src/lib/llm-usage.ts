@@ -2,7 +2,7 @@ import { usageCents, type LlmJob, type LlmTokens } from '@unbent/shared';
 import type { PressLimits, UsageEntry } from '../store/llm-usage.js';
 import { LlmError, type LanguageModel, type LlmUsage, type Metered } from './llm.js';
 import { billingOn, type StripeEnv } from './stripe.js';
-import { planFor, planStateOf, type PlanRow } from './plan.js';
+import { lapsed, planFor, planStateOf, type PlanRow } from './plan.js';
 
 /**
  * The Worker's half of the usage counter (MAK-180): the cap an instance sets, the
@@ -50,10 +50,25 @@ export interface UsageEnv extends StripeEnv {
    * sets 300 (three dollars), about the cost of filing a fortnight's worth of scans.
    */
   AUTOFILL_TRIAL_YEARLY_CENTS?: string;
+  /**
+   * The free plan's Auto-fill (decided 2026-10-24): the presses an account may make
+   * while it is on the free plan, for its whole life, counted only while it is, so the
+   * trial's presses never come out of it. A pool rather than a monthly allowance: it
+   * reads as "Auto-fill for every note the free plan holds" (unbent.app sets 100, the
+   * free plan's notes), it costs at most what a hundred presses do (under a dollar), it
+   * converts because it ends, and it needs nothing the counter does not already keep.
+   *
+   * A free account is otherwise held to the trial's numbers (`AUTOFILL_TRIAL_DAILY_CAP`
+   * and `AUTOFILL_TRIAL_YEARLY_CENTS`, which fall back to the ordinary ones): it is as
+   * free to make as a trial. Unset, there is no pool, as an unset cap enforces nothing,
+   * and those numbers are all that bound it. Where billing is off nobody is on the free
+   * plan, and this is never read.
+   */
+  AUTOFILL_FREE_PRESSES?: string;
 }
 
-/** The four settings `parseCap` reads, each a whole number or nothing. */
-type CapSetting = 'AUTOFILL_DAILY_CAP' | 'AUTOFILL_TRIAL_DAILY_CAP' | 'AUTOFILL_YEARLY_CENTS' | 'AUTOFILL_TRIAL_YEARLY_CENTS';
+/** The settings `parseCap` reads, each a whole number or nothing. */
+type CapSetting = 'AUTOFILL_DAILY_CAP' | 'AUTOFILL_TRIAL_DAILY_CAP' | 'AUTOFILL_YEARLY_CENTS' | 'AUTOFILL_TRIAL_YEARLY_CENTS' | 'AUTOFILL_FREE_PRESSES';
 
 /** Each setting warned about once (see `parseCap`), by name. */
 const warned = new Set<CapSetting>();
@@ -101,9 +116,14 @@ export function trialYearlyCents(env: UsageEnv): number | null {
   return parseCap(env, 'AUTOFILL_TRIAL_YEARLY_CENTS') ?? yearlyCents(env);
 }
 
+/** The free plan's pool, `AUTOFILL_FREE_PRESSES`, or null for none. */
+export function freePresses(env: UsageEnv): number | null {
+  return parseCap(env, 'AUTOFILL_FREE_PRESSES');
+}
+
 /**
- * The number that applies to this account: the trial's while its plan is a trial, the
- * ordinary one otherwise. `plan` is the row `requireActivePlan` put on the context for
+ * The number that applies to this account: the trial's while its plan is a trial or no
+ * plan holds (the free plan, which is as free to make), the ordinary one otherwise. `plan` is the row `requireActivePlan` put on the context for
  * the press, or one read for the usage page, and is undefined where billing is off,
  * which is also when no account is on a trial; a missing row with billing on reads as
  * `planStateOf` reads it, a trial that starts now, since `planFor` would have written
@@ -117,7 +137,12 @@ function forPlan(
   ordinary: (env: UsageEnv) => number | null,
   trial: (env: UsageEnv) => number | null,
 ): number | null {
-  return onTrial(env, plan, now) ? trial(env) : ordinary(env);
+  return onTrial(env, plan, now) || onFree(env, plan, now) ? trial(env) : ordinary(env);
+}
+
+/** Whether no plan holds this account, so it is on the free plan and its pool: see `forPlan` for `plan`. */
+export function onFree(env: UsageEnv, plan: PlanRow | null | undefined, now: number): boolean {
+  return billingOn(env) && plan != null && lapsed(plan, now);
 }
 
 /** Whether this account gets the trial's numbers: see `forPlan` for `plan`. */
@@ -170,9 +195,13 @@ export function yearShare(year: { presses: number; models: readonly LlmTokens[] 
   return limits.yearlyCents === null ? null : usageCents(year.presses, year.models) / limits.yearlyCents;
 }
 
-/** Both limits a press is checked against, for this account. */
+/** Every limit a press is checked against, for this account: the day's, the year's, and the free plan's pool while it is on it. */
 export function limitsFor(env: UsageEnv, plan: PlanRow | null | undefined, now: number): PressLimits {
-  return { cap: capFor(env, plan, now), yearlyCents: yearlyCentsFor(env, plan, now) };
+  return {
+    cap: capFor(env, plan, now),
+    yearlyCents: yearlyCentsFor(env, plan, now),
+    freePresses: onFree(env, plan, now) ? freePresses(env) : null,
+  };
 }
 
 /**
@@ -240,6 +269,16 @@ export function yearReached(now: number, trial = false): Refusal {
     message: "This account has used this year's Auto-fill. It will work again on 1 January.",
     retryAfter: Math.max(1, Math.ceil((next - now) / 1000)),
   };
+}
+
+/**
+ * What the button says when the free plan's pool refuses a press, in the trial's
+ * register: the pool's own number, which is the account's, and the way to more. No
+ * Retry-After, since no time lifts it: the pool never refills, and a subscription takes
+ * the account off the free plan and onto the paying numbers at once.
+ */
+export function freePoolReached(pool: number): Refusal {
+  return { message: `The free plan's ${pool} Auto-fill presses have been used. A subscription comes with more.`, retryAfter: null };
 }
 
 /** One model answer as the store counts it. */

@@ -13,7 +13,8 @@ import {
   type RefundEffect,
   type StripeEvent,
 } from '../lib/billing-events.js';
-import { accountPlanOf, planFor, planRowByCustomer, planStateOf, updatePlan, updatePlanStatement } from '../lib/plan.js';
+import { accountPlanFor } from '../lib/account-plan.js';
+import { planFor, planRowByCustomer, planStateOf, updatePlan, updatePlanStatement } from '../lib/plan.js';
 import {
   ENDED_SUBSCRIPTION,
   StripeError,
@@ -38,7 +39,7 @@ import {
   type StripeDispute,
   type StripeInvoice,
 } from '../lib/stripe.js';
-import { noStoreLimit } from '../lib/notes-repo.js';
+import { noWriteLimits } from '../lib/notes-repo.js';
 import { roomOf } from '../lib/quota.js';
 import { reposFor } from '../lib/repos.js';
 import { requireAuth } from '../lib/session.js';
@@ -109,27 +110,22 @@ export const billing = new Hono<AppEnv>()
    * cost a D1 row and nothing more. Left out rather than failed when the store cannot
    * say (reset by a deploy, or being loaded), since the plan is still the plan.
    *
-   * Both figures come from the one call the sweep makes (`usage`): the bytes of the
-   * account's files, which the quota bounds, and the size of the store itself, which
-   * the store limit bounds (MAK-234). The page shows the two side by side, since a
-   * note write refused for the store's size sends people here, and a page that showed
-   * files alone then said "2 GB of 10 GB used" under a message that their notes were
-   * full.
+   * Except for an account with no plan holding, whose state is what it holds: `free`
+   * under the free plan's limits and `inactive` past them. There every read asks the
+   * store, and fails rather than guess (`accountPlanFor`).
+   *
+   * The figures come from the one call the sweep makes (`usage`): the bytes of the
+   * account's files, which the quota bounds, the size of the store itself, which the
+   * store limit bounds (MAK-234), and the notes, live and trashed, which the free plan
+   * counts. The page shows them side by side, since a note write refused for the store's
+   * size sends people here, and a page that showed files alone then said "2 GB of 10 GB
+   * used" under a message that their notes were full.
    */
   .get('/me/plan', requireAuth, async (c) => {
     if (!billingOn(c.env)) return c.json({ error: 'This instance has no plan to report.' }, 404);
     const userId = c.get('userId')!;
     const row = await planFor(c.env.DB, userId);
-    let held: { usedBytes: number; storeBytes: number } | undefined;
-    if (c.req.query('usage') === '1') {
-      try {
-        const usage = await reposFor(c.env, userId, noStoreLimit).attachments.usage();
-        held = { usedBytes: usage.attachmentBytes, storeBytes: usage.databaseSize };
-      } catch (err) {
-        console.warn(`[billing] storage used for user=${userId} unavailable:`, (err as Error).message);
-      }
-    }
-    return c.json({ ...accountPlanOf(row, Date.now()), ...held });
+    return c.json(await accountPlanFor(c.env, userId, row, Date.now(), { figures: c.req.query('usage') === '1' }));
   })
 
   /**
@@ -228,7 +224,7 @@ export const billing = new Hono<AppEnv>()
     const storage = c.req.valid('json').storage;
     const after = BASE_STORAGE_GB + STORAGE_ADDON_GB * storage;
     if (after < row.storageGb) {
-      const held = await reposFor(c.env, userId, noStoreLimit).attachments.usage();
+      const held = await reposFor(c.env, userId, noWriteLimits).attachments.usage();
       if (held.attachmentBytes > storageQuotaBytes(after)) {
         return c.json({ error: `This account holds ${(held.attachmentBytes / GB).toFixed(1)} GB, more than the ${after} GB it would have. Delete some files first.` }, 409);
       }
@@ -302,7 +298,7 @@ export const billing = new Hono<AppEnv>()
     const userId = c.get('userId')!;
     const now = Date.now();
     const row = await planFor(c.env.DB, userId, now);
-    if (!row.customerId) return c.json(accountPlanOf(row, now));
+    if (!row.customerId) return c.json(await accountPlanFor(c.env, userId, row, now));
     try {
       const sub =
         row.subscriptionId && row.subscriptionStatus !== 'canceled'
@@ -314,7 +310,7 @@ export const billing = new Hono<AppEnv>()
         const patch = planPatchFor(stripe, event, row);
         if (patch) await updatePlanStatement(c.env.DB, userId, patch, now, { notBefore: eventStamp(created) }).run();
       }
-      return c.json(accountPlanOf(await planFor(c.env.DB, userId, now), now));
+      return c.json(await accountPlanFor(c.env, userId, await planFor(c.env.DB, userId, now), now));
     } catch (err) {
       return stripeRefused(err, 'read the subscription', userId);
     }

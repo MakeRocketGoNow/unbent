@@ -82,6 +82,7 @@ import {
 } from '../autofill.js';
 import { autofillExplained, markAutofillExplained } from '../autofill-notice.js';
 import { usePlan } from '../use-plan.js';
+import { isFreeNotesFull, showFreeNotesFull } from '../free-notes.js';
 import { useTagColors } from './use-tag-colors.js';
 
 /** The editor's share of the pane row when split evenly, and the limits a drag respects. */
@@ -979,7 +980,14 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
    */
   async function duplicateNote() {
     await flush();
-    const copy = await actions.duplicateNote(noteId);
+    let copy;
+    try {
+      copy = await actions.duplicateNote(noteId);
+    } catch (err) {
+      // A copy past the free plan's count, refused on the device; its notice says so.
+      if (isFreeNotesFull(err)) return showFreeNotesFull();
+      throw err;
+    }
     void queryClient.invalidateQueries({ queryKey: ['search'] });
     // The copy is made without the files the plan's storage had no room for (MAK-108).
     if (copy.filesSkipped) setSnackbar({ message: `Copied without its files. ${copy.filesSkipped}`, tone: 'error' });

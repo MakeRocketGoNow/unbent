@@ -4,8 +4,8 @@ Notes, receipts and scans you can search, and take with you whenever you like.
 
 Unbent keeps your notes, receipts and scanned paperwork together and finds them by what they
 say, even a photo of a receipt. Everything in it is an ordinary file you can download
-whenever you like, and if you ever stop paying, nothing is held hostage: the account turns
-read-only, and every note still opens, searches and exports.
+whenever you like, and if you ever stop paying, nothing is held hostage: a small account
+stays free, a larger one turns read-only, and every note still opens, searches and exports.
 
 <p>
   <picture>
@@ -116,8 +116,9 @@ Editing it should still feel like a word processor. See [Editing](docs/editor.md
 
 ## Use it or run your own
 
-[unbent.app](https://unbent.app) is the hosted instance: a two-week trial, then one annual
-plan, and an account that lapses stays readable and exportable. Or run your own on
+[unbent.app](https://unbent.app) is the hosted instance: a two-week trial, then free for up
+to 100 notes and 1 GB of files, or one annual plan for more, and an account past the free
+plan that lapses stays readable and exportable. Or run your own on
 Cloudflare: one Worker serves the site and the API, with a database and a bucket beside
 it, and the free tier is enough.
 

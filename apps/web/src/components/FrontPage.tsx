@@ -7,7 +7,7 @@ import { HOME, LOGIN, SUPPORT, WHY } from '../auth-gate.js';
 import { EnexHelp, JoplinHelp, NotionHelp } from './ImportHelp.js';
 import { LegalLink } from './LegalLink.js';
 import { ProviderIcon } from './provider-icons.js';
-import { BASE_STORAGE_GB, PLAN_PRICE_USD, STORAGE_ADDON_GB, STORAGE_ADDON_PRICE_USD, TRIAL_DAYS } from '@unbent/shared';
+import { BASE_STORAGE_GB, FREE_NOTES, FREE_STORAGE_GB, PLAN_PRICE_USD, STORAGE_ADDON_GB, STORAGE_ADDON_PRICE_USD, TRIAL_DAYS } from '@unbent/shared';
 import {
   AutofillFeatureIcon,
   DisconnectFeatureIcon,
@@ -224,8 +224,9 @@ export function FrontPage() {
             back into any Unbent.
           </Point>
           <Point icon={<ReadOnlyFeatureIcon />} title="Read-only, not gone">
-            If a trial ends or you stop paying, your account turns read-only. Every note
-            still opens, searches and exports, for at least a year. Nothing is held hostage.
+            If a trial ends or you stop paying, an account of up to {FREE_NOTES} notes stays
+            free and a larger one turns read-only. Every note still opens, searches and
+            exports, for at least a year. Nothing is held hostage.
           </Point>
         </div>
       </Section>
@@ -327,15 +328,33 @@ export function FrontShell({ children }: { children: ReactNode }) {
 }
 
 /**
- * The plan, its price and what happens when it lapses: the one statement of the offer,
- * which the front page draws under its Pricing heading and the pricing page draws as the
- * page. The merchant of record's review reads the pricing page and a visitor reads the
- * front page, and the two must say the same thing; the numbers are the shared constants,
- * so they also agree with the Plan page and the checkout.
+ * The free plan, the paid one, its price and what happens when it lapses: the one
+ * statement of the offer, which the front page draws under its Pricing heading and the
+ * pricing page draws as the page. The merchant of record's review reads the pricing page
+ * and a visitor reads the front page, and the two must say the same thing; the numbers
+ * are the shared constants, so they also agree with the Plan page and the checkout.
+ *
+ * Free first and quieter: it is the floor under the plan, not a second product, so its
+ * card has no border to compete with the one being sold, and lists what it holds and
+ * that every feature comes with it rather than repeating the plan's list. Its Auto-fill
+ * is the one feature with a limit of its own, a pool of presses (`AUTOFILL_FREE_PRESSES`),
+ * said as that and without the number, which is the instance's to set; "everything
+ * else, Auto-fill included" said more than the free plan gives.
  */
 export function Pricing() {
   return (
     <div className="front-pricing">
+      <div className="front-plan front-plan-free">
+        <p className="front-amount">
+          <strong>Free</strong>
+        </p>
+        <ul>
+          <li>Up to {FREE_NOTES} notes, counting the trash, in as many notebooks as you like</li>
+          <li>{FREE_STORAGE_GB} GB of attachments</li>
+          <li>Every feature the plan has, with a set number of Auto-fill presses</li>
+        </ul>
+        <p className="muted">For a small library, for as long as you like. No card.</p>
+      </div>
       <div className="front-plan">
         <p className="front-amount">
           <strong>${PLAN_PRICE_USD}</strong> a year
@@ -356,10 +375,11 @@ export function Pricing() {
       <div className="front-lapse">
         <h3>If you stop paying</h3>
         <p>
-          Nothing is held hostage. When a trial ends or a plan lapses, the account turns
-          read-only: every note still opens, searches and exports, and you can still
-          delete. It is kept that way for at least a year, and you will be reminded to
-          export before anything is removed.
+          Nothing is held hostage. When a trial ends or a plan lapses, an account within
+          the free plan carries on as a free one. A larger one turns read-only: every note
+          still opens, searches and exports, and you can still delete, down to the free
+          plan if you like. It is kept that way for at least a year, and you will be
+          reminded to export before anything is removed.
         </p>
       </div>
     </div>

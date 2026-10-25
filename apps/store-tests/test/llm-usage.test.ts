@@ -163,4 +163,25 @@ describe('the usage counter', () => {
     expect(usage.today).toBe(isNewYearsDay ? 4 : 0);
     expect(usage.models).toEqual([{ job: 'read', model: 'm', requests: 1, inputTokens: 100, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 }]);
   });
+
+  it('takes presses from the free plan’s pool only while it is passed, refuses past it, and keeps it out of the year', async () => {
+    const { stub, noteId } = await withNote('usage-free');
+    // A trial's presses (no pool passed) never come out of it.
+    await stub.autofillPrelude(noteId, 5, { cap: null, yearlyCents: null });
+    expect((await stub.autofillUsage()).freeUsed).toBe(0);
+    const free = { cap: null, yearlyCents: null, freePresses: 2 };
+    expect((await stub.autofillPrelude(noteId, 5, free))?.press).toEqual({ allowed: true, today: 2 });
+    expect((await stub.autofillPrelude(noteId, 5, free))?.press).toEqual({ allowed: true, today: 3 });
+    const refused = await stub.autofillPrelude(noteId, 5, free);
+    expect(refused?.press).toEqual({ allowed: false, today: 3, reason: 'free' });
+    expect(refused?.forVision).toEqual([]);
+    // The day's cap still comes first, and says when it lifts.
+    expect((await stub.autofillPrelude(noteId, 5, { ...free, cap: 3 }))?.press).toMatchObject({ allowed: false, reason: 'day' });
+    const usage = await stub.autofillUsage();
+    expect(usage.freeUsed).toBe(2);
+    // The pool's row is not a day, so the year's presses are the presses.
+    expect(usage.presses).toBe(3);
+    // A subscription takes the account off the pool: nothing passed, nothing refused.
+    expect((await stub.autofillPrelude(noteId, 5, { cap: null, yearlyCents: null }))?.press).toEqual({ allowed: true, today: 4 });
+  });
 });

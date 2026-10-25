@@ -16,6 +16,7 @@ import { serverCanRead } from '../lib/read-attachment.js';
 import { fetchWebImage } from '../lib/web-image.js';
 import { requireAuth } from '../lib/session.js';
 import { withRepos } from '../lib/repos-middleware.js';
+import { PlanRefused, refuseIfPastFree } from '../lib/free-plan.js';
 import { StorageFull, quotaOf, storageFullBody } from '../lib/quota.js';
 import { storeAttachment } from '../lib/store-attachment.js';
 import type { AppEnv } from '../types.js';
@@ -124,6 +125,10 @@ export const attachments = new Hono<AppEnv>()
      */
     const link = c.req.query('link') !== undefined;
 
+    // An account past the free plan is refused before the body is streamed into R2; the
+    // sum it read is the quota's too.
+    const usedBytes = await refuseIfPastFree(c.env, repo, c.get('plan'));
+
     let stored;
     try {
       stored = await storeAttachment(
@@ -140,6 +145,7 @@ export const attachments = new Hono<AppEnv>()
           textSupplied,
           quota: quotaOf(c.env, c.get('plan')),
           declaredBytes: declared > 0 ? declared : undefined,
+          usedBytes,
         },
       );
     } catch (err) {
@@ -175,12 +181,14 @@ export const attachments = new Hono<AppEnv>()
     if (!(await attachments.ownsNote(to))) return c.json({ error: 'Not found' }, 404);
     if (from === to) return c.json({ error: 'Source and destination are the same note' }, 400);
     if (!(await attachments.ownsNote(from))) return c.json({ error: 'Source note not found' }, 404);
+    // Before any object is copied, for an account past the free plan; its sum is the quota's too.
+    const usedBytes = await refuseIfPastFree(c.env, attachments, c.get('plan'));
 
     try {
       const result = await copyAttachments(
         c.env.BLOBS,
         { attachments, notes: c.get('notes') },
-        { from, to, filenames, move, link, quota: quotaOf(c.env, c.get('plan')) },
+        { from, to, filenames, move, link, quota: quotaOf(c.env, c.get('plan')), usedBytes },
       );
       return c.json(result);
     } catch (err) {
@@ -203,6 +211,8 @@ export const attachments = new Hono<AppEnv>()
     if (!(await repo.ownsNote(noteId))) return c.json({ error: 'Not found' }, 404);
 
     const { url } = c.req.valid('json');
+    // Before anything is fetched, for an account past the free plan.
+    await refuseIfPastFree(c.env, repo, c.get('plan'));
     const fetched = await fetchWebImage(url, {
       allowLoopback: c.env.ALLOW_TEST_CREDENTIALS === '1',
     });
@@ -226,8 +236,10 @@ export const attachments = new Hono<AppEnv>()
     try {
       info = await repo.record({ id, noteId, filename, contentType: fetched.contentType, size: object.size, r2Key: key }, { quota });
     } catch (err) {
-      if (!(err instanceof StorageFull)) throw err;
+      if (!(err instanceof StorageFull || err instanceof PlanRefused)) throw err;
       await c.env.BLOBS.delete(key).catch(() => {});
+      // A free plan's refusal goes on to the app's handler, which answers it with its code.
+      if (err instanceof PlanRefused) throw err;
       return c.json(storageFullBody(err), 402);
     }
     return c.json({ ...info, path: `files/${filename}`, url }, 201);

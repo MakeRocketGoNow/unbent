@@ -503,6 +503,13 @@ export interface AutofillUsage {
   dailyCap: number | null;
   yearUsed: number | null;
   models: LlmJobUsage[];
+  /**
+   * The free plan's pool, while the account is on it: the presses taken from it, ever,
+   * and how many it holds (`AUTOFILL_FREE_PRESSES`, the instance's number). Null for an
+   * account a plan holds, a trial's included, and where the instance sets no pool;
+   * absent from a server older than the free plan.
+   */
+  freePresses?: { used: number; of: number } | null;
 }
 
 export const noteIdSchema = z.string().uuid();

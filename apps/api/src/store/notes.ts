@@ -807,23 +807,46 @@ export class NotesStore {
   createMany(
     inputs: Array<Parameters<NotesStore['create']>[0]>,
     opts: { skipExisting?: boolean | undefined } = {},
+    /**
+     * Asked once, with how many notes the batch will make, before it makes any: the
+     * free plan's count (`UserStore.freeCount`), so the notes it skips take no room and a
+     * refusal names the account as it stood before the batch.
+     */
+    admit?: (adding: number) => void,
   ): Array<{ id: string; title: string; skipped: boolean }> {
     return this.sql.tx(() => {
-      const made = new Map<string, { id: string; title: string }>();
       // Folded as SQLite's NOCASE folds, ASCII only, so the batch and the index agree on
       // what a duplicate is.
       const key = (notebook: string | null | undefined, title: string) =>
         `${foldNoCase(notebook?.trim() ?? '')}\u001F${foldNoCase(title)}`;
-      return inputs.map((input) => {
-        if (opts.skipExisting && input.title !== '') {
-          // Answered as the note that is there, in its own spelling, not the one sent.
-          const held = made.get(key(input.notebook, input.title)) ?? this.liveTitleIn(input.notebook, input.title);
-          if (held) return { id: held.id, title: held.title, skipped: true };
-        }
-        const note = this.create(input);
-        if (opts.skipExisting && input.title !== '') made.set(key(input.notebook, input.title), { id: note.id, title: note.title });
-        return { id: note.id, title: note.title, skipped: false };
+      // What each input will be, decided before anything is written: a note already
+      // here (in its own spelling, not the one sent), the batch's own earlier note of the
+      // same title (by its index), or null for one to make.
+      const planned = new Map<string, number>();
+      const held = inputs.map((input, i): { id: string; title: string } | number | null => {
+        if (!opts.skipExisting || input.title === '') return null;
+        const k = key(input.notebook, input.title);
+        const first = planned.get(k);
+        if (first !== undefined) return first;
+        const there = this.liveTitleIn(input.notebook, input.title);
+        if (there) return there;
+        planned.set(k, i);
+        return null;
       });
+      admit?.(held.filter((h) => h === null).length);
+      const out: Array<{ id: string; title: string; skipped: boolean }> = [];
+      inputs.forEach((input, i) => {
+        const h = held[i] ?? null;
+        if (h === null) {
+          const note = this.create(input);
+          out.push({ id: note.id, title: note.title, skipped: false });
+        } else if (typeof h === 'number') {
+          out.push({ id: out[h]!.id, title: out[h]!.title, skipped: true });
+        } else {
+          out.push({ id: h.id, title: h.title, skipped: true });
+        }
+      });
+      return out;
     });
   }
 
@@ -1820,7 +1843,14 @@ export class NotesStore {
     sourceEnex?: string | undefined;
     /** By field name; see `applyImportedFields`. */
     fields?: Record<string, FieldValue> | undefined;
-  }): { id: string; created: boolean; skippedFields: string[] } {
+  },
+  /**
+   * Asked only on the path that makes the note, never for one already here: the free
+   * plan's count (`UserStore.room`), so a resumed import on a free account at its count
+   * finds the notes that landed instead of being refused for each.
+   */
+  admit?: () => void,
+  ): { id: string; created: boolean; skippedFields: string[] } {
     return this.sql.tx(() => {
       /**
        * Two ways a note can already be here, checked in order of confidence.
@@ -1890,6 +1920,7 @@ export class NotesStore {
        * database of its own), which is why ids stay globally unique UUIDs even so: a
        * reference of the form (owner, note id) has to stay unambiguous forever.
        */
+      admit?.();
       const id = input.id && !idIsTaken ? input.id : crypto.randomUUID();
       const notebookId = this.resolveNotebook(input.notebook);
       this.sql.exec(

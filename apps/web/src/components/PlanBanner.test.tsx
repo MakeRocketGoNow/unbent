@@ -57,10 +57,15 @@ describe('PlanBanner', () => {
     expect(await screen.findByText('Your free trial ends today.')).toBeTruthy();
   });
 
-  it('says read-only, and what still works, once the plan has ended', async () => {
+  it('says read-only, what still works, and the free plan as the other way back, once the plan has ended past it', async () => {
     harness({ state: 'inactive', until: NOW - DAY });
-    expect(await screen.findByText(/read-only\. Everything still opens, searches and exports/)).toBeTruthy();
+    expect(await screen.findByText("Your notes are read-only until the account is within the free plan's 100 notes and 1 GB. Everything still opens, searches and exports.")).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Subscribe' })).toBeTruthy();
+  });
+
+  it('says nothing on the free plan, which is an account that works', async () => {
+    harness({ state: 'free', until: NOW - DAY, readOnlyAt: null });
+    expect((await screen.findByRole('status')).textContent).toBe('');
   });
 
   it('points at the web from inside the apps rather than at a page with no buttons', async () => {

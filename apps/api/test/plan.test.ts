@@ -1,9 +1,11 @@
 /**
- * The read-only rule for a lapsed account (MAK-108), over HTTP against a live
- * `wrangler dev`: once an account's plan has ended, every write but a delete is a 402,
- * and every read still answers. The rule is global (`requireActivePlan`), so this
- * checks a sample of each kind rather than every route; `plan-middleware.test.ts`
- * holds the whole table.
+ * The plan's rule for an account whose plan has ended (MAK-108, and the free plan of
+ * 2026-10-24), over HTTP against a live `wrangler dev`: under the free plan's limits it
+ * writes as before and is refused only a note past the count; past them every write but
+ * a delete is a 402, every read still answers, and deleting its way under is a way back
+ * as well as subscribing. The rule is global (`requireActivePlan`, and the store's
+ * `assertFree`), so this checks a sample of each kind rather than every route;
+ * `plan-middleware.test.ts` holds the whole table and `apps/store-tests` every write.
  *
  * Only where the dev server sells a plan: billing is off without the `STRIPE_*`
  * settings in `.dev.vars`, and then there is nothing to check, which the cases report
@@ -11,6 +13,7 @@
  * it on; nothing here reaches Stripe.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { FREE_NOTES } from '@unbent/shared';
 import { signWebhook } from '../src/lib/stripe.js';
 
 const BASE = process.env['API_URL'] ?? 'http://localhost:8787';
@@ -60,7 +63,7 @@ afterAll(async () => {
   if (billing) await setPlan('trial', Date.now() + 86_400_000);
 });
 
-describe('a lapsed account', () => {
+describe('an account whose plan has ended', () => {
   it('starts on a trial, which the plan reports', async (ctx) => {
     if (!billing) return ctx.skip();
     const plan = (await (await call('GET', '/api/me/plan')).json()) as { state: string; until: number; storageGb: number };
@@ -75,28 +78,73 @@ describe('a lapsed account', () => {
     expect(held.storeBytes).toBeGreaterThan(0);
   });
 
-  it('is refused every write but a delete once its plan has ended, and still reads', async (ctx) => {
+  it('is free once its trial has ended under the free plan, and writes as before', async (ctx) => {
     if (!billing) return ctx.skip();
+    await setPlan('trial', Date.now() - 1000);
+    const plan = (await (await call('GET', '/api/me/plan')).json()) as { state: string; readOnlyAt: number | null; storageGb: number };
+    expect(plan).toMatchObject({ state: 'free', readOnlyAt: null, storageGb: 1 });
+    expect((await call('PATCH', `/api/notes/${noteId}`, { title: 'renamed while free' })).status).toBe(200);
+    expect((await call('POST', '/api/notebooks', { name: 'Free notebook' })).ok).toBe(true);
+  });
+
+  it('is refused only a note past the free plan’s count, counting the trash', async (ctx) => {
+    if (!billing) return ctx.skip();
+    // One note already; the rest of the hundred, ten at a time.
+    for (let made = 1; made < FREE_NOTES; made += 10) {
+      const batch = Math.min(10, FREE_NOTES - made);
+      const answers = await Promise.all(Array.from({ length: batch }, (_, i) => call('POST', '/api/notes', { title: `Filler ${made + i}`, body: '' })));
+      for (const res of answers) expect(res.status).toBe(201);
+    }
+    const refused = await call('POST', '/api/notes', { title: 'One too many', body: '' });
+    expect(refused.status).toBe(402);
+    expect(await refused.json()).toMatchObject({ code: 'FREE_NOTES_FULL', notes: FREE_NOTES });
+    // Trashing frees nothing: the trash counts.
+    expect((await call('DELETE', `/api/notes/${noteId}`)).ok).toBe(true);
+    expect((await call('POST', '/api/notes', { title: 'Still too many', body: '' })).status).toBe(402);
+    expect((await call('POST', `/api/notes/${noteId}/restore`)).ok).toBe(true);
+    // Every other write still goes.
+    expect((await call('PATCH', `/api/notes/${noteId}`, { title: 'renamed at the limit' })).status).toBe(200);
+    expect(((await (await call('GET', '/api/me/plan')).json()) as { state: string }).state).toBe('free');
+  }, 60_000);
+
+  it('is read-only past the free plan, still reads, and writes again once it deletes its way under', async (ctx) => {
+    if (!billing) return ctx.skip();
+    // One more than the free plan holds, made while the trial still ran.
+    await setPlan('trial', Date.now() + 86_400_000);
+    const extra = ((await (await call('POST', '/api/notes', { title: 'Made in the trial', body: '' })).json()) as { id: string }).id;
     await setPlan('trial', Date.now() - 1000);
     expect(((await (await call('GET', '/api/me/plan')).json()) as { state: string }).state).toBe('inactive');
 
     const refused = await call('POST', '/api/notes', { title: 'x', body: 'y' });
     expect(refused.status).toBe(402);
-    expect(((await refused.json()) as { code: string }).code).toBe('PLAN_INACTIVE');
+    expect(await refused.json()).toMatchObject({ code: 'PLAN_INACTIVE', notes: FREE_NOTES + 1 });
     expect((await call('PATCH', `/api/notes/${noteId}`, { title: 'renamed' })).status).toBe(402);
     expect((await call('POST', '/api/notebooks', { name: 'Later' })).status).toBe(402);
+    // A file is refused before its body is taken in, not after it has gone to storage.
+    const upload = await fetch(`${BASE}/api/notes/${noteId}/files`, {
+      method: 'PUT',
+      headers: { Origin: ORIGIN, Cookie: cookie, 'X-Filename': 'scan.pdf', 'Content-Type': 'application/pdf' },
+      body: new Uint8Array([37, 80, 68, 70]),
+    });
+    expect(upload.status).toBe(402);
+    expect(await upload.json()).toMatchObject({ code: 'PLAN_INACTIVE' });
 
     expect((await call('GET', '/api/notes')).status).toBe(200);
     expect((await call('GET', `/api/notes/${noteId}`)).status).toBe(200);
     expect((await call('GET', '/api/search?q=here')).status).toBe(200);
     expect((await call('GET', '/api/export/notes')).status).toBe(200);
     expect((await call('GET', '/api/notes/' + noteId + '/export')).status).toBe(200);
-
-    // The one write that is allowed, and its undo.
-    expect((await call('DELETE', `/api/notes/${noteId}`)).ok).toBe(true);
-    expect((await call('POST', `/api/notes/${noteId}/restore`)).ok).toBe(true);
     expect((await call('POST', '/api/billing/checkout', { storage: 0 })).status).not.toBe(402);
-  });
+
+    // The way out: a delete, and emptying it from the trash. Back under, the account is
+    // free again with nothing to press, and writes.
+    expect((await call('DELETE', `/api/notes/${extra}`)).ok).toBe(true);
+    expect((await call('PATCH', `/api/notes/${noteId}`, { title: 'renamed' })).status).toBe(402);
+    expect((await call('DELETE', `/api/notes/${extra}/permanent`)).ok).toBe(true);
+    expect(((await (await call('GET', '/api/me/plan')).json()) as { state: string }).state).toBe('free');
+    expect((await call('PATCH', `/api/notes/${noteId}`, { title: 'renamed once under' })).status).toBe(200);
+    // Twenty requests, one an export of the hundred notes above: the bound its sibling has.
+  }, 60_000);
 
   it('cannot be comped by anyone but an operator', async (ctx) => {
     if (!billing) return ctx.skip();

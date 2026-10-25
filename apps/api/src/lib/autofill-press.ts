@@ -3,7 +3,7 @@ import { attachmentTextFor, autofill, EXAMPLES_PER_OPTION, MAX_TAGS_ASKED } from
 import type { AttachmentsRepo } from './attachments-repo.js';
 import type { Jev } from './jev.js';
 import type { LanguageModel } from './llm.js';
-import { capReached, PressUsage, yearReached, type TrialSentences } from './llm-usage.js';
+import { capReached, freePoolReached, PressUsage, yearReached, type TrialSentences } from './llm-usage.js';
 import type { NotesRepo } from './notes-repo.js';
 import type { PressLimits } from '../store/llm-usage.js';
 import { readPendingFiles, type BlobStore, type Readers } from './read-attachment.js';
@@ -62,7 +62,13 @@ export async function press(deps: PressDeps, id: string): Promise<PressOutcome> 
   if (!deps.jev) return { kind: 'unconfigured' };
   if (prelude.press && !prelude.press.allowed) {
     // The store says which limit refused; each has a sentence of its own.
-    const refusal = prelude.press.reason === 'year' ? yearReached(now, deps.trial.year) : capReached(deps.limits.cap!, now, deps.trial.day);
+    const reason = prelude.press.reason;
+    const refusal =
+      reason === 'free'
+        ? freePoolReached(deps.limits.freePresses!)
+        : reason === 'year'
+          ? yearReached(now, deps.trial.year)
+          : capReached(deps.limits.cap!, now, deps.trial.day);
     return { kind: 'capped', ...refusal };
   }
   const { note, forText, forVision } = prelude;

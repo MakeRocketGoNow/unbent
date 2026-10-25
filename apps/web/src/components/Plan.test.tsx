@@ -23,13 +23,21 @@ const NOW = Date.now();
  * that read to say something else as well. A case with no figures leaves the usage read
  * unanswered, as it is while the store is still being asked.
  */
-function harness(plan: Partial<AccountPlan>, billing = true, entry = '/settings/plan', usage?: Partial<AccountPlan>) {
+function harness(plan: Partial<AccountPlan>, billing = true, entry = '/settings/plan', usage?: Partial<AccountPlan>, config: Record<string, unknown> = {}) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  client.setQueryData(keys.config(), { providers: ['password'], ...(billing ? { billing: { environment: 'test' } } : {}) });
-  const { usedBytes, storeBytes, ...light } = plan;
-  const seeded = (p: Partial<AccountPlan>) => ({ state: 'trial', until: NOW + 10 * DAY, source: null, storageGb: 10, subscription: null, ...p, readOnlyAt: p.readOnlyAt ?? p.until ?? NOW + 10 * DAY });
+  client.setQueryData(keys.config(), { providers: ['password'], ...(billing ? { billing: { environment: 'test' } } : {}), ...config });
+  const { usedBytes, storeBytes, notes, ...light } = plan;
+  const seeded = (p: Partial<AccountPlan>) => ({
+    state: 'trial',
+    until: NOW + 10 * DAY,
+    source: null,
+    storageGb: 10,
+    subscription: null,
+    ...p,
+    readOnlyAt: p.readOnlyAt !== undefined ? p.readOnlyAt : (p.until ?? NOW + 10 * DAY),
+  });
   client.setQueryData(keys.plan(), seeded(light));
-  const figures = usage ?? (usedBytes !== undefined || storeBytes !== undefined ? { ...light, usedBytes, storeBytes } : undefined);
+  const figures = usage ?? (usedBytes !== undefined || storeBytes !== undefined || notes !== undefined ? { ...light, usedBytes, storeBytes, notes } : undefined);
   if (figures) client.setQueryData(keys.planUsage(), seeded(figures));
   const rootRoute = createRootRoute({ component: () => <Plan /> });
   const router = createRouter({ routeTree: rootRoute, history: createMemoryHistory({ initialEntries: [entry] }) });
@@ -60,11 +68,58 @@ describe('Plan', () => {
     expect(screen.queryByRole('button', { name: 'Manage subscription' })).toBeNull();
   });
 
-  it('says read-only, and what still works, once the plan has ended', async () => {
-    harness({ state: 'inactive', until: NOW - DAY });
+  it('says read-only, what still works, and the free plan as the other way back, once the plan has ended past it', async () => {
+    harness({ state: 'inactive', until: NOW - DAY, storageGb: 1, usedBytes: 0, notes: 1000 });
     expect(await screen.findByRole('heading', { name: 'Read-only' })).toBeTruthy();
-    expect(screen.getByText(/Everything still opens, searches and exports/)).toBeTruthy();
+    expect(screen.getByText(/more than the free plan's 100 notes or 1 GB of files, so it is read-only\. Everything still opens, searches and exports\. Delete down to the free plan/)).toBeTruthy();
     expect(screen.getByRole('button', { name: /^Subscribe/ })).toBeTruthy();
+    // Measured against the free plan, since that is its way out: a thousand of a hundred.
+    expect(await screen.findByText('Notes: 1,000 of 100, counting the trash.')).toBeTruthy();
+    expect(screen.getByRole('meter', { name: 'Notes held' }).querySelector('.plan-meter-full')).toBeTruthy();
+  });
+
+  /**
+   * The free plan (2026-10-24): an account no plan holds that fits it writes on, and the
+   * page says so, meters what it holds against the free plan's numbers, and offers the
+   * plan. No storage blocks: those are sold with a subscription.
+   */
+  it('meters a free account against the free plan, and offers the plan', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ year: 2026, presses: 37, today: 0, dailyCap: 50, yearUsed: null, models: [], freePresses: { used: 37, of: 100 } }), { status: 200 })));
+    harness(
+      { state: 'free', until: NOW - 3 * DAY, readOnlyAt: null, storageGb: 1, usedBytes: 200 * 1024 ** 2, storeBytes: 5 * 1024 ** 2, notes: 40 },
+      true,
+      '/settings/plan',
+      undefined,
+      { autofill: true },
+    );
+    expect(await screen.findByRole('heading', { name: 'Free plan' })).toBeTruthy();
+    expect(screen.getByText(/Your trial ended on .*, and this account is on the free plan: up to 100 notes and 1 GB of files/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Subscribe for $60 a year' })).toBeTruthy();
+    expect(screen.getByText('Notes: 40 of 100, counting the trash.')).toBeTruthy();
+    expect(screen.getByText('Files: 200.0 MB of 1 GB used.')).toBeTruthy();
+    expect(screen.getByRole('meter', { name: 'Files stored' }).getAttribute('aria-valuemax')).toBe(String(1024 ** 3));
+    expect(await screen.findByText('Auto-fill: 37 of 100 presses used.')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Add 25 GB' })).toBeNull();
+    // An ended comp on the free plan is offered the checkout too.
+    cleanup();
+    harness({ state: 'free', source: 'comp', until: NOW - DAY, readOnlyAt: null, storageGb: 1 });
+    expect(await screen.findByText(/Your plan ended on/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^Subscribe/ })).toBeTruthy();
+  });
+
+  it('says what the trial’s end will leave the account as, with its own numbers', async () => {
+    harness({ usedBytes: 0, notes: 1000 });
+    expect(await screen.findByText(/With 1,000 notes, this account becomes read-only then; within the free plan's 100 notes and 1 GB it would stay free\./)).toBeTruthy();
+    cleanup();
+    harness({ usedBytes: 200 * 1024 ** 2, notes: 40 });
+    expect(await screen.findByText(/With 40 notes and 200.0 MB of files, this account stays free then, up to 100 notes and 1 GB\./)).toBeTruthy();
+    cleanup();
+    harness({ usedBytes: 0, notes: 10 });
+    expect(await screen.findByText(/With 10 notes and no files, this account stays free then/)).toBeTruthy();
+    // Before the figures arrive the date stands alone, rather than a guess beside it.
+    cleanup();
+    harness({});
+    expect((await screen.findByText(/^Your trial ends on/)).textContent).toMatch(/^Your trial ends on .*\. Nothing is charged until you subscribe\.$/);
   });
 
   it('sends a subscribed account to the portal, and sells it storage by the block', async () => {

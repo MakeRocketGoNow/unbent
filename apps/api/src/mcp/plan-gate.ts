@@ -1,14 +1,16 @@
 import { PLAN_INACTIVE_MESSAGE } from '@unbent/shared';
 import type { McpServer } from '@modelcontextprotocol/server';
+import { PlanRefused } from '../lib/free-plan.js';
 import { StorageFull } from '../lib/quota.js';
 import { toolError } from './tools/result.js';
 
 /**
- * The read-only rule for an assistant (MAK-108): the same as the HTTP routes' (a lapsed
- * account's writes are refused, its reads and deletes are not), applied where the MCP
- * endpoint can apply it, which is per tool rather than per request, since every tool is
- * one `POST /api/mcp`. A new connection can still be authorised; what it can do once
- * connected is decided here.
+ * The plan's rule for an assistant (MAK-108, and the free plan of 2026-10-24): the same
+ * as the HTTP routes' (an account past the free plan is refused its writes, never its
+ * reads and deletes), applied where the MCP endpoint can apply it, which is per tool
+ * rather than per request, since every tool is one `POST /api/mcp`. A new connection
+ * can still be authorised; what it can do once connected is decided here, and for most
+ * write tools in the store (`HELD_IN_STORE_TOOLS`).
  *
  * By the tool's own annotation, so a tool cannot be forgotten: one that does not say
  * `readOnlyHint: true` is a write and is gated unless its name is in `ALLOWED_INACTIVE`:
@@ -33,10 +35,37 @@ export const ALLOWED_INACTIVE: ReadonlySet<string> = new Set([
   'send_feedback',
 ]);
 
+/**
+ * The write tools whose every write goes to the store with the free plan's limits, as
+ * `HELD_IN_STORE` lists the HTTP routes: for these the gate is not asked, and the store
+ * decides (an account past the free plan is read-only, a note past its count is
+ * refused), with its sentence returned as the tool's error below. The two that do
+ * something outside the store first, fetching a URL (`add_attachment`) or minting an
+ * upload link (`prepare_attachment_upload`), refuse an account past the free plan
+ * before they start (`refuseIfPastFree`), as the file routes do. A write tool on
+ * neither list is refused a lapsed account by the gate, until someone says which it is.
+ */
+export const HELD_IN_STORE_TOOLS: ReadonlySet<string> = new Set([
+  'create_note',
+  'create_notes',
+  'edit_note',
+  'update_note',
+  'update_note_fields',
+  'update_note_tags',
+  'move_notes',
+  'create_notebook',
+  'update_notebook',
+  'create_notebook_field',
+  'update_notebook_field',
+  'rename_tag',
+  'add_attachment',
+  'prepare_attachment_upload',
+]);
+
 /** Answers the sentence to refuse with, or null to let the call through. */
 export type PlanGate = () => Promise<string | null>;
 
-/** The sentence an assistant is given, which says what still works. */
+/** The sentence an assistant is given by the gate, which says what still works. */
 export const INACTIVE_TOOL_MESSAGE = `${PLAN_INACTIVE_MESSAGE} Reading, searching and deleting still work from here.`;
 
 type RegisterTool = McpServer['registerTool'];
@@ -56,8 +85,9 @@ export function gatedRegistrar(server: McpServer, gate: PlanGate): Registrar {
   const registerTool = (name: string, config: { annotations?: { readOnlyHint?: boolean } }, cb: (...args: unknown[]) => unknown) => {
     const readOnly = config.annotations?.readOnlyHint === true;
     if (readOnly || ALLOWED_INACTIVE.has(name)) return server.registerTool(name, config as never, cb as never);
+    const asksGate = !HELD_IN_STORE_TOOLS.has(name);
     const guarded = async (...args: unknown[]) => {
-      const refused = await gate();
+      const refused = asksGate ? await gate() : null;
       if (refused) return toolError(refused);
       try {
         return await cb(...args);
@@ -67,6 +97,9 @@ export function gatedRegistrar(server: McpServer, gate: PlanGate): Registrar {
         // rather than an exception that ends the conversation. Here, behind every
         // write tool at once, rather than in each handler's own catch.
         if (err instanceof StorageFull) return toolError(err.message);
+        // And the free plan's (an account past it, or a note past its count), which the
+        // store decides from the limits the repos carry: the same kind of sentence.
+        if (err instanceof PlanRefused) return toolError(err.message);
         throw err;
       }
     };

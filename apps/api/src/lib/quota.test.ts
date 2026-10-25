@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { GB, STORE_FLOOR_BYTES, storeLimitBytes } from '@unbent/shared';
 import type { AttachmentsRepo } from './attachments-repo.js';
-import { StorageFull, assertRoom, quotaOf, storageFullMessage, storeFullMessage, storeLimitOf } from './quota.js';
+import { StorageFull, assertRoom, quotaOf, storageFullMessage, storeFullMessage, storeLimitOf, writeLimitsOf } from './quota.js';
 import type { PlanRow } from './plan.js';
 
 const stripe = {
@@ -48,6 +48,23 @@ describe('the storage quota', () => {
     expect(storeLimitOf({}, row)).toBeNull();
     expect(storeLimitOf(stripe, undefined)).toBeNull();
     expect(storeLimitOf(stripe, row)).toBe(STORE_FLOOR_BYTES + GB);
+  });
+
+  /**
+   * An account no plan holds is held to the free plan's gigabyte, and its store's room
+   * follows from that for notes; a file's text keeps the room its own storage gave it,
+   * so a read-only archive's text pass is not refused at a fraction of what it had.
+   */
+  it('gives a lapsed account the free plan\u2019s room for notes and its own for files\u2019 text', () => {
+    const ended = { plan: 'inactive', planUntil: 1, storageGb: 35, source: null, subscriptionStatus: null, cancelsAt: null } as unknown as PlanRow;
+    expect(quotaOf(stripe, ended)).toBe(GB);
+    expect(writeLimitsOf(stripe, ended)).toEqual({
+      store: storeLimitBytes(GB),
+      free: { notes: 100, attachmentBytes: GB },
+      text: storeLimitBytes(35 * GB),
+    });
+    const active = { plan: 'active', planUntil: null, storageGb: 35, source: 'comp', subscriptionStatus: null, cancelsAt: null } as unknown as PlanRow;
+    expect(writeLimitsOf(stripe, active)).toEqual({ store: storeLimitBytes(35 * GB), free: null });
   });
 
   it('says the notes are what to delete when it is the store that is full', () => {

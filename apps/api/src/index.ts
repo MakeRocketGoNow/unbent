@@ -60,8 +60,9 @@ export default {
         ? notifyLapsedPlans(env)
             .catch((err): { told: number; subrequests: number } => {
               console.error('[billing] lapse mail failed:', err);
-              // A failure mid-run spent at most the query and a send and a mark per slot.
-              return { told: 0, subrequests: 1 + 2 * LAPSE_MAIL_PER_RUN };
+              // A failure mid-run spent at most the query, and a store read, a send and a
+              // mark per slot.
+              return { told: 0, subrequests: 1 + 3 * LAPSE_MAIL_PER_RUN };
             })
             .then(({ subrequests }) => sweepStores(env, { spent: subrequests }))
         : dumpStores(env),

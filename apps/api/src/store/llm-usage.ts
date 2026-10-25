@@ -10,6 +10,12 @@ export interface PressLimits {
   cap: number | null;
   /** The most the calendar year's Auto-fill may have cost, in cents (`AUTOFILL_YEARLY_CENTS`, or the trial's). */
   yearlyCents: number | null;
+  /**
+   * The free plan's pool (`AUTOFILL_FREE_PRESSES`): the most presses the account may make
+   * while it is on the free plan, ever, counted only while it is. Absent or null for an
+   * account a plan holds, a trial included, so a trial's presses never come out of it.
+   */
+  freePresses?: number | null;
 }
 
 /** What a press was told: whether it may go ahead, and how many the day had before it. */
@@ -17,9 +23,18 @@ export interface PressCheck {
   allowed: boolean;
   /** Presses counted today, this one included when it was allowed. */
   today: number;
-  /** Which limit refused it, when one did: the day's count or the year's spend. */
-  reason?: 'day' | 'year';
+  /** Which limit refused it, when one did: the day's count, the year's spend, or the free plan's pool. */
+  reason?: 'day' | 'year' | 'free';
 }
+
+/**
+ * The key of the free plan's pool in `llm_usage`: one row for the account's whole life,
+ * on the empty day, which sorts before every date, so no year's range (`year`) ever
+ * reads it and the pool is one lookup on the primary key. A row of the same table
+ * rather than a table of its own: it is the same kind of count, dumped and restored with
+ * the rest, and needs no schema.
+ */
+const FREE_POOL = { day: '', job: 'free-press' } as const;
 
 /** The UTC day of `at`, as the table keys it. */
 export function usageDay(at: number): string {
@@ -86,6 +101,23 @@ export class LlmUsageCounter {
         return { allowed: false, today: before, reason: 'year' };
       }
     }
+    // The free plan's pool, last: it is the one limit no time lifts, and the day's and
+    // the year's refusals say when they end. Counted only while the limit is passed,
+    // which is only while the account is on the free plan.
+    const pool = limits.freePresses ?? null;
+    if (pool !== null) {
+      const used = this.freePressesUsed();
+      if (used >= pool) {
+        console.warn(`[llm] user=${this.userId} job=press refused free=${used} pool=${pool}`);
+        return { allowed: false, today: before, reason: 'free' };
+      }
+      this.sql.exec(
+        `INSERT INTO llm_usage (day, job, model, requests) VALUES (?1, ?2, '', 1)
+         ON CONFLICT(day, job, model) DO UPDATE SET requests = requests + 1`,
+        FREE_POOL.day,
+        FREE_POOL.job,
+      );
+    }
     this.sql.exec(
       `INSERT INTO llm_usage (day, job, model, requests) VALUES (?1, 'press', '', 1)
        ON CONFLICT(day, job, model) DO UPDATE SET requests = requests + 1`,
@@ -94,6 +126,14 @@ export class LlmUsageCounter {
     this.spend(at, JEV_PRESS_CENTS);
     console.log(`[llm] user=${this.userId} job=press today=${before + 1}`);
     return { allowed: true, today: before + 1 };
+  }
+
+  /** The presses taken from the free plan's pool, ever: one row off the primary key. */
+  freePressesUsed(): number {
+    return (
+      this.sql.first<{ requests: number }>(`SELECT requests FROM llm_usage WHERE day = ?1 AND job = ?2 AND model = ''`, FREE_POOL.day, FREE_POOL.job)
+        ?.requests ?? 0
+    );
   }
 
   /** Adds one answer's tokens to its day, job and model. */

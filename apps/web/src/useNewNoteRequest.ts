@@ -4,6 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import * as actions from './store/actions.js';
 import { invalidateNoteMembership } from './queries.js';
 import { markNewNote } from './useNewNote.js';
+import { isFreeNotesFull, showFreeNotesFull } from './free-notes.js';
 
 /**
  * Answers `/notes?new=1` (see `filters` in routes/notes.tsx): makes an empty note and
@@ -45,7 +46,8 @@ export function useNewNoteRequest(asked: 1 | undefined): void {
           replace: true,
         });
       } catch (err) {
-        console.error(err);
+        if (isFreeNotesFull(err)) showFreeNotesFull();
+        else console.error(err);
         await navigate({ to: '/notes', search: ({ new: _, ...p }) => p, replace: true });
       } finally {
         answering.current = false;

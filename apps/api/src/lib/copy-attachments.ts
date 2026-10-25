@@ -5,6 +5,7 @@ import {
 } from '@unbent/shared';
 import type { AttachmentsRepo } from './attachments-repo.js';
 import type { NotesRepo } from './notes-repo.js';
+import { PlanRefused } from './free-plan.js';
 import { assertRoom, StorageFull } from './quota.js';
 
 /** One file after a copy: what it was asked for as, and what it is called now. */
@@ -68,6 +69,8 @@ export async function copyAttachments(
      * sizes the rows hold; a move adds nothing and is not.
      */
     quota: number | null;
+    /** The files' sum, when the caller read it already this request (`refuseIfPastFree`). */
+    usedBytes?: number | undefined;
   },
 ): Promise<CopyAttachmentsResult> {
   const { attachments } = repos;
@@ -77,7 +80,7 @@ export async function copyAttachments(
   if (!input.move) {
     const wanted = new Set(input.filenames);
     const adding = (await attachments.listForNote(input.from)).filter((f) => wanted.has(f.filename)).reduce((n, f) => n + f.size, 0);
-    await assertRoom(attachments, input.quota, adding);
+    await assertRoom(attachments, input.quota, adding, input.usedBytes);
   }
 
   // Read once, after the copies: the body that matters is the one stored when the
@@ -120,7 +123,7 @@ export async function copyAttachments(
     try {
       info = input.skipExisting ? await attachments.record(row, { ifAbsent: true, quota }) : await attachments.record(row, { quota });
     } catch (err) {
-      if (err instanceof StorageFull) await blobs.delete(key).catch(() => {});
+      if (err instanceof StorageFull || err instanceof PlanRefused) await blobs.delete(key).catch(() => {});
       throw err;
     }
     if (!info) {

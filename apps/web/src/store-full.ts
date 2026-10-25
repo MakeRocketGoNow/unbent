@@ -1,7 +1,9 @@
 /**
- * Word from the outbox that the server refused a note write because the account's
- * store is past the room its plan allows (MAK-234), and what the rest of the app needs
- * of it. The shape of `plan-refused.ts`, for the other 402 with a code, and for the
+ * Word from the outbox that the server refused a note write for room the account's plan
+ * does not have, and what the rest of the app needs of it: the account's store past the
+ * room its plan allows (MAK-234), or, on the free plan, a new note past its count
+ * (`FREE_NOTES_FULL`, 2026-10-24), which is the same kind of refusal with the same way
+ * out and is carried here by the same path. The shape of `plan-refused.ts`, for the other 402 with a code, and for the
  * same reason: the answer changes when the person acts (deletes something, or adds
  * storage), so the refused entry is kept rather than ended, and ending it would roll the
  * row back to the server's copy and lose the text that was typed.
@@ -22,6 +24,8 @@
  * test can call it without a window.
  */
 let sentence: string | null = null;
+/** Which of the two the refusal was: the store's room, or the free plan's count of notes. */
+let refusedFor: StoreRefusal | null = null;
 const listeners = new Set<() => void>();
 const freedListeners = new Set<() => void>();
 
@@ -29,17 +33,30 @@ function tell(): void {
   for (const listener of listeners) listener();
 }
 
-/** The server refused a note write for the store's size, with this sentence. */
-export function storeRefused(message: string): void {
-  if (sentence === message) return;
+/**
+ * What was refused: `room` is the store past the room the plan allows, where clearing
+ * a note's history is one way out; `notes` is the free plan's count, where it is not.
+ */
+export type StoreRefusal = 'room' | 'notes';
+
+/** The server refused a note write, with this sentence, for the store's room or the free plan's count. */
+export function storeRefused(message: string, of: StoreRefusal = 'room'): void {
+  if (sentence === message && refusedFor === of) return;
   sentence = message;
+  refusedFor = of;
   tell();
+}
+
+/** What the waiting refusal is for, or null while nothing is refused; see `StoreRefusal`. */
+export function storeRefusedFor(): StoreRefusal | null {
+  return refusedFor;
 }
 
 /** The server took a queued write: there is room, and nothing need go round the queue. */
 export function storeAccepted(): void {
   if (sentence === null) return;
   sentence = null;
+  refusedFor = null;
   tell();
 }
 
@@ -73,6 +90,7 @@ export function onStoreFreed(listener: () => void): () => void {
 /** For tests. */
 export function resetStoreFull(): void {
   sentence = null;
+  refusedFor = null;
   listeners.clear();
   freedListeners.clear();
 }

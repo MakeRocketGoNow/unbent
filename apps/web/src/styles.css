@@ -649,11 +649,14 @@ button.link {
 /* The Plan page: the storage meter and the choice of storage before a checkout. */
 .plan-meter { max-width: 24rem; margin: 0 0 0.5rem; }
 .plan-meter .plan-meter-full { background: var(--bad); }
-/* The two lines under the meter, files and the store, are one reading of what the
-   account holds: set a step apart rather than a paragraph apart, with the paragraph's
-   gap after the pair, so they read together and the buttons below keep their distance. */
-.plan-held { display: grid; gap: 0.2rem; margin: 0 0 0.7rem; }
-.settings-section .plan-held p { margin: 0; }
+/* The plan's meters (`FreeMeters`, `StorageMeter`): each a line, then its bar a step under
+   it, and the paragraph's gap between meters, so the set reads as one reading of the
+   account; the store's line sits a step under the files' bar, as part of that meter. */
+.plan-meters { display: grid; gap: 0.9rem; margin: 0 0 0.9rem; }
+.settings-section .plan-meters p { margin: 0; }
+.plan-free-meter { display: grid; gap: 0.35rem; }
+.plan-meters .plan-meter { margin: 0; }
+.settings-section .plan-meters .plan-meter-note { margin-top: 0.35rem; }
 .plan-storage-choice {
   display: flex;
   align-items: center;
@@ -10838,6 +10841,22 @@ button.settings-nav-item {
   font-size: 1.05rem;
 }
 
+/* The free plan beside the paid one: the same card without its border, so the plan being
+   sold is the one that stands out. The lapse's paragraph sits under the free card, which
+   is the shorter, rather than across both at a line length nobody reads; on a phone it
+   comes after both cards, since what happens when a plan lapses follows the plan. */
+.front-plan-free { border-color: transparent; background: color-mix(in srgb, var(--fg) 4%, transparent); }
+.front-pricing {
+  grid-template-areas:
+    'free plan'
+    'lapse plan';
+  grid-template-rows: auto 1fr;
+  row-gap: 2rem;
+}
+.front-pricing .front-plan-free { grid-area: free; }
+.front-pricing .front-plan:not(.front-plan-free) { grid-area: plan; }
+.front-pricing .front-lapse { grid-area: lapse; }
+
 .front-lapse p {
   margin: 0.35rem 0 0;
   color: var(--muted);
@@ -11105,7 +11124,7 @@ button.settings-nav-item {
 
   .front-grid { gap: 1.75rem; }
 
-  .front-pricing { grid-template-columns: minmax(0, 1fr); gap: 2rem; }
+  .front-pricing { grid-template-columns: minmax(0, 1fr); grid-template-areas: 'free' 'plan' 'lapse'; grid-template-rows: none; gap: 2rem; }
 
   .front-plan { padding: 1.25rem; }
 

@@ -27,10 +27,27 @@
  */
 const listeners = new Set<() => void>();
 const activeListeners = new Set<() => void>();
+const freedListeners = new Set<() => void>();
 let lapsed = false;
 let toldAt = 0;
 /** The plan as the page last read it: true once it said inactive, false once it said otherwise. */
 let knownInactive = false;
+/**
+ * And whether it said `free`, for the free plan's count, which the actions check on the
+ * device before they make a note (`roomForNotes` in store/actions.ts). False until the
+ * plan has been read, or until the outbox restores the answer its account's last page
+ * read (`planFreeRestored`): a guess would refuse a trial's notes.
+ */
+let knownFree = false;
+/** Whether this page has read the plan itself, after which a restored answer is stale. */
+let freeRead = false;
+/**
+ * Whose answer it is: the account this tab was last handed to (`claimPlanFor`). A
+ * sign-out and another person's sign-in happen without a reload, and an answer read for
+ * one account must not reach the next one's outbox, or count the next one's notes.
+ */
+let freeOwner: string | null = null;
+const readListeners = new Set<(free: boolean) => void>();
 
 /** How long a refusal's word is kept to itself before the listeners hear it again. */
 export const REFUSAL_TELL_MS = 60_000;
@@ -62,12 +79,67 @@ export function planLapsed(): boolean {
  * changes. Inactive holds the kept entry back from the wire; active again lets it go,
  * at once.
  */
-export function planIs(inactive: boolean): void {
+export function planIs(inactive: boolean, free = false): void {
+  if (!freeRead || knownFree !== free) for (const listener of readListeners) listener(free);
+  // A free account that subscribed is active in the same sense: a create the free
+  // plan's count refused is kept at the head of the queue (`storeRefused`, not
+  // `planRefused`, so `lapsed` says nothing of it) and should go now rather than when
+  // the executor's own wait comes round, with the strip telling a subscriber to
+  // subscribe meanwhile.
+  const wasFree = freeRead && knownFree;
+  knownFree = free;
+  freeRead = true;
   const was = knownInactive;
   knownInactive = inactive;
-  if (inactive || !(was || lapsed)) return;
+  if (inactive || !(was || lapsed || (wasFree && !free))) return;
   lapsed = false;
   for (const listener of activeListeners) listener();
+}
+
+/** Whether the plan was last read as `inactive`, for a caller deciding whether a delete is worth asking about (`freedAfter` in the actions). */
+export function readOnlyKnown(): boolean {
+  return knownInactive;
+}
+
+/**
+ * Told when the page reads whether the account is on the free plan, and when that
+ * answer changes: the outbox keeps it beside its entries, per account, so a page that
+ * opens offline, or whose read of the plan fails, still counts a free account's notes
+ * before it makes one. Without it such a page made the note unchecked, and the server's
+ * refusal then sat at the head of the queue, holding back every later save.
+ */
+export function onPlanRead(listener: (free: boolean) => void): () => void {
+  readListeners.add(listener);
+  // The plan is a plain request started when the page mounts, and the outbox opens after
+  // the local store and the lock, or later still when the library moves to this tab: an
+  // outbox that heard only reads made after it opened missed the one that mattered, and
+  // kept an old answer (a free account since subscribed) for good. So it hears this
+  // page's answer at once, when there is one.
+  if (freeRead) listener(knownFree);
+  return () => readListeners.delete(listener);
+}
+
+/**
+ * Hands the plan's answer to the account the tab now belongs to (`handOver`): another
+ * account's answer is forgotten, so its outbox is not told it and its notes are not
+ * counted by it, until the new account's own plan is read or its outbox restores what
+ * it kept. The same account again keeps what it has.
+ */
+export function claimPlanFor(userId: string): void {
+  if (freeOwner === userId) return;
+  freeOwner = userId;
+  knownFree = false;
+  freeRead = false;
+}
+
+/** The answer the outbox kept, from the account's last page: used until this page reads the plan itself. */
+export function planFreeRestored(free: boolean): void {
+  if (!freeRead) knownFree = free;
+}
+
+/** Whether the plan was last read as `free`: on the free plan, and under its limits then. */
+export function planFree(): boolean {
+  return knownFree;
 }
 
 /** Whether the kept entry should wait rather than be sent: the plan was read, and said inactive. */
@@ -81,11 +153,35 @@ export function onPlanActive(listener: () => void): () => void {
   return () => activeListeners.delete(listener);
 }
 
+/**
+ * A delete for good went through (a purge, an emptied trash, a file deleted) while the
+ * plan read inactive. Since the free plan (2026-10-24) an account past its limits is
+ * read-only only until it is back under them, which is what it holds, which only the
+ * server can say: so the plan is read again (`usePlanRefresh`), and if it now says
+ * `free`, `planIs` lets any kept entry go, as a checkout would. Nothing is said while
+ * the plan reads otherwise: a purge on an account that can write changes nothing here.
+ */
+export function planFreed(): void {
+  if (!knownInactive) return;
+  for (const listener of freedListeners) listener();
+}
+
+/** Told when a delete for good may have taken a read-only account under the free plan. */
+export function onPlanFreed(listener: () => void): () => void {
+  freedListeners.add(listener);
+  return () => freedListeners.delete(listener);
+}
+
 /** For tests. */
 export function resetPlanRefused(): void {
   lapsed = false;
   knownInactive = false;
+  knownFree = false;
+  freeRead = false;
+  freeOwner = null;
+  readListeners.clear();
   toldAt = 0;
   listeners.clear();
   activeListeners.clear();
+  freedListeners.clear();
 }

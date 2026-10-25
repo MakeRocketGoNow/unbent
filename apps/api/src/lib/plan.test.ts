@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { BASE_STORAGE_GB, TRIAL_DAYS } from '@unbent/shared';
-import { RENEWAL_GRACE_MS, accountPlanOf, planStateOf, planUpdateSql, trialEnd, type PlanRow } from './plan.js';
+import { BASE_STORAGE_GB, FREE_NOTES, FREE_STORAGE_GB, GB, TRIAL_DAYS } from '@unbent/shared';
+import { RENEWAL_GRACE_MS, accountPlanOf, accountStateOf, lapsed, planStateOf, planUpdateSql, storageGbOf, trialEnd, type PlanRow } from './plan.js';
 
 const NOW = Date.UTC(2026, 9, 10, 12);
 const DAY = 24 * 60 * 60 * 1000;
@@ -87,6 +87,39 @@ describe('accountPlanOf', () => {
   it('flags a renewal Stripe could not collect', () => {
     const due = row({ plan: 'active', source: 'stripe', subscriptionStatus: 'past_due', planUntil: NOW + 5 * DAY });
     expect(accountPlanOf(due, NOW).subscription?.pastDue).toBe(true);
+  });
+});
+
+describe('the free plan', () => {
+  const ended = NOW + (TRIAL_DAYS + 1) * DAY;
+  const small = { notes: FREE_NOTES, attachmentBytes: FREE_STORAGE_GB * GB };
+  const big = { notes: 1000, attachmentBytes: 0 };
+
+  it('reads an ended trial, a lapsed subscription and an ended comp by what the account holds', () => {
+    const lapsedRows = [
+      row(),
+      row({ plan: 'active', source: 'stripe', subscriptionStatus: 'canceled', planUntil: NOW + DAY }),
+      row({ plan: 'active', source: 'comp', planUntil: NOW + DAY }),
+      row({ plan: 'inactive', source: 'comp', planUntil: NOW }),
+    ];
+    for (const r of lapsedRows) {
+      expect(lapsed(r, ended)).toBe(true);
+      expect(accountStateOf(r, ended, small)).toBe('free');
+      expect(accountStateOf(r, ended, big)).toBe('inactive');
+      // Nothing to read it against is the row's own word.
+      expect(accountStateOf(r, ended)).toBe('inactive');
+    }
+    // A plan that holds is what it is, whatever the account holds.
+    expect(accountStateOf(row(), NOW, big)).toBe('trial');
+    expect(accountStateOf(row({ plan: 'active', source: 'comp', planUntil: null }), NOW, big)).toBe('active');
+  });
+
+  it('gives a free account no instant to lock at, and the free plan’s storage while no plan holds', () => {
+    const free = accountPlanOf(row(), ended, small);
+    expect(free).toMatchObject({ state: 'free', readOnlyAt: null, storageGb: FREE_STORAGE_GB, until: trialEnd(NOW) });
+    expect(accountPlanOf(row(), ended, big)).toMatchObject({ state: 'inactive', readOnlyAt: trialEnd(NOW), storageGb: FREE_STORAGE_GB });
+    expect(accountPlanOf(row(), NOW, big)).toMatchObject({ state: 'trial', storageGb: BASE_STORAGE_GB });
+    expect(storageGbOf(row({ plan: 'active', source: 'comp', planUntil: null, storageGb: 35 }), NOW)).toBe(35);
   });
 });
 
