@@ -144,6 +144,15 @@ export interface FreeLimits {
 export interface WriteLimits {
   store: number | null;
   free: FreeLimits | null;
+  /**
+   * The room a file's text may fill, where it is not `store`: for an account no plan
+   * holds, the room its own plan's storage gave it. `store` is then the free plan's
+   * (`storeLimitBytes` of its gigabyte), right for notes; but a file's text is derived
+   * from a file already held and exempt from the read-only rule, and a read-only archive
+   * past the free plan would otherwise have its text pass refused at a fraction of the
+   * room it had, with its files left unsearchable. Absent means `store`.
+   */
+  text?: number | null;
 }
 
 /**
@@ -1017,9 +1026,10 @@ export class UserStore extends DurableObject<StoreEnv> {
     return free ? (adding) => this.admit(free, adding) : undefined;
   }
 
-  /** The other half alone: the store's room, for the text writes the read-only rule exempts (`recordText`). */
+  /** The other half alone: the store's room for a file's text (`WriteLimits.text`), for the text writes the read-only rule exempts (`recordText`). */
   private roomOnly(limit: StoreLimit): StoreLimit {
-    return limitsOf(limit)?.store ?? null;
+    const limits = limitsOf(limit);
+    return (limits?.text !== undefined ? limits.text : limits?.store) ?? null;
   }
 
   /**

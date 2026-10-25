@@ -1,4 +1,4 @@
-import { GB, STORAGE_FULL_CODE, storageQuotaBytes, storeLimitBytes } from '@unbent/shared';
+import { FREE_STORAGE_GB, GB, STORAGE_FULL_CODE, storageQuotaBytes, storeLimitBytes } from '@unbent/shared';
 import type { AttachmentsRepo } from './attachments-repo.js';
 import { freeLimitsOf } from './free-plan.js';
 import { billingOn, type StripeEnv } from './stripe.js';
@@ -87,7 +87,10 @@ export function storeLimitOf(env: StripeEnv, plan: PlanRow | undefined): number 
  */
 export function writeLimitsOf(env: StripeEnv, plan: PlanRow | undefined): WriteLimits | null {
   if (!billingOn(env) || !plan) return null;
-  return { store: storeLimitOf(env, plan), free: freeLimitsOf(env, plan) };
+  const free = freeLimitsOf(env, plan);
+  // A file's text keeps the room the account's own storage gave it; see `WriteLimits.text`.
+  const text = free ? storeLimitBytes(storageQuotaBytes(Math.max(plan.storageGb, FREE_STORAGE_GB))) : undefined;
+  return { store: storeLimitOf(env, plan), free, ...(text !== undefined ? { text } : {}) };
 }
 
 /** The same, read from the database, for a caller without the row on its context. */

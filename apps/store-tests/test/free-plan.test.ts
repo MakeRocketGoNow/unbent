@@ -157,6 +157,10 @@ describe('the free plan', () => {
     // A file's text is derived from a file already held, which the read-only rule exempts.
     await stub.recordText({ attachmentId: 'big', noteId: id!, filename: 'big.pdf', text: 'scanned page' }, undefined, limits);
     expect(await stub.textFor(id!, 'big.pdf')).toBe('scanned page');
+    // And it is held to the text's own room where the limits name one, not the notes'.
+    await expect(stub.recordText({ attachmentId: 'big', noteId: id!, filename: 'big.pdf', text: 'again' }, undefined, { store: 1, free, text: 1 })).rejects.toMatchObject({ code: 'STORAGE_FULL', of: 'notes' });
+    await stub.recordText({ attachmentId: 'big', noteId: id!, filename: 'big.pdf', text: 'again' }, undefined, { store: 1, free, text: null });
+    expect(await stub.textFor(id!, 'big.pdf')).toBe('again');
     // With no free limits (a plan holding, or billing off) nothing is asked.
     expect(await stub.update(id!, { title: 'With a plan' }, { store: null, free: null })).toMatchObject({ title: 'With a plan' });
     expect(await stub.update(id!, { title: 'No billing' })).toMatchObject({ title: 'No billing' });
