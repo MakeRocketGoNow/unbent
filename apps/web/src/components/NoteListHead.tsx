@@ -38,6 +38,12 @@ interface NoteListHeadProps {
    * way Evernote heads its middle column with the notebook's name and count.
    */
   title: string;
+  /**
+   * A small muted line above the title, when the title alone would not say where the list
+   * is: with a saved view open the title is the view's name and this is its notebook's.
+   * Left out otherwise, so a plain notebook's head is exactly as tall as it was.
+   */
+  eyebrow?: string | undefined;
   /** The search box's value, which is the URL's `q`. */
   query: string;
   onQuery: (next: string) => void;
@@ -136,6 +142,7 @@ export function NoteListHead({
   count,
   countMenu,
   title,
+  eyebrow,
   query,
   onQuery,
   onArrowDown,
@@ -263,6 +270,11 @@ export function NoteListHead({
             The title is the notebook's own name, which can outrun a narrow column; the
             tooltip carries what the ellipsis drops. */}
         <div className="list-title">
+          {eyebrow && (
+            <span className="list-eyebrow" title={eyebrow}>
+              {eyebrow}
+            </span>
+          )}
           <h2 title={title}>{title}</h2>
           {count === null ? (
             <span className="count" aria-hidden="true">

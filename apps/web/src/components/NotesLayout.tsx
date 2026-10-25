@@ -189,6 +189,46 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
       : undefined;
   /** The notebook list is the whole account's; see `useLibraryWhole`. */
   const libraryWhole = useLibraryWhole();
+  /*
+   * The saved view the list was opened from (`?saved=`), once it is known to be one of
+   * this notebook's. It names the heading and is what an edit is measured against.
+   */
+  const openView =
+    saved !== undefined && notebookId !== undefined
+      ? views.data?.find((v) => v.id === saved && v.notebookId === notebookId)
+      : undefined;
+  /*
+   * Ids of views saved from this page, which the list opens at the moment the save
+   * returns. `createView` resolves once the library holds the row, but the query that
+   * reads it re-runs a beat later, and in that beat the id names no view it knows: this
+   * keeps the drop below from taking a view that was made a moment ago for a stale one.
+   */
+  const madeHere = useRef(new Set<string>());
+  /*
+   * A `saved` that names no view of this notebook (deleted on another device, an old
+   * link, a notebook renamed under it) is dropped once that is known, as a stale field
+   * sort is below: the list it opens is the notebook with the filters the link carries,
+   * and the heading names the notebook. Replaced, not pushed: Back should not return to
+   * an address naming a view that is gone. Not while the views or the notebooks are
+   * still arriving, which is not knowing.
+   */
+  const savedStale =
+    saved !== undefined &&
+    openView === undefined &&
+    !madeHere.current.has(saved) &&
+    views.isSuccess &&
+    !views.isFetching &&
+    notebooks.isSuccess &&
+    (notebookId !== undefined || libraryWhole);
+  useEffect(() => {
+    if (!savedStale) return;
+    void navigate({
+      to: '.',
+      search: (prev) => ({ ...prev, saved: undefined }),
+      replace: true,
+      resetScroll: false,
+    });
+  }, [savedStale, navigate]);
   const fieldDefs = useQuery(notebookFieldsQuery(notebookId));
   const config = useQuery(configQuery());
   /** The definition behind a sort by a field, once the notebook's fields have loaded. */
@@ -229,6 +269,10 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    * the order the writes land in. Back to a bare entry is an arrival too, and opens in
    * the remembered order rather than the default that entry happened to be made with:
    * remembering is the point, and the list is the same notes either way.
+   *
+   * Not into a saved view. A view keeps its own order, the default included, and a view
+   * saved in "Newest first" would open in the notebook's remembered "A–Z" and read as
+   * edited the moment it opened.
    */
   const seededFor = useRef<string | null>(null);
   const scope = notebook ?? '';
@@ -236,7 +280,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (seededFor.current === scope) return;
     seededFor.current = scope;
-    if (!orderingUnsaid || !hasRememberedSort(notebook)) return;
+    if (!orderingUnsaid || saved !== undefined || !hasRememberedSort(notebook)) return;
     void navigate({
       to: '.',
       search: (prev) => ({ ...prev, ...rememberedSort(notebook) }),
@@ -692,9 +736,16 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
         hasNextPage: list.hasNextPage,
       })
     : undefined;
+  /*
+   * Whether a sort chosen here is remembered for the notebook (`rememberSort`). Not while
+   * a view is open: the order on screen is then the view's, edited or not, and a re-sort
+   * made to look at a view a different way would otherwise change how the plain notebook
+   * opens next time, which nobody asked of it. Saving the view is how that order is kept.
+   */
+  const remembersSort = openView === undefined;
   /** A column header was clicked: write the order it asks for. */
   const sortBy = (target: SortTarget) => {
-    rememberSort(notebook, nextColumnSort(target, { sort, order, sortField }));
+    if (remembersSort) rememberSort(notebook, nextColumnSort(target, { sort, order, sortField }));
     void navigate({
       to: '/notes',
       search: (prev) => ({ ...prev, ...nextColumnSort(target, prev) }),
@@ -814,7 +865,14 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    * tag stays a chip: the chips are what can be taken off, and a heading listing several
    * would either duplicate them or truncate.
    */
-  const heading = scopeLabel(notebook, selectedTags);
+  /*
+   * With a view open, the view is where you are: its name is the heading and its
+   * notebook the line over it, in the notebook's own spelling rather than the address's
+   * (a link may say `receipts`), as the rail draws it.
+   */
+  const notebookName = notebooks.data?.notebooks.find((nb) => nb.id === notebookId)?.name ?? notebook;
+  const heading = openView ? openView.name : scopeLabel(notebook, selectedTags);
+  const eyebrow = openView ? notebookName : undefined;
   const tagAsPlace = tagPlace(notebook, selectedTags);
   const chipTags = tagAsPlace ? [] : selectedTags;
 
@@ -976,6 +1034,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
           count={countLabel}
           countMenu={countMenu}
           title={heading}
+          eyebrow={eyebrow}
           query={q}
           onQuery={setQuery}
           onArrowDown={() => enterList(listRef.current ?? tableRef.current)}
@@ -1008,6 +1067,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
             results === null || shownView !== 'list' ? (
               <NotesSort
                 notebook={notebook}
+                remember={remembersSort}
                 sort={sort}
                 order={order}
                 sortField={sortField}

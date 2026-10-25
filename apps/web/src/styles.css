@@ -7892,6 +7892,25 @@ button.settings-nav-item {
   text-overflow: ellipsis;
 }
 
+/*
+   The notebook a saved view is in, over the view's name (`NoteListHead`'s `eyebrow`).
+
+   One small line, and the only thing that makes a view's head taller than a notebook's:
+   the count stays the count, and the name stays the title's size, since the view's name
+   is the answer to "where am I" and the notebook only qualifies it. Muted and smaller
+   than the count, so the eye lands on the name first; ellipsised, since a notebook's name
+   is anyone's length. The line-height is tight so the three lines still sit in a phone's
+   44px row plus one small line, not two.
+*/
+.list-eyebrow {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 0.72rem;
+  line-height: 1.1;
+  color: var(--muted);
+}
+
 .list-head-actions {
   display: flex;
   align-items: center;
