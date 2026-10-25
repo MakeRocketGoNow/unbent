@@ -593,12 +593,15 @@ growing wait. Two rules keep the queue from sticking, each with a test: every an
 server would give again (a 4xx other than a lapsed session, a timeout or a rate limit, a
 refused precondition) is a `NonRetriableError` that ends its entry, and a `saveNote` whose
 note has a later entry in the queue does nothing, since each save carries the whole draft.
-Two 402s are kept rather than ended, because the answer changes when the person acts and
-ending the entry would roll back what they typed: a lapsed plan's (`plan-refused.ts`) and
-a store past its room's (`STORAGE_FULL` with `of: 'notes'`, `store-full.ts`). While
-either waits at the head of the queue the deletes go to the server round it
+Three 402s are kept rather than ended, because the answer changes when the person acts
+and ending the entry would roll back what they typed: a lapsed plan's (`plan-refused.ts`),
+a store past its room's (`STORAGE_FULL` with `of: 'notes'`, `store-full.ts`), and a free
+account's note past its count (`FREE_NOTES_FULL`, carried by `store-full.ts` too). While
+any waits at the head of the queue the deletes go to the server round it
 (`roundTheQueue`), and the one that ends a refusal (a checkout, a purge) sends the kept
-entry again at once. Any 4xx is kept too while the page is behind the deploy, until the
+entry again at once. The third holds back saves the server would take, so the actions
+refuse such a note on the device before it is queued (`roomForNotes`), and only a note
+the device could not count (made on another device a moment ago) reaches the queue. Any 4xx is kept too while the page is behind the deploy, until the
 reload; see [Builds side by side](#builds-side-by-side).
 Only the tab holding the account's leader lock replays (`store/leader.ts`); another tab
 waits in the lock's queue and leads the moment the holder goes, rather than staying a
