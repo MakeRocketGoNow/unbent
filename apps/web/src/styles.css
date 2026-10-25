@@ -7940,8 +7940,8 @@ button.settings-nav-item {
    the name's height, not as a 44px square: in a square the title's line would grow by
    the difference and the count under it would move. Under a finger an invisible layer
    gives it the full target, as the count's menu does. Its menu hangs from its left edge,
-   since it sits at the start of the row where the default right-anchored list would hang
-   off a phone's left side.
+   since it sits near the start of the row where the default right-anchored list would
+   hang off a phone's left side.
 */
 .list-title-row {
   display: flex;
@@ -7972,6 +7972,9 @@ button.settings-nav-item {
 .title-menu .overflow-list {
   left: 0;
   right: auto;
+  /* Two short words. The default floor is sized for an email address, and hung from a
+     trigger in the middle of a phone's row it ran off the right edge. */
+  min-width: 10rem;
 }
 
 /*
@@ -8626,7 +8629,8 @@ button.settings-nav-item {
   padding-block: 0;
 }
 
-.filter-chips .btn-quiet:not(.btn-danger) { color: var(--fg); }
+.filter-chips .btn-quiet:not(.btn-danger),
+.sheet-view-actions .btn-quiet:not(.btn-danger) { color: var(--fg); }
 
 .view-edited {
   display: inline-flex;
@@ -10222,6 +10226,19 @@ button.settings-nav-item {
   .filter-chip {
     min-height: 2.25rem;
     padding-inline: 0.6rem;
+  }
+
+  /* The saved-view actions after the chips (`ViewActions`) are pressed by the same thumb,
+     so they take the chips' height, and the name field the same. */
+  .filter-chips .btn-small,
+  .sheet-view-actions .btn-small {
+    min-height: 2.25rem;
+  }
+
+  .filter-chips .view-name-field,
+  .sheet-view-actions .view-name-field {
+    height: 2.25rem;
+    font-size: 1rem;
   }
 }
 

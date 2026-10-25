@@ -81,7 +81,9 @@ export function ViewNameField({
     } catch (err) {
       setError((err as Error).message);
       setBusy(false);
-      ref.current?.focus();
+      // Back to the field to fix the name, once it is enabled again: it was disabled
+      // while the save was out, and a disabled input does not take focus.
+      requestAnimationFrame(() => ref.current?.focus());
     }
   }
 
