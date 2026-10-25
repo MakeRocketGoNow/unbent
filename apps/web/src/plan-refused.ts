@@ -81,11 +81,17 @@ export function planLapsed(): boolean {
  */
 export function planIs(inactive: boolean, free = false): void {
   if (!freeRead || knownFree !== free) for (const listener of readListeners) listener(free);
+  // A free account that subscribed is active in the same sense: a create the free
+  // plan's count refused is kept at the head of the queue (`storeRefused`, not
+  // `planRefused`, so `lapsed` says nothing of it) and should go now rather than when
+  // the executor's own wait comes round, with the strip telling a subscriber to
+  // subscribe meanwhile.
+  const wasFree = freeRead && knownFree;
   knownFree = free;
   freeRead = true;
   const was = knownInactive;
   knownInactive = inactive;
-  if (inactive || !(was || lapsed)) return;
+  if (inactive || !(was || lapsed || (wasFree && !free))) return;
   lapsed = false;
   for (const listener of activeListeners) listener();
 }

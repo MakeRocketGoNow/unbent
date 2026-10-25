@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { claimPlanFor, onPlanFreed, onPlanRead, planFree, planFreeRestored, planFreed, planIs, resetPlanRefused } from './plan-refused.js';
+import { claimPlanFor, onPlanActive, onPlanFreed, onPlanRead, planFree, planFreeRestored, planFreed, planIs, resetPlanRefused } from './plan-refused.js';
 
 /**
  * A read-only account is read-only only while it holds more than the free plan does
@@ -31,6 +31,19 @@ describe('planFreed', () => {
  */
 describe('the free plan\u2019s answer', () => {
   afterEach(() => resetPlanRefused());
+
+  it('counts as the plan going active when the account subscribes from it, so a kept create goes now', () => {
+    const heard = vi.fn();
+    onPlanActive(heard);
+    planIs(false, true);
+    planIs(false, true);
+    expect(heard).not.toHaveBeenCalled();
+    planIs(false, false);
+    expect(heard).toHaveBeenCalledTimes(1);
+    // A plan that holds, read again, is nothing new.
+    planIs(false, false);
+    expect(heard).toHaveBeenCalledTimes(1);
+  });
 
   it('is told to a listener that comes after this page read it', () => {
     planIs(false, true);
