@@ -1169,26 +1169,46 @@ Rules that hold it together, each with a test:
 An instance with the four `STRIPE_*` settings sells a plan (MAK-108; "Selling the plan" in
 `docs/billing.md`; Stripe Managed Payments is the merchant of record, Paddle was until
 2026-10-22), and every account on it is on its trial, paid for, comped, or lapsed. A
-lapsed account is **read-only**: every write is refused with a 402 except a delete, and
-reads, search, export and an assistant's reads keep working. Three things hold that:
+lapsed account is on the **free plan** (2026-10-24, "The free plan" in the same doc):
+`free` while it holds at most `FREE_NOTES` notes, live and trashed together, and
+`FREE_STORAGE_GB` of files, and writing as before except a note past the count; past
+either it is `inactive`, **read-only**: every write is refused with a 402 except a
+delete, and reads, search, export and an assistant's reads keep working. Which of the two
+is what it holds, so nothing switches it: deleting for good under the limits is a way
+back as well as subscribing. These hold that:
 
 - **The rule is global and deny by default.** `requireActivePlan` in
-  `lib/plan-middleware.ts` runs in front of every `/api` route, and a request that is
-  not a read is refused unless `EXEMPT` there says otherwise, with its reason. A new
-  mutating route is read-only for a lapsed account until someone adds it to that list,
-  and `plan-middleware.test.ts` reads the app's route table and fails by name on any
-  mutating route that is neither exempt nor listed as gated, so a new route has to be
-  classified, out loud, in the commit that adds it. The MCP endpoint is one POST for
-  every tool, so its write tools check for themselves through `gatedRegistrar`
-  (`mcp/plan-gate.ts`), keyed on each tool's `readOnlyHint`.
+  `lib/plan-middleware.ts` runs in front of every `/api` route, and a write from a lapsed
+  account is refused unless `EXEMPT` there lets any account make it, with its reason, or
+  `HELD_IN_STORE` lists it as a route whose every write goes to the store with the free
+  plan's limits, where the store decides. A new mutating route is read-only for a lapsed
+  account until someone adds it to one of those lists, and `plan-middleware.test.ts`
+  reads the app's route table and fails by name on any mutating route that is on
+  neither, so a new route has to be classified, out loud, in the commit that adds it.
+  The MCP endpoint is one POST for every tool, so its write tools are classified the same
+  way (`HELD_IN_STORE_TOOLS` and `ALLOWED_INACTIVE` in `mcp/plan-gate.ts`), and a test
+  reads every write tool off the modules.
+- **The store decides free from read-only, in the call that would write.** What an
+  account holds is its store's (`note_counts`), so the Worker carries the free plan's
+  limits with each write the way it carries the store's room (`writeLimitsOf`, through
+  `reposFor`) and `UserStore.assertFree` refuses there: `PLAN_INACTIVE` past the limits,
+  `FREE_NOTES_FULL` for a write that makes notes at the count. No request pays a second
+  call to ask first; the rows-read test bounds the check at the counts row. A new store
+  write takes the limits (whole, `freeOnly`, or `roomOnly` for a file's text) and says
+  which in the comment over the method list, and a new write that makes notes passes how
+  many (`adding`). The plan read (`GET /api/me/plan`, `accountPlanFor`) is the one read
+  that asks the store what a lapsed account holds, to answer `free` or `inactive`.
 - **What the account is, is derived.** `planStateOf` works the row out against the
-  clock; nothing flips rows on a timer. A comp is set from the operator's page, never
+  clock, and `accountStateOf` reads a lapsed row against what the account holds; nothing
+  flips rows on a timer, and the page re-reads the plan at the row's instants rather than
+  locking itself by the clock. A comp is set from the operator's page, never
   with a Stripe coupon (a 100% coupon there still asks for a card) and while it
   runs the webhook changes nothing on its row (`planPatchFor`), since a former
   subscriber who is comped still has the customer id the webhook finds rows by.
 - **Bytes are checked where they come in.** Every path that stores or copies a file
   passes a `quota` to `storeAttachment` or `copyAttachments` (lib/quota.ts); the sum it
   is checked against is the store's own (schema 0008), never a read of the files table.
+  A lapsed account's quota is the free plan's gigabyte (`storageGbOf`).
 - **The store itself is bounded too** (MAK-234): half a gigabyte plus a tenth of the
   quota, since note bodies, their history and files' text live in the object's SQLite
   and nothing in the quota counts them. The limit travels with the repos (`reposFor`
@@ -1198,7 +1218,8 @@ reads, search, export and an assistant's reads keep working. Three things hold t
   `reposFor` caller that writes must not pass `noStoreLimit`.
 
 Where billing is off (every fresh checkout, every fork) none of this exists: every
-account is active for good, the Plan tab is not drawn, and nothing reads a plan row.
+account is active for good, the Plan tab is not drawn, nothing reads a plan row, and no
+write carries the free plan's limits.
 
 ## Rows read are still the budget
 

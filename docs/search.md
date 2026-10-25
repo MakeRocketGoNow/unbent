@@ -248,7 +248,9 @@ past it, the button says how long until it works again. Unset, nothing is refuse
 cost at the prices kept in `packages/shared/src/llm-prices.ts`; past it the button says
 this year's Auto-fill has been used, and never names money. An instance that sells
 the plan can give an account on its trial smaller numbers with `AUTOFILL_TRIAL_DAILY_CAP`
-and `AUTOFILL_TRIAL_YEARLY_CENTS`; [Selling the plan](billing.md#selling-the-plan) says why.
+and `AUTOFILL_TRIAL_YEARLY_CENTS`, which an account on the free plan gets too, beside a
+lifetime pool of its own (`AUTOFILL_FREE_PRESSES`); [Selling the plan](billing.md#selling-the-plan)
+says why.
 
 `POST /api/notes/:id/autofill` answers with the suggestions and applies nothing; the client
 does. The Android app is the site in a WebView, so it has the same control.
