@@ -134,9 +134,11 @@ export const STORAGE_FULL_CODE = 'STORAGE_FULL';
 export const FREE_NOTES_FULL_CODE = 'FREE_NOTES_FULL';
 
 /**
- * The sentence for that refusal, with the numbers and the two ways out. In the shared
- * package because the page says the same before it asks: New note on a free account at
- * the number says this rather than making a note the server will refuse.
+ * The sentence for that refusal, with the numbers and the two ways out: the 402's, and
+ * the device's own when it refuses the note before queueing it (`FreeNotesFullError` in
+ * the web app), which a batch of dropped files shows as it is. In the shared package so
+ * the two say the same. The notice New shows says a shorter one of its own, in a
+ * snackbar, and leaves the numbers to the Plan page.
  */
 export function freeNotesFullMessage(held: number, adding = 1): string {
   const room = Math.max(0, FREE_NOTES - held);
