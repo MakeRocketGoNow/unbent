@@ -1011,6 +1011,12 @@ export class UserStore extends DurableObject<StoreEnv> {
     return limits?.free ? { store: null, free: limits.free } : null;
   }
 
+  /** The free plan's count alone, for a write that learns how many notes it makes as it goes (`createMany`); nothing without free limits. */
+  private freeCount(limit: StoreLimit): ((adding: number) => void) | undefined {
+    const free = this.freeOnly(limit);
+    return free ? (adding) => this.admit(free, adding) : undefined;
+  }
+
   /** The other half alone: the store's room, for the text writes the read-only rule exempts (`recordText`). */
   private roomOnly(limit: StoreLimit): StoreLimit {
     return limitsOf(limit)?.store ?? null;
@@ -1084,7 +1090,9 @@ export class UserStore extends DurableObject<StoreEnv> {
   // decide which it is, and say so here.
   //
   // The free plan's count is asked only by the writes that make notes (`adding`): a
-  // create, a duplicate, an import, a batch of creates. Putting a copy from the history
+  // create, a duplicate, an import, a batch of creates; the replay-safe creates, an
+  // import and a batch ask it only on the path that makes one, so a note already here
+  // is found rather than refused. Putting a copy from the history
   // back never makes one (`restoreRevision` changes a live note in place), and a restore
   // from the trash changes no count, so neither is held to it.
   //
@@ -1111,7 +1119,14 @@ export class UserStore extends DurableObject<StoreEnv> {
    * would have the client roll back a row the next pull brings back.
    */
   createOrFind(input: Parameters<NotesStore['createOrFind']>[0], limit?: StoreLimit) { return this.writing(() => this.notes.createOrFind(input, this.room(limit, 1))); }
-  createMany(inputs: Parameters<NotesStore['createMany']>[0], opts?: Parameters<NotesStore['createMany']>[1], limit?: StoreLimit) { return this.writing(() => this.notes.createMany(inputs, opts), limit, inputs.length); }
+  /**
+   * The store's room and an account past the free plan are checked up front, and the
+   * free plan's count for the notes the batch will make, once it knows which, so the
+   * notes it skips take none.
+   */
+  createMany(inputs: Parameters<NotesStore['createMany']>[0], opts?: Parameters<NotesStore['createMany']>[1], limit?: StoreLimit) {
+    return this.writing(() => this.notes.createMany(inputs, opts, this.freeCount(limit)), limit);
+  }
   duplicateOrFind(id: string, newId: string, limit?: StoreLimit) { return this.writing(() => this.notes.duplicateOrFind(id, newId, this.room(limit, 1))); }
   /**
    * A save checks the room inside, once it knows the save will write, for the replay's
@@ -1131,7 +1146,10 @@ export class UserStore extends DurableObject<StoreEnv> {
   restoreMany(ids: string[]) { return this.writing(() => this.notes.restoreMany(ids)); }
   purgeMany(ids: string[]) { return this.writing(() => this.notes.purgeMany(ids)); }
   updateMany(ids: string[], patch: Parameters<NotesStore['updateMany']>[1], limit?: StoreLimit) { return this.writing(() => this.notes.updateMany(ids, patch), limit); }
-  importNote(input: Parameters<NotesStore['importNote']>[0], limit?: StoreLimit) { return this.writing(() => this.notes.importNote(input), limit, 1); }
+  /** The same split as `createMany`: the free plan's count only on the path that makes the note. */
+  importNote(input: Parameters<NotesStore['importNote']>[0], limit?: StoreLimit) {
+    return this.writing(() => this.notes.importNote(input, this.room(this.freeOnly(limit), 1)), limit);
+  }
   setBody(id: string, body: string, limit?: StoreLimit) { return this.writing(() => this.notes.setBody(id, body), limit); }
   search(rawQuery: string, limit: number, filters: SearchFilters = {}, scopeDrivenSearchMax?: number) {
     this.ready();

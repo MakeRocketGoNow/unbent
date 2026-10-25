@@ -78,6 +78,26 @@ describe('the free plan', () => {
     expect(await stub.createMany([note(), note()], undefined, limits)).toHaveLength(2);
   });
 
+  it('counts only the notes an import or a batch makes, so a resumed import at the count finds what landed', async () => {
+    const { stub } = freshStore('free-resume');
+    const imported = { id: crypto.randomUUID(), title: 'From the archive', body: 'x', tags: [], createdAt: 1, updatedAt: 1, contentHash: 'hash-1' };
+    expect((await stub.importNote(imported, limits)).created).toBe(true);
+    await fill(stub, 4);
+    // At the count: the same note again is found, not refused; a new one is refused.
+    expect(await stub.importNote(imported, limits)).toMatchObject({ id: imported.id, created: false });
+    await expect(stub.importNote({ ...imported, id: crypto.randomUUID(), contentHash: 'hash-2' }, limits)).rejects.toMatchObject({ code: 'FREE_NOTES_FULL', notes: 5 });
+    // A batch that skips the titles held takes room only for what it makes: one note
+    // purged to make room for one, and four titles sent of which three are here.
+    const titles = ['Note 0', 'Note 1', 'Note 2', 'Note 3'];
+    const ids = (await stub.list({ limit: 10 })).filter((n) => n.title === 'Note 0').map((n) => n.id);
+    expect(await stub.remove(ids[0]!)).toBe(true);
+    expect((await stub.purgeOne(ids[0]!)).deleted).toBe(true);
+    const made = await stub.createMany(titles.map((title) => note({ title })), { skipExisting: true }, limits);
+    expect(made.map((m) => m.skipped)).toEqual([false, true, true, true]);
+    // And a batch that would pass the count names the account as it stood before it.
+    await expect(stub.createMany([note({ title: 'Fresh A' }), note({ title: 'Fresh B' })], { skipExisting: true }, limits)).rejects.toMatchObject({ code: 'FREE_NOTES_FULL', notes: 5, adding: 2 });
+  });
+
   it('makes an account past the limits read-only, lets the way out through, and writes again once it is under', async () => {
     const { stub } = freshStore('free-over');
     const ids = await fill(stub, 7);
