@@ -1614,9 +1614,15 @@ export async function saveNote(input: Save): Promise<'queued' | 'unchanged' | No
  * refused by a tab they were not looking at, until it was next focused. One read, and
  * only on the press that would otherwise be refused; bounded, so a slow answer is the
  * refusal it would have been. Offline the last answer stands.
+ *
+ * A read-only account is counted too. Its New is faded, but the apps' New note
+ * shortcut and a scan from the launch queue do not ask, and a create queued then is
+ * kept as the plan's refusal and replays once deleting takes the account under: at
+ * the count, as the free plan's refusal, holding back the saves the server takes
+ * again. Refused here instead, with the same notice, which names the way out.
  */
 async function roomForNotes(lib: WritableLibrary, adding = 1): Promise<void> {
-  if (!planFree() || lib.notes.size + adding <= FREE_NOTES) return;
+  if (!(planFree() || readOnlyKnown()) || lib.notes.size + adding <= FREE_NOTES) return;
   if (!offlineNow()) {
     const plan = await api.getPlan({ timeout: PLAN_RECHECK_MS }).catch(() => null);
     if (plan) {
@@ -1884,9 +1890,15 @@ function serverHolds(lib: WritableLibrary, noteId: string): boolean {
  * trash between. Sent as it is, so a create already on its way when the purge was made,
  * which the server may yet take, is purged after it rather than left. A trash does not
  * do this: it promises the note back on a restore, and the create is what would make it.
+ *
+ * Under the plan's refusal as well as the store's: a create kept as `PLAN_INACTIVE`
+ * replays once deleting takes the account under, and at the count it is the free
+ * plan's refusal then, so the purge that takes the account under is the one that must
+ * end it. The check that the note is waiting is for `emptyTrash`, whose ids are every
+ * trashed note on screen; a purge of one has just queued its own entry and always passes.
  */
 function unmake(lib: WritableLibrary, ids: readonly string[]): void {
-  if (!storeFull()) return;
+  if (!storeFull() && !planLapsed()) return;
   const never = ids.filter((id) => lib.outbox.status().waiting.has(id) && !serverHolds(lib, id));
   if (never.length === 0) return;
   lib.outbox.unmake(never);

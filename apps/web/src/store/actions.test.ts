@@ -638,11 +638,31 @@ describe('a replayed write', () => {
     await expect(actions.duplicateNote('n10')).rejects.toMatchObject({ name: 'FreeNotesFullError', held: 100 });
     await tick();
     expect(fake.queue).toHaveLength(0);
+    // A read-only account is counted too: its create would be kept, and refused again
+    // at the count once deleting took the account under.
+    planIs(true, false);
+    await expect(actions.createNote({ title: 'Read-only', body: '', tags: [], notebook: null })).rejects.toMatchObject({ name: 'FreeNotesFullError', held: 100 });
     // A trial, or a plan that holds, counts nothing.
     planIs(false, false);
     await actions.createNote({ title: 'On a plan', body: '', tags: [], notebook: null });
     await tick();
     expect(fake.queue.map((e) => e.mutationFnName)).toEqual(['createNote']);
+  });
+
+  it('ends the create of a note the plan refused once that note is purged, as it does the free plan\u2019s', async () => {
+    const { fake, engine } = library([row('n2')]);
+    engine.pull.mockResolvedValue(undefined);
+    const made = await actions.createNote({ title: 'Past the limits', body: '', tags: [], notebook: null });
+    await tick();
+    vi.mocked(api.createNote).mockRejectedValueOnce(new ApiError(402, '402: This account is past the free plan.', 'PLAN_INACTIVE'));
+    expect(await fake.replayOne()).toBe('kept');
+    expect(planLapsed()).toBe(true);
+    await actions.trashNote(made.id);
+    await actions.purgeNote(made.id);
+    await tick();
+    expect(fake.queue.map((e) => e.mutationFnName)).toEqual(['createNote', 'trashNote', 'purgeNote']);
+    expect(await fake.replayOne()).toBe('done');
+    expect(api.createNote).toHaveBeenCalledTimes(1);
   });
 
   /**
