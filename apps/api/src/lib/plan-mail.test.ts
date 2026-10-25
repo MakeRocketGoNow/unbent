@@ -150,8 +150,9 @@ describe('the lapse mail', () => {
     // A day after it could first be due (its end and the renewal's grace) it still waits.
     const renewing = fakeDb([{ user_id: 'gone', plan: 'active', plan_until: 10 * day, source: 'stripe', billing_status: 'active', email: 'a@example.com' }]);
     expect(await notifyLapsedPlans({ ...stripe, ...fakeStores({}), DB: renewing.db }, 11 * day + 1000)).toEqual({ told: 0, subrequests: 2 });
+    // A trial is due at its end, so its day is counted from there.
     const stale = fakeDb([{ user_id: 'gone', plan: 'trial', plan_until: 10 * day, source: null, email: 'a@example.com' }]);
-    expect(await notifyLapsedPlans({ ...stripe, ...fakeStores({}), DB: stale.db }, 12 * day + 1000)).toEqual({ told: 1, subrequests: 4 });
+    expect(await notifyLapsedPlans({ ...stripe, ...fakeStores({}), DB: stale.db }, 11 * day + 1000)).toEqual({ told: 1, subrequests: 4 });
     expect(stale.ran[1]!.sql).toContain('lapse_notified_at');
     expect(texts[0]).toContain('An account that holds up to 100 notes, counting the trash, and 1 GB of files carries on as a free account');
     expect(texts[0]).toContain('the Plan page there says which this account is');

@@ -59,10 +59,10 @@ export const LAPSE_MAIL_PER_RUN = 2;
 /**
  * How long an account whose store will not say what it holds waits for its lapse mail
  * before it is sent the wording with no numbers (`lapseMessage` with null), counted
- * from when it could first be due (its end, plus the renewal's grace, which a renewing
- * subscription waits out first). A day of hourly runs is long enough for a store reset
- * by a deploy or briefly loading, and short enough that a store that never answers
- * holds a slot for a day or two and not for good. A backlog of lapses older than that,
+ * from when it could first be due: its end, or for a renewing subscription its end plus
+ * the renewal's grace, which it waits out first. A day of hourly runs is long enough for
+ * a store reset by a deploy or briefly loading, and short enough that a store that never
+ * answers holds a slot for a day and not for good. A backlog of lapses older than that,
  * when mail is first switched on, gets the wording with no numbers at the first failure.
  */
 export const LAPSE_UNREAD_DEFER_MS = 24 * 60 * 60 * 1000;
@@ -182,8 +182,11 @@ export async function notifyLapsedPlans(
     } catch (err) {
       // From when it could first have been due, not from the end: a renewing
       // subscription is due only once its renewal's grace is up as well (`LAPSE_DUE_SQL`),
-      // and measured from the end its day would be over before its first attempt.
-      if (now - row.plan_until < LAPSE_UNREAD_DEFER_MS + RENEWAL_GRACE_MS) {
+      // and measured from the end its day would be over before its first attempt. Only
+      // that row waits out the grace; a cancelling one, which the row does not tell
+      // apart here, waits a day more than it need, which is the safe side.
+      const renewing = row.source === 'stripe' && row.billing_status === 'active';
+      if (now - row.plan_until < LAPSE_UNREAD_DEFER_MS + (renewing ? RENEWAL_GRACE_MS : 0)) {
         console.error(`[billing] lapse mail for user=${row.user_id} waits: its store could not say what it holds:`, (err as Error).message);
         continue;
       }
