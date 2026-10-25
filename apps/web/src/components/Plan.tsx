@@ -550,14 +550,13 @@ function PlanState({ plan }: { plan: AccountPlan }) {
  * its way out is the free plan, and the meters say how far over it is and which of the
  * two to delete.
  *
- * One rhythm for the three: a line saying what, then its bar, a step apart, with the
- * paragraph's gap between meters, so they read as a set rather than as three widgets.
+ * One rhythm for the three, and the paid plan's one (`StorageMeter`): a line saying what,
+ * then its bar, a step apart, with the paragraph's gap between meters, so they read as a
+ * set rather than as three widgets.
  * A bar turns the full colour at the share `StorageMeter`'s does, and at the limit
  * itself, where the next note or file is the one refused.
  */
 function FreeMeters({ plan, reading, pool }: { plan: AccountPlan; reading: boolean; pool: NonNullable<AutofillUsage['freePresses']> | null }) {
-  const quota = storageQuotaBytes(FREE_STORAGE_GB);
-  const store = plan.storeBytes !== undefined ? { bytes: plan.storeBytes, limit: storeLimitBytes(quota) } : undefined;
   return (
     <div className="plan-meters">
       <Meter
@@ -566,22 +565,7 @@ function FreeMeters({ plan, reading, pool }: { plan: AccountPlan; reading: boole
         value={plan.notes}
         text={plan.notes !== undefined ? `Notes: ${plan.notes.toLocaleString('en-US')} of ${FREE_NOTES}, counting the trash.` : reading ? `Reading the notes held, of ${FREE_NOTES}…` : `The notes held could not be read right now; the free plan holds ${FREE_NOTES}.`}
       />
-      <div>
-        <Meter
-          label="Files stored"
-          max={quota}
-          value={plan.usedBytes}
-          text={plan.usedBytes !== undefined ? `Files: ${formatBytes(plan.usedBytes)} of ${FREE_STORAGE_GB} GB.` : reading ? `Reading what is held, of ${FREE_STORAGE_GB} GB…` : `Usage could not be read right now; the free plan holds ${FREE_STORAGE_GB} GB of files.`}
-        />
-        {store && (
-          <p className="muted small plan-meter-note">
-            Notes, their history and the text read from files:{' '}
-            <span className={store.bytes / store.limit >= FULL_SHARE ? 'bad' : undefined}>
-              {formatBytes(store.bytes)} of {formatBytes(store.limit)} used.
-            </span>
-          </p>
-        )}
-      </div>
+      <FilesMeter plan={plan} gb={FREE_STORAGE_GB} whose="the free plan holds" reading={reading} />
       {pool && (
         <Meter
           label="Auto-fill presses used"
@@ -609,8 +593,8 @@ function Meter({ label, max, value, text }: { label: string; max: number; value:
 }
 
 /**
- * What the account holds against what it may: a bar and the numbers for its files, and
- * a line for its store. `reading` while the store has not answered yet.
+ * What the account holds against what it may: its files' line and bar, and a line for
+ * its store under them (`FilesMeter`). `reading` while the store has not answered yet.
  *
  * Two bounds, because the plan sells room for files and the store has a bound of its
  * own (MAK-234): a note write past it is refused with a sentence that sends people here.
@@ -620,42 +604,55 @@ function Meter({ label, max, value, text }: { label: string; max: number; value:
  * rhythm, named for what counts in it rather than a label and a footnote, and its figure
  * turns the bar's full colour at the same share the bar does, so a store that is the
  * reason for the visit stands out without a second bar that would weigh it the same as
- * the thing being sold. Both lines are the same shape (what, then the figure) so they
- * read as a pair; the store's is drawn while the figure is still being read, as a
- * placeholder, so the row of buttons under them does not move when it arrives.
+ * the thing being sold. The store's line is drawn while the figure is still being read,
+ * as a placeholder, so the row of buttons under it does not move when it arrives.
+ *
+ * Drawn as the free plan's meters are (`FreeMeters`), line over bar, so an account that
+ * subscribes from the free plan sees the same meter in the same order, one fewer.
  */
 function StorageMeter({ plan, reading }: { plan: AccountPlan; reading: boolean }) {
-  const quota = storageQuotaBytes(plan.storageGb);
+  return (
+    <div className="plan-meters">
+      <FilesMeter plan={plan} gb={plan.storageGb} whose="the plan allows" reading={reading} />
+    </div>
+  );
+}
+
+/**
+ * The files' meter and the store's line under it, for the paid plan's storage or the
+ * free plan's gigabyte (`gb`): the two read as one reading of what the account holds,
+ * so they are drawn together, a step apart, wherever either is.
+ */
+function FilesMeter({ plan, gb, whose, reading }: { plan: AccountPlan; gb: number; whose: string; reading: boolean }) {
+  const quota = storageQuotaBytes(gb);
   const used = plan.usedBytes;
-  const share = used === undefined ? 0 : Math.min(1, used / quota);
   const store = plan.storeBytes !== undefined ? { bytes: plan.storeBytes, limit: storeLimitBytes(quota) } : undefined;
   return (
-    <>
-      {/* No `aria-valuenow` while the figure is unknown: zero would be a figure. */}
-      <div className="progress-bar plan-meter" role="meter" aria-valuemin={0} aria-valuemax={quota} {...(used !== undefined ? { 'aria-valuenow': used } : {})} aria-label="Files stored">
-        <div className={`progress-fill${share >= FULL_SHARE ? ' plan-meter-full' : ''}`} style={{ width: `${Math.round(share * 100)}%` }} />
-      </div>
-      <div className="plan-held">
-        <p className="muted small">
-          {used !== undefined
-            ? `Files: ${formatBytes(used)} of ${plan.storageGb} GB used.`
+    <div>
+      <Meter
+        label="Files stored"
+        max={quota}
+        value={used}
+        text={
+          used !== undefined
+            ? `Files: ${formatBytes(used)} of ${gb} GB used.`
             : reading
-              ? `Reading what is held, of ${plan.storageGb} GB…`
-              : `Usage could not be read right now; the plan allows ${plan.storageGb} GB of files.`}
+              ? `Reading what is held, of ${gb} GB…`
+              : `Usage could not be read right now; ${whose} ${gb} GB of files.`
+        }
+      />
+      {(store || reading) && (
+        <p className="muted small plan-meter-note">
+          Notes, their history and the text read from files:{' '}
+          {store ? (
+            <span className={store.bytes / store.limit >= FULL_SHARE ? 'bad' : undefined}>
+              {formatBytes(store.bytes)} of {formatBytes(store.limit)} used.
+            </span>
+          ) : (
+            'reading…'
+          )}
         </p>
-        {(store || reading) && (
-          <p className="muted small">
-            Notes, their history and the text read from files:{' '}
-            {store ? (
-              <span className={store.bytes / store.limit >= FULL_SHARE ? 'bad' : undefined}>
-                {formatBytes(store.bytes)} of {formatBytes(store.limit)} used.
-              </span>
-            ) : (
-              'reading…'
-            )}
-          </p>
-        )}
-      </div>
-    </>
+      )}
+    </div>
   );
 }

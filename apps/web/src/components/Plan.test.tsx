@@ -96,7 +96,7 @@ describe('Plan', () => {
     expect(screen.getByText(/Your trial ended on .*, and this account is on the free plan: up to 100 notes and 1 GB of files/)).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Subscribe for $60 a year' })).toBeTruthy();
     expect(screen.getByText('Notes: 40 of 100, counting the trash.')).toBeTruthy();
-    expect(screen.getByText('Files: 200.0 MB of 1 GB.')).toBeTruthy();
+    expect(screen.getByText('Files: 200.0 MB of 1 GB used.')).toBeTruthy();
     expect(screen.getByRole('meter', { name: 'Files stored' }).getAttribute('aria-valuemax')).toBe(String(1024 ** 3));
     expect(await screen.findByText('Auto-fill: 37 of 100 presses used.')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Add 25 GB' })).toBeNull();
