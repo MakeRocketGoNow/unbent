@@ -1237,8 +1237,13 @@ export class UserStore extends DurableObject<StoreEnv> {
       input.text ? this.roomOnly(limit) : undefined,
     );
   }
+  /**
+   * A file's text, like the two around it, so the store's text room alone (`roomOnly`):
+   * the copy's file row was held to the free plan when it was recorded, and the copy
+   * route refuses an account past it before anything is copied (`refuseIfPastFree`).
+   */
   copyText(fromAttachmentId: string, to: { attachmentId: string; noteId: string; filename: string }, limit?: StoreLimit) {
-    return this.writing(() => this.attachments.copyText(fromAttachmentId, to), limit);
+    return this.writing(() => this.attachments.copyText(fromAttachmentId, to), this.roomOnly(limit));
   }
   writeAssistantText(noteId: string, filename: string, text: string, limit?: StoreLimit) {
     return this.writing(() => this.attachments.writeAssistantText(noteId, filename, text), this.roomOnly(limit));
