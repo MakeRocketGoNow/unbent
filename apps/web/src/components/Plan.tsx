@@ -321,8 +321,8 @@ export function Plan() {
       </div>
 
       <p className="muted small">
-        Free for up to {FREE_NOTES} notes and {FREE_STORAGE_GB} GB of files, with everything else
-        included. One plan, {dollars(PLAN_PRICE_USD)} a year, for unlimited notes and{' '}
+        Free for up to {FREE_NOTES} notes and {FREE_STORAGE_GB} GB of files, with every feature and
+        a set number of Auto-fill presses. One plan, {dollars(PLAN_PRICE_USD)} a year, for unlimited notes and{' '}
         {BASE_STORAGE_GB} GB of files, and {STORAGE_ADDON_GB} GB more for{' '}
         {dollars(STORAGE_ADDON_PRICE_USD)} a year each.
       </p>
