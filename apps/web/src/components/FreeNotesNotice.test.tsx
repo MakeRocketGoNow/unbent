@@ -5,6 +5,7 @@ import { createMemoryHistory, createRootRoute, createRouter, RouterProvider } fr
 vi.mock('../app-bridge.js', () => ({ isHosted: vi.fn(() => false) }));
 import { isHosted } from '../app-bridge.js';
 import { showFreeNotesFull } from '../free-notes.js';
+import { resetConnectivity, setReachableForTests } from '../connectivity.js';
 
 const { FreeNotesNotice } = await import('./FreeNotesNotice.js');
 
@@ -23,6 +24,7 @@ function mount() {
 afterEach(() => {
   cleanup();
   vi.mocked(isHosted).mockReturnValue(false);
+  resetConnectivity();
 });
 
 describe('FreeNotesNotice', () => {
@@ -42,5 +44,13 @@ describe('FreeNotesNotice', () => {
     act(() => showFreeNotesFull());
     expect(await screen.findByText(/or subscribe on the web for unlimited notes\./)).toBeTruthy();
     expect(screen.queryByRole('link')).toBeNull();
+  });
+
+  it('says offline that it is the device\u2019s last read of the plan, which a subscription elsewhere may have changed', async () => {
+    setReachableForTests(false);
+    mount();
+    await act(async () => {});
+    act(() => showFreeNotesFull());
+    expect(await screen.findByText('The free plan holds 100 notes, counting the trash, as this device last read your plan. Delete some and empty the trash, or subscribe for unlimited notes.')).toBeTruthy();
   });
 });
