@@ -244,11 +244,20 @@ describe('legalDocuments and billing', () => {
 
   /* The price lives on the pricing page and at checkout. Quoted here, a price change would
      rewrite the terms without moving their date or asking anyone to agree. */
-  it('quotes no price, storage or trial length', () => {
+  it('quotes no price, storage, trial length or free plan limit', () => {
     const body = text(with_.terms);
     expect(body).not.toContain('$');
     expect(body).not.toMatch(/\d+ GB/);
+    expect(body).not.toMatch(/\d+ notes/);
     expect(body).toContain('shown on our pricing page and at checkout');
+  });
+
+  it('says an account within the free plan writes on, and only one past it is read-only', () => {
+    const body = text(with_.terms);
+    expect(body).toContain('an account within the limits of the free plan can go on writing');
+    expect(body).toContain('carries on as a free account. One past them becomes read-only');
+    expect(body).toContain('until you subscribe again or delete down to the free plan’s limits');
+    expect(text(with_.privacy)).toContain('holds more than the free plan allows is kept, read-only');
   });
 
   it('has a refund policy under its own anchor', () => {
