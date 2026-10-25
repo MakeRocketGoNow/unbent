@@ -578,7 +578,7 @@ function FreeMeters({ plan, reading, pool }: { plan: AccountPlan; reading: boole
   );
 }
 
-/** One of the free plan's meters: what it measures, in words, then the bar. No `aria-valuenow` while the figure is unknown. */
+/** One of the Plan page's meters, the free plan's and the paid plan's alike: what it measures, in words, then the bar. No `aria-valuenow` while the figure is unknown. */
 function Meter({ label, max, value, text }: { label: string; max: number; value: number | undefined; text: string }) {
   const share = value === undefined ? 0 : Math.min(1, value / max);
   const full = value !== undefined && (share >= FULL_SHARE || value >= max);
