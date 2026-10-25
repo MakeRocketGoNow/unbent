@@ -99,8 +99,9 @@ export const uploads = new Hono<AppEnv>().use('/uploads/*', anyOrigin).put('/upl
     return c.json({ error: 'The note this link was for is no longer there.' }, 404);
   }
   // Past the free plan in the minutes since: refused before the bytes are taken in.
+  let usedBytes: number | undefined;
   try {
-    await refuseIfPastFree(c.env, attachments, plan);
+    usedBytes = await refuseIfPastFree(c.env, attachments, plan);
   } catch (err) {
     if (err instanceof PlanRefused) return c.json(planRefusedBody(err), 402);
     throw err;
@@ -127,6 +128,7 @@ export const uploads = new Hono<AppEnv>().use('/uploads/*', anyOrigin).put('/upl
         link: grant.link,
         quota,
         declaredBytes: declared,
+        usedBytes,
       },
     );
     // add_attachment's answer, url included, since prepare_attachment_upload promises the

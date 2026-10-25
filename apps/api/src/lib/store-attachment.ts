@@ -67,6 +67,8 @@ export interface StoreAttachmentInput {
    * checked again after, since this is a claim.
    */
   declaredBytes?: number | undefined;
+  /** The files' sum, when the caller read it already this request (`refuseIfPastFree`), so the check on `declaredBytes` does not ask again. */
+  usedBytes?: number | undefined;
 }
 
 /**
@@ -115,7 +117,7 @@ export async function storeAttachment(
   // stops sending into a refusal it has already been given.
   if (input.declaredBytes !== undefined) {
     try {
-      await assertRoom(attachments, input.quota, input.declaredBytes);
+      await assertRoom(attachments, input.quota, input.declaredBytes, input.usedBytes);
     } catch (err) {
       if (err instanceof StorageFull && input.body instanceof ReadableStream) await input.body.cancel().catch(() => {});
       throw err;

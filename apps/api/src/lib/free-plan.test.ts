@@ -19,13 +19,14 @@ describe('refuseIfPastFree', () => {
   it('refuses an account past the free plan, and lets one that fits go on', async () => {
     await expect(refuseIfPastFree(stripe, store(101), ended)).rejects.toBeInstanceOf(PlanRefused);
     await expect(refuseIfPastFree(stripe, store(5, 2 * GB), ended)).rejects.toMatchObject({ code: 'PLAN_INACTIVE' });
-    await expect(refuseIfPastFree(stripe, store(100, GB), ended)).resolves.toBeUndefined();
+    // One that fits is handed the files' sum it read, for the quota's check after it.
+    await expect(refuseIfPastFree(stripe, store(100, GB), ended)).resolves.toBe(GB);
   });
 
   it('reads nothing for an account a plan holds, or where billing is off', async () => {
     const held = store(1000);
-    await refuseIfPastFree(stripe, held, active);
-    await refuseIfPastFree({}, held, ended);
+    await expect(refuseIfPastFree(stripe, held, active)).resolves.toBeUndefined();
+    await expect(refuseIfPastFree({}, held, ended)).resolves.toBeUndefined();
     expect(held.usage).not.toHaveBeenCalled();
   });
 });

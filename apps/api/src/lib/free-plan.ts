@@ -61,11 +61,13 @@ export class PlanRefused extends Error {
  * account no plan holds; every other account, and every instance with billing off,
  * reads nothing. An account that fits goes on, and its uploads meet the quota as ever.
  */
-export async function refuseIfPastFree(env: StripeEnv, attachments: Pick<AttachmentsRepo, 'usage'>, plan: PlanRow | null | undefined): Promise<void> {
-  if (!freeLimitsOf(env, plan)) return;
+export async function refuseIfPastFree(env: StripeEnv, attachments: Pick<AttachmentsRepo, 'usage'>, plan: PlanRow | null | undefined): Promise<number | undefined> {
+  if (!freeLimitsOf(env, plan)) return undefined;
   const usage = await attachments.usage();
   const held = { notes: usage.notes, attachmentBytes: usage.attachmentBytes };
   if (!fitsFree(held)) throw new PlanRefused(PLAN_INACTIVE_CODE, held, 0);
+  // The files' sum it read, for the quota's check after it (`assertRoom`'s `used`).
+  return usage.attachmentBytes;
 }
 
 /** The 402's body: the code a client switches on, the sentence, and the counts it was decided on. */

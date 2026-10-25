@@ -125,8 +125,9 @@ export const attachments = new Hono<AppEnv>()
      */
     const link = c.req.query('link') !== undefined;
 
-    // An account past the free plan is refused before the body is streamed into R2.
-    await refuseIfPastFree(c.env, repo, c.get('plan'));
+    // An account past the free plan is refused before the body is streamed into R2; the
+    // sum it read is the quota's too.
+    const usedBytes = await refuseIfPastFree(c.env, repo, c.get('plan'));
 
     let stored;
     try {
@@ -144,6 +145,7 @@ export const attachments = new Hono<AppEnv>()
           textSupplied,
           quota: quotaOf(c.env, c.get('plan')),
           declaredBytes: declared > 0 ? declared : undefined,
+          usedBytes,
         },
       );
     } catch (err) {
@@ -179,14 +181,14 @@ export const attachments = new Hono<AppEnv>()
     if (!(await attachments.ownsNote(to))) return c.json({ error: 'Not found' }, 404);
     if (from === to) return c.json({ error: 'Source and destination are the same note' }, 400);
     if (!(await attachments.ownsNote(from))) return c.json({ error: 'Source note not found' }, 404);
-    // Before any object is copied, for an account past the free plan.
-    await refuseIfPastFree(c.env, attachments, c.get('plan'));
+    // Before any object is copied, for an account past the free plan; its sum is the quota's too.
+    const usedBytes = await refuseIfPastFree(c.env, attachments, c.get('plan'));
 
     try {
       const result = await copyAttachments(
         c.env.BLOBS,
         { attachments, notes: c.get('notes') },
-        { from, to, filenames, move, link, quota: quotaOf(c.env, c.get('plan')) },
+        { from, to, filenames, move, link, quota: quotaOf(c.env, c.get('plan')), usedBytes },
       );
       return c.json(result);
     } catch (err) {

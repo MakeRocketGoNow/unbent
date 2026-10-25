@@ -113,11 +113,13 @@ export async function quotaFor(env: StripeEnv, db: D1Database, userId: string): 
 
 /**
  * Throws `StorageFull` when `adding` bytes would take the account past `quota`. A file
- * that fits exactly fits. Nothing is read when there is no quota.
+ * that fits exactly fits. Nothing is read when there is no quota, nor when the caller
+ * read the sum already this request (`used`, from `refuseIfPastFree`): it is the same
+ * column of the same row, and asking again is a second call to the account's object.
  */
-export async function assertRoom(attachments: AttachmentsRepo, quota: number | null, adding: number): Promise<void> {
+export async function assertRoom(attachments: AttachmentsRepo, quota: number | null, adding: number, used?: number): Promise<void> {
   if (quota === null) return;
-  const used = await attachments.storageUsed();
+  used ??= await attachments.storageUsed();
   if (used + adding > quota) throw new StorageFull(used, quota, adding);
 }
 

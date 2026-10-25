@@ -78,7 +78,7 @@ export function registerAttachmentTools(
    * Refuses an account past the free plan before a file is fetched or a link is minted
    * (`refuseIfPastFree`), by throwing the `PlanRefused` the gate answers as a tool error.
    */
-  pastFree: () => Promise<void> = async () => {},
+  pastFree: () => Promise<unknown> = async () => {},
 ): void {
   // Loopback is fetchable only where the web-image route allows it too: local development,
   // flagged the same way. Deployed, this is false, so neither server-side fetcher can be

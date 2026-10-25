@@ -69,6 +69,8 @@ export async function copyAttachments(
      * sizes the rows hold; a move adds nothing and is not.
      */
     quota: number | null;
+    /** The files' sum, when the caller read it already this request (`refuseIfPastFree`). */
+    usedBytes?: number | undefined;
   },
 ): Promise<CopyAttachmentsResult> {
   const { attachments } = repos;
@@ -78,7 +80,7 @@ export async function copyAttachments(
   if (!input.move) {
     const wanted = new Set(input.filenames);
     const adding = (await attachments.listForNote(input.from)).filter((f) => wanted.has(f.filename)).reduce((n, f) => n + f.size, 0);
-    await assertRoom(attachments, input.quota, adding);
+    await assertRoom(attachments, input.quota, adding, input.usedBytes);
   }
 
   // Read once, after the copies: the body that matters is the one stored when the
