@@ -600,9 +600,12 @@ account's note past its count (`FREE_NOTES_FULL`, carried by `store-full.ts` too
 any waits at the head of the queue the deletes go to the server round it
 (`roundTheQueue`), and the one that ends a refusal (a checkout, a purge) sends the kept
 entry again at once. The third holds back saves the server would take, so the actions
-refuse such a note on the device before it is queued (`roomForNotes`), and only a note
-the device could not count (made on another device a moment ago) reaches the queue. Any 4xx is kept too while the page is behind the deploy, until the
-reload; see [Builds side by side](#builds-side-by-side).
+refuse such a note on the device before it is queued (`roomForNotes`), from the plan's
+last answer, which the outbox keeps per account so a page that opens offline still
+counts (`onPlanRead`); only a note the device could not count reaches the queue: one
+made on another device a moment ago, or on a device that has never read the plan. Any
+4xx is kept too while the page is behind the deploy, until the reload; see
+[Builds side by side](#builds-side-by-side).
 Only the tab holding the account's leader lock replays (`store/leader.ts`); another tab
 waits in the lock's queue and leads the moment the holder goes, rather than staying a
 follower until it reloads, as the outbox library's own one-shot election left it. A tab that does

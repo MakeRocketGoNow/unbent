@@ -14,7 +14,7 @@ import { lookups, toNote } from './derive.js';
 import { feedControls, type Collections, type LocalNote } from './collections.js';
 import { FeedEngine, type Position } from './feed.js';
 import { installMemoryOpfs, type MemoryDirectory } from './test-opfs.js';
-import { onPlanFreed, planIs, planLapsed, resetPlanRefused } from '../plan-refused.js';
+import { onPlanFreed, planFree, planIs, planLapsed, resetPlanRefused } from '../plan-refused.js';
 import { resetStoreFull, storeFull, storeFullMessage } from '../store-full.js';
 import { dismissNotice, noticeShown, resetNotice, sawLevel } from '../update-notice.js';
 import { COMPAT_LEVEL } from '@unbent/shared/compat';
@@ -672,6 +672,35 @@ describe('a replayed write', () => {
    * behind it. And an outbox opened while the last account's refusal is still in memory
    * starts, rather than calling its listener before its storage exists.
    */
+  /**
+   * Whether the account was last read as on the free plan is kept beside the outbox, so
+   * a page that opens offline, or whose read of the plan fails, still counts its notes
+   * before it makes one; this page's own read replaces it, and a read that says otherwise
+   * forgets it.
+   */
+  it('keeps the free plan\u2019s last answer across a reload, until the page reads the plan itself', async () => {
+    const { lib } = library([row('n1')]);
+    await lib.outbox.ready;
+    planIs(false, true);
+    await tick();
+    await lib.outbox.dispose();
+    resetPlanRefused();
+    expect(planFree()).toBe(false);
+    const reopened = createOutbox('u1', lib);
+    await reopened.ready;
+    expect(planFree()).toBe(true);
+    // This page reads the plan: a subscription since, say. The kept answer goes too.
+    planIs(false, false);
+    expect(planFree()).toBe(false);
+    await tick();
+    await reopened.dispose();
+    resetPlanRefused();
+    const after = createOutbox('u1', lib);
+    await after.ready;
+    expect(planFree()).toBe(false);
+    await after.dispose();
+  });
+
   it('keeps the store\u2019s refusal across a reload, and forgets it once the save has gone', async () => {
     const { lib, fake, note } = library([row('n1', { title: 'old' })]);
     const base = note('n1');

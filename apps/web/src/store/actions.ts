@@ -11,7 +11,7 @@ import { askToPersist, filesSupported, readFile, removeFile, writeFile } from '.
 import { FILES_CACHE, FILES_CHANGED, MAX_KEPT_FILE } from '../sw/routes.js';
 import { isWhole, refusedForGood, type FeedEngine } from './feed.js';
 import { CallUnsettledError, LibraryMovedError, SEND_ONCE } from './client-library.js';
-import { onPlanActive, planAccepted, planFree, planFreed, planHeld, planLapsed, planRefused, readOnlyKnown } from '../plan-refused.js';
+import { onPlanActive, onPlanRead, planAccepted, planFree, planFreeRestored, planFreed, planHeld, planLapsed, planRefused, readOnlyKnown } from '../plan-refused.js';
 import { FreeNotesFullError } from '../free-notes.js';
 import { onStoreFreed, onStoreFull, storeAccepted, storeFreed, storeFull, storeFullMessage, storeRefused } from '../store-full.js';
 import { behindDeploy, heldForReload, onCaughtUp } from '../update-notice.js';
@@ -220,6 +220,9 @@ const noticeKey = (attachmentId: string) => `upload-notice:${attachmentId}`;
 /** The key the store's refusal is kept under, beside them; see `createOutbox`. */
 const STORE_FULL_KEY = 'store-full';
 
+/** The key the account's last read of the free plan is kept under, beside them; see `onPlanRead`. */
+const PLAN_FREE_KEY = 'plan-free';
+
 /** What an outbox entry runs; the library does not export the name. */
 type MutationFn = Parameters<typeof startOfflineExecutor>[0]['mutationFns'][string];
 
@@ -315,9 +318,10 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
    * server does not hold, so nothing of the store's purge-round-the-queue applies to it
    * (`roundTheQueue`). Unlike the store's refusal, it holds back saves the server would
    * take, since the queue runs in order; which is why the actions refuse such a note on
-   * the device before it is queued (`roomForNotes`), and this is only for what the
-   * device could not see: a note made on another device a moment ago, or a count read
-   * before the copy was whole.
+   * the device before it is queued (`roomForNotes`, from the plan's last answer, which
+   * the outbox keeps across a reload), and this is only for what the device could not
+   * see: a note made on another device a moment ago, a count read before the copy was
+   * whole, or a device that has never read the plan.
    *
    * And any 4xx is kept while this page is behind the deploy (`behindDeploy`): a build
    * that cannot run beside the server's, which has already asked the person to reload
@@ -435,6 +439,16 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
     const said = storeFullMessage();
     void (said ? storage.set(STORE_FULL_KEY, said) : storage.delete(STORE_FULL_KEY)).catch(() => {});
     touch();
+  });
+  /*
+   * And whether the account was last read as on the free plan, so a page that opens
+   * offline, or whose read of the plan fails, counts a free account's notes before it
+   * makes one (`roomForNotes`), rather than queueing a create the server refuses at the
+   * head of the queue. Kept by the account's outbox because the outbox is the account's,
+   * and is wiped with it when the device changes hands.
+   */
+  const offPlanRead = onPlanRead((free) => {
+    void (free ? storage.set(PLAN_FREE_KEY, '1') : storage.delete(PLAN_FREE_KEY)).catch(() => {});
   });
   const executor = startOfflineExecutor({
     // Both, so a reload restores an upload's row as it restores a save's text.
@@ -717,6 +731,10 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
         if (m && !waitingSaves.has(m.noteId)) waitingSaves.set(m.noteId, { id: t.id, value: m.value, base: m.base, against: m.against, origin: m.origin, retire: () => cleanup?.call(executor, t.id, true) });
       }
       for (const key of keys) {
+        if (key === PLAN_FREE_KEY) {
+          planFreeRestored(true);
+          continue;
+        }
         if (key === STORE_FULL_KEY) {
           // Only while something is waiting: a refusal whose entry has gone is over.
           const raw = await storage.get(key);
@@ -811,6 +829,7 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
     dispose: async () => {
       unsubscribeConnectivity();
       offStoreFull();
+      offPlanRead();
       executor.dispose();
       /*
        * The adapter opens its database once and never closes it, and a `deleteDatabase`
