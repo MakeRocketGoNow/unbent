@@ -15,7 +15,7 @@ import { feedControls, type Collections, type LocalNote } from './collections.js
 import { FeedEngine, type Position } from './feed.js';
 import { installMemoryOpfs, type MemoryDirectory } from './test-opfs.js';
 import { onPlanFreed, planFree, planIs, planLapsed, resetPlanRefused } from '../plan-refused.js';
-import { resetStoreFull, storeFull, storeFullMessage } from '../store-full.js';
+import { resetStoreFull, storeFull, storeFullMessage, storeRefusedFor } from '../store-full.js';
 import { dismissNotice, noticeShown, resetNotice, sawLevel } from '../update-notice.js';
 import { COMPAT_LEVEL } from '@unbent/shared/compat';
 
@@ -683,7 +683,7 @@ describe('a replayed write', () => {
    * changes once something is deleted for good, and its sentence goes to the strip.
    */
   it('keeps a note the free plan has no room for, says why, and sends it again once a purge has gone through', async () => {
-    const { fake } = library([row('n2')]);
+    const { fake, note } = library([row('n2')]);
     const replay = vi.fn();
     fake.config.onlineDetector.subscribe(replay);
     await actions.createNote({ title: 'One too many', body: '', tags: [], notebook: null });
@@ -692,7 +692,19 @@ describe('a replayed write', () => {
     expect(await fake.replayOne()).toBe('kept');
     expect(fake.queue.map((e) => e.mutationFnName)).toEqual(['createNote']);
     expect(storeFullMessage()).toBe('The free plan holds up to 100 notes, counting the trash.');
+    expect(storeRefusedFor()).toBe('notes');
     expect(planLapsed()).toBe(false);
+    // Clearing a note's history frees no notes, so the refusal of a clear does not name it.
+    await actions.saveNote({ noteId: 'n2', value: { ...seedFrom(note('n2')), title: 'behind' }, base: note('n2') });
+    await tick();
+    vi.useFakeTimers();
+    try {
+      const refused = expect(actions.clearHistory('n2')).rejects.toThrow('This note has an edit waiting behind a note the free plan has no room for. Delete some notes and empty the trash, and it will go.');
+      await vi.advanceTimersByTimeAsync(5000);
+      await refused;
+    } finally {
+      vi.useRealTimers();
+    }
     // Emptying a note from the trash is what makes room, and it goes round the kept note.
     vi.mocked(api.deleteNotesPermanently).mockResolvedValueOnce({ deleted: 1 });
     await actions.purgeNotes(['n2']);
@@ -753,6 +765,30 @@ describe('a replayed write', () => {
     vi.mocked(api.deleteNotesPermanently).mockResolvedValueOnce({ deleted: 1 });
     await actions.purgeNotes(['n2']);
     expect([...MemoryAdapter.databases.values()].some((rows) => [...rows.keys()].some((k) => k.startsWith('unmade:')))).toBe(false);
+  });
+
+  it('keeps which refusal it was across a reload, and reads a bare sentence from before the free plan as the store\u2019s room', async () => {
+    const { lib, fake } = library([row('n2')]);
+    await actions.createNote({ title: 'One too many', body: '', tags: [], notebook: null });
+    await tick();
+    vi.mocked(api.createNote).mockRejectedValueOnce(new ApiError(402, '402: The free plan holds up to 100 notes, counting the trash.', 'FREE_NOTES_FULL'));
+    expect(await fake.replayOne()).toBe('kept');
+    await tick();
+    await lib.outbox.dispose();
+    resetStoreFull();
+    const reopened = createOutbox('u1', lib);
+    await reopened.ready;
+    expect(storeFullMessage()).toBe('The free plan holds up to 100 notes, counting the trash.');
+    expect(storeRefusedFor()).toBe('notes');
+    await reopened.dispose();
+    // What a build before the free plan wrote: the sentence alone.
+    for (const rows of MemoryAdapter.databases.values()) if (rows.has('store-full')) rows.set('store-full', 'no room here');
+    resetStoreFull();
+    const older = createOutbox('u1', lib);
+    await older.ready;
+    expect(storeFullMessage()).toBe('no room here');
+    expect(storeRefusedFor()).toBe('room');
+    await older.dispose();
   });
 
   /**
@@ -828,6 +864,7 @@ describe('a replayed write', () => {
     await reopened.ready;
     expect(reopened.status().storeFull).toBe('no room here');
     expect(storeFull()).toBe(true);
+    expect(storeRefusedFor()).toBe('room');
 
     // Opened again with a refusal still in memory, as after an account switch: the reset
     // at its start runs before its storage exists, and must not reach its listener.

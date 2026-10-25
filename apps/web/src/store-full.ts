@@ -24,6 +24,8 @@
  * test can call it without a window.
  */
 let sentence: string | null = null;
+/** Which of the two the refusal was: the store's room, or the free plan's count of notes. */
+let refusedFor: StoreRefusal | null = null;
 const listeners = new Set<() => void>();
 const freedListeners = new Set<() => void>();
 
@@ -31,17 +33,30 @@ function tell(): void {
   for (const listener of listeners) listener();
 }
 
-/** The server refused a note write for the store's size, with this sentence. */
-export function storeRefused(message: string): void {
-  if (sentence === message) return;
+/**
+ * What was refused: `room` is the store past the room the plan allows, where clearing
+ * a note's history is one way out; `notes` is the free plan's count, where it is not.
+ */
+export type StoreRefusal = 'room' | 'notes';
+
+/** The server refused a note write, with this sentence, for the store's room or the free plan's count. */
+export function storeRefused(message: string, of: StoreRefusal = 'room'): void {
+  if (sentence === message && refusedFor === of) return;
   sentence = message;
+  refusedFor = of;
   tell();
+}
+
+/** What the waiting refusal is for, or null while nothing is refused; see `StoreRefusal`. */
+export function storeRefusedFor(): StoreRefusal | null {
+  return refusedFor;
 }
 
 /** The server took a queued write: there is room, and nothing need go round the queue. */
 export function storeAccepted(): void {
   if (sentence === null) return;
   sentence = null;
+  refusedFor = null;
   tell();
 }
 
@@ -75,6 +90,7 @@ export function onStoreFreed(listener: () => void): () => void {
 /** For tests. */
 export function resetStoreFull(): void {
   sentence = null;
+  refusedFor = null;
   listeners.clear();
   freedListeners.clear();
 }

@@ -13,7 +13,7 @@ import { isWhole, refusedForGood, type FeedEngine } from './feed.js';
 import { CallUnsettledError, LibraryMovedError, SEND_ONCE } from './client-library.js';
 import { onPlanActive, onPlanRead, planAccepted, planFree, planFreeRestored, planFreed, planHeld, planIs, planLapsed, planRefused, readOnlyKnown } from '../plan-refused.js';
 import { FreeNotesFullError } from '../free-notes.js';
-import { onStoreFreed, onStoreFull, storeAccepted, storeFreed, storeFull, storeFullMessage, storeRefused } from '../store-full.js';
+import { onStoreFreed, onStoreFull, storeAccepted, storeFreed, storeFull, storeFullMessage, storeRefused, storeRefusedFor, type StoreRefusal } from '../store-full.js';
 import { behindDeploy, heldForReload, onCaughtUp } from '../update-notice.js';
 import { outboxLeaderName, outboxName } from './names.js';
 import { OutboxLeader } from './leader.js';
@@ -229,6 +229,17 @@ const noticeKey = (attachmentId: string) => `upload-notice:${attachmentId}`;
 /** The key the store's refusal is kept under, beside them; see `createOutbox`. */
 const STORE_FULL_KEY = 'store-full';
 
+/** The kept refusal as written under it, or, from a build before the free plan, the bare sentence of the store's room. */
+function keptRefusal(raw: string): { message: string; of: StoreRefusal } {
+  try {
+    const parsed = JSON.parse(raw) as { message?: unknown; of?: unknown };
+    if (typeof parsed?.message === 'string') return { message: parsed.message, of: parsed.of === 'notes' ? 'notes' : 'room' };
+  } catch {
+    // Not JSON: the sentence itself.
+  }
+  return { message: raw, of: 'room' };
+}
+
 /** The key the account's last read of the free plan is kept under, beside them; see `onPlanRead`. */
 const PLAN_FREE_KEY = 'plan-free';
 
@@ -365,7 +376,7 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
       throw err;
     }
     if (err instanceof ApiError && ((err.code === STORAGE_FULL_CODE && err.of === 'notes') || err.code === FREE_NOTES_FULL_CODE)) {
-      storeRefused(errorText(err));
+      storeRefused(errorText(err), err.code === FREE_NOTES_FULL_CODE ? 'notes' : 'room');
       throw err;
     }
     if (err instanceof ApiError && refusedForGood(err.status)) {
@@ -455,7 +466,10 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
    */
   const offStoreFull = onStoreFull(() => {
     const said = storeFullMessage();
-    void (said ? storage.set(STORE_FULL_KEY, said) : storage.delete(STORE_FULL_KEY)).catch(() => {});
+    // The sentence and what it was for; a plain sentence is what builds before the free
+    // plan wrote, and reads as the store's room, which was the one refusal then.
+    const kept = said ? JSON.stringify({ message: said, of: storeRefusedFor() ?? 'room' }) : null;
+    void (kept ? storage.set(STORE_FULL_KEY, kept) : storage.delete(STORE_FULL_KEY)).catch(() => {});
     touch();
   });
   /*
@@ -773,8 +787,10 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
         if (key === STORE_FULL_KEY) {
           // Only while something is waiting: a refusal whose entry has gone is over.
           const raw = await storage.get(key);
-          if (raw && storage.held() > 0) storeRefused(raw);
-          else void storage.delete(key).catch(() => {});
+          if (raw && storage.held() > 0) {
+            const { message, of } = keptRefusal(raw);
+            storeRefused(message, of);
+          } else void storage.delete(key).catch(() => {});
           continue;
         }
         if (key.startsWith('upload-notice:')) {
@@ -1717,9 +1733,11 @@ export async function clearHistory(noteId: string): Promise<number> {
     throw new Error(
       planLapsed()
         ? 'This note has an edit waiting until the account can write again; its history can be cleared once that has gone.'
-        : storeFull()
+        : storeRefusedFor() === 'room'
           ? 'This note has an edit waiting for room in the account. Delete some notes and empty the trash, or clear another note’s history, and it will go.'
-          : 'This note has changes that have not synced yet. Try again in a moment.',
+          : storeRefusedFor() === 'notes'
+            ? 'This note has an edit waiting behind a note the free plan has no room for. Delete some notes and empty the trash, and it will go.'
+            : 'This note has changes that have not synced yet. Try again in a moment.',
     );
   }
   const cleared = await api.clearRevisions(noteId);
