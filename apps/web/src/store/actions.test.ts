@@ -14,7 +14,7 @@ import { lookups, toNote } from './derive.js';
 import { feedControls, type Collections, type LocalNote } from './collections.js';
 import { FeedEngine, type Position } from './feed.js';
 import { installMemoryOpfs, type MemoryDirectory } from './test-opfs.js';
-import { planIs, planLapsed, resetPlanRefused } from '../plan-refused.js';
+import { onPlanFreed, planIs, planLapsed, resetPlanRefused } from '../plan-refused.js';
 import { resetStoreFull, storeFull, storeFullMessage } from '../store-full.js';
 import { dismissNotice, noticeShown, resetNotice, sawLevel } from '../update-notice.js';
 import { COMPAT_LEVEL } from '@unbent/shared/compat';
@@ -1991,6 +1991,34 @@ describe('a tab that is a client of the holder', () => {
     // Nothing ran here: the row is as it was, and the outbox has nothing.
     expect(lib.notes.get('n1')?.deletedAt).toBeUndefined();
     expect(lib.outbox.status().pending).toBe(0);
+  });
+
+  /**
+   * A read-only account deleting its way under the free plan from a tab that does not
+   * hold the library: the holder sends the purge, and once its outbox has nothing waiting
+   * for the note, this tab reads its own plan again, since its banner is its own read.
+   */
+  it('reads the plan again here once a purge sent to the holder has gone, while the plan reads read-only', async () => {
+    library([row('n1')]);
+    const sent: string[] = [];
+    provideForwarder(async () => async (name) => {
+      sent.push(name);
+      return name === 'synced' ? true : undefined;
+    });
+    const freed = vi.fn();
+    const stop = onPlanFreed(freed);
+    planIs(true);
+    await actions.purgeNote('n1');
+    await tick();
+    expect(sent).toEqual(['purgeNote', 'synced']);
+    expect(freed).toHaveBeenCalledTimes(1);
+    // On a plan that can write, a purge asks nothing more.
+    planIs(false);
+    sent.length = 0;
+    await actions.purgeNotes(['n1']);
+    await tick();
+    expect(sent).toEqual(['purgeNotes']);
+    stop();
   });
 
   it('says whether a forwarded save can refile the note', async () => {

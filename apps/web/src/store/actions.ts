@@ -11,7 +11,7 @@ import { askToPersist, filesSupported, readFile, removeFile, writeFile } from '.
 import { FILES_CACHE, FILES_CHANGED, MAX_KEPT_FILE } from '../sw/routes.js';
 import { isWhole, refusedForGood, type FeedEngine } from './feed.js';
 import { CallUnsettledError, LibraryMovedError, SEND_ONCE } from './client-library.js';
-import { onPlanActive, planAccepted, planFree, planFreed, planHeld, planLapsed, planRefused } from '../plan-refused.js';
+import { onPlanActive, planAccepted, planFree, planFreed, planHeld, planLapsed, planRefused, readOnlyKnown } from '../plan-refused.js';
 import { FreeNotesFullError } from '../free-notes.js';
 import { onStoreFreed, onStoreFull, storeAccepted, storeFreed, storeFull, storeFullMessage, storeRefused } from '../store-full.js';
 import { behindDeploy, heldForReload, onCaughtUp } from '../update-notice.js';
@@ -1804,9 +1804,29 @@ export async function restoreNote(noteId: string): Promise<void> {
   });
 }
 
+/**
+ * A purge sent to the holder, from a tab whose plan reads read-only: the holder hears the
+ * server take it (`planFreed`, from the queue or the request) and reads its own plan
+ * again, but this is the tab the person deleted in, and its banner and editor are drawn
+ * from its own read. So once the holder's outbox has nothing waiting for these notes,
+ * this tab reads the plan again too. One note of a batch is enough: a bulk purge is one
+ * entry. Nothing is asked while the plan reads otherwise.
+ */
+function freedAfter(ids: readonly string[]): void {
+  if (!readOnlyKnown() || ids.length === 0) return;
+  void synced(ids[0]!, FREED_WAIT_MS).then(() => planFreed(), () => {});
+}
+
+/** How long `freedAfter` waits for a forwarded purge to reach the server before reading the plan anyway. */
+const FREED_WAIT_MS = 10_000;
+
 export async function purgeNote(noteId: string): Promise<void> {
   const far = await away();
-  if (far) return far('purgeNote', [noteId], { ids: [noteId], refiles: true });
+  if (far) {
+    await far('purgeNote', [noteId], { ids: [noteId], refiles: true });
+    freedAfter([noteId]);
+    return;
+  }
   const lib = await queueable();
   if (!lib || notCopiedYet(lib, noteId)) return pulled(api.deleteNotePermanently(noteId), { ids: [noteId], refiles: true }, true);
   if (roundTheQueue(lib, noteId, true)) {
@@ -1832,6 +1852,8 @@ export async function emptyTrash(ids: readonly string[]): Promise<api.PurgeResul
     // queued write is told.
     const out = await far('emptyTrash', [ids]);
     aboutToWrite({ ids, refiles: true });
+    // A request on the holder, so the server has it by now: this tab's plan, read again.
+    planFreed();
     return out;
   }
   // A note whose trash waits behind a save the store refused (MAK-234) is in the trash
@@ -1891,7 +1913,11 @@ export async function restoreNotes(ids: string[]): Promise<number> {
 
 export async function purgeNotes(ids: string[]): Promise<number> {
   const far = await away();
-  if (far) return far('purgeNotes', [ids], { ids, refiles: true });
+  if (far) {
+    const out = await far('purgeNotes', [ids], { ids, refiles: true });
+    freedAfter(ids);
+    return out;
+  }
   const lib = await queueable();
   if (!lib) return pulled(api.deleteNotesPermanently(ids).then((r) => r.deleted), { ids, refiles: true }, true);
   const { here: held, there } = split(lib, ids);

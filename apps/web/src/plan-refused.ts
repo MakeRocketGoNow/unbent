@@ -78,6 +78,11 @@ export function planIs(inactive: boolean, free = false): void {
   for (const listener of activeListeners) listener();
 }
 
+/** Whether the plan was last read as `inactive`, for a caller deciding whether a delete is worth asking about (`freedAfter` in the actions). */
+export function readOnlyKnown(): boolean {
+  return knownInactive;
+}
+
 /** Whether the plan was last read as `free`: on the free plan, and under its limits then. */
 export function planFree(): boolean {
   return knownFree;
