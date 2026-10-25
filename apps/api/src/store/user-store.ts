@@ -1449,7 +1449,9 @@ export class UserStore extends DurableObject<StoreEnv> {
   /** `GET /api/autofill/usage`: this calendar year's presses and tokens; see `AutofillUsage`. */
   autofillUsage() {
     this.ready();
-    return this.llmUsage.year(Date.now());
+    // The free plan's pool beside the year: one more row off the key, and the account's
+    // whole life rather than this year's, since the pool never refills.
+    return { ...this.llmUsage.year(Date.now()), freeUsed: this.llmUsage.freePressesUsed() };
   }
 
   /** The second half: everything the model is shown beside the note. */

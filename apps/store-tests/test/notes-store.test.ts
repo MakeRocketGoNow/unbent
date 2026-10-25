@@ -1307,6 +1307,8 @@ describe('rows read on an archive-sized store', () => {
       // the year read back for Maintenance.
       await measure('autofill press, year first summed', () => stub.autofillPrelude('n01500', 5, { cap: 1000, yearlyCents: 5000 })),
       await measure('autofill press', () => stub.autofillPrelude('n01500', 5, { cap: 1000, yearlyCents: 5000 })),
+      // On the free plan: the pool's one row, off the key, read and counted on top (21, measured 2026-10-25).
+      await measure('autofill press on the free plan', () => stub.autofillPrelude('n01500', 5, { cap: 1000, yearlyCents: 5000, freePresses: 100 })),
       await measure('autofill usage', () => stub.autofillUsage()),
       // History. A save inside the window asks for the newest copy and keeps nothing;
       // one outside it keeps a copy and prunes the note's oldest. Then the sheet's
@@ -1450,6 +1452,7 @@ describe('rows read on an archive-sized store', () => {
       // press after it is the plain number.
       'autofill press, year first summed': 1600,
       'autofill press': 30,
+      'autofill press on the free plan': 32,
       // A year used every day is 1,460 rows, and that is what it reads: this year's, off
       // the primary key, and none of last year's 1,460 (1,460, measured 2026-10-08).
       // Maintenance's, once a visit, so a whole year is fine; a scan would be double.

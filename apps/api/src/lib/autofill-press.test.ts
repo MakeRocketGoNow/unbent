@@ -47,7 +47,17 @@ const photo = { id: 'a1', noteId: 'n1', filename: 'card.jpg', contentType: 'imag
  * at a cost of its own. `today` is the presses the day has had before this one.
  */
 function setup(
-  opts: { cap?: number | null; yearlyCents?: number | null; spentCents?: number; trial?: { day: boolean; year: boolean }; today?: number; jev?: Jev | null; title?: LanguageModel['title'] } = {},
+  opts: {
+    cap?: number | null;
+    yearlyCents?: number | null;
+    spentCents?: number;
+    freePresses?: number | null;
+    freeUsed?: number;
+    trial?: { day: boolean; year: boolean };
+    today?: number;
+    jev?: Jev | null;
+    title?: LanguageModel['title'];
+  } = {},
 ) {
   let today = opts.today ?? 0;
   const recordText = vi.fn(async () => {});
@@ -58,6 +68,9 @@ function setup(
     if (counting.cap !== null && today >= counting.cap) return { note, forText: [], forVision: [], press: { allowed: false, today, reason: 'day' as const } };
     if (counting.yearlyCents !== null && (opts.spentCents ?? 0) >= counting.yearlyCents) {
       return { note, forText: [], forVision: [], press: { allowed: false, today, reason: 'year' as const } };
+    }
+    if (counting.freePresses != null && (opts.freeUsed ?? 0) >= counting.freePresses) {
+      return { note, forText: [], forVision: [], press: { allowed: false, today, reason: 'free' as const } };
     }
     today += 1;
     return { note, forText: [], forVision: [photo], press: { allowed: true, today } };
@@ -88,7 +101,7 @@ function setup(
       title: opts.title ?? (async () => ({ value: 'Acme Hardware Receipt', usage: cost(400, 20) })),
       textFields: async () => ({ value: { field_0: 'Acme Hardware' }, usage: cost(450, 30) }),
     },
-    limits: { cap: opts.cap ?? null, yearlyCents: opts.yearlyCents ?? null },
+    limits: { cap: opts.cap ?? null, yearlyCents: opts.yearlyCents ?? null, freePresses: opts.freePresses ?? null },
     trial: opts.trial ?? { day: false, year: false },
     operator: false,
     now: Date.UTC(2026, 9, 8, 18, 0),
@@ -103,7 +116,7 @@ describe('one press, counted', () => {
     expect(outcome.kind).toBe('filed');
 
     // The press itself, counted in the call that read the note.
-    expect(autofillPrelude).toHaveBeenCalledWith('n1', 5, { cap: null, yearlyCents: null });
+    expect(autofillPrelude).toHaveBeenCalledWith('n1', 5, { cap: null, yearlyCents: null, freePresses: null });
     // The reading's cost rides with its text, in one write.
     expect(recordText).toHaveBeenCalledTimes(1);
     expect(recordText).toHaveBeenCalledWith(expect.objectContaining({ attachmentId: 'a1', readBy: 'vision' }), { job: 'read', ...cost(1500, 300) });
@@ -163,6 +176,17 @@ describe('one press, counted', () => {
     const same = await press(setup({ yearlyCents: 5000, spentCents: 5000, trial: { day: false, year: false } }).deps, 'n1');
     expect(same.kind === 'capped' && same.message).toBe("This account has used this year's Auto-fill. It will work again on 1 January.");
     expect(same.kind === 'capped' && same.retryAfter).toBeGreaterThan(0);
+  });
+
+  it('tells a free account its pool is used, with its number, and that a subscription comes with more', async () => {
+    const outcome = await press(setup({ freePresses: 100, freeUsed: 100 }).deps, 'n1');
+    expect(outcome).toEqual({
+      kind: 'capped',
+      message: "The free plan's 100 Auto-fill presses have been used. A subscription comes with more.",
+      retryAfter: null,
+    });
+    // Under it, the press goes ahead as any other.
+    expect((await press(setup({ freePresses: 100, freeUsed: 99 }).deps, 'n1')).kind).toBe('filed');
   });
 
   it('counts nothing on an instance with no Jev, and answers 404 before 503', async () => {
@@ -265,9 +289,9 @@ describe('the cap', () => {
       expect(capFor(both, trial, now)).toBe(100);
       expect(capFor(both, paying, now)).toBe(1000);
       expect(capFor(both, comped, now)).toBe(1000);
-      // A trial that has run out is inactive, which the plan gate refuses before the
-      // press is counted; the cap it would get is the ordinary one all the same.
-      expect(capFor(both, { ...trial, planUntil: now - day }, now)).toBe(1000);
+      // A trial that has run out is on the free plan, which is as free to make as a
+      // trial and gets the trial's number (and the free plan's pool besides).
+      expect(capFor(both, { ...trial, planUntil: now - day }, now)).toBe(100);
     });
 
     it('reads a missing row as the trial it is about to become', () => {
@@ -309,9 +333,9 @@ describe('the cap', () => {
       // Billing off: the ordinary number for everyone, and the trial's never read.
       expect(yearlyCentsFor({ AUTOFILL_YEARLY_CENTS: '5000', AUTOFILL_TRIAL_YEARLY_CENTS: '300' }, trial, now)).toBe(5000);
       // Both limits at once, as the press is handed them.
-      expect(limitsFor({ ...both, ...cents }, trial, now)).toEqual({ cap: 100, yearlyCents: 300 });
-      expect(limitsFor({ ...both, ...cents }, paying, now)).toEqual({ cap: 1000, yearlyCents: 5000 });
-      expect(limitsFor({}, undefined, now)).toEqual({ cap: null, yearlyCents: null });
+      expect(limitsFor({ ...both, ...cents }, trial, now)).toEqual({ cap: 100, yearlyCents: 300, freePresses: null });
+      expect(limitsFor({ ...both, ...cents }, paying, now)).toEqual({ cap: 1000, yearlyCents: 5000, freePresses: null });
+      expect(limitsFor({}, undefined, now)).toEqual({ cap: null, yearlyCents: null, freePresses: null });
       quiet.mockRestore();
     });
   });

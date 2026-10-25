@@ -473,6 +473,17 @@ function yearUsedSentence(share: number): string {
 }
 
 /**
+ * The free plan's pool, said with the account's own number: how many of its presses are
+ * left, since that is what a person on it can act on, and that a subscription comes with
+ * more once none are, in the words the button's refusal uses.
+ */
+function freePoolSentence(pool: { used: number; of: number }): string {
+  const left = Math.max(0, pool.of - pool.used);
+  if (left === 0) return `The free plan's ${pool.of} presses have been used; a subscription comes with more.`;
+  return `On the free plan this account has ${pool.of} presses in all, and ${left === pool.of ? 'all' : left} of them ${left === 1 ? 'is' : 'are'} left.`;
+}
+
+/**
  * What Auto-fill has cost this account this calendar year (MAK-180): the presses, and the
  * tokens the language model read and wrote inside them. Here because Maintenance is where
  * the account's other whole-account figures are, until the plans decide where usage lives
@@ -488,7 +499,8 @@ function yearUsedSentence(share: number): string {
  * The day's cap is said only where one applies, with today's count beside it, and the
  * year's as a share of what the account gets, so neither 429 a press can meet is a
  * surprise to someone who looked here first. "This account", since the numbers are the
- * account's: a trial's are smaller than a paying account's.
+ * account's: a trial's are smaller than a paying account's. On the free plan the pool is
+ * said too (`freePoolSentence`), which is the limit such an account meets first.
  */
 function AutofillUsageSection() {
   const usage = useQuery(autofillUsageQuery());
@@ -542,6 +554,7 @@ function AutofillUsageSection() {
             </>
           )}
           {u.yearUsed !== null && u.yearUsed > 0 && <> {yearUsedSentence(u.yearUsed)}</>}
+          {u.freePresses && <> {freePoolSentence(u.freePresses)}</>}
         </p>
       )}
     </section>

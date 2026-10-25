@@ -324,9 +324,15 @@ export const notes = new Hono<AppEnv>()
    */
   .get('/autofill/usage', requireAuth, withRepos, async (c) => {
     const now = Date.now();
-    const year = await c.get('notes').autofillUsage();
+    const { freeUsed, ...year } = await c.get('notes').autofillUsage();
     const limits = await limitsForUser(c.env, c.get('userId')!, now);
-    const usage: AutofillUsage = { ...year, dailyCap: limits.cap, yearUsed: yearShare(year, limits) };
+    const pool = limits.freePresses ?? null;
+    const usage: AutofillUsage = {
+      ...year,
+      dailyCap: limits.cap,
+      yearUsed: yearShare(year, limits),
+      freePresses: pool === null ? null : { used: freeUsed, of: pool },
+    };
     return c.json(usage);
   })
 
