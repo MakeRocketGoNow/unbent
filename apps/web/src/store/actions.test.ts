@@ -206,6 +206,8 @@ vi.mock('../notes-api.js', async (importOriginal) => ({
   clearRevisions: vi.fn(),
   importNotebook: vi.fn(),
   purgeNotes: vi.fn(),
+  // No read of the plan answers unless a test gives it one (`roomForNotes`).
+  getPlan: vi.fn(() => Promise.reject(new Error('no plan read in this test'))),
 }));
 
 const { fakes, MemoryAdapter } = await h;
@@ -641,6 +643,38 @@ describe('a replayed write', () => {
     await actions.createNote({ title: 'On a plan', body: '', tags: [], notebook: null });
     await tick();
     expect(fake.queue.map((e) => e.mutationFnName)).toEqual(['createNote']);
+  });
+
+  /**
+   * What a tab knows of the plan is its own last read, and the tab that holds the outbox
+   * runs a client's New: one left in the background read the plan before a subscription
+   * made elsewhere. So at the count the plan is read again before the refusal, and its
+   * answer is what decides; with no answer, or no connection, the last one stands.
+   */
+  it('reads the plan again at the free plan\u2019s count before refusing, and lets a subscriber\u2019s note through', async () => {
+    const hundred = Array.from({ length: 100 }, (_, i) => row(`n${i}`));
+    const { fake } = library(hundred);
+    planIs(false, true);
+    // A subscription since: the note is made, and the tab knows the plan holds.
+    vi.mocked(api.getPlan).mockResolvedValueOnce({ state: 'active' } as Awaited<ReturnType<typeof api.getPlan>>);
+    await actions.createNote({ title: 'Subscribed', body: '', tags: [], notebook: null });
+    await tick();
+    expect(fake.queue.map((e) => e.mutationFnName)).toEqual(['createNote']);
+    expect(planFree()).toBe(false);
+    expect(api.getPlan).toHaveBeenCalledTimes(1);
+    // Still free: refused, on the server's word.
+    planIs(false, true);
+    vi.mocked(api.getPlan).mockResolvedValueOnce({ state: 'free' } as Awaited<ReturnType<typeof api.getPlan>>);
+    await expect(actions.duplicateNote('n10')).rejects.toMatchObject({ name: 'FreeNotesFullError', held: 101 });
+    // No answer: the last read stands.
+    await expect(actions.createNote({ title: 'No answer', body: '', tags: [], notebook: null })).rejects.toMatchObject({ name: 'FreeNotesFullError' });
+    expect(api.getPlan).toHaveBeenCalledTimes(3);
+    // Offline nothing is asked.
+    setReachableForTests(false);
+    await expect(actions.createNote({ title: 'Offline', body: '', tags: [], notebook: null })).rejects.toMatchObject({ name: 'FreeNotesFullError' });
+    expect(api.getPlan).toHaveBeenCalledTimes(3);
+    await tick();
+    expect(fake.queue).toHaveLength(1);
   });
 
   /**

@@ -528,8 +528,8 @@ export async function getConfig(): Promise<AppConfig> {
 // `/api/config` carries `billing`.
 
 /** The account's plan as the server works it out now; with `usage`, what it holds too, which asks its store. */
-export async function getPlan(opts: { usage?: boolean } = {}): Promise<AccountPlan> {
-  return json<AccountPlan>(await request(opts.usage ? '/api/me/plan?usage=1' : '/api/me/plan'));
+export async function getPlan(opts: { usage?: boolean; timeout?: number } = {}): Promise<AccountPlan> {
+  return json<AccountPlan>(await request(opts.usage ? '/api/me/plan?usage=1' : '/api/me/plan', opts.timeout ? { timeout: opts.timeout } : {}));
 }
 
 /** A checkout for `storage` add-ons beside the plan: the address of Stripe's hosted page, which the browser is sent to. */

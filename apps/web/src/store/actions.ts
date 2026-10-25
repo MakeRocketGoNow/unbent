@@ -11,7 +11,7 @@ import { askToPersist, filesSupported, readFile, removeFile, writeFile } from '.
 import { FILES_CACHE, FILES_CHANGED, MAX_KEPT_FILE } from '../sw/routes.js';
 import { isWhole, refusedForGood, type FeedEngine } from './feed.js';
 import { CallUnsettledError, LibraryMovedError, SEND_ONCE } from './client-library.js';
-import { onPlanActive, onPlanRead, planAccepted, planFree, planFreeRestored, planFreed, planHeld, planLapsed, planRefused, readOnlyKnown } from '../plan-refused.js';
+import { onPlanActive, onPlanRead, planAccepted, planFree, planFreeRestored, planFreed, planHeld, planIs, planLapsed, planRefused, readOnlyKnown } from '../plan-refused.js';
 import { FreeNotesFullError } from '../free-notes.js';
 import { onStoreFreed, onStoreFull, storeAccepted, storeFreed, storeFull, storeFullMessage, storeRefused } from '../store-full.js';
 import { behindDeploy, heldForReload, onCaughtUp } from '../update-notice.js';
@@ -1549,12 +1549,32 @@ export async function saveNote(input: Save): Promise<'queued' | 'unchanged' | No
  * outbox moving: a create the server refuses is kept at the head of a queue that replays
  * in order, and every save behind it waits (`refusal`). A copy that is not whole yet
  * counts short and lets the note through, for the server to decide.
+ *
+ * At the count, and with a connection, the plan is read again before the refusal. What
+ * this tab knows of it is from its own last read, and the tab that holds the outbox is
+ * often one left in the background, whose read is from before a subscription made in
+ * another tab or on another device: a client's New is run here, so that subscriber was
+ * refused by a tab they were not looking at, until it was next focused. One read, and
+ * only on the press that would otherwise be refused; bounded, so a slow answer is the
+ * refusal it would have been. Offline the last answer stands.
  */
-function roomForNotes(lib: WritableLibrary, adding = 1): void {
-  if (!planFree()) return;
+async function roomForNotes(lib: WritableLibrary, adding = 1): Promise<void> {
+  if (!planFree() || lib.notes.size + adding <= FREE_NOTES) return;
+  if (!offlineNow()) {
+    const plan = await api.getPlan({ timeout: PLAN_RECHECK_MS }).catch(() => null);
+    if (plan) {
+      planIs(plan.state === 'inactive', plan.state === 'free');
+      // A plan that holds counts nothing. A read-only account is refused here too: the
+      // server would refuse its note all the same, and keep it at the queue's head.
+      if (plan.state !== 'free' && plan.state !== 'inactive') return;
+    }
+  }
   const held = lib.notes.size;
   if (held + adding > FREE_NOTES) throw new FreeNotesFullError(held, adding);
 }
+
+/** How long a press at the free plan's count waits for the plan to be read again (`roomForNotes`). */
+const PLAN_RECHECK_MS = 3000;
 
 /**
  * Makes a note, with an id minted here, and answers with it at once. The id is minted
@@ -1568,7 +1588,7 @@ export async function createNote(input: { title: string; body: string; tags: str
   if (far) return far('createNote', [input, id], { ids: [], refiles: true });
   const lib = await queueable();
   if (!lib) return pulled(api.createNote({ ...input, id }), { ids: [], refiles: true });
-  roomForNotes(lib);
+  await roomForNotes(lib);
   const now = Date.now();
   const row: LocalNote = { id, title: input.title, body: input.body, createdAt: now, updatedAt: now, tagIds: [], tagNames: input.tags, notebookId: null, notebookName: input.notebook, files: [] };
   queue(lib, 'createNote', { id, ...input }, () => {
@@ -1594,7 +1614,7 @@ export async function duplicateNote(sourceId: string, copyId: string = crypto.ra
   if (!lib) return direct();
   const source = lib.notes.get(sourceId);
   if (!source) return direct();
-  roomForNotes(lib);
+  await roomForNotes(lib);
   const now = Date.now();
   queue(lib, 'duplicateNote', { sourceId, copyId }, () => {
     lib.notes.insert({ ...source, id: copyId, createdAt: now, updatedAt: now, files: [] });
