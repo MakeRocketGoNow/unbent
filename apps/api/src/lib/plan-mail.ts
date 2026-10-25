@@ -55,6 +55,14 @@ import type { Env } from '../types.js';
  */
 export const LAPSE_MAIL_PER_RUN = 2;
 
+/**
+ * How long an account whose store will not say what it holds waits for its lapse mail
+ * before it is sent the wording with no numbers (`lapseMessage` with null). A day of
+ * hourly runs is long enough for a store reset by a deploy or briefly loading, and short
+ * enough that a store that never answers holds a slot for a day and not for good.
+ */
+export const LAPSE_UNREAD_DEFER_MS = 24 * 60 * 60 * 1000;
+
 interface DueRow {
   user_id: string;
   plan: PlanState;
@@ -82,11 +90,21 @@ const notesOf = (n: number) => `${n.toLocaleString('en-US')} ${n === 1 ? 'note' 
 /**
  * The message for a lapse of each kind, with what the account holds deciding what it
  * says the account is now. `planUrl` is where to subscribe, or where the card is
- * updated from.
+ * updated from. `held` is null for an account whose store has not said what it holds
+ * for a day (`LAPSE_UNREAD_DEFER_MS`), which is told both outcomes, with no numbers,
+ * rather than kept waiting and holding a slot every run.
  */
-export function lapseMessage(kind: LapseKind, planUrl: string, held: HeldCounts): { subject: string; text: string } {
+export function lapseMessage(kind: LapseKind, planUrl: string, held: HeldCounts | null): { subject: string; text: string } {
   const { subject, line } = ENDED[kind];
   const years = Math.round(INACTIVE_KEPT_DAYS / 365);
+  if (held === null) {
+    const either = `An account that holds up to ${FREE_NOTES} notes, counting the trash, and ${FREE_STORAGE_GB} GB of files carries on as a free account, and everything keeps working as before. A larger one is now read-only: its notes are still there, and everything still opens, searches and exports, and anything can be deleted.`;
+    const way =
+      kind === 'past_due'
+        ? `Update the card from ${planUrl} and Stripe will try again. The Plan page there says which this account is.`
+        : `Subscribe at ${planUrl} for unlimited notes; the Plan page there says which this account is. A read-only account that stays so for ${years} year may be deleted, after a reminder to export it first.`;
+    return { subject, text: `${line}\n\n${either}\n\n${way}` };
+  }
   if (fitsFree(held)) {
     const free = `This account holds ${notesOf(held.notes)} and ${heldBytes(held.attachmentBytes)} of files, within the free plan's ${FREE_NOTES} notes and ${FREE_STORAGE_GB} GB, so it carries on as a free account: everything keeps working as before, up to those numbers.`;
     const more =
@@ -154,15 +172,22 @@ export async function notifyLapsedPlans(
     const kind = lapseKind(row);
     // What the account holds decides what the mail says it is now. A store that cannot
     // answer is the account's turn deferred, unmarked, to the next run: a guess would
-    // tell a free account it is read-only, or a read-only one that it is free.
+    // tell a free account it is read-only, or a read-only one that it is free. For a day
+    // only: the query takes the oldest ends first, so a store that keeps failing would
+    // hold one of the run's two slots on every run and nobody after it would be told. Past
+    // that it is told both outcomes, with no numbers, and marked like any other.
     subrequests += 1;
-    let held: HeldCounts;
+    let held: HeldCounts | null;
     try {
       const usage = await reposFor(env, row.user_id, noWriteLimits).attachments.usage();
       held = { notes: usage.notes, attachmentBytes: usage.attachmentBytes };
     } catch (err) {
-      console.error(`[billing] lapse mail for user=${row.user_id} waits: its store could not say what it holds:`, (err as Error).message);
-      continue;
+      if (now - row.plan_until < LAPSE_UNREAD_DEFER_MS) {
+        console.error(`[billing] lapse mail for user=${row.user_id} waits: its store could not say what it holds:`, (err as Error).message);
+        continue;
+      }
+      console.error(`[billing] lapse mail for user=${row.user_id} sent without its numbers: its store has not answered for a day:`, (err as Error).message);
+      held = null;
     }
     subrequests += 1;
     try {
@@ -180,7 +205,7 @@ export async function notifyLapsedPlans(
     }
     subrequests += 1;
     await updatePlanStatement(env.DB, row.user_id, { lapseNotifiedAt: now }, now).run();
-    console.log(`[billing] told user=${row.user_id} their ${kind} ended, ${fitsFree(held) ? 'now free' : 'now read-only'}`);
+    console.log(`[billing] told user=${row.user_id} their ${kind} ended, ${held === null ? 'with no numbers' : fitsFree(held) ? 'now free' : 'now read-only'}`);
     told += 1;
   }
   return { told, subrequests };

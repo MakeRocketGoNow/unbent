@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { LAPSE_MAIL_PER_RUN, lapseKind, lapseMessage, notifyLapsedPlans } from './plan-mail.js';
+import { LAPSE_MAIL_PER_RUN, LAPSE_UNREAD_DEFER_MS, lapseKind, lapseMessage, notifyLapsedPlans } from './plan-mail.js';
 import { RENEWAL_GRACE_MS } from './plan.js';
 import type { Env } from '../types.js';
 
@@ -131,6 +131,27 @@ describe('the lapse mail', () => {
     expect(ran[0]!.binds).toEqual([10, LAPSE_MAIL_PER_RUN, 10 - RENEWAL_GRACE_MS]);
     expect(ran.slice(1).map((r) => r.binds[0])).toEqual(['u1', 'u2']);
     expect(ran[1]!.sql).toContain('lapse_notified_at');
+    vi.unstubAllGlobals();
+  });
+
+  it('defers an account whose store will not answer for a day, then tells it both outcomes and marks it', async () => {
+    const texts: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: string, init: RequestInit) => {
+        texts.push((JSON.parse(init.body as string) as { text: string }).text);
+        return new Response('{}', { status: 200 });
+      }),
+    );
+    const day = LAPSE_UNREAD_DEFER_MS;
+    const fresh = fakeDb([{ user_id: 'gone', plan: 'trial', plan_until: 10 * day, source: null, email: 'a@example.com' }]);
+    expect(await notifyLapsedPlans({ ...stripe, ...fakeStores({}), DB: fresh.db }, 10 * day + 1000)).toEqual({ told: 0, subrequests: 2 });
+    expect(fresh.ran).toHaveLength(1);
+    const stale = fakeDb([{ user_id: 'gone', plan: 'trial', plan_until: 10 * day, source: null, email: 'a@example.com' }]);
+    expect(await notifyLapsedPlans({ ...stripe, ...fakeStores({}), DB: stale.db }, 11 * day + 1000)).toEqual({ told: 1, subrequests: 4 });
+    expect(stale.ran[1]!.sql).toContain('lapse_notified_at');
+    expect(texts[0]).toContain('An account that holds up to 100 notes, counting the trash, and 1 GB of files carries on as a free account');
+    expect(texts[0]).toContain('the Plan page there says which this account is');
     vi.unstubAllGlobals();
   });
 });
