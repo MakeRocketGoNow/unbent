@@ -6373,6 +6373,28 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 }
 
 /*
+   A notebook's saved views on its settings page: the notebook list's rows, a name and an
+   order. A view's name is anyone's length, so the name yields and ellipsises rather than
+   pushing the arrows and Delete off the row; the rename field takes the whole row while
+   it is open, with its own Rename and Cancel, as the row's actions step aside.
+*/
+.view-admin .notebook-admin-name { min-width: 0; }
+
+.view-admin-name {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.view-admin .notebook-admin-name > svg {
+  flex: none;
+  color: var(--muted);
+}
+
+.view-name.view-admin-rename { flex: 1 1 auto; }
+
+/*
    A notebook's field page: the notebook list's rows, each with a type and an order.
 
    The rows wrap so a select field's options can sit on a second line under the name,
