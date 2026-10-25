@@ -224,6 +224,84 @@
         }
       }
     },
+    "createViewSchema": {
+      "type": "object",
+      "properties": {
+        "notebookId": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "query": {
+          "type": "object",
+          "properties": {
+            "tag": {
+              "maxItems": 20,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              }
+            },
+            "field": {
+              "maxItems": 10,
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "sort": {
+              "type": "string",
+              "enum": [
+                "updated",
+                "created",
+                "title"
+              ]
+            },
+            "order": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ]
+            },
+            "sortField": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "from": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+            },
+            "to": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+            },
+            "layout": {
+              "type": "string",
+              "enum": [
+                "list",
+                "cards",
+                "table"
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "notebookId",
+        "name",
+        "query"
+      ]
+    },
     "currencySchema": {
       "type": "string",
       "pattern": "^[A-Z]{3}$"
@@ -1477,6 +1555,142 @@
       "required": [
         "ids"
       ]
+    },
+    "updateViewSchema": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "query": {
+          "type": "object",
+          "properties": {
+            "tag": {
+              "maxItems": 20,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              }
+            },
+            "field": {
+              "maxItems": 10,
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "sort": {
+              "type": "string",
+              "enum": [
+                "updated",
+                "created",
+                "title"
+              ]
+            },
+            "order": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ]
+            },
+            "sortField": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "from": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+            },
+            "to": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+            },
+            "layout": {
+              "type": "string",
+              "enum": [
+                "list",
+                "cards",
+                "table"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        "position": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      }
+    },
+    "viewNameSchema": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100
+    },
+    "viewQuerySchema": {
+      "type": "object",
+      "properties": {
+        "tag": {
+          "maxItems": 20,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          }
+        },
+        "field": {
+          "maxItems": 10,
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "sort": {
+          "type": "string",
+          "enum": [
+            "updated",
+            "created",
+            "title"
+          ]
+        },
+        "order": {
+          "type": "string",
+          "enum": [
+            "asc",
+            "desc"
+          ]
+        },
+        "sortField": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+        },
+        "from": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "to": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "layout": {
+          "type": "string",
+          "enum": [
+            "list",
+            "cards",
+            "table"
+          ]
+        }
+      },
+      "additionalProperties": false
     }
   },
   "shared": {
@@ -1504,14 +1718,15 @@
       "packages/shared/src/export-format.ts › ExportedNote": "0c03b31f7ea882e5|24a5cf174a",
       "packages/shared/src/export-format.ts › ReadBy": "e56ff65a2e19a01d",
       "packages/shared/src/feed.ts › FeedAttachment": "fdd9a3e47f201087|12a269bece|33985d838d|b843c5048c|bbe764efbb",
-      "packages/shared/src/feed.ts › FeedEntity": "3fa6c2fa07ca737f",
+      "packages/shared/src/feed.ts › FeedEntity": "dfdda37339cd3afe",
       "packages/shared/src/feed.ts › FeedNote": "9cba840bb027375b|02d49f2a3f|b8e102fdcc",
       "packages/shared/src/feed.ts › FeedNotebook": "8d2a188b7e2fd94a|99bbdd805c",
-      "packages/shared/src/feed.ts › FeedPage": "7b34f8c167ee7815|2f4963387f|410c0b765a|489ae4153b|4f39a0190a|646a2147cc|7339036209|b14b5a675b|b1c4053354|e1ae277a39|f7220206b7",
+      "packages/shared/src/feed.ts › FeedPage": "7b34f8c167ee7815|2f4963387f|410c0b765a|489ae4153b|4f39a0190a|646a2147cc|7339036209|b14b5a675b|b1c4053354|e1ae277a39|f7220206b7|fcb13bf8da",
       "packages/shared/src/feed.ts › FeedReset": "74d8ed1b35b325d0|2f4963387f|489ae4153b|5e8e2d4ee9",
       "packages/shared/src/feed.ts › FeedTag": "d27a0467c8cb943d|278a324bd5|3fe91fb414|b843c5048c",
       "packages/shared/src/feed.ts › FeedTombstone": "5143c3f9db185702|8b4576ed8b|b843c5048c",
-      "packages/shared/src/feed.ts › SnapshotPage": "6816667cc59d9bbb|2f4963387f|489ae4153b|4d3203cd6c|4f39a0190a|831389839a|afdadeae26|dd56ef8b75",
+      "packages/shared/src/feed.ts › FeedView": "7643502e01688314",
+      "packages/shared/src/feed.ts › SnapshotPage": "6816667cc59d9bbb|2f4963387f|489ae4153b|4d3203cd6c|4f39a0190a|831389839a|afdadeae26|dd56ef8b75|fcb13bf8da",
       "packages/shared/src/fields.ts › ConversionPlan": "7ed61445bbba578e|07c142382d|099ffbf628|6161c5410e",
       "packages/shared/src/fields.ts › CreateFieldInput": "43251eb2c573216f",
       "packages/shared/src/fields.ts › EncodedFieldValue": "2fae6e02cbe97900|099beb361a|fefc3aab89",
