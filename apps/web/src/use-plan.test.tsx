@@ -47,6 +47,32 @@ describe('usePlanRefresh', () => {
     expect(reads()).toBe(3);
   });
 
+  it('keeps setting the next wait when a read fails, so a tab left in the background is not stranded on the trial', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const now = Date.now();
+    const trial = { state: 'trial', until: now - 1000, readOnlyAt: now - 1000, source: null, storageGb: 10, subscription: null };
+    // Every read fails: a failed read changes the error's date and not the answer's,
+    // and the retry's wait was set only from the answer's.
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{"error":"down"}', { status: 503, headers: { 'Content-Type': 'application/json' } })));
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    client.setQueryData(keys.config(), { providers: ['password'], billing: { environment: 'test' } });
+    client.setQueryData(keys.plan(), trial);
+    const invalidate = vi.spyOn(client, 'invalidateQueries');
+    const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+    renderHook(() => usePlanRefresh(), { wrapper });
+    await act(async () => {});
+    const reads = () => invalidate.mock.calls.filter(([f]) => JSON.stringify(f?.queryKey) === JSON.stringify(keys.plan())).length;
+    expect(reads()).toBe(1);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(PAST_INSTANT_RETRY_MS + 100);
+    });
+    expect(reads()).toBe(2);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2 * PAST_INSTANT_RETRY_MS + 100);
+    });
+    expect(reads()).toBe(3);
+  });
+
   it('asks nothing more once the plan names no instant this device has passed', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const now = Date.now();

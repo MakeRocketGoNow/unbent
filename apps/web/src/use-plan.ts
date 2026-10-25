@@ -44,6 +44,8 @@ export function usePlan(): {
   unavailable: boolean;
   /** When the answer was last read, for `usePlanRefresh`'s read after a passed instant. */
   readAt: number;
+  /** When a read last failed, for the same: a failed read moves this and not `readAt`. */
+  errorAt: number;
 } {
   const config = useQuery(configQuery());
   const billing = config.data?.billing;
@@ -52,7 +54,7 @@ export function usePlan(): {
 
   const data = plan.data;
   const inactive = data !== undefined && data.state === 'inactive';
-  return { billing, plan: data, inactive, now, unavailable: data === undefined && plan.isError, readAt: plan.dataUpdatedAt };
+  return { billing, plan: data, inactive, now, unavailable: data === undefined && plan.isError, readAt: plan.dataUpdatedAt, errorAt: plan.errorUpdatedAt };
 }
 
 /** The instants the plan's reading changes at, for a plan that still has one ahead: none for one that has ended, free or read-only. */
@@ -72,7 +74,7 @@ function boundariesOf(plan: AccountPlan | undefined): number[] {
  */
 export function usePlanRefresh(): void {
   const queryClient = useQueryClient();
-  const { plan, now, inactive, readAt } = usePlan();
+  const { plan, now, inactive, readAt, errorAt } = usePlan();
   // The outbox holds a refused write back while this says inactive, and replays it the
   // moment it says otherwise; see `planIs`. Only once the plan has been read: an answer
   // still on its way is not a plan that is active.
@@ -105,7 +107,10 @@ export function usePlanRefresh(): void {
       void queryClient.invalidateQueries({ queryKey: keys.plan() });
     }, wait);
     return () => clearTimeout(timer);
-  }, [passed, readAt, queryClient]);
+    // `errorAt` too: a read that failed leaves `readAt` where it was, and the wait it
+    // set would never be set again, so a holder tab in the background read the trial as
+    // running until it was focused (found in review).
+  }, [passed, readAt, errorAt, queryClient]);
   useEffect(
     () =>
       onPlanRefused(() => {
