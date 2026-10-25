@@ -33,7 +33,7 @@ import { NotebookMissing, isNotebookMissing } from './NotebookMissing.js';
 import { countMenuItems, offersCountMenu } from './count-menu.js';
 import { startExport, useExportRunning } from '../export-archive.js';
 import { useOffline } from '../connectivity.js';
-import { usePlan } from '../use-plan.js';
+import { usePlan, READ_ONLY_TIP } from '../use-plan.js';
 import { FreeNotesNotice } from './FreeNotesNotice.js';
 import { TagPicker } from './TagPicker.js';
 import { FilterRow } from './FilterRow.js';
@@ -859,7 +859,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
      follow; the banner above says the rest.
   */
   const { inactive: planInactive } = usePlan();
-  const noNewNotes = planInactive ? 'Not while the account is read-only' : undefined;
+  const noNewNotes = planInactive ? READ_ONLY_TIP : undefined;
   const countMenu =
     offersCountMenu({
       searching: results !== null,

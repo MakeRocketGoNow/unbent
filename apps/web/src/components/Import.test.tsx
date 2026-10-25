@@ -27,7 +27,7 @@ vi.mock('../notes-api.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../notes-api.js')>()),
   listNotebooks: vi.fn(async () => ({ notebooks: [{ id: 'nb1', name: 'Receipts', purpose: null, emoji: null, count: 0 }], unfiled: 0 })),
 }));
-vi.mock('../use-plan.js', () => ({ usePlan: () => ({ inactive: false }) }));
+vi.mock('../use-plan.js', async (importOriginal) => ({ ...(await importOriginal<typeof import('../use-plan.js')>()), usePlan: () => ({ inactive: false }) }));
 
 async function mount() {
   const rootRoute = createRootRoute({ component: Outlet });

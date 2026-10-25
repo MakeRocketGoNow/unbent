@@ -5,6 +5,13 @@ import { onPlanFreed, onPlanRefused, planIs } from './plan-refused.js';
 import { configQuery, keys, planQuery } from './queries.js';
 
 /**
+ * What a control faded for a read-only account says, as its tip: one sentence for every
+ * such control, so the next change of wording is one line. Not "the plan has ended",
+ * which is also true of a free account that can write.
+ */
+export const READ_ONLY_TIP = 'Not while the account is read-only';
+
+/**
  * The account's plan, for the pages that draw it or turn read-only on it (MAK-108).
  *
  * `billing` is the instance's half from `/api/config`, which is the first question: on

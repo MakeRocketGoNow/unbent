@@ -41,7 +41,7 @@ vi.mock('../notes-api.js', async (importOriginal) => ({
 }));
 vi.mock('../index-files.js', () => ({ indexUploadedFile: vi.fn(), useIndexing: () => ({ queued: 0, running: false, failed: 0 }) }));
 let planInactive = false;
-vi.mock('../use-plan.js', () => ({ usePlan: () => ({ inactive: planInactive }) }));
+vi.mock('../use-plan.js', async (importOriginal) => ({ ...(await importOriginal<typeof import('../use-plan.js')>()), usePlan: () => ({ inactive: planInactive }) }));
 
 const note = (id: string, over: Partial<FeedNote> = {}): FeedNote => ({
   id,

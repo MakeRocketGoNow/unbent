@@ -3,7 +3,7 @@ import { Button } from './Button.js';
 import { EmptyLibraryIcon } from './icons.js';
 import { EmptyState } from './EmptyState.js';
 import { useCreateNote, useCreatingNote } from '../useCreateNote.js';
-import { usePlan } from '../use-plan.js';
+import { usePlan, READ_ONLY_TIP } from '../use-plan.js';
 import { WELCOME_BODY, WELCOME_TITLE } from '../welcome-note.js';
 
 /**
@@ -46,7 +46,7 @@ export function EmptyLibrary({ heading = 'h2' }: { heading?: 'h2' | 'h3' }) {
   const createNote = useCreateNote();
   const making = useCreatingNote();
   const { inactive } = usePlan();
-  const lapsedTip = inactive ? 'Not while the account is read-only' : undefined;
+  const lapsedTip = inactive ? READ_ONLY_TIP : undefined;
   return (
     <EmptyState
       icon={<EmptyLibraryIcon />}

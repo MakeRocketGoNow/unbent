@@ -21,6 +21,7 @@ import { HistoryChanges, PropLine, formatPropValue, type HistoryCurrent } from '
 import { RowChevronIcon } from './icons.js';
 import { Preview } from './Preview.js';
 import { Sheet } from './Sheet.js';
+import { READ_ONLY_TIP } from '../use-plan.js';
 
 interface HistorySheetProps {
   open: boolean;
@@ -199,7 +200,7 @@ export function HistorySheet({ open, onClose, noteId, anchor, saved, onRestore, 
   */
   const offline = useOffline();
   const offlineTitle = offline ? 'Not available offline' : undefined;
-  const restoreTitle = offlineTitle ?? (lapsed ? 'Not while the account is read-only' : undefined);
+  const restoreTitle = offlineTitle ?? (lapsed ? READ_ONLY_TIP : undefined);
   const [picked, setPicked] = useState<NoteRevisionSummary | null>(null);
   const [restoring, setRestoring] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
