@@ -2,10 +2,11 @@ import {
   BASE_STORAGE_GB,
   FREE_NOTES,
   FREE_STORAGE_GB,
-  GB,
   INACTIVE_KEPT_DAYS,
   fitsFree,
   heldBytes,
+  notesOf,
+  overFree,
   type HeldCounts,
   type PlanSource,
   type PlanState,
@@ -85,8 +86,6 @@ const ENDED: Record<LapseKind, { subject: string; line: string }> = {
   comp: { subject: 'Your Unbent plan has ended', line: 'The plan on your Unbent account has ended.' },
 };
 
-const notesOf = (n: number) => `${n.toLocaleString('en-US')} ${n === 1 ? 'note' : 'notes'}`;
-
 /**
  * The message for a lapse of each kind, with what the account holds deciding what it
  * says the account is now. `planUrl` is where to subscribe, or where the card is
@@ -113,11 +112,7 @@ export function lapseMessage(kind: LapseKind, planUrl: string, held: HeldCounts 
         : `${kind === 'trial' ? 'Subscribe' : 'Subscribe again'} at ${planUrl} for unlimited notes, ${BASE_STORAGE_GB} GB of files and more Auto-fill.`;
     return { subject, text: `${line}\n\n${free}\n\n${more}` };
   }
-  // Only what is over, so the person is not sent to delete files when it is the notes.
-  const over: string[] = [];
-  if (held.notes > FREE_NOTES) over.push(`${notesOf(held.notes)}, more than the free plan's ${FREE_NOTES}`);
-  if (held.attachmentBytes > FREE_STORAGE_GB * GB) over.push(`${heldBytes(held.attachmentBytes)} of files, more than the free plan's ${FREE_STORAGE_GB} GB`);
-  const readOnly = `This account holds ${over.join(', and ')}, so it is now read-only.`;
+  const readOnly = `This account holds ${overFree(held).join(', and ')}, so it is now read-only.`;
   const still =
     'Your notes are still there, and everything still opens: you can read, search and export them, and delete anything, for as long as you like. What has stopped is editing and adding.';
   const back =

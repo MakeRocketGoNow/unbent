@@ -107,13 +107,32 @@ export const PLAN_INACTIVE_MESSAGE = `This account is read-only: its plan has en
  * the two to delete. Without them, the general sentence.
  */
 export function planInactiveMessage(held?: HeldCounts): string {
-  if (!held) return PLAN_INACTIVE_MESSAGE;
-  // Only what is over, so the person is not sent to delete files when it is the notes.
-  const over: string[] = [];
-  if (held.notes > FREE_NOTES) over.push(`${held.notes.toLocaleString('en-US')} notes, more than the free plan's ${FREE_NOTES}`);
-  if (held.attachmentBytes > FREE_STORAGE_GB * GB) over.push(`${heldBytes(held.attachmentBytes)} of files, more than the free plan's ${FREE_STORAGE_GB} GB`);
+  const over = held ? overFree(held) : [];
   if (over.length === 0) return PLAN_INACTIVE_MESSAGE;
   return `This account is read-only: its plan has ended, and it holds ${over.join(', and ')}. Everything still opens, searches and exports. Delete down to the free plan and empty the trash, or subscribe under Settings → Plan, to edit again.`;
+}
+
+/** A count of notes as the plan's sentences say it: `1,000 notes`, `1 note`. */
+export function notesOf(n: number): string {
+  return `${n.toLocaleString('en-US')} ${n === 1 ? 'note' : 'notes'}`;
+}
+
+/**
+ * What an account holds past the free plan, a phrase for each of the two that is over
+ * and nothing for one that is not, so a sentence never sends a person to delete files
+ * when it is the notes: `1,000 notes, more than the free plan's 100`. The 402 and the
+ * lapse mail are built from these; `more: false` leaves the comparison off, for a
+ * sentence that says the numbers itself (the Plan page's trial line).
+ */
+export function overFree(held: HeldCounts, opts: { more?: boolean; bytes?: (bytes: number) => string } = {}): string[] {
+  const more = opts.more ?? true;
+  const bytes = opts.bytes ?? heldBytes;
+  const over: string[] = [];
+  if (held.notes > FREE_NOTES) over.push(more ? `${notesOf(held.notes)}, more than the free plan's ${FREE_NOTES}` : notesOf(held.notes));
+  if (held.attachmentBytes > FREE_STORAGE_GB * GB) {
+    over.push(more ? `${bytes(held.attachmentBytes)} of files, more than the free plan's ${FREE_STORAGE_GB} GB` : `${bytes(held.attachmentBytes)} of files`);
+  }
+  return over;
 }
 
 /** Bytes as the plan's sentences say them: whole megabytes under a gigabyte, one decimal above. */

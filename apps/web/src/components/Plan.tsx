@@ -5,12 +5,13 @@ import {
   BASE_STORAGE_GB,
   FREE_NOTES,
   FREE_STORAGE_GB,
-  GB,
   MAX_STORAGE_UNITS,
   PLAN_PRICE_USD,
   STORAGE_ADDON_GB,
   STORAGE_ADDON_PRICE_USD,
   fitsFree,
+  notesOf,
+  overFree,
   storageQuotaBytes,
   storeLimitBytes,
   type AccountPlan,
@@ -525,11 +526,10 @@ function trialOutcome(plan: AccountPlan): string {
     const files = held.attachmentBytes === 0 ? 'no files' : `${formatBytes(held.attachmentBytes)} of files`;
     return `With ${notesOf(held.notes)} and ${files}, this account stays free then, up to ${FREE_NOTES} notes and ${FREE_STORAGE_GB} GB. `;
   }
-  const over = [held.notes > FREE_NOTES ? notesOf(held.notes) : null, held.attachmentBytes > FREE_STORAGE_GB * GB ? `${formatBytes(held.attachmentBytes)} of files` : null].filter(Boolean).join(' and ');
+  // The page's own byte spelling, so the line agrees with the meter beside it.
+  const over = overFree(held, { more: false, bytes: formatBytes }).join(' and ');
   return `With ${over}, this account becomes read-only then; within the free plan's ${FREE_NOTES} notes and ${FREE_STORAGE_GB} GB it would stay free. `;
 }
-
-const notesOf = (n: number) => `${n.toLocaleString('en-US')} ${n === 1 ? 'note' : 'notes'}`;
 
 /** The state in a heading and a sentence; see `describePlan`. */
 function PlanState({ plan }: { plan: AccountPlan }) {
