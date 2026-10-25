@@ -2,6 +2,7 @@ import { McpServer, createMcpHandler } from '@modelcontextprotocol/server';
 import { appLinks } from '../lib/app-links.js';
 import { canUseLlm } from '../lib/llm.js';
 import { billingOn } from '../lib/stripe.js';
+import { refuseIfPastFree } from '../lib/free-plan.js';
 import { lapsed, planFor, type PlanRow } from '../lib/plan.js';
 import { quotaOf, writeLimitsOf } from '../lib/quota.js';
 import { reposFor } from '../lib/repos.js';
@@ -62,7 +63,15 @@ export function createUnbentMcpHandler(
     registerWriteTools(gated, notes, links);
     // Upload links stay in D1: the token is looked up before anyone knows whose it is.
     const uploads = new UploadGrantsRepo(env.DB, userId);
-    registerAttachmentTools(gated, env, ctx, { notes, attachments, uploads }, links, async () => quotaOf(env, await plan()));
+    registerAttachmentTools(
+      gated,
+      env,
+      ctx,
+      { notes, attachments, uploads },
+      links,
+      async () => quotaOf(env, await plan()),
+      async () => refuseIfPastFree(env, attachments, await plan()),
+    );
     // Feedback on the tools goes to the operator, in D1 (MAK-212).
     registerFeedbackTool(gated, env.DB, { userId, clientId });
     return server;

@@ -4,12 +4,14 @@ import {
   FREE_STORAGE_GB,
   GB,
   PLAN_INACTIVE_CODE,
+  fitsFree,
   freeNotesFullMessage,
   planInactiveMessage,
   type HeldCounts,
 } from '@unbent/shared';
 import { billingOn, type StripeEnv } from './stripe.js';
 import { lapsed, type PlanRow } from './plan.js';
+import type { AttachmentsRepo } from './attachments-repo.js';
 import type { FreeLimits } from '../store/user-store.js';
 
 /**
@@ -48,6 +50,22 @@ export class PlanRefused extends Error {
     super(code === PLAN_INACTIVE_CODE ? planInactiveMessage(held) : freeNotesFullMessage(held.notes, adding));
     this.name = 'PlanRefused';
   }
+}
+
+/**
+ * Refuses an account past the free plan before a write that costs something outside
+ * the store first: a URL fetched, a body streamed into R2, an upload link minted. The
+ * store refuses those too, when the file's row is recorded, but only after the fetch or
+ * the upload, which before the free plan a read-only account was never let make: the
+ * gate refused it outright. One read of the store's counts (`usage`), and only for an
+ * account no plan holds; every other account, and every instance with billing off,
+ * reads nothing. An account that fits goes on, and its uploads meet the quota as ever.
+ */
+export async function refuseIfPastFree(env: StripeEnv, attachments: Pick<AttachmentsRepo, 'usage'>, plan: PlanRow | null | undefined): Promise<void> {
+  if (!freeLimitsOf(env, plan)) return;
+  const usage = await attachments.usage();
+  const held = { notes: usage.notes, attachmentBytes: usage.attachmentBytes };
+  if (!fitsFree(held)) throw new PlanRefused(PLAN_INACTIVE_CODE, held, 0);
 }
 
 /** The 402's body: the code a client switches on, the sentence, and the counts it was decided on. */

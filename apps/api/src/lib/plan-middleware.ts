@@ -86,10 +86,12 @@ const EXEMPT: ReadonlyArray<[method: string, pattern: string]> = [
  * method that takes the free plan's limits (`freeOnly` or the whole pair in
  * `UserStore`), so a lapsed account's request goes through to it, and the store answers
  * `PLAN_INACTIVE` for an account past the limits and `FREE_NOTES_FULL` for a note past
- * the count. A route belongs here only when every write it makes is one of those; a
- * route that writes anything the store does not hold (a row in D1, a call out) stays
- * off it, and is refused a lapsed account by the rule below until it has a check of
- * its own.
+ * the count. A route belongs here only when every write it makes is one of those, or
+ * when what it does outside the store first (a URL fetched, a body streamed into R2)
+ * is refused for an account past the free plan before it starts, by a check of its own
+ * (`refuseIfPastFree`): the three file routes have one. A route that writes anything
+ * else (a row in D1, a call out) stays off it, and is refused a lapsed account by the
+ * rule below until it has such a check.
  *
  *   - notes made, changed, duplicated or put back from their history, one or many;
  *   - notebooks, their fields, and tags, made or changed;

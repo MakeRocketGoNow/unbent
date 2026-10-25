@@ -39,10 +39,11 @@ export const ALLOWED_INACTIVE: ReadonlySet<string> = new Set([
  * The write tools whose every write goes to the store with the free plan's limits, as
  * `HELD_IN_STORE` lists the HTTP routes: for these the gate is not asked, and the store
  * decides (an account past the free plan is read-only, a note past its count is
- * refused), with its sentence returned as the tool's error below. Upload links are
- * here too: minting one writes a grant and no note, and the upload it leads to records
- * its file through the store like any other. A write tool on neither list is refused
- * a lapsed account by the gate, until someone says which it is.
+ * refused), with its sentence returned as the tool's error below. The two that do
+ * something outside the store first, fetching a URL (`add_attachment`) or minting an
+ * upload link (`prepare_attachment_upload`), refuse an account past the free plan
+ * before they start (`refuseIfPastFree`), as the file routes do. A write tool on
+ * neither list is refused a lapsed account by the gate, until someone says which it is.
  */
 export const HELD_IN_STORE_TOOLS: ReadonlySet<string> = new Set([
   'create_note',

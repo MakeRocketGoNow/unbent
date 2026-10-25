@@ -120,6 +120,14 @@ describe('an account whose plan has ended', () => {
     expect(await refused.json()).toMatchObject({ code: 'PLAN_INACTIVE', notes: FREE_NOTES + 1 });
     expect((await call('PATCH', `/api/notes/${noteId}`, { title: 'renamed' })).status).toBe(402);
     expect((await call('POST', '/api/notebooks', { name: 'Later' })).status).toBe(402);
+    // A file is refused before its body is taken in, not after it has gone to storage.
+    const upload = await fetch(`${BASE}/api/notes/${noteId}/files`, {
+      method: 'PUT',
+      headers: { Origin: ORIGIN, Cookie: cookie, 'X-Filename': 'scan.pdf', 'Content-Type': 'application/pdf' },
+      body: new Uint8Array([37, 80, 68, 70]),
+    });
+    expect(upload.status).toBe(402);
+    expect(await upload.json()).toMatchObject({ code: 'PLAN_INACTIVE' });
 
     expect((await call('GET', '/api/notes')).status).toBe(200);
     expect((await call('GET', `/api/notes/${noteId}`)).status).toBe(200);

@@ -16,7 +16,7 @@ import { serverCanRead } from '../lib/read-attachment.js';
 import { fetchWebImage } from '../lib/web-image.js';
 import { requireAuth } from '../lib/session.js';
 import { withRepos } from '../lib/repos-middleware.js';
-import { PlanRefused } from '../lib/free-plan.js';
+import { PlanRefused, refuseIfPastFree } from '../lib/free-plan.js';
 import { StorageFull, quotaOf, storageFullBody } from '../lib/quota.js';
 import { storeAttachment } from '../lib/store-attachment.js';
 import type { AppEnv } from '../types.js';
@@ -125,6 +125,9 @@ export const attachments = new Hono<AppEnv>()
      */
     const link = c.req.query('link') !== undefined;
 
+    // An account past the free plan is refused before the body is streamed into R2.
+    await refuseIfPastFree(c.env, repo, c.get('plan'));
+
     let stored;
     try {
       stored = await storeAttachment(
@@ -176,6 +179,8 @@ export const attachments = new Hono<AppEnv>()
     if (!(await attachments.ownsNote(to))) return c.json({ error: 'Not found' }, 404);
     if (from === to) return c.json({ error: 'Source and destination are the same note' }, 400);
     if (!(await attachments.ownsNote(from))) return c.json({ error: 'Source note not found' }, 404);
+    // Before any object is copied, for an account past the free plan.
+    await refuseIfPastFree(c.env, attachments, c.get('plan'));
 
     try {
       const result = await copyAttachments(
@@ -204,6 +209,8 @@ export const attachments = new Hono<AppEnv>()
     if (!(await repo.ownsNote(noteId))) return c.json({ error: 'Not found' }, 404);
 
     const { url } = c.req.valid('json');
+    // Before anything is fetched, for an account past the free plan.
+    await refuseIfPastFree(c.env, repo, c.get('plan'));
     const fetched = await fetchWebImage(url, {
       allowLoopback: c.env.ALLOW_TEST_CREDENTIALS === '1',
     });

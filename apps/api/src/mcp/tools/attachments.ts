@@ -74,6 +74,11 @@ export function registerAttachmentTools(
   links: AppLinks,
   /** The plan's storage in bytes when a file is about to be stored, or null for no limit; see lib/quota.ts. */
   quota: () => Promise<number | null>,
+  /**
+   * Refuses an account past the free plan before a file is fetched or a link is minted
+   * (`refuseIfPastFree`), by throwing the `PlanRefused` the gate answers as a tool error.
+   */
+  pastFree: () => Promise<void> = async () => {},
 ): void {
   // Loopback is fetchable only where the web-image route allows it too: local development,
   // flagged the same way. Deployed, this is false, so neither server-side fetcher can be
@@ -283,6 +288,7 @@ export function registerAttachmentTools(
 
       const checked = checkSourceUrl(raw, { allowLoopback });
       if ('error' in checked) return toolError(checked.error);
+      await pastFree();
       const referer = rawReferer === undefined ? undefined : checkReferer(rawReferer);
       if (referer && 'error' in referer) return toolError(referer.error);
 
@@ -378,6 +384,7 @@ export function registerAttachmentTools(
     },
     async ({ noteId, filename, contentType, link }) => {
       if (!(await repos.attachments.ownsNote(noteId))) return notFound('note', noteId);
+      await pastFree();
 
       const { token, expiresAt } = await repos.uploads.create({
         noteId,

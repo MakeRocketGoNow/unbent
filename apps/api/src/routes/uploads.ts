@@ -4,7 +4,7 @@ import { MAX_ATTACHMENT_BYTES } from '@unbent/shared';
 import { appLinks } from '../lib/app-links.js';
 import { chooseContentType } from '../lib/fetch-attachment.js';
 import { billingOn } from '../lib/stripe.js';
-import { PlanRefused, planRefusedBody } from '../lib/free-plan.js';
+import { PlanRefused, planRefusedBody, refuseIfPastFree } from '../lib/free-plan.js';
 import { planFor } from '../lib/plan.js';
 import { reposFor } from '../lib/repos.js';
 import { StorageFull, quotaOf, storageFullBody, writeLimitsOf } from '../lib/quota.js';
@@ -97,6 +97,13 @@ export const uploads = new Hono<AppEnv>().use('/uploads/*', anyOrigin).put('/upl
   // Trashed, or gone, in the minutes since the link was made.
   if (!(await attachments.ownsNote(grant.noteId))) {
     return c.json({ error: 'The note this link was for is no longer there.' }, 404);
+  }
+  // Past the free plan in the minutes since: refused before the bytes are taken in.
+  try {
+    await refuseIfPastFree(c.env, attachments, plan);
+  } catch (err) {
+    if (err instanceof PlanRefused) return c.json(planRefusedBody(err), 402);
+    throw err;
   }
 
   /*
