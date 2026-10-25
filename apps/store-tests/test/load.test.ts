@@ -66,14 +66,7 @@ async function populate(stub: ReturnType<typeof freshStore>['stub']) {
   await stub.autofillPrelude(kept.id, 5, { cap: null, yearlyCents: null });
   await stub.recordLlmUsage([{ job: 'title', model: 'claude-opus-5', inputTokens: 400, outputTokens: 20, cacheReadTokens: 0, cacheWriteTokens: 0 }]);
   // A saved view of the notebook, so `notebook_views` has a row to carry.
-  await runInDurableObject(stub, (_i, state) => {
-    state.storage.sql.exec(
-      `INSERT INTO notebook_views (id, notebook_id, name, position, query, created_at, updated_at) VALUES (?1, ?2, 'Acme only', 0, ?3, 1, 1)`,
-      crypto.randomUUID(),
-      notebook.id,
-      JSON.stringify({ field: [`${field.id}:eq:Acme`], layout: 'table' }),
-    );
-  });
+  await stub.createView(notebook.id, 'Acme only', { field: [`${field.id}:eq:Acme`], layout: 'table' });
   return { kept, trashed, notebook };
 }
 

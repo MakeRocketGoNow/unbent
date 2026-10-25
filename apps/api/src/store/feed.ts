@@ -16,8 +16,11 @@ import type { Sql } from './sql.js';
  * committed, so did the row.
  */
 
-/** What the feed names. A note covers its tags, fields and files; a notebook its field definitions. */
-export type FeedEntity = 'note' | 'notebook' | 'tag' | 'attachment';
+/**
+ * What the feed names. A note covers its tags, fields and files; a notebook its field
+ * definitions; a view is its own row (`views.ts`), since nothing else carries one.
+ */
+export type FeedEntity = 'note' | 'notebook' | 'tag' | 'attachment' | 'view';
 
 /**
  * The `_meta` keys the feed owns, written by 0002-changes and read here. `UserStore`'s

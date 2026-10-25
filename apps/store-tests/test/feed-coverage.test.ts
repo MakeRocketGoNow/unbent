@@ -99,7 +99,22 @@ const WRITES: Record<string, (s: Seeded) => Promise<unknown>> = {
   recordText: (s) => s.stub.recordText({ attachmentId: 'a2', noteId: s.noteId, filename: 'bare.pdf', text: 'read' }),
   copyText: (s) => s.stub.copyText('a1', { attachmentId: 'a2', noteId: s.noteId, filename: 'bare.pdf' }),
   writeAssistantText: (s) => s.stub.writeAssistantText(s.noteId, 'card.jpg', 'what an assistant read'),
+  createView: (s) => s.stub.createView(s.notebookId, 'Business 2026', { tag: ['acme'] }),
+  // An edit and a delete need a view to act on, made inside the call and measured from
+  // after it, as `restoreRevision` is: the create records for itself.
+  updateView: (s) => afterView(s, (id) => s.stub.updateView(id, { name: 'Personal' })),
+  deleteView: (s) => afterView(s, (id) => s.stub.deleteView(id)),
 };
+
+/** Makes a view, then runs `act` on it and checks that `act` itself recorded. */
+async function afterView(s: Seeded, act: (id: string) => Promise<unknown>): Promise<void> {
+  const view = await s.stub.createView(s.notebookId, 'Receipts by month', {});
+  if (typeof view === 'string') throw new Error(`expected a view, got ${view}`);
+  const before = await feedSeq(s.stub);
+  await s.stub.resetCounters();
+  await act(view.id);
+  expect(await feedSeq(s.stub), 'a view write must record its view').toBeGreaterThan(before);
+}
 
 /** Methods that write without the feed needing to know, each with its reason. */
 const EXEMPT: Record<string, string> = {
@@ -130,6 +145,7 @@ const READS = new Set([
   'autofillContext', 'uploadPrelude', 'autofillUsage',
   'changesSince', 'snapshotPage',
   'listRevisions', 'getRevision',
+  'listViews',
 ]);
 
 /** The public methods `UserStore` declares, read off its source. */

@@ -12,6 +12,7 @@ import type {
   NoteRevisionSummary,
   NoteSummary,
   NotebookDefinition,
+  NotebookView,
   OptionEdit,
   RestoredNote,
   NotebookSummary,
@@ -19,12 +20,14 @@ import type {
   SearchResultRow,
   SnapshotPage,
   StaleNote,
+  ViewQuery,
 } from '@unbent/shared';
 import { StoreRepo } from './store-client.js';
 import type { FileSummary } from '../store/attachments.js';
 import type { PressLimits, UsageEntry } from '../store/llm-usage.js';
 import type { WriteLimits } from '../store/user-store.js';
 import type { CountOptions, ListOptions, SearchFilters } from '../store/notes.js';
+import type { ViewPatch } from '../store/views.js';
 import {
   keysOfDeletedNotes,
   nextCursor,
@@ -356,6 +359,23 @@ export class NotesRepo extends StoreRepo {
 
   deleteNotebook(id: string, opts?: { trashNotes?: boolean | undefined }): Promise<boolean> {
     return this.call((s) => s.deleteNotebook(id, opts));
+  }
+
+  /** Every saved view of the account, by notebook in order (MAK-249). */
+  listViews(): Promise<NotebookView[]> {
+    return this.call((s) => s.listViews());
+  }
+
+  createView(notebookId: string, name: string, query: ViewQuery): Promise<NotebookView | 'conflict' | 'missing'> {
+    return this.call(async (s) => s.createView(notebookId, name, query, await this.limits()));
+  }
+
+  updateView(id: string, patch: ViewPatch): Promise<NotebookView | 'conflict' | 'missing'> {
+    return this.call(async (s) => s.updateView(id, patch, await this.limits()));
+  }
+
+  deleteView(id: string): Promise<boolean> {
+    return this.call((s) => s.deleteView(id));
   }
 
   listFields(notebookId: string, opts?: { counts?: boolean | undefined }): Promise<FieldDef[] | null> {

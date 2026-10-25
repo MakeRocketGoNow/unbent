@@ -108,6 +108,7 @@ describe('the free plan', () => {
     const tagId = (await stub.listTags()).find((t) => t.name === 'bills')!.id;
     await stub.update(ids[0]!, { title: 'Earlier' });
     const revision = (await stub.listRevisions(ids[0]!))![0]!;
+    const view = (await stub.createView(notebook.id, 'Business 2026', { tag: ['bills'] })) as { id: string };
     const seq = await feedSeq(stub);
     expect(tag).toMatchObject({ tags: ['bills'] });
 
@@ -127,6 +128,8 @@ describe('the free plan', () => {
       ['reorderFields', () => stub.reorderFields(notebook.id, [fieldId], limits)],
       ['renameTag', () => stub.renameTag(tagId, 'paid', undefined, limits)],
       ['recolorTag', () => stub.recolorTag(tagId, 3, limits)],
+      ['createView', () => stub.createView(notebook.id, 'Personal', {}, limits)],
+      ['updateView', () => stub.updateView(view.id, { name: 'Acme' }, limits)],
       ['recordAttachment', () => stub.recordAttachment({ id: 'a1', noteId: ids[1]!, filename: 'scan.pdf', contentType: 'application/pdf', size: 3, r2Key: 'k1' }, undefined, limits)],
       ['autofillPrelude', () => stub.autofillPrelude(ids[1]!, 5, { cap: null, yearlyCents: null }, limits)],
     ];
@@ -139,7 +142,9 @@ describe('the free plan', () => {
     expect(await stub.update(ids[0]!, { title: 'Earlier' }, limits)).toMatchObject({ title: 'Earlier' });
     expect(await stub.update('no-such-note', { title: 'x' }, limits)).toBeNull();
 
-    // The way out takes none: trashing, purging, emptying the trash, and a restore.
+    // The way out takes none: trashing, purging, emptying the trash, and a restore. A
+    // view's delete takes none either, as no delete does.
+    expect(await stub.deleteView(view.id)).toBe(true);
     expect(await stub.removeMany(ids.slice(4))).toHaveLength(3);
     expect(await stub.restore(ids[6]!)).toBe(true);
     await expect(stub.update(ids[1]!, { title: 'Still over' }, limits)).rejects.toMatchObject(refused);

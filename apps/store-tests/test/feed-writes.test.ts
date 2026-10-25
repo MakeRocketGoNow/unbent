@@ -326,6 +326,73 @@ describe('the feed records tag, notebook and field writes', () => {
     ).toBe('conflict');
     expect(await feedRows(stub, seq)).toEqual([]);
   });
+
+  it('a saved view: one row when made, renamed or edited, a row per view a move or a delete shifts, a tombstone when deleted', async () => {
+    const { stub } = freshStore('feed-views');
+    const nb = (await stub.createNotebook('Receipts'))!;
+    let seq = await feedSeq(stub);
+    const a = await stub.createView(nb.id, 'Business 2026', { tag: ['acme'], layout: 'table' });
+    if (typeof a === 'string') throw new Error(`expected a view, got ${a}`);
+    expect(a).toMatchObject({ notebookId: nb.id, name: 'Business 2026', position: 0, query: { tag: ['acme'], layout: 'table' } });
+    expect(await feedRows(stub, seq)).toEqual([{ entity: 'view', id: a.id }]);
+
+    // A name another of the notebook's views has, in any case, is refused and writes nothing.
+    seq = await feedSeq(stub);
+    expect(await stub.createView(nb.id, 'business 2026', {})).toBe('conflict');
+    expect(await stub.createView(crypto.randomUUID(), 'Elsewhere', {})).toBe('missing');
+    expect(await feedRows(stub, seq)).toEqual([]);
+    // The same name in another notebook is another view.
+    const other = (await stub.createNotebook('Taxes'))!;
+    expect(await stub.createView(other.id, 'Business 2026', {})).toMatchObject({ position: 0 });
+
+    const b = (await stub.createView(nb.id, 'Personal', { sort: 'title', order: 'asc' })) as { id: string; position: number };
+    const c = (await stub.createView(nb.id, 'Tax year', { from: '2026-01-01', to: '2026-12-31' })) as { id: string; position: number };
+    expect([b.position, c.position]).toEqual([1, 2]);
+
+    // A rename, or a query replaced: the view alone.
+    seq = await feedSeq(stub);
+    expect(await stub.updateView(a.id, { name: 'Acme' })).toMatchObject({ id: a.id, name: 'Acme', position: 0 });
+    expect(await feedRows(stub, seq)).toEqual([{ entity: 'view', id: a.id }]);
+    seq = await feedSeq(stub);
+    expect(await stub.updateView(a.id, { query: { tag: ['acme'], layout: 'cards' } })).toMatchObject({ query: { layout: 'cards' } });
+    expect(await feedRows(stub, seq)).toEqual([{ entity: 'view', id: a.id }]);
+    // The same name and query again: nothing written, nothing recorded. A taken name: refused.
+    seq = await feedSeq(stub);
+    expect(await stub.updateView(a.id, { name: 'Acme', query: { tag: ['acme'], layout: 'cards' } })).toMatchObject({ name: 'Acme' });
+    expect(await stub.updateView(a.id, { name: 'personal' })).toBe('conflict');
+    expect(await stub.updateView(crypto.randomUUID(), { name: 'Nobody' })).toBe('missing');
+    expect(await feedRows(stub, seq)).toEqual([]);
+    // Its own name in another case is a rename, not a clash with itself.
+    expect(await stub.updateView(a.id, { name: 'ACME' })).toMatchObject({ name: 'ACME' });
+
+    // A move to the front: the view moved and each it passed, and the order stays dense.
+    seq = await feedSeq(stub);
+    expect(await stub.updateView(c.id, { position: 0 })).toMatchObject({ id: c.id, position: 0 });
+    expect((await feedRows(stub, seq)).map((r) => r.id).sort()).toEqual([a.id, b.id, c.id].sort());
+    const order = async () => (await stub.listViews()).filter((v) => v.notebookId === nb.id).map((v) => [v.id, v.position]);
+    expect(await order()).toEqual([[c.id, 0], [a.id, 1], [b.id, 2]]);
+    // Past the end is the end; only the views whose place changed are rows.
+    seq = await feedSeq(stub);
+    expect(await stub.updateView(a.id, { position: 99 })).toMatchObject({ position: 2 });
+    expect((await feedRows(stub, seq)).map((r) => r.id).sort()).toEqual([a.id, b.id].sort());
+    expect(await order()).toEqual([[c.id, 0], [b.id, 1], [a.id, 2]]);
+    // To where it already is: nothing.
+    seq = await feedSeq(stub);
+    await stub.updateView(a.id, { position: 2 });
+    expect(await feedRows(stub, seq)).toEqual([]);
+
+    // A delete: its tombstone, and a row for each view after it, which moved up to close the gap.
+    seq = await feedSeq(stub);
+    expect(await stub.deleteView(c.id)).toBe(true);
+    const deleted = await feedRows(stub, seq);
+    expect(deleted[0]).toEqual({ entity: 'view', id: c.id, deleted: true });
+    expect(deleted.slice(1)).toEqual(expect.arrayContaining([{ entity: 'view', id: b.id }, { entity: 'view', id: a.id }]));
+    expect(deleted).toHaveLength(3);
+    expect(await order()).toEqual([[b.id, 0], [a.id, 1]]);
+    seq = await feedSeq(stub);
+    expect(await stub.deleteView(c.id)).toBe(false);
+    expect(await feedRows(stub, seq)).toEqual([]);
+  });
 });
 
 describe('the feed records file writes', () => {
