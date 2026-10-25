@@ -666,6 +666,26 @@ describe('a server that stops responding', () => {
     expect(createNote).toHaveBeenCalledTimes(2);
   });
 
+  /**
+   * The free plan's count is the plan's answer, which every later note would get too, so
+   * the run ends on the first with the server's own sentence, rather than reading five of
+   * them as the server going away.
+   */
+  it('stops on the first refusal for the plan, in the server\u2019s words', async () => {
+    const createNote = vi.fn(async (input: { title: string }) => {
+      if (input.title === 'N0') return { id: 'note-1', created: true };
+      throw Object.assign(statusError(402), {
+        code: 'FREE_NOTES_FULL',
+        message: '402: The free plan holds up to 100 notes, counting the trash, and this account holds 100.',
+      });
+    });
+    const { client } = fakeClient({ createNote });
+    const run = importEnex(enexFile('N.enex', manyNotes(20)), client);
+    await expect(run).rejects.toMatchObject({ status: 402, streak: 1 });
+    await expect(run).rejects.toThrow(/^Stopped: The free plan holds up to 100 notes, counting the trash, and this account holds 100\. 1 notes were imported before that\./);
+    expect(createNote).toHaveBeenCalledTimes(2);
+  });
+
   it('says how much landed before it gave up', async () => {
     const { client } = fakeClient({
       createNote: vi.fn(async (input) => {

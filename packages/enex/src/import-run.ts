@@ -1,4 +1,4 @@
-import type { ReadBy } from '@unbent/shared';
+import { FREE_NOTES_FULL_CODE, PLAN_INACTIVE_CODE, type ReadBy } from '@unbent/shared';
 import type { FieldValue, NotebookDefinition } from '@unbent/shared';
 import { isExtractable } from './ocr-text.js';
 import { extractPdfText } from './pdf-text.js';
@@ -106,6 +106,23 @@ export class ImportStoppedError extends Error {
 function statusOf(err: unknown): number | undefined {
   const status = (err as { status?: unknown } | null | undefined)?.status;
   return typeof status === 'number' ? status : undefined;
+}
+
+/**
+ * Whether the server refused the note for the account's plan: the free plan's count
+ * (`FREE_NOTES_FULL`) or an account past it, which is read-only (`PLAN_INACTIVE`). The
+ * same answer for every note after it, until the person deletes or subscribes, so the
+ * run stops on the first. Duck-typed on `code`, as `statusOf` is on `status`; a 402 for
+ * a file past the storage quota is not one of these, since a smaller file may still fit.
+ */
+function plannedOut(err: unknown): boolean {
+  const code = (err as { code?: unknown } | null | undefined)?.code;
+  return code === FREE_NOTES_FULL_CODE || code === PLAN_INACTIVE_CODE;
+}
+
+/** The server's own sentence, without the status the browser's client puts in front of it. */
+function sentenceOf(err: unknown): string {
+  return ((err as Error).message ?? '').replace(/^\d{3}:\s*/, '');
 }
 
 /**
@@ -368,6 +385,18 @@ export class ImportRun {
           `Stopped because you were signed out. ` +
             `${progress.created.toLocaleString()} notes were imported before that. ` +
             `Sign in and import the same file again to continue; everything that landed is skipped.`,
+        );
+        this.halt.abort();
+      } else if (plannedOut(err)) {
+        // Not a streak either: the plan's answer, which every later note would get, and
+        // which the server's own sentence explains with the numbers and the ways out. The
+        // breaker below read five of these as the server going away.
+        this.stopped = new ImportStoppedError(
+          status ?? 402,
+          this.streak.count,
+          `Stopped: ${sentenceOf(err)} ` +
+            `${progress.created.toLocaleString()} notes were imported before that. ` +
+            `Import the same file again once there is room; everything that landed is skipped.`,
         );
         this.halt.abort();
       } else if (
