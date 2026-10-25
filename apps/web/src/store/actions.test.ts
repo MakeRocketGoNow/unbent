@@ -701,6 +701,28 @@ describe('a replayed write', () => {
     await after.dispose();
   });
 
+  it('writes the answer the page read before the outbox opened, and so replaces a stale one', async () => {
+    const { lib } = library([row('n1')]);
+    await lib.outbox.ready;
+    planIs(false, true);
+    await tick();
+    await lib.outbox.dispose();
+    // The next page reads the plan before its outbox opens: a subscription since.
+    resetPlanRefused();
+    planIs(false, false);
+    const reopened = createOutbox('u1', lib);
+    await reopened.ready;
+    await tick();
+    expect(planFree()).toBe(false);
+    await reopened.dispose();
+    // And the page after that, offline, finds nothing kept that would count its notes.
+    resetPlanRefused();
+    const after = createOutbox('u1', lib);
+    await after.ready;
+    expect(planFree()).toBe(false);
+    await after.dispose();
+  });
+
   it('keeps the store\u2019s refusal across a reload, and forgets it once the save has gone', async () => {
     const { lib, fake, note } = library([row('n1', { title: 'old' })]);
     const base = note('n1');

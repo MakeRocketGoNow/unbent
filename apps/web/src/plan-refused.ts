@@ -41,6 +41,12 @@ let knownInactive = false;
 let knownFree = false;
 /** Whether this page has read the plan itself, after which a restored answer is stale. */
 let freeRead = false;
+/**
+ * Whose answer it is: the account this tab was last handed to (`claimPlanFor`). A
+ * sign-out and another person's sign-in happen without a reload, and an answer read for
+ * one account must not reach the next one's outbox, or count the next one's notes.
+ */
+let freeOwner: string | null = null;
 const readListeners = new Set<(free: boolean) => void>();
 
 /** How long a refusal's word is kept to itself before the listeners hear it again. */
@@ -98,7 +104,26 @@ export function readOnlyKnown(): boolean {
  */
 export function onPlanRead(listener: (free: boolean) => void): () => void {
   readListeners.add(listener);
+  // The plan is a plain request started when the page mounts, and the outbox opens after
+  // the local store and the lock, or later still when the library moves to this tab: an
+  // outbox that heard only reads made after it opened missed the one that mattered, and
+  // kept an old answer (a free account since subscribed) for good. So it hears this
+  // page's answer at once, when there is one.
+  if (freeRead) listener(knownFree);
   return () => readListeners.delete(listener);
+}
+
+/**
+ * Hands the plan's answer to the account the tab now belongs to (`handOver`): another
+ * account's answer is forgotten, so its outbox is not told it and its notes are not
+ * counted by it, until the new account's own plan is read or its outbox restores what
+ * it kept. The same account again keeps what it has.
+ */
+export function claimPlanFor(userId: string): void {
+  if (freeOwner === userId) return;
+  freeOwner = userId;
+  knownFree = false;
+  freeRead = false;
 }
 
 /** The answer the outbox kept, from the account's last page: used until this page reads the plan itself. */
@@ -147,6 +172,7 @@ export function resetPlanRefused(): void {
   knownInactive = false;
   knownFree = false;
   freeRead = false;
+  freeOwner = null;
   readListeners.clear();
   toldAt = 0;
   listeners.clear();
