@@ -8521,6 +8521,112 @@ button.settings-nav-item {
   outline-offset: 2px;
 }
 
+/*
+   The list as a saved view, at the end of the chips (`ViewActions`).
+
+   "Edited · Save · Save as new · Revert" is one group that wraps as a whole: after the
+   chips while the row has room, on a line of its own under them when it has not. Laid
+   out as siblings of the chips it wrapped word by word, and a narrow column read "Edited
+   Save" on one line and "Save as new Revert" on the next, which is two sentences that
+   are neither. The buttons are the chips' height, so a row that mixes them stays one
+   height, and in the page's ink rather than the quiet button's muted grey: beside filled
+   chips a grey word read as a caption, not as something to press. "Edited" is the one
+   muted word, the state the buttons are about, with a dot after it to set it apart.
+*/
+.view-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0;
+  min-width: 0;
+}
+
+.filter-chips .btn-small {
+  min-height: calc(0.75rem * 1.2 + 0.5rem + 2px);
+  padding-block: 0;
+}
+
+.filter-chips .btn-quiet:not(.btn-danger) { color: var(--fg); }
+
+.view-edited {
+  display: inline-flex;
+  align-items: center;
+  padding-inline: 0.25rem 0.15rem;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.view-edited::after {
+  content: '·';
+  margin-left: 0.3rem;
+}
+
+/* "Save view" leads with its bookmark, the rail's glyph for a view, with a plus. */
+.view-action {
+  gap: 0.3rem;
+}
+
+.view-actions-error {
+  flex-basis: 100%;
+  margin: 0;
+}
+
+/*
+   The field a view is named in (`ViewNameField`), wherever it opens: in the chips row, in
+   the filter sheet, on the notebook's settings page.
+
+   Fenced, small and rounded like the chips beside it, with the input's own border, since
+   among chips a bare input is text with a caret in it. It takes the rest of the row and
+   wraps to a line of its own when the rest is too short for a name, rather than squeezing
+   the field to a few letters; Save and Cancel stay beside it on that line.
+*/
+.view-name {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  flex: 1 1 16rem;
+  min-width: 0;
+}
+
+.view-name-row {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.view-name-field {
+  flex: 1;
+  min-width: 0;
+  height: 1.75rem;
+  padding: 0 0.6rem;
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  outline: none;
+}
+
+.view-name-field:focus-visible,
+.view-name-field:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.view-name-field::placeholder { color: var(--muted); }
+
+.view-name-error { margin: 0 0 0 0.6rem; }
+
+/* In the filter sheet, on a phone: its own row under the filters, the sheet's padding. */
+.sheet-view-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+
 
 /* ---------------------------------------------------------------------------------
    The filter sheet.

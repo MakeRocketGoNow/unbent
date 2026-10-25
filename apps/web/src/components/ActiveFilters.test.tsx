@@ -72,6 +72,21 @@ describe('ActiveFilters', () => {
     expect(container.querySelector('.filter-chips')).toBeNull();
   });
 
+  /* A list ordered but not filtered has no chips and can still be saved as a view, so
+     the row draws for what follows the chips alone. */
+  it('draws the row for what follows the chips, with no chips', async () => {
+    const { container, findByText } = harness({
+      notebook: undefined,
+      tags: [],
+      from: undefined,
+      to: undefined,
+      trailing: <button type="button">Save view</button>,
+    });
+    await findByText('Save view');
+    expect(container.querySelector('.filter-chips')).toBeTruthy();
+    expect(container.querySelectorAll('.filter-chip').length).toBe(0);
+  });
+
   it('draws one chip per active filter, in the order the controls are in', async () => {
     const { container } = harness({
       notebook: 'Coupons',

@@ -1,9 +1,10 @@
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
-import { render, screen, cleanup, waitFor } from '@testing-library/react';
+import { render, screen, cleanup, waitFor, fireEvent } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createRootRoute, createRoute, createRouter, createMemoryHistory, Outlet, RouterProvider } from '@tanstack/react-router';
 import type { FeedNote, FeedView } from '@unbent/shared';
 import * as api from '../notes-api.js';
+import * as actions from '../store/actions.js';
 import { installTestLibrary, type TestLibrary } from '../store/test-library.js';
 import { installLibraryQueries } from '../queries.js';
 import { NotesLayout } from './NotesLayout.js';
@@ -157,5 +158,108 @@ describe('the heading of a saved view', () => {
     // Give the arrival effect its chance to run.
     await new Promise((r) => setTimeout(r, 50));
     expect(search().sort).toBeUndefined();
+  });
+});
+
+describe('an edited view', () => {
+  /* The chips take a filter off or the pickers add one, and the view's id stays: that
+     difference is the edit, said beside the chips with what can be done about it. */
+  it('says it has been edited when a tag is added, and goes back on Revert', async () => {
+    setup();
+    const { router, search } = mount(viewAddress());
+    await screen.findByRole('heading', { name: 'Business 2026' });
+    expect(screen.queryByText('Edited')).toBeNull();
+
+    await router.navigate({ to: '/notes', search: (prev: Record<string, unknown>) => ({ ...prev, tag: ['Acme', 'Travel'] }) });
+    expect(await screen.findByText('Edited')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Save' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Save as new' })).toBeTruthy();
+
+    screen.getByRole('button', { name: 'Revert' }).click();
+    await waitFor(() => expect(search().tag).toEqual(['Acme']));
+    expect(search().saved).toBe(V1);
+    await waitFor(() => expect(screen.queryByText('Edited')).toBeNull());
+  });
+
+  /* The search text is not part of a view: typing one inside a view is not wandering. */
+  it('does not count a search as an edit', async () => {
+    setup();
+    const { router } = mount(viewAddress());
+    await screen.findByRole('heading', { name: 'Business 2026' });
+    await router.navigate({ to: '/notes', search: (prev: Record<string, unknown>) => ({ ...prev, q: 'alpha' }) });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(screen.queryByText('Edited')).toBeNull();
+  });
+
+  it('saves the change into the view', async () => {
+    setup();
+    vi.mocked(actions.updateView).mockImplementation(async (id, patch) => view({ id, query: patch.query!, updatedAt: 2 }));
+    const { router } = mount(viewAddress());
+    await screen.findByRole('heading', { name: 'Business 2026' });
+    await router.navigate({ to: '/notes', search: (prev: Record<string, unknown>) => ({ ...prev, tag: ['Acme', 'Travel'] }) });
+    (await screen.findByRole('button', { name: 'Save' })).click();
+    await waitFor(() =>
+      expect(actions.updateView).toHaveBeenCalledWith(V1, { query: { tag: ['Acme', 'Travel'], layout: 'list' } }),
+    );
+    await waitFor(() => expect(screen.queryByText('Edited')).toBeNull());
+  });
+});
+
+describe('saving a view', () => {
+  it('is offered inside a notebook with a filter or an order, and nowhere else', async () => {
+    setup([]);
+    const { router } = mount('/notes?notebook=Receipts&view=list');
+    await screen.findByRole('heading', { name: 'Receipts' });
+    // The notebook as it is: nothing to save that the notebook's own row is not.
+    expect(screen.queryByRole('button', { name: 'Save view' })).toBeNull();
+
+    // An order alone is worth saving, though it has no chip.
+    await router.navigate({ to: '/notes', search: (prev: Record<string, unknown>) => ({ ...prev, sort: 'title' as const }) });
+    expect(await screen.findByRole('button', { name: 'Save view' })).toBeTruthy();
+
+    // Outside a notebook there is nowhere for a view to live.
+    await router.navigate({ to: '/notes', search: { tag: ['Acme', 'Travel'], view: 'list' } });
+    await screen.findByRole('heading', { name: 'All notes' });
+    expect(screen.queryByRole('button', { name: 'Save view' })).toBeNull();
+  });
+
+  it('is not offered with a view open', async () => {
+    setup();
+    mount(viewAddress());
+    await screen.findByRole('heading', { name: 'Business 2026' });
+    expect(screen.queryByRole('button', { name: 'Save view' })).toBeNull();
+  });
+
+  it('names the view in place, saves it, and opens it', async () => {
+    const made = '44444444-4444-4444-8444-444444444444';
+    setup([]);
+    vi.mocked(actions.createView).mockImplementation(async (body) => {
+      const row = view({ id: made, name: body.name, query: body.query });
+      lib?.upsert('view', row);
+      return row;
+    });
+    const { search } = mount('/notes?notebook=Receipts&tag=%5B%22Acme%22%5D&view=list');
+    (await screen.findByRole('button', { name: 'Save view' })).click();
+    const field = await screen.findByRole('textbox', { name: 'View name' });
+    fireEvent.change(field, { target: { value: 'Acme only' } });
+    fireEvent.keyDown(field, { key: 'Enter' });
+    await waitFor(() =>
+      expect(actions.createView).toHaveBeenCalledWith({ notebookId: NB, name: 'Acme only', query: { tag: ['Acme'], layout: 'list' } }),
+    );
+    await waitFor(() => expect(search().saved).toBe(made));
+    expect(await screen.findByRole('heading', { name: 'Acme only' })).toBeTruthy();
+  });
+
+  /* A taken name is about the field, so it is said under the field, which keeps the name. */
+  it('says under the field when the name is taken', async () => {
+    setup();
+    vi.mocked(actions.createView).mockRejectedValue(new Error('This notebook already has a view with that name.'));
+    mount('/notes?notebook=Receipts&tag=%5B%22Travel%22%5D&view=list');
+    (await screen.findByRole('button', { name: 'Save view' })).click();
+    const field = await screen.findByRole('textbox', { name: 'View name' });
+    fireEvent.change(field, { target: { value: 'Business 2026' } });
+    screen.getByRole('button', { name: 'Save' }).click();
+    expect((await screen.findByRole('alert')).textContent).toBe('This notebook already has a view with that name.');
+    expect((screen.getByRole('textbox', { name: 'View name' }) as HTMLInputElement).value).toBe('Business 2026');
   });
 });

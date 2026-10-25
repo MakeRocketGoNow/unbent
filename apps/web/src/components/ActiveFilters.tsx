@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { UNFILED, type FieldDef } from '@unbent/shared';
 import { CloseIcon } from './icons.js';
@@ -24,6 +25,12 @@ interface ActiveFiltersProps {
   fieldDefs?: FieldDef[];
   from: string | undefined;
   to: string | undefined;
+  /**
+   * What follows the chips in the same row: the list's saved-view actions (`ViewActions`).
+   * A row with only this still draws, since a list ordered but not filtered has no chips
+   * and can still be saved as a view; a row with neither still draws nothing.
+   */
+  trailing?: ReactNode;
 }
 
 /**
@@ -54,6 +61,7 @@ export function ActiveFilters({
   fieldDefs = [],
   from,
   to,
+  trailing,
 }: ActiveFiltersProps) {
   const navigate = useNavigate();
   const range = rangeLabel(from, to);
@@ -62,7 +70,7 @@ export function ActiveFilters({
     void navigate({ to: '/notes', search: (prev) => ({ ...prev, ...search }) });
 
   // An empty strip is a gap above the notes with nothing in it.
-  if (!notebook && tags.length === 0 && fields.length === 0 && !range) return null;
+  if (!notebook && tags.length === 0 && fields.length === 0 && !range && !trailing) return null;
 
   return (
     <div className="filter-chips">
@@ -131,6 +139,8 @@ export function ActiveFilters({
           <CloseIcon />
         </button>
       )}
+
+      {trailing}
     </div>
   );
 }

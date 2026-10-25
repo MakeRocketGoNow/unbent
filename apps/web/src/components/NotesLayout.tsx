@@ -1,7 +1,16 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { Link, useNavigate, useSearch } from '@tanstack/react-router';
 import { useQuery, useInfiniteQuery, useQueryClient, useMutation } from '@tanstack/react-query';
-import { DEFAULT_NOTE_SORT, UNFILED, type FieldDef, type FieldValue } from '@unbent/shared';
+import {
+  DEFAULT_NOTE_SORT,
+  UNFILED,
+  narrowsList,
+  sameViewQuery,
+  viewQueryOf,
+  type FieldDef,
+  type FieldValue,
+  type NotebookView,
+} from '@unbent/shared';
 import * as api from '../notes-api.js';
 import * as actions from '../store/actions.js';
 import { isOfflineError } from '../notes-api.js';
@@ -71,6 +80,8 @@ import { editOpenNoteField } from '../open-note-fields.js';
 import { keys, type SearchAnswer } from '../queries.js';
 import { SearchCoverage } from './SearchCoverage.js';
 import { ActiveFilters } from './ActiveFilters.js';
+import { ViewActions } from './ViewActions.js';
+import { viewSearch } from '../view-address.js';
 import { ScopeMatches, scopeMatches } from './ScopeMatches.js';
 import { useMediaQuery, MOBILE_QUERY } from '../useMediaQuery.js';
 import { useSelection } from '../useSelection.js';
@@ -949,6 +960,68 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
         })
       : undefined;
 
+  /*
+   * The list as a saved view would keep it, and what can be done with that.
+   *
+   * `edited` is the open view against the address: the search text is not part of a view
+   * and never counts (see `views.ts`), and a layout not yet written in counts for nothing
+   * either (`sameViewQuery`). Saving a new view is offered only inside a notebook, where
+   * views live, and only when the list is narrowed or ordered at all (`narrowsList`): a
+   * plain notebook saved as a view would be a second row for the row above it.
+   */
+  const listAddress = { tag, field, sort, order, sortField, from, to, view: viewParam ?? view };
+  const viewEdited = openView !== undefined && !sameViewQuery(openView.query, viewQueryOf(listAddress));
+  const canSaveView =
+    notebookId !== undefined && saved === undefined && !showNotebookMissing && narrowsList(listAddress);
+  const viewState: 'unsaved' | 'edited' | null = viewEdited ? 'edited' : canSaveView ? 'unsaved' : null;
+
+  /** A view the server has answered, into the list the rail and the heading read, at once. */
+  const holdView = (made: NotebookView) =>
+    queryClient.setQueryData(keys.views(), (list: NotebookView[] | undefined) =>
+      list?.some((v) => v.id === made.id) ? list.map((v) => (v.id === made.id ? made : v)) : [...(list ?? []), made],
+    );
+  /*
+   * The list saved as a new view, then opened as one: the address is already the view's,
+   * so opening it is only its id beside the filters, in place, with the open note left
+   * open and the search text left as typed.
+   */
+  const createView = async (name: string) => {
+    if (notebookId === undefined) return;
+    const made = await actions.createView({ notebookId, name, query: viewQueryOf(listAddress) });
+    madeHere.current.add(made.id);
+    holdView(made);
+    await navigate({ to: '.', search: (prev) => ({ ...prev, saved: made.id }), replace: true, resetScroll: false });
+  };
+  /** The open view takes what the list shows now; the Edited line goes with the match. */
+  const saveView = async () => {
+    if (!openView) return;
+    holdView(await actions.updateView(openView.id, { query: viewQueryOf(listAddress) }));
+  };
+  /*
+   * Back to the view as it is kept. Replaced rather than pushed, since it undoes the
+   * entries the edit made rather than being a move of its own. The search text stays: it
+   * was never the view's to take away. To the list rather than `.`, as every filter is:
+   * the view's filters may not include the note that is open.
+   */
+  const revertView = () => {
+    if (!openView || !notebook) return;
+    void navigate({ to: '/notes', search: { ...viewSearch(notebook, openView), q: q || undefined }, replace: true });
+  };
+  const viewActions = (className?: string) =>
+    viewState && (
+      <ViewActions
+        // A new state is a new control: a name half typed for one is not for the other.
+        key={`${viewState}:${openView?.id ?? ''}`}
+        state={viewState}
+        viewName={openView?.name}
+        offline={offline}
+        onCreate={createView}
+        onSave={saveView}
+        onRevert={revertView}
+        className={className}
+      />
+    );
+
   const selectionExportLabel = exportRunning
     ? 'Export: another export is running'
     : selection.ids.length === 1
@@ -1153,6 +1226,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
           fieldDefs={fieldDefs.data ?? []}
           from={from}
           to={to}
+          trailing={viewActions()}
         />
 
         {/* Above the list, where the trash view puts its confirms: a row is too narrow to
@@ -1335,6 +1409,20 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
                 value={rangeLabel(from, to) ?? undefined}
                 onClick={() => setSheetPage('dates')}
               />
+
+              {/*
+                  The list as a view, on a phone, where the sheet is where the filters are
+                  set and the chips row is behind it. Under the filters it would keep,
+                  after a rule, since it is about all of them rather than one more of them.
+                  Not at desktop width: the sheet is a panel beside the list there, and the
+                  same actions are already in view at the end of the chips.
+              */}
+              {isMobile && viewState && (
+                <>
+                  <hr className="sheet-rule" />
+                  <div className="sheet-view-actions">{viewActions('in-sheet')}</div>
+                </>
+              )}
             </>
           )}
 
