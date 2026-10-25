@@ -8,13 +8,13 @@ import type { Keeper } from './keep.js';
 import type { SearchIndex } from './search-index.js';
 import type { SearchSync } from './search-sync.js';
 import { carry, HOLDER_CALLS, type ClientMessage, type HolderCall, type Message, type Port, type RowChange } from './library-channel.js';
-import { LIBRARY_ROOTS, rootsOfNoteChanges } from './library-roots.js';
+import { LIBRARY_ROOTS, VIEW_ROOTS, rootsOfNoteChanges } from './library-roots.js';
 
 /**
  * The holding tab's side of the account's channel (`library-channel.ts`): what makes the
  * library it holds the library of every other tab on the device.
  *
- * On a client's hello it sends the four collections as rows, chunked, then `attached`
+ * On a client's hello it sends the five collections as rows, chunked, then `attached`
  * with the feed's state and the outbox's and keeper's status; from then on it forwards
  * every change the collections report, with the query roots the batch reaches, and
  * every move of those three statuses. The rows are read in one go (a snapshot of the
@@ -61,10 +61,29 @@ export interface Server {
 
 const holderCalls: ReadonlySet<string> = new Set(HOLDER_CALLS);
 
+/**
+ * The `COMPAT_LEVEL` at which the saved views arrived, and so the lowest level of a
+ * client whose build has a map for them.
+ *
+ * A client on an earlier build reads every `rows` and `changes` message by indexing its
+ * maps with the message's entity, and has no map for `view`: one view row sent to it
+ * threw in the middle of applying a message, dropping the changes after it in the same
+ * message, and during an attach, the attach itself. So a client is sent the views only
+ * when its hello says it is at this level or above; one that says nothing (a build from
+ * before the hello carried a level) is not. The rows are private to a client already;
+ * the changes go to the whole account, so a view's are posted to each such client on its
+ * own channel instead (`to`), never in the shared message.
+ *
+ * From this level on, a client also skips an entity it does not know (`apply` in
+ * `client-library.ts`), so the next collection after this one needs no such gate, only
+ * clients new enough to be at this level.
+ */
+export const VIEWS_LEVEL = 5;
+
 /** `holder` is this holder's id, which the port was opened with so this tab alone hears the calls and pings addressed to it. */
 export function serveLibrary(port: Port, lib: Serving, holder: string): Server {
   const { collections } = lib;
-  const entities = { note: collections.notes, notebook: collections.notebooks, tag: collections.tags, attachment: collections.attachments } as const;
+  const entities = { note: collections.notes, notebook: collections.notebooks, tag: collections.tags, attachment: collections.attachments, view: collections.views } as const;
   let stopped = false;
 
   const run = async (name: string, args: unknown[]): Promise<unknown> => {
@@ -95,8 +114,10 @@ export function serveLibrary(port: Port, lib: Serving, holder: string): Server {
    * copy and every autosave for nobody. A client whose page went without a bye is
    * counted until the holder closes, which costs what every holder cost before.
    */
-  const clients = new Set<string>();
+  /** Each attached client, by id, with the level its hello said (zero when it said none). */
+  const clients = new Map<string, number>();
   const anyone = () => clients.size > 0;
+  const knowsViews = (client: string) => (clients.get(client) ?? 0) >= VIEWS_LEVEL;
   /** When each client was last sent the rows. */
   const answered = new Map<string, number>();
   /**
@@ -106,18 +127,21 @@ export function serveLibrary(port: Port, lib: Serving, holder: string): Server {
    * one stops, and its number tells the client which chunks to keep.
    */
   const sends = new Map<string, number>();
-  const hello = async (client: string) => {
-    clients.add(client);
+  const hello = async (client: string, level: number | undefined) => {
+    clients.set(client, level ?? 0);
     const now = Date.now();
     if (now - (answered.get(client) ?? -Infinity) < HELLO_DEDUPE_MS) return;
     answered.set(client, now);
     const send = (sends.get(client) ?? 0) + 1;
     sends.set(client, send);
     const superseded = () => stopped || sends.get(client) !== send;
-    await Promise.all([collections.notes.preload(), collections.notebooks.preload(), collections.tags.preload(), collections.attachments.preload()]);
+    await Promise.all(Object.values(entities).map((collection) => collection.preload()));
     if (superseded()) return;
     // The snapshot now, as references; the clone happens in each post, one chunk a task.
-    const snapshot = Object.entries(entities).map(([entity, collection]) => [entity as keyof typeof entities, [...collection.values()] as object[]] as const);
+    // A client whose build has no map for views is not sent them: see `VIEWS_LEVEL`.
+    const snapshot = Object.entries(entities)
+      .filter(([entity]) => entity !== 'view' || knowsViews(client))
+      .map(([entity, collection]) => [entity as keyof typeof entities, [...(collection as Collection<object, string>).values()] as object[]] as const);
     for (const [entity, rows] of snapshot) {
       // A collection with no rows still names itself, so the client holds an empty map for it.
       for (let at = 0; at < Math.max(rows.length, 1); at += ROWS_PER_MESSAGE) {
@@ -133,7 +157,7 @@ export function serveLibrary(port: Port, lib: Serving, holder: string): Server {
   const onMessage = (message: Message) => {
     if (stopped) return;
     const m = message as ClientMessage;
-    if (m.type === 'hello') return void hello(m.client);
+    if (m.type === 'hello') return void hello(m.client, m.level);
     if (m.type === 'bye') {
       clients.delete(m.client);
       answered.delete(m.client);
@@ -181,7 +205,14 @@ export function serveLibrary(port: Port, lib: Serving, holder: string): Server {
     batches = [];
     roots = new Set();
     if (sent.length === 0 || stopped) return;
-    port.post({ type: 'changes', holder, batches: sent, roots: [...reached] });
+    const shared = sent.filter((b) => b.entity !== 'view');
+    const views = sent.filter((b) => b.entity === 'view');
+    // The roots as reached, `views` among them when a view moved in the same task: a
+    // root a client's build has no query for refetches nothing.
+    if (shared.length > 0) port.post({ type: 'changes', holder, batches: shared, roots: [...reached] });
+    // Each client that knows views on its own channel, so one on an older build never
+    // hears of one (`VIEWS_LEVEL`). Few tabs, and views change rarely.
+    if (views.length > 0) for (const client of clients.keys()) if (knowsViews(client)) port.post({ type: 'changes', holder, batches: views, roots: [...VIEW_ROOTS], to: client });
   };
   /**
    * Forwards one collection's changes as they are reported, less what the client does
@@ -194,7 +225,7 @@ export function serveLibrary(port: Port, lib: Serving, holder: string): Server {
   const forwarding = <T extends object>(entity: keyof typeof entities, collection: Collection<T, string>) => {
     const subscription = collection.subscribeChanges((changes) => {
       if (!anyone()) return;
-      for (const r of entity === 'note' ? rootsOfNoteChanges(changes) : LIBRARY_ROOTS) roots.add(r);
+      for (const r of entity === 'note' ? rootsOfNoteChanges(changes) : entity === 'view' ? VIEW_ROOTS : LIBRARY_ROOTS) roots.add(r);
       batches.push({ entity, changes: changes.map((c): RowChange => (c.type === 'delete' ? { type: 'delete', key: String(c.key) } : { type: c.type, value: c.value })) });
       if (flushing) return;
       flushing = true;
@@ -209,6 +240,7 @@ export function serveLibrary(port: Port, lib: Serving, holder: string): Server {
     forwarding('notebook', collections.notebooks),
     forwarding('tag', collections.tags),
     forwarding('attachment', collections.attachments),
+    forwarding('view', collections.views),
     lib.onState((state) => anyone() && port.post({ type: 'state', holder, state })),
     lib.outbox.subscribe((status) => anyone() && port.post({ type: 'status', holder, status })),
     lib.outbox.onAcknowledged((noteId, note, sent) => anyone() && port.post({ type: 'acknowledged', holder, noteId, note, sent })),

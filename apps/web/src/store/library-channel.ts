@@ -81,8 +81,13 @@ export const HOLDER_CALLS = [
 export type HolderCall = (typeof HOLDER_CALLS)[number];
 
 export type ClientMessage =
-  /** A tab that wants the rows: the holder answers with `rows` then `attached`, to it alone. */
-  | { type: 'hello'; client: string }
+  /**
+   * A tab that wants the rows: the holder answers with `rows` then `attached`, to it
+   * alone. `level` is the client's build's `COMPAT_LEVEL`, absent from a client from
+   * before it was said: what the holder reads to send a client only the collections its
+   * build knows (`VIEWS_LEVEL` in `library-serve.ts`).
+   */
+  | { type: 'hello'; client: string; level?: number }
   /** For one holder, on its own channel (`to`): a call carries a draft, and only the holder reads it. */
   | { type: 'call'; client: string; to: string; id: number; name: string; args: unknown[] }
   /** Is the holder still there? Answered with `pong`; see `HOLDER_SILENT_MS`. */
@@ -109,8 +114,13 @@ export type HolderMessage =
    * `client-library.ts`).
    */
   | { type: 'attached'; holder: string; client: string; send: number; state: FeedState; status: SyncStatus; keep: KeepStatus; level?: number }
-  /** The changes of one task of the holder's, by collection, and the query roots they reach (`rootsOfNoteChanges`). */
-  | { type: 'changes'; holder: string; batches: Array<{ entity: FeedEntity; changes: RowChange[] }>; roots: string[] }
+  /**
+   * The changes of one task of the holder's, by collection, and the query roots they
+   * reach (`rootsOfNoteChanges`). To every client of the account, or with `to`, to that
+   * client alone: how a collection an older client's build does not know reaches only
+   * the clients that do (`VIEWS_LEVEL` in `library-serve.ts`).
+   */
+  | { type: 'changes'; holder: string; batches: Array<{ entity: FeedEntity; changes: RowChange[] }>; roots: string[]; to?: string }
   | { type: 'state'; holder: string; state: FeedState }
   | { type: 'status'; holder: string; status: SyncStatus }
   | { type: 'keep'; holder: string; status: KeepStatus }
@@ -137,7 +147,7 @@ export interface Port {
   close: () => void;
 }
 
-/** The messages that go to one client's channel rather than the account's; a message with `to` goes to that holder's. */
+/** The messages that go to one client's channel rather than the account's; a message with `to` goes to that tab's (a holder's for a call, a client's for `changes`). */
 export const PRIVATE: ReadonlySet<Message['type']> = new Set<Message['type']>(['rows', 'attached', 'answer', 'pong']);
 
 /** The channel one tab alone listens on, named for its client id or, for a holder, its holder id. */
@@ -145,7 +155,7 @@ export const clientChannelName = (userId: string, clientId: string) => `${librar
 
 /** Which tab a message is for, or null for every tab of the account. */
 export function addressee(message: Message): string | null {
-  if ('to' in message) return message.to;
+  if ('to' in message && message.to !== undefined) return message.to;
   if (PRIVATE.has(message.type) && 'client' in message) return message.client;
   return null;
 }

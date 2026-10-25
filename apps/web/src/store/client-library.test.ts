@@ -4,7 +4,7 @@ import { createCollection, type Collection } from '@tanstack/db';
 import type { FeedNote, FeedNotebook, FeedTag, FeedAttachment, FeedView } from '@unbent/shared';
 import { ApiError, NoteChangedError, OfflineError } from '../notes-api.js';
 import { attachClientLibrary, ATTACH_STALL_MS, CallUnsettledError, HELLO_RETRY_MAX_MS, HELLO_RETRY_MS, HOLDER_SILENT_MS, LibraryMovedError, ORPHANED_MS, PING_MS, type ClientHooks, type ClientLibrary } from './client-library.js';
-import { serveLibrary, HELLO_DEDUPE_MS, ROWS_PER_MESSAGE, type Serving, type Server } from './library-serve.js';
+import { serveLibrary, HELLO_DEDUPE_MS, ROWS_PER_MESSAGE, VIEWS_LEVEL, type Serving, type Server } from './library-serve.js';
 import { carry, revive, type Message, type Port } from './library-channel.js';
 import { LIBRARY_ROOTS } from './library-roots.js';
 import { fakeChannel } from './test-channel.js';
@@ -795,6 +795,98 @@ describe('a client of the holding tab', () => {
     expect(answers).toHaveLength(1);
   });
 
+  /*
+   * A client on a build from before views has no map for them, and indexed one blindly:
+   * the first view row threw mid-message. So the holder sends the views only to a client
+   * whose hello says it knows them, the rows on its own channel as ever, and their
+   * changes on its own channel too rather than in the account's shared message.
+   */
+  describe('saved views', () => {
+    const savedView = (id: string, name = id, over: Partial<FeedView> = {}): FeedView => ({ id, notebookId: 'nb1', name, position: 0, query: { tag: ['tax'] }, updatedAt: 1, ...over });
+
+    /** A client whose hello states `level`, or none at all: this build's code on the build it says it is. */
+    async function clientAt(level: number | undefined, hk = hooks()) {
+      const me = crypto.randomUUID();
+      const own = channel.port(me);
+      const port: Port = {
+        ...own,
+        post: (m) => {
+          if (m.type !== 'hello') return own.post(m);
+          const { level: _, ...bare } = m;
+          own.post(level === undefined ? bare : { ...bare, level });
+        },
+      };
+      const attaching = attachClientLibrary('u1', me, port, hk, new AbortController().signal);
+      await settle();
+      const lib = await attaching;
+      open.push(lib);
+      return { lib, me };
+    }
+
+    it('mirrors the views for a client that knows them, and follows their changes under their own root', async () => {
+      const h = holder(channel, { notes: [note('n1')], views: [savedView('v1', 'Business')] });
+      const hk = hooks();
+      const { lib } = await clientAt(VIEWS_LEVEL, hk);
+      expect([...lib.views.values()].map((v) => v.name)).toEqual(['Business']);
+      hk.changes.length = 0;
+      h.views.upsert(savedView('v1', 'Business 2025', { updatedAt: 2 }));
+      await settle();
+      expect(lib.views.get('v1')?.name).toBe('Business 2025');
+      expect(hk.changes.map((roots) => [...roots])).toEqual([['views']]);
+      h.views.remove('v1');
+      await settle();
+      expect(lib.views.has('v1')).toBe(false);
+    });
+
+    it('sends nothing of the views to a client from before them, and everything else as before', async () => {
+      const h = holder(channel, { notes: [note('n1')], views: [savedView('v1')] });
+      const older = await clientAt(undefined);
+      const newer = await clientAt(VIEWS_LEVEL);
+      expect(older.lib.views.size).toBe(0);
+      expect(newer.lib.views.size).toBe(1);
+      // A note and a view changed in one task: the note crosses in the shared message,
+      // with no view in it, and the view to the newer client alone.
+      h.notes.upsert({ ...note('n1'), title: 'renamed', updatedAt: 2 });
+      h.views.upsert(savedView('v1', 'renamed', { updatedAt: 2 }));
+      await settle();
+      expect(older.lib.notes.get('n1')?.title).toBe('renamed');
+      expect(newer.lib.notes.get('n1')?.title).toBe('renamed');
+      expect(newer.lib.views.get('v1')?.name).toBe('renamed');
+      expect(older.lib.views.size).toBe(0);
+      const viewRowsTo = (client: string) => channel.posted.filter((m) => m.type === 'rows' && m.entity === 'view' && m.client === client);
+      expect(viewRowsTo(older.me)).toEqual([]);
+      expect(viewRowsTo(newer.me)).toHaveLength(1);
+      const changes = channel.posted.filter((m): m is Extract<Message, { type: 'changes' }> => m.type === 'changes');
+      for (const m of changes) {
+        const carriesViews = m.batches.some((b) => b.entity === 'view');
+        // Every message that carries a view is addressed, and only to the newer client.
+        if (carriesViews) expect(m.to).toBe(newer.me);
+        else expect(m.to).toBeUndefined();
+      }
+      expect(changes.some((m) => m.to === newer.me)).toBe(true);
+    });
+
+    it('skips a collection its build does not know, in the rows and in a change, and keeps the rest of the message', async () => {
+      // A holder on a build newer than this one: its own port, posting by hand.
+      const id = crypto.randomUUID();
+      const theirs = channel.port(id);
+      theirs.listen((m) => {
+        if (m.type !== 'hello') return;
+        const unknown = { type: 'rows', holder: id, client: m.client, send: 1, entity: 'widget', rows: [{ id: 'w1' }] } as unknown as Message;
+        theirs.post(unknown);
+        theirs.post({ type: 'rows', holder: id, client: m.client, send: 1, entity: 'note', rows: [note('n1')] });
+        theirs.post({ type: 'attached', holder: id, client: m.client, send: 1, state: state(), status: status(), keep: keeping(), level: COMPAT_LEVEL });
+      });
+      const hk = hooks();
+      const lib = await client(hk);
+      expect([...lib.notes.values()].map((n) => n.id)).toEqual(['n1']);
+      const mixed = { type: 'changes', holder: id, batches: [{ entity: 'widget', changes: [{ type: 'insert', value: { id: 'w2' } }] }, { entity: 'note', changes: [{ type: 'insert', value: note('n2') }] }], roots: ['notes'] } as unknown as Message;
+      theirs.post(mixed);
+      await settle();
+      expect([...lib.notes.values()].map((n) => n.id)).toEqual(['n1', 'n2']);
+      expect(hk.changes.at(-1)).toEqual(new Set(['notes']));
+    });
+  });
 });
 
 describe('carry and revive', () => {

@@ -210,6 +210,18 @@ class Mirror<T extends object> implements Rows<T> {
 type Maps = { note: Mirror<LocalNote>; notebook: Mirror<FeedNotebook>; tag: Mirror<FeedTag>; attachment: Mirror<LocalAttachment>; view: Mirror<FeedView> };
 const freshMaps = (): Maps => ({ note: new Mirror(), notebook: new Mirror(), tag: new Mirror(), attachment: new Mirror(), view: new Mirror() });
 
+/**
+ * The map a holder's message names, or null for an entity this build does not know.
+ *
+ * A holder on a newer build may keep a collection this one has never heard of. Indexed
+ * blindly, its first row threw in the middle of a message: the changes after it in the
+ * same message were lost, and during an attach the attach itself. That is what the
+ * builds before views did with the first view (`VIEWS_LEVEL` in `library-serve.ts`
+ * keeps views from them), and skipping what is not known here is what lets the next
+ * collection after views reach this build's clients without a gate of its own.
+ */
+const mapOf = (maps: Maps, entity: string): Mirror<object> | null => (Object.hasOwn(maps, entity) ? (maps[entity as keyof Maps] as Mirror<object>) : null);
+
 const starting: FeedState = { phase: 'starting', cursor: null, lastError: null, total: null, applied: 0, pulls: 0, resets: 0 };
 const nothingWaiting: SyncStatus = { pending: 0, durable: false, waiting: new Set(), conflicts: new Map(), uploadNotices: new Map(), storeFull: null };
 const keepingNothing: KeepStatus = { supported: false, kept: new Set(), counted: false, wanted: { files: 0, bytes: 0 }, have: { files: 0, bytes: 0 }, fetching: false, problem: null };
@@ -228,7 +240,7 @@ type Pending = { name: string; args: unknown[]; sentTo: string | null; resolve: 
 export function attachClientLibrary(userId: string, me: string, port: Port, hooks: ClientHooks, halting: AbortSignal): Promise<ClientLibrary> {
   let holder: string | null = null;
   /** The rows arriving from a holder's numbered send, and the changes it posted while they did, applied after them. */
-  let incoming: { holder: string; send: number; maps: Maps; early: Array<Array<{ entity: keyof Maps; changes: RowChange[] }>> } | null = null;
+  let incoming: { holder: string; send: number; maps: Maps; early: Array<Array<{ entity: string; changes: RowChange[] }>> } | null = null;
   let maps = freshMaps();
   let version = 0;
   let feed = starting;
@@ -254,7 +266,8 @@ export function attachClientLibrary(userId: string, me: string, port: Port, hook
     silentHellos = 0;
   };
   const sayHello = () => {
-    port.post({ type: 'hello', client: me });
+    // The level says which collections this build has maps for (`VIEWS_LEVEL`).
+    port.post({ type: 'hello', client: me, level: COMPAT_LEVEL });
     if (attachedOnce || askedToTakeOver) return;
     if (silentHellos === 0) firstSilentHello = Date.now();
     silentHellos += 1;
@@ -342,11 +355,13 @@ export function attachClientLibrary(userId: string, me: string, port: Port, hook
   };
 
   /** Puts one message's changes into the maps, collection by collection. */
-  const apply = (batches: Array<{ entity: keyof Maps; changes: RowChange[] }>) => {
+  const apply = (batches: Array<{ entity: string; changes: RowChange[] }>) => {
     for (const b of batches) {
+      const map = mapOf(maps, b.entity);
+      if (!map) continue;
       for (const c of b.changes) {
-        if (c.type === 'delete') maps[b.entity].rows.delete(c.key);
-        else maps[b.entity].rows.set((c.value as { id: string }).id, c.value as never);
+        if (c.type === 'delete') map.rows.delete(c.key);
+        else map.rows.set((c.value as { id: string }).id, c.value as object);
       }
     }
   };
@@ -388,7 +403,8 @@ export function attachClientLibrary(userId: string, me: string, port: Port, hook
         // still on its way is not for the maps being filled.
         if (incoming && incoming.holder === m.holder && m.send < incoming.send) return;
         if (!incoming || incoming.holder !== m.holder || incoming.send !== m.send) incoming = { holder: m.holder, send: m.send, maps: freshMaps(), early: [] };
-        for (const row of m.rows) incoming.maps[m.entity].rows.set((row as { id: string }).id, row as never);
+        // A collection this build does not know is skipped, never indexed blindly: see `mapOf`.
+        for (const row of m.rows) mapOf(incoming.maps, m.entity)?.rows.set((row as { id: string }).id, row);
         // The rows are on their way: no more hellos, unless `attached` never follows.
         stopAsking();
         stall = setTimeout(askNow, ATTACH_STALL_MS);
