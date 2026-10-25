@@ -40,7 +40,8 @@ vi.mock('../notes-api.js', async (importOriginal) => ({
 }));
 vi.mock('../index-files.js', () => ({ indexUploadedFile: vi.fn(), useIndexing: () => ({ queued: 0, running: false, failed: 0 }) }));
 let planInactive = false;
-vi.mock('../use-plan.js', () => ({ usePlan: () => ({ inactive: planInactive }) }));
+let planState: string | null = null;
+vi.mock('../use-plan.js', () => ({ usePlan: () => ({ inactive: planInactive, plan: planState ? { state: planState } : undefined }) }));
 
 const note = (id: string, over: Partial<FeedNote> = {}): FeedNote => ({
   id,
@@ -115,6 +116,7 @@ let n = 0;
 beforeEach(() => {
   n = 0;
   planInactive = false;
+  planState = null;
   resetFileNotesForTests();
   // Signed in, as the root route has claimed before any of this can happen: a batch
   // begun with nobody claimed waits to be adopted (`file-notes.test.ts`).
@@ -262,5 +264,43 @@ describe('files dropped on the note list', () => {
     const undo = await screen.findByRole('button', { name: 'Undo' });
     undo.click();
     await waitFor(() => expect(actions.trashNotes).toHaveBeenCalledWith(['new1', 'new2']));
+  });
+});
+
+/**
+ * New on the free plan (2026-10-24): an account that holds the free plan's hundred,
+ * counting the trash, is told so at the press rather than given a note the server would
+ * refuse. The count is the device's, live and trashed together.
+ */
+describe('New on the free plan', () => {
+  const hundred = (trashed: number) =>
+    Array.from({ length: 100 }, (_, i) => note(`n${i}`, { title: `Note ${i}`, ...(i < trashed ? { deletedAt: 5 } : {}) }));
+
+  it('says the free plan is full instead of making a note, counting the trash', async () => {
+    planState = 'free';
+    lib = installTestLibrary({ notes: hundred(3) });
+    mount('/notes');
+    await screen.findAllByText(/^Note \d+$/);
+    (await screen.findByRole('button', { name: 'New' })).click();
+    expect(await screen.findByText(/The free plan holds 100 notes, counting the trash\./)).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Plan' })).toBeTruthy();
+    expect(actions.createNote).not.toHaveBeenCalled();
+  });
+
+  it('makes the note as ever under the count, and for an account a plan holds', async () => {
+    planState = 'free';
+    lib = installTestLibrary({ notes: hundred(0).slice(1) });
+    mount('/notes');
+    await screen.findAllByText(/^Note \d+$/);
+    (await screen.findByRole('button', { name: 'New' })).click();
+    await waitFor(() => expect(actions.createNote).toHaveBeenCalledTimes(1));
+    cleanup();
+    lib.uninstall();
+    planState = 'active';
+    lib = installTestLibrary({ notes: hundred(0) });
+    mount('/notes');
+    await screen.findAllByText(/^Note \d+$/);
+    (await screen.findByRole('button', { name: 'New' })).click();
+    await waitFor(() => expect(actions.createNote).toHaveBeenCalledTimes(2));
   });
 });

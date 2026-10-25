@@ -623,6 +623,29 @@ describe('a replayed write', () => {
   });
 
   /**
+   * A note made on a free account that already holds the free plan's hundred (2026-10-24)
+   * is kept the same way, by the same path: the note is the person's writing, the answer
+   * changes once something is deleted for good, and its sentence goes to the strip.
+   */
+  it('keeps a note the free plan has no room for, says why, and sends it again once a purge has gone through', async () => {
+    const { fake } = library([row('n2')]);
+    const replay = vi.fn();
+    fake.config.onlineDetector.subscribe(replay);
+    await actions.createNote({ title: 'One too many', body: '', tags: [], notebook: null });
+    await tick();
+    vi.mocked(api.createNote).mockRejectedValueOnce(new ApiError(402, '402: The free plan holds up to 100 notes, counting the trash.', 'FREE_NOTES_FULL'));
+    expect(await fake.replayOne()).toBe('kept');
+    expect(fake.queue.map((e) => e.mutationFnName)).toEqual(['createNote']);
+    expect(storeFullMessage()).toBe('The free plan holds up to 100 notes, counting the trash.');
+    expect(planLapsed()).toBe(false);
+    // Emptying a note from the trash is what makes room, and it goes round the kept note.
+    vi.mocked(api.deleteNotesPermanently).mockResolvedValueOnce({ deleted: 1 });
+    await actions.purgeNotes(['n2']);
+    expect(api.deleteNotesPermanently).toHaveBeenLastCalledWith(['n2']);
+    expect(replay).toHaveBeenCalledTimes(1);
+  });
+
+  /**
    * The store's refusal is kept beside the outbox, so a reload starts out knowing it
    * (MAK-234): a purge made before the kept save is sent again goes round it rather than
    * behind it. And an outbox opened while the last account's refusal is still in memory

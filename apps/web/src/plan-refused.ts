@@ -27,6 +27,7 @@
  */
 const listeners = new Set<() => void>();
 const activeListeners = new Set<() => void>();
+const freedListeners = new Set<() => void>();
 let lapsed = false;
 let toldAt = 0;
 /** The plan as the page last read it: true once it said inactive, false once it said otherwise. */
@@ -81,6 +82,25 @@ export function onPlanActive(listener: () => void): () => void {
   return () => activeListeners.delete(listener);
 }
 
+/**
+ * A delete for good went through (a purge, an emptied trash, a file deleted) while the
+ * plan read inactive. Since the free plan (2026-10-24) an account past its limits is
+ * read-only only until it is back under them, which is what it holds, which only the
+ * server can say: so the plan is read again (`usePlanRefresh`), and if it now says
+ * `free`, `planIs` lets any kept entry go, as a checkout would. Nothing is said while
+ * the plan reads otherwise: a purge on an account that can write changes nothing here.
+ */
+export function planFreed(): void {
+  if (!knownInactive) return;
+  for (const listener of freedListeners) listener();
+}
+
+/** Told when a delete for good may have taken a read-only account under the free plan. */
+export function onPlanFreed(listener: () => void): () => void {
+  freedListeners.add(listener);
+  return () => freedListeners.delete(listener);
+}
+
 /** For tests. */
 export function resetPlanRefused(): void {
   lapsed = false;
@@ -88,4 +108,5 @@ export function resetPlanRefused(): void {
   toldAt = 0;
   listeners.clear();
   activeListeners.clear();
+  freedListeners.clear();
 }

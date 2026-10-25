@@ -1,7 +1,9 @@
 /**
- * Word from the outbox that the server refused a note write because the account's
- * store is past the room its plan allows (MAK-234), and what the rest of the app needs
- * of it. The shape of `plan-refused.ts`, for the other 402 with a code, and for the
+ * Word from the outbox that the server refused a note write for room the account's plan
+ * does not have, and what the rest of the app needs of it: the account's store past the
+ * room its plan allows (MAK-234), or, on the free plan, a new note past its count
+ * (`FREE_NOTES_FULL`, 2026-10-24), which is the same kind of refusal with the same way
+ * out and is carried here by the same path. The shape of `plan-refused.ts`, for the other 402 with a code, and for the
  * same reason: the answer changes when the person acts (deletes something, or adds
  * storage), so the refused entry is kept rather than ended, and ending it would roll the
  * row back to the server's copy and lose the text that was typed.

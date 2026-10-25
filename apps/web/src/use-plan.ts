@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { AccountPlan, BillingConfig } from '@unbent/shared';
-import { onPlanRefused, planIs } from './plan-refused.js';
+import { onPlanFreed, onPlanRefused, planIs } from './plan-refused.js';
 import { configQuery, keys, planQuery } from './queries.js';
 
 /**
@@ -14,15 +14,19 @@ import { configQuery, keys, planQuery } from './queries.js';
  * an editor that locked itself for the length of a request on every open would read as
  * broken, and a lapsed write is refused by the server anyway.
  *
- * Worked out against the clock here too, not only on the server: the answer is read a
- * minute at a time, and a tab left open over a trial's end would otherwise go on taking
- * edits the server refuses. The lock falls at `readOnlyAt`, which the server works out
- * (for a renewing subscription it is a grace past `until`, since the renewal's webhook
- * lands after the period ends), so the page and the server turn read-only at the same
- * instant. A timer wakes this at `until`, at `readOnlyAt`, and at each local midnight
- * before them so the banner's "in 2 days" turns over. And when the outbox is told by a
- * refusal that the plan ended, the plan is read again at once (`onPlanRefused`), so the
- * banner and the read-only editor appear without waiting a minute.
+ * Read again when the clock passes an instant the plan named, rather than locked by the
+ * clock here: since the free plan (2026-10-24), what a trial's or a plan's end leaves
+ * the account as is what it holds, which only the server can say, so a page that locked
+ * itself at `readOnlyAt` would lock a free account's editor for as long as the read took
+ * and longer offline. A timer wakes this at `until`, at `readOnlyAt` (for a renewing
+ * subscription a grace past `until`, since the renewal's webhook lands after the period
+ * ends), and at each local midnight before them so the banner's "in 2 days" turns over,
+ * and `usePlanRefresh` reads the plan then. An edit made in the moment between is the
+ * server's to refuse, and the outbox keeps it. When the outbox is told by a refusal that
+ * the plan ended, the plan is read again at once (`onPlanRefused`), so the banner and the
+ * read-only editor appear without waiting a minute; and when a read-only account deletes
+ * for good, it is read again too (`onPlanFreed`), since that may have taken it under the
+ * free plan, and the editor opens again with nothing pressed.
  */
 export function usePlan(): {
   billing: BillingConfig | undefined;
@@ -38,13 +42,13 @@ export function usePlan(): {
   const now = useClock(boundariesOf(plan.data));
 
   const data = plan.data;
-  const inactive = data !== undefined && (data.state === 'inactive' || (data.readOnlyAt !== null && data.readOnlyAt <= now));
+  const inactive = data !== undefined && data.state === 'inactive';
   return { billing, plan: data, inactive, now, unavailable: data === undefined && plan.isError };
 }
 
-/** The instants the plan's reading changes at, for a plan that still has one ahead. */
+/** The instants the plan's reading changes at, for a plan that still has one ahead: none for one that has ended, free or read-only. */
 function boundariesOf(plan: AccountPlan | undefined): number[] {
-  if (!plan || plan.state === 'inactive') return [];
+  if (!plan || plan.state === 'inactive' || plan.state === 'free') return [];
   return [plan.until, plan.readOnlyAt].filter((t): t is number => t !== null);
 }
 
@@ -75,6 +79,13 @@ export function usePlanRefresh(): void {
   useEffect(
     () =>
       onPlanRefused(() => {
+        void queryClient.invalidateQueries({ queryKey: keys.plan() });
+      }),
+    [queryClient],
+  );
+  useEffect(
+    () =>
+      onPlanFreed(() => {
         void queryClient.invalidateQueries({ queryKey: keys.plan() });
       }),
     [queryClient],

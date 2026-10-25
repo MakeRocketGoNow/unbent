@@ -1,6 +1,6 @@
 import { IndexedDBAdapter, NonRetriableError, startOfflineExecutor, type OfflineExecutor, type OnlineDetector, type StorageAdapter } from '@tanstack/offline-transactions';
 import type { Transaction } from '@tanstack/db';
-import { MAX_ATTACHMENT_BYTES, PLAN_INACTIVE_CODE, STORAGE_FULL_CODE, filenameSchema, foldNoCase, type FeedNote, type FieldDef, type FieldValue, type Note, type NoteFieldValue, type NotebookDefinition, type RestoredNote } from '@unbent/shared';
+import { FREE_NOTES_FULL_CODE, MAX_ATTACHMENT_BYTES, PLAN_INACTIVE_CODE, STORAGE_FULL_CODE, filenameSchema, foldNoCase, type FeedNote, type FieldDef, type FieldValue, type Note, type NoteFieldValue, type NotebookDefinition, type RestoredNote } from '@unbent/shared';
 import * as api from '../notes-api.js';
 import { ApiError, errorText, isNoteChanged, isOfflineError, NoteChangedError } from '../notes-api.js';
 import { offlineNow, recheck, subscribeConnectivity } from '../connectivity.js';
@@ -11,7 +11,7 @@ import { askToPersist, filesSupported, readFile, removeFile, writeFile } from '.
 import { FILES_CACHE, FILES_CHANGED, MAX_KEPT_FILE } from '../sw/routes.js';
 import { isWhole, refusedForGood, type FeedEngine } from './feed.js';
 import { CallUnsettledError, LibraryMovedError, SEND_ONCE } from './client-library.js';
-import { onPlanActive, planAccepted, planHeld, planLapsed, planRefused } from '../plan-refused.js';
+import { onPlanActive, planAccepted, planFreed, planHeld, planLapsed, planRefused } from '../plan-refused.js';
 import { onStoreFreed, onStoreFull, storeAccepted, storeFreed, storeFull, storeFullMessage, storeRefused } from '../store-full.js';
 import { behindDeploy, heldForReload, onCaughtUp } from '../update-notice.js';
 import { outboxLeaderName, outboxName } from './names.js';
@@ -305,6 +305,15 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
    * sentence goes to the strip (`storeRefused`), and the deletes go round the kept
    * entry as a lapsed plan's do.
    *
+   * The free plan's count (`FREE_NOTES_FULL`, 2026-10-24) is kept the same way and goes
+   * the same way: a note made on a free account that already holds its hundred, offline
+   * or from a tab that had not heard, is the person's writing, the answer changes the
+   * moment they delete something for good or subscribe, and ending it would delete the
+   * note. Its sentence goes to the strip by the same path, since it is the same kind of
+   * refusal (room the plan does not have) with the same way out (a purge, an emptied
+   * trash). The kept entry is a create, which the server does not hold, so nothing of the
+   * store's purge-round-the-queue applies to it (`roundTheQueue`).
+   *
    * And any 4xx is kept while this page is behind the deploy (`behindDeploy`): a build
    * that cannot run beside the server's, which has already asked the person to reload
    * (`UpdateSnackbar`). The refusal may be the server no longer taking the shape this
@@ -328,7 +337,7 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
       planRefused();
       throw err;
     }
-    if (err instanceof ApiError && err.code === STORAGE_FULL_CODE && err.of === 'notes') {
+    if (err instanceof ApiError && ((err.code === STORAGE_FULL_CODE && err.of === 'notes') || err.code === FREE_NOTES_FULL_CODE)) {
       storeRefused(errorText(err));
       throw err;
     }
@@ -357,6 +366,8 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
    * it to match, and the error it came from as its `cause`. `NonRetriableError` passes as
    * it is: that is the one way an entry ends.
    */
+  /** The queued writes that delete for good, after which a read-only account may be free again; see `planFreed`. */
+  const PURGES: ReadonlySet<string> = new Set(['purgeNote', 'purgeNotes']);
   const decided = (fns: Record<string, MutationFn>): Record<string, MutationFn> =>
     Object.fromEntries(
       Object.entries(fns).map(([name, fn]) => [
@@ -376,6 +387,9 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
             // see `planLapsed` and `storeFull`.
             planAccepted();
             storeAccepted();
+            // A purge from the queue may have taken a read-only account under the free
+            // plan, as a direct one may (`pulled`): the plan is read again.
+            if (PURGES.has(name)) planFreed();
             return out;
           } catch (err) {
             // Ended for good, the head of the queue is gone either way, and the next
@@ -1252,7 +1266,11 @@ async function pulled<T>(write: Promise<T>, local: LocalWrite, frees = false): P
   // kept entry is sent again at once rather than on the executor's clock; see
   // `store-full.ts`. A purge or an emptied trash makes room. Nothing else nudges: a
   // replay refused again is a wasted request, and most direct writes free nothing.
-  if (frees) storeFreed();
+  if (frees) {
+    storeFreed();
+    // And a read-only account may now be under the free plan: the plan is read again.
+    planFreed();
+  }
   aboutToWrite(local);
   directListeners.forEach((l) => l());
   const lib = await resolve();
@@ -1591,7 +1609,7 @@ export async function clearHistory(noteId: string): Promise<number> {
     // not true then: the edit waits for the subscription.
     throw new Error(
       planLapsed()
-        ? 'This note has an edit waiting for the plan to be active again; its history can be cleared once that has gone.'
+        ? 'This note has an edit waiting until the account can write again; its history can be cleared once that has gone.'
         : storeFull()
           ? 'This note has an edit waiting for room in the account. Delete some notes and empty the trash, or clear another note’s history, and it will go.'
           : 'This note has changes that have not synced yet. Try again in a moment.',
@@ -2046,6 +2064,8 @@ export async function deleteOrCancelAttachment(noteId: string, filename: string)
   // the tab that holds the outbox, since this is a request made from whichever tab it is
   // called in; another tab's delete releases the kept write when the clock comes round.
   storeFreed();
+  // Its bytes go too, which may take a read-only account under the free plan's gigabyte.
+  planFreed();
 }
 
 /**

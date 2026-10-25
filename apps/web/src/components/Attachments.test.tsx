@@ -245,7 +245,7 @@ describe('Attachments on a locked note', () => {
     openPanel();
     const button = (name: string) => screen.getByRole<HTMLButtonElement>('button', { name });
     expect(button('Insert link').disabled).toBe(true);
-    expect(button('Insert link').dataset.tip).toBe('Not while the plan has ended');
+    expect(button('Insert link').dataset.tip).toBe('Not while the account is read-only');
     expect(button('More actions for scan.pdf').disabled).toBe(true);
     expect(button('Delete').disabled).toBe(false);
     expect(button('Copy').disabled).toBe(false);

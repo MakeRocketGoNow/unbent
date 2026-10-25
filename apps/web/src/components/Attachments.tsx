@@ -72,7 +72,7 @@ export function Attachments({
 }: AttachmentsProps) {
   /** The writes a lapsed account cannot make, and why; `readOnly`'s word wins when both hold. */
   const noWrites = readOnly || lapsed;
-  const noWritesTip = readOnly ? 'Not available offline' : lapsed ? 'Not while the plan has ended' : undefined;
+  const noWritesTip = readOnly ? 'Not available offline' : lapsed ? 'Not while the account is read-only' : undefined;
   const queryClient = useQueryClient();
   const { data: files = [], isLoading, error } = useQuery(attachmentsQuery(noteId));
   /*

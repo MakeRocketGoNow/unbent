@@ -285,7 +285,7 @@ export function Import() {
                 <span className="muted">Notebook</span>
                 <NotebookPicker className="search-field" notebook={batchNotebook} notebooks={notebooks.data?.notebooks} onChange={setBatchNotebook} />
               </label>
-              <Button variant="primary" disabled={planInactive} tip={planInactive ? 'Not while the plan has ended' : undefined} onClick={startBatch}>
+              <Button variant="primary" disabled={planInactive} tip={planInactive ? 'Not while the account is read-only' : undefined} onClick={startBatch}>
                 {batch.length === 1 ? 'Add note' : `Add ${batch.length} notes`}
               </Button>
             </div>
@@ -333,7 +333,7 @@ export function Import() {
                 </span>
               </label>
 
-              <Button variant="primary" disabled={!canStart || planInactive} tip={planInactive ? 'Not while the plan has ended' : undefined} onClick={start}>
+              <Button variant="primary" disabled={!canStart || planInactive} tip={planInactive ? 'Not while the account is read-only' : undefined} onClick={start}>
                 Start import
               </Button>
             </>

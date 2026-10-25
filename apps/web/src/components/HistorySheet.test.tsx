@@ -213,7 +213,7 @@ describe('HistorySheet', () => {
     await screen.findByTestId('preview');
     const restore = screen.getByRole<HTMLButtonElement>('button', { name: 'Restore this version' });
     expect(restore.disabled).toBe(true);
-    expect(restore.dataset.tip).toBe('Not while the plan has ended');
+    expect(restore.dataset.tip).toBe('Not while the account is read-only');
   });
 
   it('does not offer Restore until the version has loaded', async () => {

@@ -199,7 +199,7 @@ export function HistorySheet({ open, onClose, noteId, anchor, saved, onRestore, 
   */
   const offline = useOffline();
   const offlineTitle = offline ? 'Not available offline' : undefined;
-  const restoreTitle = offlineTitle ?? (lapsed ? 'Not while the plan has ended' : undefined);
+  const restoreTitle = offlineTitle ?? (lapsed ? 'Not while the account is read-only' : undefined);
   const [picked, setPicked] = useState<NoteRevisionSummary | null>(null);
   const [restoring, setRestoring] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);

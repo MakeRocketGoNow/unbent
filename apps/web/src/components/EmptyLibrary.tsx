@@ -46,7 +46,7 @@ export function EmptyLibrary({ heading = 'h2' }: { heading?: 'h2' | 'h3' }) {
   const createNote = useCreateNote();
   const making = useCreatingNote();
   const { inactive } = usePlan();
-  const lapsedTip = inactive ? 'Not while the plan has ended' : undefined;
+  const lapsedTip = inactive ? 'Not while the account is read-only' : undefined;
   return (
     <EmptyState
       icon={<EmptyLibraryIcon />}
