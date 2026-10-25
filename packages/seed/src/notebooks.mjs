@@ -105,3 +105,24 @@ export const NOTEBOOKS = [
     ],
   },
 ];
+
+/**
+ * The seed's saved views (MAK-249), by notebook and in the order the rail lists them:
+ * the lists the notebooks above are kept for, named. Filters name a field by its name
+ * here and are turned into the field's id when loaded, since ids are minted per
+ * account; tags and values are spelled as the address spells them. One view per shape
+ * worth a glance: a select narrowed two ways as a table, a checkbox's "not yet", a tag
+ * over a notebook with no fields, and a field sort with no filter at all.
+ */
+export const VIEWS = [
+  {
+    notebook: 'Watch List',
+    name: 'Up next',
+    query: { field: [['Status', 'eq', 'Want to Watch'], ['Priority', 'eq', 'Must Watch']], layout: 'table' },
+  },
+  { notebook: 'Watch List', name: 'Best rated', query: { sortField: 'Rating', order: 'desc', layout: 'table' } },
+  { notebook: 'Receipts', name: 'Not reimbursed', query: { field: [['Reimbursed', 'ne', 'true']], layout: 'table' } },
+  { notebook: 'Receipts', name: 'Dining', query: { field: [['Category', 'eq', 'Dining']], sortField: 'Amount', order: 'desc' } },
+  { notebook: 'Coupons', name: 'Unused', query: { field: [['Used', 'ne', 'true']], sortField: 'Expiration', order: 'asc', layout: 'table' } },
+  { notebook: 'Recipes', name: 'Weeknight', query: { tag: ['weeknight'], layout: 'cards' } },
+];

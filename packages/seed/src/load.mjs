@@ -18,7 +18,7 @@
  */
 import { bulkNotes } from './bulk.mjs';
 import { makePdf, makeReceiptPng } from './files.mjs';
-import { NOTEBOOKS } from './notebooks.mjs';
+import { NOTEBOOKS, VIEWS } from './notebooks.mjs';
 import { RECORDS } from './records.mjs';
 import { SHOWCASE } from './showcase.mjs';
 
@@ -139,6 +139,8 @@ export async function loadSeed({
     for (const s of skipped ?? []) log(`warning: ${notebook.name}: ${s.name} skipped, ${s.reason}`);
   }
 
+  await loadViews({ request, small, log });
+
   // An import never looks in the trash (a note deleted on purpose stays deleted, and
   // importing it again makes a fresh one), so the seed's trashed notes are recognised here
   // by title instead, or each run would add another copy to the trash.
@@ -194,6 +196,49 @@ export async function loadSeed({
     if (note.trashed) {
       await expectOk(await request(`/api/notes/${id}`, { method: 'DELETE' }), `trash ${note.key}`);
       counts.trashed++;
+    }
+  }
+}
+
+/**
+ * Makes the seed's saved views, once: a view is found again by its name within its
+ * notebook, as the server would refuse a second with that name anyway, and one that is
+ * already there is left as it is, since someone may have edited it to see what happens.
+ * A notebook `--small` did not make, or a field the import skipped, skips the view with
+ * a warning rather than failing the load.
+ */
+async function loadViews({ request, small, log }) {
+  const notebooks = (await (await expectOk(await request('/api/notebooks'), 'list notebooks')).json()).notebooks;
+  const have = (await (await expectOk(await request('/api/views'), 'list views')).json()).views;
+  const fieldsOf = new Map();
+  for (const view of VIEWS) {
+    if (small && !SHOWCASE_NOTEBOOKS.has(view.notebook)) continue;
+    const notebook = notebooks.find((n) => n.name === view.notebook);
+    if (!notebook) {
+      log(`warning: view ${view.name} skipped, no notebook ${view.notebook}`);
+      continue;
+    }
+    if (have.some((v) => v.notebookId === notebook.id && v.name.toLowerCase() === view.name.toLowerCase())) continue;
+    if (!fieldsOf.has(notebook.id)) {
+      const res = await expectOk(await request(`/api/notebooks/${notebook.id}/fields`), `list fields of ${view.notebook}`);
+      fieldsOf.set(notebook.id, new Map((await res.json()).fields.map((f) => [f.name, f.id])));
+    }
+    const ids = fieldsOf.get(notebook.id);
+    const idOf = (name) => {
+      const id = ids.get(name);
+      if (!id) throw new Error(`${view.notebook} has no field ${name}`);
+      return id;
+    };
+    try {
+      const { field, sortField, ...rest } = view.query;
+      const query = {
+        ...rest,
+        ...(field ? { field: field.map(([name, op, value]) => `${idOf(name)}:${op}:${value}`) } : {}),
+        ...(sortField ? { sortField: idOf(sortField) } : {}),
+      };
+      await json(request, '/api/views', 'POST', { notebookId: notebook.id, name: view.name, query });
+    } catch (err) {
+      log(`warning: view ${view.name} skipped, ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 }
