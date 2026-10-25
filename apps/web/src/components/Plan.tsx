@@ -3,19 +3,24 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import {
   BASE_STORAGE_GB,
+  FREE_NOTES,
+  FREE_STORAGE_GB,
+  GB,
   MAX_STORAGE_UNITS,
   PLAN_PRICE_USD,
   STORAGE_ADDON_GB,
   STORAGE_ADDON_PRICE_USD,
+  fitsFree,
   storageQuotaBytes,
   storeLimitBytes,
   type AccountPlan,
+  type AutofillUsage,
 } from '@unbent/shared';
 import * as api from '../notes-api.js';
 import { errorText } from '../notes-api.js';
 import { isHosted } from '../app-bridge.js';
 import { formatBytes } from '../format-bytes.js';
-import { keys, planUsageQuery } from '../queries.js';
+import { autofillUsageQuery, configQuery, keys, planUsageQuery } from '../queries.js';
 import { usePlan } from '../use-plan.js';
 import { Button } from './Button.js';
 import { Confirm } from './Confirm.js';
@@ -88,7 +93,16 @@ export function Plan() {
     ...standing,
     usedBytes: usage.data?.usedBytes,
     storeBytes: usage.data?.storeBytes,
+    notes: usage.data?.notes,
   };
+  // No plan holding: free under the free plan's limits, read-only past them. Both are
+  // measured against the free plan, so both draw its meters and both are offered it.
+  const lapsed = plan?.state === 'free' || plan?.state === 'inactive';
+  // The free plan's Auto-fill pool, for its meter: only where the instance has Auto-fill
+  // and the account is on the free plan, and from the read Maintenance makes, which
+  // answers it (`AutofillUsage.freePresses`).
+  const config = useQuery(configQuery());
+  const pool = useQuery({ ...autofillUsageQuery(), enabled: lapsed && config.data?.autofill === true });
   const queryClient = useQueryClient();
   const [busy, setBusy] = useState<'checkout' | 'settling' | 'portal' | 'storage' | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -178,11 +192,12 @@ export function Plan() {
   // not, is managed in the portal; and a past-due one past its paid period is read-only
   // until the card is updated, which is the portal's form too: a new checkout would be
   // a second subscription beside the one Stripe is still trying to collect.
-  const subscribed = plan.subscription !== null && !(plan.subscription.status === 'canceled' && plan.state === 'inactive');
+  const subscribed = plan.subscription !== null && !(plan.subscription.status === 'canceled' && lapsed);
   // A comp still running is asked for nothing; one that has ended is a lapsed account
-  // like any other, and the checkout is its way back: the operator's "end" and a dated
-  // comp running out both leave `source` as it was, so the source alone cannot say.
-  const canSubscribe = !hosted && !subscribed && !(plan.source === 'comp' && plan.state !== 'inactive');
+  // like any other, free or read-only, and the checkout is its way on: the operator's
+  // "end" and a dated comp running out both leave `source` as it was, so the source alone
+  // cannot say.
+  const canSubscribe = !hosted && !subscribed && !(plan.source === 'comp' && !lapsed);
   // Storage is changed on a subscription Stripe will bill; a canceled one is refused.
   const canChangeStorage = subscribed && plan.subscription?.status !== 'canceled';
   const chosenUnits = units ?? unitsOf(plan);
@@ -305,9 +320,10 @@ export function Plan() {
       </div>
 
       <p className="muted small">
-        One plan, {dollars(PLAN_PRICE_USD)} a year: unlimited notes, {BASE_STORAGE_GB} GB of files, and{' '}
-        {STORAGE_ADDON_GB} GB more for {dollars(STORAGE_ADDON_PRICE_USD)} a year each. If it ends,
-        your notes stay readable and exportable.
+        Free for up to {FREE_NOTES} notes and {FREE_STORAGE_GB} GB of files, with everything else
+        included. One plan, {dollars(PLAN_PRICE_USD)} a year, for unlimited notes and{' '}
+        {BASE_STORAGE_GB} GB of files, and {STORAGE_ADDON_GB} GB more for{' '}
+        {dollars(STORAGE_ADDON_PRICE_USD)} a year each.
       </p>
 
       <section className="settings-section">
@@ -354,59 +370,68 @@ export function Plan() {
         {error && <p className="bad small">{error}</p>}
       </section>
 
-      <section className="settings-section">
-        <h3>Storage</h3>
-        <StorageMeter plan={plan} reading={usage.isPending} />
-        {canChangeStorage && !hosted && !adding && (
-          <div className="backfill-row">
-            {/* Its press opens the confirm, which hides this row while it is open, so the
-                confirm's own "Adding…" is the only busy label Add ever needs. */}
-            <Button
-              size="small"
-              disabled={busy !== null || unitsOf(plan) >= MAX_STORAGE_UNITS}
-              tip={unitsOf(plan) >= MAX_STORAGE_UNITS ? 'The most storage a plan can hold; ask for more' : undefined}
-              onClick={() => setAdding(true)}
-            >
-              Add {STORAGE_ADDON_GB} GB
-            </Button>
-            {unitsOf(plan) > 0 && (
+      {lapsed ? (
+        <section className="settings-section">
+          {/* Not "Free plan": the state's own heading above already says that, and two
+              headings of one name a section apart read as a repeat. */}
+          <h3>Usage</h3>
+          <FreeMeters plan={plan} reading={usage.isPending} pool={pool.data?.freePresses ?? null} />
+        </section>
+      ) : (
+        <section className="settings-section">
+          <h3>Storage</h3>
+          <StorageMeter plan={plan} reading={usage.isPending} />
+          {canChangeStorage && !hosted && !adding && (
+            <div className="backfill-row">
+              {/* Its press opens the confirm, which hides this row while it is open, so the
+                  confirm's own "Adding…" is the only busy label Add ever needs. */}
               <Button
                 size="small"
-                variant="quiet"
-                disabled={busy !== null || overSmaller || storeOverSmaller}
-                tip={
-                  plan.usedBytes === undefined
-                    ? usage.isPending
-                      ? 'Reading what the account holds…'
-                      : 'What the account holds could not be read'
-                    : overSmaller
-                      ? `The account holds more than ${plan.storageGb - STORAGE_ADDON_GB} GB; delete some files first`
-                      : storeOverSmaller
-                        ? `The notes take more than the ${formatBytes(storeLimitBytes(smaller))} of room they would have; delete some notes or clear their history, and empty the trash, first`
-                        : undefined
-                }
-                onClick={() => void changeStorage(unitsOf(plan) - 1)}
+                disabled={busy !== null || unitsOf(plan) >= MAX_STORAGE_UNITS}
+                tip={unitsOf(plan) >= MAX_STORAGE_UNITS ? 'The most storage a plan can hold; ask for more' : undefined}
+                onClick={() => setAdding(true)}
               >
-                {busy === 'storage' ? 'Removing…' : `Remove ${STORAGE_ADDON_GB} GB`}
+                Add {STORAGE_ADDON_GB} GB
               </Button>
-            )}
-            <span className="muted small">{dollars(STORAGE_ADDON_PRICE_USD)} a year per {STORAGE_ADDON_GB} GB.</span>
-          </div>
-        )}
-        {storageError && <p className="bad small">{storageError}</p>}
-        {/* A charge on the card is a confirm, not a press: the amount and when it is
-            taken are the question, in the box with the action. */}
-        {adding && (
-          <Confirm
-            label="Confirm adding storage"
-            question={<>Add {STORAGE_ADDON_GB} GB for {dollars(STORAGE_ADDON_PRICE_USD)} a year?</>}
-            detail="Charged to the card on file now, for the rest of this year, and in full with each renewal."
-            actions={[{ label: `Add ${STORAGE_ADDON_GB} GB`, busyLabel: 'Adding…', tone: 'primary', onConfirm: () => changeStorage(unitsOf(plan!) + 1) }]}
-            busy={busy !== null}
-            onCancel={() => setAdding(false)}
-          />
-        )}
-      </section>
+              {unitsOf(plan) > 0 && (
+                <Button
+                  size="small"
+                  variant="quiet"
+                  disabled={busy !== null || overSmaller || storeOverSmaller}
+                  tip={
+                    plan.usedBytes === undefined
+                      ? usage.isPending
+                        ? 'Reading what the account holds…'
+                        : 'What the account holds could not be read'
+                      : overSmaller
+                        ? `The account holds more than ${plan.storageGb - STORAGE_ADDON_GB} GB; delete some files first`
+                        : storeOverSmaller
+                          ? `The notes take more than the ${formatBytes(storeLimitBytes(smaller))} of room they would have; delete some notes or clear their history, and empty the trash, first`
+                          : undefined
+                  }
+                  onClick={() => void changeStorage(unitsOf(plan) - 1)}
+                >
+                  {busy === 'storage' ? 'Removing…' : `Remove ${STORAGE_ADDON_GB} GB`}
+                </Button>
+              )}
+              <span className="muted small">{dollars(STORAGE_ADDON_PRICE_USD)} a year per {STORAGE_ADDON_GB} GB.</span>
+            </div>
+          )}
+          {storageError && <p className="bad small">{storageError}</p>}
+          {/* A charge on the card is a confirm, not a press: the amount and when it is
+              taken are the question, in the box with the action. */}
+          {adding && (
+            <Confirm
+              label="Confirm adding storage"
+              question={<>Add {STORAGE_ADDON_GB} GB for {dollars(STORAGE_ADDON_PRICE_USD)} a year?</>}
+              detail="Charged to the card on file now, for the rest of this year, and in full with each renewal."
+              actions={[{ label: `Add ${STORAGE_ADDON_GB} GB`, busyLabel: 'Adding…', tone: 'primary', onConfirm: () => changeStorage(unitsOf(plan!) + 1) }]}
+              busy={busy !== null}
+              onCancel={() => setAdding(false)}
+            />
+          )}
+        </section>
+      )}
 
       {notice && <Snackbar message={notice} tone="info" duration={6000} onDismiss={() => setNotice(null)} />}
     </div>
@@ -426,32 +451,48 @@ export function describePlan(plan: AccountPlan, voice: 'owner' | 'operator' = 'o
   // Before the read-only case: a renewal Stripe could not collect leaves the account
   // read-only past its paid period, and the way back is the card, not a new checkout.
   if (sub?.pastDue) {
+    const free = plan.state === 'free';
     const lapsed = plan.state === 'inactive';
     return {
       title: 'Payment failed',
       sentence: own
-        ? lapsed
-          ? 'The last renewal could not be collected, so the account is read-only. Update the card to edit again; Stripe will try again once it is.'
-          : `The last renewal could not be collected. Stripe will try again; update the card to keep the plan${plan.until ? ` past ${formatDay(plan.until)}` : ''}.`
-        : lapsed
-          ? 'The last renewal could not be collected, and the account is read-only until the card is updated.'
-          : `The last renewal could not be collected. Stripe is retrying; the plan lapses${plan.until ? ` past ${formatDay(plan.until)}` : ''} unless the card is updated.`,
+        ? free
+          ? `The last renewal could not be collected, so the account is on the free plan until the card is updated: up to ${FREE_NOTES} notes and ${FREE_STORAGE_GB} GB of files. Stripe will try again once it is.`
+          : lapsed
+            ? 'The last renewal could not be collected, so the account is read-only. Update the card to edit again; Stripe will try again once it is.'
+            : `The last renewal could not be collected. Stripe will try again; update the card to keep the plan${plan.until ? ` past ${formatDay(plan.until)}` : ''}.`
+        : free
+          ? 'The last renewal could not be collected, and the account is on the free plan until the card is updated.'
+          : lapsed
+            ? 'The last renewal could not be collected, and the account is read-only until the card is updated.'
+            : `The last renewal could not be collected. Stripe is retrying; the plan lapses${plan.until ? ` past ${formatDay(plan.until)}` : ''} unless the card is updated.`,
+    };
+  }
+  // What ended, in the person's words: the trial, the subscription, or the plan an
+  // operator gave. The row keeps its source when it lapses, which is how this can say.
+  const which = plan.source === 'stripe' ? 'subscription' : plan.source === 'comp' ? 'plan' : 'trial';
+  const ended = plan.until ? `ended on ${formatDay(plan.until)}` : 'has ended';
+  if (plan.state === 'free') {
+    return {
+      title: 'Free plan',
+      sentence: own
+        ? `Your ${which} ${ended}, and this account is on the free plan: up to ${FREE_NOTES} notes and ${FREE_STORAGE_GB} GB of files, with everything else as it was. Subscribe for unlimited notes and ${BASE_STORAGE_GB} GB.`
+        : `Their ${which} ${ended}; the account is on the free plan.`,
     };
   }
   if (plan.state === 'inactive') {
-    const ended = plan.until ? `ended on ${formatDay(plan.until)}` : 'has ended';
     return {
       title: 'Read-only',
       sentence: own
-        ? `Your plan ${ended}. Everything still opens, searches and exports, and anything can be deleted; subscribe to edit again.`
-        : `Their plan ${ended}. Everything still opens and exports; nothing can be edited until they subscribe or are comped.`,
+        ? `Your ${which} ${ended}, and this account holds more than the free plan's ${FREE_NOTES} notes or ${FREE_STORAGE_GB} GB of files, so it is read-only. Everything still opens, searches and exports. Delete down to the free plan and empty the trash, or subscribe, to edit again.`
+        : `Their ${which} ${ended}, and the account is past the free plan. Everything still opens and exports; nothing can be edited until they delete down to it, subscribe or are comped.`,
     };
   }
   if (plan.state === 'trial') {
     const ends = plan.until ? `ends on ${formatDay(plan.until)}` : 'is under way';
     return {
       title: 'Free trial',
-      sentence: own ? `Your trial ${ends}. Nothing is charged until you subscribe.` : `Their trial ${ends}.`,
+      sentence: own ? `Your trial ${ends}. ${trialOutcome(plan)}Nothing is charged until you subscribe.` : `Their trial ${ends}.`,
     };
   }
   if (plan.source === 'comp') {
@@ -468,6 +509,26 @@ export function describePlan(plan: AccountPlan, voice: 'owner' | 'operator' = 'o
   return { title: 'Subscribed', sentence: plan.until ? `Renews on ${formatDay(plan.until)}.` : 'Active.' };
 }
 
+/**
+ * What the end of a trial will leave the account as, from what it holds now, with its
+ * own numbers: the free plan if it fits, read-only if not. Said beside the date because
+ * an importer who brought a thousand notes in should know before the day, not on it. A
+ * sentence and its space, or nothing while the figures have not been read (the operator
+ * page, which has none, and the moment before the Plan page's usage read answers).
+ */
+function trialOutcome(plan: AccountPlan): string {
+  if (plan.notes === undefined || plan.usedBytes === undefined) return '';
+  const held = { notes: plan.notes, attachmentBytes: plan.usedBytes };
+  if (fitsFree(held)) {
+    const files = held.attachmentBytes === 0 ? 'no files' : `${formatBytes(held.attachmentBytes)} of files`;
+    return `With ${notesOf(held.notes)} and ${files}, this account stays free then, up to ${FREE_NOTES} notes and ${FREE_STORAGE_GB} GB. `;
+  }
+  const over = [held.notes > FREE_NOTES ? notesOf(held.notes) : null, held.attachmentBytes > FREE_STORAGE_GB * GB ? `${formatBytes(held.attachmentBytes)} of files` : null].filter(Boolean).join(' and ');
+  return `With ${over}, this account becomes read-only then; within the free plan's ${FREE_NOTES} notes and ${FREE_STORAGE_GB} GB it would stay free. `;
+}
+
+const notesOf = (n: number) => `${n.toLocaleString('en-US')} ${n === 1 ? 'note' : 'notes'}`;
+
 /** The state in a heading and a sentence; see `describePlan`. */
 function PlanState({ plan }: { plan: AccountPlan }) {
   const { title, sentence } = describePlan(plan);
@@ -476,6 +537,72 @@ function PlanState({ plan }: { plan: AccountPlan }) {
       <h3>{title}</h3>
       <p>{sentence}</p>
     </>
+  );
+}
+
+/**
+ * The free plan's three meters, for an account no plan holds: its notes against
+ * `FREE_NOTES`, counting the trash, as the free plan counts them; its files against
+ * `FREE_STORAGE_GB`, with the store's line under them as every account has; and the
+ * Auto-fill pool, where the instance has one. Drawn for a read-only account too, since
+ * its way out is the free plan, and the meters say how far over it is and which of the
+ * two to delete.
+ *
+ * One rhythm for the three: a line saying what, then its bar, a step apart, with the
+ * paragraph's gap between meters, so they read as a set rather than as three widgets.
+ * A bar turns the full colour at the share `StorageMeter`'s does, and at the limit
+ * itself, where the next note or file is the one refused.
+ */
+function FreeMeters({ plan, reading, pool }: { plan: AccountPlan; reading: boolean; pool: NonNullable<AutofillUsage['freePresses']> | null }) {
+  const quota = storageQuotaBytes(FREE_STORAGE_GB);
+  const store = plan.storeBytes !== undefined ? { bytes: plan.storeBytes, limit: storeLimitBytes(quota) } : undefined;
+  return (
+    <div className="plan-meters">
+      <Meter
+        label="Notes held"
+        max={FREE_NOTES}
+        value={plan.notes}
+        text={plan.notes !== undefined ? `Notes: ${plan.notes.toLocaleString('en-US')} of ${FREE_NOTES}, counting the trash.` : reading ? `Reading the notes held, of ${FREE_NOTES}…` : `The notes held could not be read right now; the free plan holds ${FREE_NOTES}.`}
+      />
+      <div>
+        <Meter
+          label="Files stored"
+          max={quota}
+          value={plan.usedBytes}
+          text={plan.usedBytes !== undefined ? `Files: ${formatBytes(plan.usedBytes)} of ${FREE_STORAGE_GB} GB.` : reading ? `Reading what is held, of ${FREE_STORAGE_GB} GB…` : `Usage could not be read right now; the free plan holds ${FREE_STORAGE_GB} GB of files.`}
+        />
+        {store && (
+          <p className="muted small plan-meter-note">
+            Notes, their history and the text read from files:{' '}
+            <span className={store.bytes / store.limit >= FULL_SHARE ? 'bad' : undefined}>
+              {formatBytes(store.bytes)} of {formatBytes(store.limit)} used.
+            </span>
+          </p>
+        )}
+      </div>
+      {pool && (
+        <Meter
+          label="Auto-fill presses used"
+          max={pool.of}
+          value={pool.used}
+          text={`Auto-fill: ${Math.min(pool.used, pool.of)} of ${pool.of} presses used${pool.used >= pool.of ? '; a subscription comes with more' : ''}.`}
+        />
+      )}
+    </div>
+  );
+}
+
+/** One of the free plan's meters: what it measures, in words, then the bar. No `aria-valuenow` while the figure is unknown. */
+function Meter({ label, max, value, text }: { label: string; max: number; value: number | undefined; text: string }) {
+  const share = value === undefined ? 0 : Math.min(1, value / max);
+  const full = value !== undefined && (share >= FULL_SHARE || value >= max);
+  return (
+    <div className="plan-free-meter">
+      <p className="muted small">{text}</p>
+      <div className="progress-bar plan-meter" role="meter" aria-valuemin={0} aria-valuemax={max} {...(value !== undefined ? { 'aria-valuenow': value } : {})} aria-label={label}>
+        <div className={`progress-fill${full ? ' plan-meter-full' : ''}`} style={{ width: `${Math.round(share * 100)}%` }} />
+      </div>
+    </div>
   );
 }
 

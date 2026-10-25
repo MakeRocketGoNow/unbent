@@ -654,6 +654,14 @@ button.link {
    gap after the pair, so they read together and the buttons below keep their distance. */
 .plan-held { display: grid; gap: 0.2rem; margin: 0 0 0.7rem; }
 .settings-section .plan-held p { margin: 0; }
+/* The free plan's three meters (`FreeMeters`): each a line, then its bar a step under it,
+   and the paragraph's gap between meters, so the set reads as one reading of the account
+   as `.plan-held` reads under the paid plan's single bar. */
+.plan-meters { display: grid; gap: 0.9rem; margin: 0 0 0.9rem; }
+.settings-section .plan-meters p { margin: 0; }
+.plan-free-meter { display: grid; gap: 0.35rem; }
+.plan-meters .plan-meter { margin: 0; }
+.settings-section .plan-meters .plan-meter-note { margin-top: 0.35rem; }
 .plan-storage-choice {
   display: flex;
   align-items: center;
