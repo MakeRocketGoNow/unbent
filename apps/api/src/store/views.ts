@@ -1,4 +1,4 @@
-import type { NotebookView, ViewQuery } from '@unbent/shared';
+import { dropFieldFromQuery, renameTagInQuery, type NotebookView, type ViewQuery } from '@unbent/shared';
 import type { Change, Feed } from './feed.js';
 import { placeholders, runs } from './notes-shared.js';
 import type { Sql } from './sql.js';
@@ -56,6 +56,19 @@ export interface ViewPatch {
  * one feed row carried whole (`FeedView`), and a move among a notebook's views changes
  * the position of each view it passes, each of which is its own row on every device, so
  * each is recorded.
+ *
+ * The cascades at the end (`renameTag`, `dropField`, `dropNotebook`) are what a tag's,
+ * a field's or a notebook's management does to the views that name it, called by
+ * `NotesStore` from inside the transaction of the write that renamed or deleted it, so
+ * the view and the thing it names change together or not at all. They are private
+ * helpers in the sense `Sql.tx` means and open no transaction of their own.
+ *
+ * What does not reach a view: the purge's sweep of tags no note carries any more
+ * (`sweepAfterPurge`). That is housekeeping, not anyone deciding the tag should go, and a
+ * view that filters by a name nothing carries today shows the notes again the moment one
+ * is tagged with it; taking the tag out of the query would quietly widen the view. A
+ * field converted to another type keeps its filters too: the filter is still about that
+ * field, and the list reads one that no longer fits the type as matching nothing.
  */
 export class ViewsStore {
   constructor(
@@ -208,5 +221,60 @@ export class ViewsStore {
       );
       return true;
     });
+  }
+
+  // --- Cascades: run inside the caller's transaction ------------------------------------
+
+  /**
+   * Respells a renamed tag in every view that names it, or takes a deleted one out
+   * (`to: null`), with `renameTagInQuery`, the same rule the device would apply. A merge
+   * is a rename to the surviving tag's name, which the helper does not add twice.
+   *
+   * Every view of the account is read, since a tag is the account's and not a
+   * notebook's: a handful of rows, and the rewrite is in JavaScript because the rules for
+   * a query are the shared helpers' and SQL would be a second copy of them.
+   */
+  renameTag(from: string, to: string | null): void {
+    this.rewrite((query) => renameTagInQuery(query, from, to));
+  }
+
+  /**
+   * Takes a deleted field's filters and its sort out of every view, with
+   * `dropFieldFromQuery`. Every view rather than the field's notebook's alone: a field's
+   * id is unique across the account, so the others are untouched by the helper anyway,
+   * and reading them costs the handful of rows `renameTag` reads.
+   */
+  dropField(fieldId: string): void {
+    this.rewrite((query) => dropFieldFromQuery(query, fieldId));
+  }
+
+  /**
+   * Deletes a notebook's views and answers their tombstones, for the notebook's delete to
+   * record beside its own. The foreign key's cascade would take the rows by itself, but
+   * a cascade tells nobody what it removed, and every device holding the views has to be
+   * told; deleting them by hand here, before the notebook's row goes, is the one
+   * statement that does both, the way `deleteField` deletes the values the cascade would
+   * also take. The caller records, so the notebook's write keeps its rows in the order it
+   * chooses.
+   */
+  dropNotebook(notebookId: string): Change[] {
+    return this.sql
+      .exec<{ id: string }>(`DELETE FROM notebook_views WHERE notebook_id = ?1 RETURNING id`, notebookId)
+      .map((r) => ({ entity: 'view', id: r.id, deleted: true }));
+  }
+
+  /** Applies `fn` to every view's query, writes back and records the ones it changed. */
+  private rewrite(fn: (query: ViewQuery) => ViewQuery | null): void {
+    const now = Date.now();
+    const changed: Change[] = [];
+    for (const row of this.sql.exec<{ id: string; query: string }>(`SELECT id, query FROM notebook_views`)) {
+      const next = fn(JSON.parse(row.query) as ViewQuery);
+      if (next === null) continue;
+      const text = JSON.stringify(next);
+      if (text === row.query) continue;
+      this.sql.exec(`UPDATE notebook_views SET query = ?1, updated_at = ?2 WHERE id = ?3`, text, now, row.id);
+      changed.push({ entity: 'view', id: row.id });
+    }
+    this.feed.record(changed, now);
   }
 }

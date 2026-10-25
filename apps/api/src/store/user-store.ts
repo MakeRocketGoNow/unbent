@@ -333,10 +333,12 @@ export class UserStore extends DurableObject<StoreEnv> {
     // so "every row deletion tombstones" is a property of one object, not of three
     // agreeing.
     this.deletedBlobs = new DeletedBlobs(this.sql);
-    this.notes = new NotesStore(this.sql, this.feed, this.deletedBlobs);
+    // Before the notes, which hold it for the cascades a tag's, a field's or a
+    // notebook's management runs on the views that name them.
+    this.views = new ViewsStore(this.sql, this.feed);
+    this.notes = new NotesStore(this.sql, this.feed, this.deletedBlobs, this.views);
     this.attachments = new AttachmentsStore(this.sql, this.feed, this.deletedBlobs);
     this.llmUsage = new LlmUsageCounter(this.sql, name);
-    this.views = new ViewsStore(this.sql, this.feed);
     ctx.blockConcurrencyWhile(async () => {
       // Pings on the feed's sockets are answered at the edge, without waking the object;
       // object-wide and idempotent, so set once here rather than on every handshake.

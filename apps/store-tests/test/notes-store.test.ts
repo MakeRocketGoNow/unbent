@@ -1190,7 +1190,7 @@ describe('rows read on an archive-sized store', () => {
               `nb${n}`,
               `View ${k}`,
               k,
-              JSON.stringify({ tag: ['common'], field: ['amount:gt:10'], sortField: 'amount', layout: 'table' }),
+              JSON.stringify({ tag: ['common'], field: ['amount:gte:10'], sortField: 'amount', layout: 'table' }),
             );
           }
         }

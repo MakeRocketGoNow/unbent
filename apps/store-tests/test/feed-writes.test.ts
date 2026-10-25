@@ -393,6 +393,70 @@ describe('the feed records tag, notebook and field writes', () => {
     expect(await stub.deleteView(c.id)).toBe(false);
     expect(await feedRows(stub, seq)).toEqual([]);
   });
+
+  it('a tag renamed, merged or deleted, a field deleted and a notebook deleted rewrite the views that named them, and only those', async () => {
+    const { stub } = freshStore('feed-view-cascades');
+    const nb = (await stub.createNotebook('Receipts'))!;
+    const total = (await stub.createField(nb.id, { name: 'Total', type: 'number', options: [] })) as { id: string };
+    const shop = (await stub.createField(nb.id, { name: 'Shop', type: 'text', options: [] })) as { id: string };
+    // Tags exist only on notes, so make them there.
+    await stub.create(note({ notebook: 'Receipts', tags: ['acme', 'business', 'personal', 'paid'] }));
+    const tagId = async (name: string) => (await stub.listTags()).find((t) => t.name === name)!.id;
+    const make = async (name: string, query: Parameters<typeof stub.createView>[2]) => {
+      const v = await stub.createView(nb.id, name, query);
+      if (typeof v === 'string') throw new Error(`expected a view, got ${v}`);
+      return v.id;
+    };
+    const acme = await make('Acme', { tag: ['acme', 'paid'] });
+    const business = await make('Business 2026', { tag: ['business'], field: [`${total.id}:gte:10`], sortField: total.id });
+    const shops = await make('By shop', { field: [`${shop.id}:set`], layout: 'table' });
+    const plain = await make('Newest', { sort: 'updated' });
+    const query = async (id: string) => (await stub.listViews()).find((v) => v.id === id)?.query;
+
+    // A rename respells the tag in the view that names it; the tag row and that view are the rows.
+    let seq = await feedSeq(stub);
+    await stub.renameTag(await tagId('acme'), 'Acme Co');
+    expect(await feedRows(stub, seq)).toEqual([{ entity: 'tag', id: expect.any(String) }, { entity: 'view', id: acme }]);
+    expect(await query(acme)).toEqual({ tag: ['Acme Co', 'paid'] });
+
+    // A merge into a tag the view already names leaves it naming the survivor once.
+    seq = await feedSeq(stub);
+    const merged = await stub.renameTag(await tagId('paid'), 'acme co', { merge: true });
+    expect(merged).toMatchObject({ name: 'Acme Co', merged: true });
+    expect((await feedRows(stub, seq)).filter((r) => r.entity === 'view')).toEqual([{ entity: 'view', id: acme }]);
+    expect(await query(acme)).toEqual({ tag: ['Acme Co'] });
+
+    // A delete takes the tag out, and a view left with no tags has no `tag` at all.
+    seq = await feedSeq(stub);
+    await stub.deleteTag(await tagId('business'));
+    expect(await feedRows(stub, seq)).toEqual([{ entity: 'tag', id: expect.any(String), deleted: true }, { entity: 'view', id: business }]);
+    expect(await query(business)).toEqual({ field: [`${total.id}:gte:10`], sortField: total.id });
+    // A tag no view names: the tag alone.
+    seq = await feedSeq(stub);
+    await stub.deleteTag(await tagId('personal'));
+    expect((await feedRows(stub, seq)).map((r) => r.entity)).toEqual(['tag']);
+
+    // A field deleted takes its filters and its sort out of the view that had them.
+    seq = await feedSeq(stub);
+    expect(await stub.deleteField(nb.id, total.id)).toBe(true);
+    expect((await feedRows(stub, seq)).filter((r) => r.entity === 'view')).toEqual([{ entity: 'view', id: business }]);
+    expect(await query(business)).toEqual({});
+    expect(await query(shops)).toEqual({ field: [`${shop.id}:set`], layout: 'table' });
+    expect(await query(plain)).toEqual({ sort: 'updated' });
+
+    // The notebook deleted: its tombstone, then one for each of its views, which are gone.
+    const elsewhere = (await stub.createNotebook('Taxes'))!;
+    const kept = (await stub.createView(elsewhere.id, 'Acme', {})) as { id: string };
+    seq = await feedSeq(stub);
+    expect(await stub.deleteNotebook(nb.id)).toBe(true);
+    const gone = await feedRows(stub, seq);
+    expect(gone[0]).toEqual({ entity: 'notebook', id: nb.id, deleted: true });
+    expect(gone.filter((r) => r.entity === 'view')).toEqual(
+      expect.arrayContaining([acme, business, shops, plain].map((id) => ({ entity: 'view', id, deleted: true }))),
+    );
+    expect(gone.filter((r) => r.entity === 'view')).toHaveLength(4);
+    expect((await stub.listViews()).map((v) => v.id)).toEqual([kept.id]);
+  });
 });
 
 describe('the feed records file writes', () => {

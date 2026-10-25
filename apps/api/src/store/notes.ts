@@ -45,6 +45,7 @@ import type { DeletedBlobs } from './deleted-blobs.js';
 import type { Change, Feed } from './feed.js';
 import { Revisions } from './revisions.js';
 import type { Bind, Sql } from './sql.js';
+import type { ViewsStore } from './views.js';
 import {
   ATTACHMENTS_SUBQUERY,
   FIELDS_SUBQUERY,
@@ -201,11 +202,20 @@ export class NotesStore {
    * and the sweep's methods: the files a purge lets go of, kept in R2 for the retention.
    * Every method here that deletes a note row tombstones its files' keys in the same
    * transaction, and that is the only way a note's files are ever let go of.
+   *
+   * `views` is the object's one `ViewsStore`, for the three writes here that change what
+   * a saved view names: a tag renamed or deleted, a field deleted, a notebook deleted.
+   * Each calls its cascade inside its own transaction, so a view never names a tag or a
+   * field that is gone, and a notebook's views go with it. A constructor argument, like
+   * `deletedBlobs`, rather than a setter or a callback the object wires up after: it is
+   * one more line where the object builds the stores, and a `NotesStore` without it
+   * cannot be made, so no write can run with the cascade missing.
    */
   constructor(
     private readonly sql: Sql,
     private readonly feed: Feed,
     private readonly deletedBlobs: DeletedBlobs,
+    private readonly views: ViewsStore,
   ) {
     this.revisions = new Revisions(sql);
   }
@@ -2468,6 +2478,8 @@ export class NotesStore {
         // the first shape, and a tag on an imported archive renamed would have sent every
         // device the archive again.
         this.feed.record([{ entity: 'tag', id }]);
+        // Views name tags by name, as the address does, so a rename respells it in them.
+        this.views.renameTag(own.name, trimmed);
         return { id, name: trimmed, merged: false };
       }
 
@@ -2498,6 +2510,8 @@ export class NotesStore {
       // and took the tag off the server. Notes first, the loser still resolves on every
       // note the retag has not reached.
       this.feed.record([...carrying, { entity: 'tag', id: other.id }, { entity: 'tag', id, deleted: true }]);
+      // A view that named the loser now names the survivor, as its notes do.
+      this.views.renameTag(own.name, other.name);
       return { id: other.id, name: other.name, merged: true };
     });
   }
@@ -2509,13 +2523,15 @@ export class NotesStore {
    */
   deleteTag(id: string): boolean {
     return this.sql.tx(() => {
-      const owned = this.sql.first(`SELECT 1 AS hit FROM tags WHERE id = ?1`, id);
+      const owned = this.sql.first<{ name: string }>(`SELECT name FROM tags WHERE id = ?1`, id);
       if (!owned) return false;
       this.sql.exec(`DELETE FROM note_tags WHERE tag_id = ?1`, id);
       this.sql.exec(`DELETE FROM tags WHERE id = ?1`, id);
       // The tombstone alone: a client drops the id from every note it holds, the way it
       // would drop a notebook's. See `renameTag` for why not a row per note.
       this.feed.record([{ entity: 'tag', id, deleted: true }]);
+      // A view filtering by the tag would show nothing for good; it drops the filter.
+      this.views.renameTag(owned.name, null);
       return true;
     });
   }
@@ -2777,6 +2793,9 @@ export class NotesStore {
         now,
         id,
       );
+      // Its saved views go with it, by hand rather than by the cascade, so their
+      // tombstones can be recorded; see `ViewsStore.dropNotebook`.
+      const views = this.views.dropNotebook(id);
       this.sql.exec(`DELETE FROM notebooks WHERE id = ?1`, id);
 
       // A notebook with no values to preserve leaves nothing worth keeping, so its
@@ -2784,6 +2803,7 @@ export class NotesStore {
       this.sweepTombstonedFields();
       this.feed.record([
         { entity: 'notebook', id, deleted: true },
+        ...views,
         ...unfiled.map((r) => ({ entity: 'note' as const, id: r.id })),
       ]);
       return true;
@@ -3099,6 +3119,8 @@ export class NotesStore {
         { entity: 'notebook', id: notebookId },
         ...held.map((r) => ({ entity: 'note' as const, id: r.note_id })),
       ]);
+      // A view's filters and sort on the field would name nothing; they go.
+      this.views.dropField(fieldId);
       return true;
     });
   }
