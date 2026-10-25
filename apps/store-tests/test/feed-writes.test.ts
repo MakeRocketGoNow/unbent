@@ -356,9 +356,10 @@ describe('the feed records tag, notebook and field writes', () => {
     seq = await feedSeq(stub);
     expect(await stub.updateView(a.id, { query: { tag: ['acme'], layout: 'cards' } })).toMatchObject({ query: { layout: 'cards' } });
     expect(await feedRows(stub, seq)).toEqual([{ entity: 'view', id: a.id }]);
-    // The same name and query again: nothing written, nothing recorded. A taken name: refused.
+    // The same name and query again, the query spelled another way (an explicit default,
+    // the keys in another order): nothing written, nothing recorded. A taken name: refused.
     seq = await feedSeq(stub);
-    expect(await stub.updateView(a.id, { name: 'Acme', query: { tag: ['acme'], layout: 'cards' } })).toMatchObject({ name: 'Acme' });
+    expect(await stub.updateView(a.id, { name: 'Acme', query: { layout: 'cards', sort: 'created', tag: ['acme'] } })).toMatchObject({ name: 'Acme' });
     expect(await stub.updateView(a.id, { name: 'personal' })).toBe('conflict');
     expect(await stub.updateView(crypto.randomUUID(), { name: 'Nobody' })).toBe('missing');
     expect(await feedRows(stub, seq)).toEqual([]);
@@ -426,15 +427,12 @@ describe('the feed records tag, notebook and field writes', () => {
     expect((await feedRows(stub, seq)).filter((r) => r.entity === 'view')).toEqual([{ entity: 'view', id: acme }]);
     expect(await query(acme)).toEqual({ tag: ['Acme Co'] });
 
-    // A delete takes the tag out, and a view left with no tags has no `tag` at all.
+    // A delete leaves the filter: the view shows nothing and its chip says why, rather
+    // than widening to the whole notebook under the same name. The tag alone is the row.
     seq = await feedSeq(stub);
     await stub.deleteTag(await tagId('business'));
-    expect(await feedRows(stub, seq)).toEqual([{ entity: 'tag', id: expect.any(String), deleted: true }, { entity: 'view', id: business }]);
-    expect(await query(business)).toEqual({ field: [`${total.id}:gte:10`], sortField: total.id });
-    // A tag no view names: the tag alone.
-    seq = await feedSeq(stub);
-    await stub.deleteTag(await tagId('personal'));
-    expect((await feedRows(stub, seq)).map((r) => r.entity)).toEqual(['tag']);
+    expect(await feedRows(stub, seq)).toEqual([{ entity: 'tag', id: expect.any(String), deleted: true }]);
+    expect(await query(business)).toEqual({ tag: ['business'], field: [`${total.id}:gte:10`], sortField: total.id });
 
     // An option renamed is respelled in the view that filters on it, after the notebook's row.
     const kind = (await stub.createField(nb.id, { name: 'Kind', type: 'select', options: ['fuel', 'food'] })) as { id: string };
@@ -444,11 +442,12 @@ describe('the feed records tag, notebook and field writes', () => {
     expect((await feedRows(stub, seq)).filter((r) => r.entity === 'view')).toEqual([{ entity: 'view', id: fuel }]);
     expect(await query(fuel)).toEqual({ field: [`${kind.id}:eq:petrol`] });
 
-    // A field deleted takes its filters and its sort out of the view that had them.
+    // A field deleted takes the sort by it out of the view, and leaves the filter, as a
+    // tag's delete does.
     seq = await feedSeq(stub);
     expect(await stub.deleteField(nb.id, total.id)).toBe(true);
     expect((await feedRows(stub, seq)).filter((r) => r.entity === 'view')).toEqual([{ entity: 'view', id: business }]);
-    expect(await query(business)).toEqual({});
+    expect(await query(business)).toEqual({ tag: ['business'], field: [`${total.id}:gte:10`] });
     expect(await query(shops)).toEqual({ field: [`${shop.id}:set`], layout: 'table' });
     expect(await query(plain)).toEqual({ sort: 'updated' });
 

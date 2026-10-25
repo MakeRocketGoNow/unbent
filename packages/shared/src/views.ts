@@ -154,6 +154,11 @@ export function addressOfView(query: ViewQuery): ListAddress {
   return out;
 }
 
+/** A query in the one spelling `viewQueryOf` gives: what the server stores and compares. */
+export function canonicalViewQuery(query: ViewQuery): ViewQuery {
+  return viewQueryOf(addressOfView(query));
+}
+
 /**
  * Whether two queries show the same list.
  *
@@ -163,8 +168,8 @@ export function addressOfView(query: ViewQuery): ListAddress {
  * written in, and a view opened then must not read as edited for that moment.
  */
 export function sameViewQuery(a: ViewQuery, b: ViewQuery): boolean {
-  const ca = viewQueryOf(addressOfView(a));
-  const cb = viewQueryOf(addressOfView(b));
+  const ca = canonicalViewQuery(a);
+  const cb = canonicalViewQuery(b);
   if (ca.layout === undefined || cb.layout === undefined) {
     delete ca.layout;
     delete cb.layout;
@@ -194,32 +199,35 @@ export function narrowsList(address: ListAddress): boolean {
 /**
  * The query with a renamed tag under its new name, or `null` when the view does not name
  * the old one: the store applies it to every view of the account on a tag rename and
- * records the ones it changed. A tag deleted is `to: null`, which drops it.
+ * records the ones it changed. A merge is a rename onto a tag the view may already
+ * name, which is then named once.
+ *
+ * Nothing takes a filter out of a view but the person, from the chips. A tag deleted, a
+ * field deleted, an option removed: each leaves its filter, and the view then shows
+ * nothing, with the chip saying why, which is the truth and is fixable where it is seen.
+ * Taking the filter out would widen the view under the same name with nobody told, and
+ * "Business" showing every receipt is worse than "Business" showing none. The one thing
+ * the store does take out is an ordering on a deleted field (`dropFieldSortFromQuery`),
+ * which narrows nothing and could not be drawn.
  */
-export function renameTagInQuery(query: ViewQuery, from: string, to: string | null): ViewQuery | null {
+export function renameTagInQuery(query: ViewQuery, from: string, to: string): ViewQuery | null {
   if (!query.tag) return null;
   const idx = query.tag.findIndex((t) => byTag(t, from) === 0);
   if (idx === -1) return null;
   const tags = query.tag.filter((_, i) => i !== idx);
-  if (to !== null && !tags.some((t) => byTag(t, to) === 0)) tags.push(to);
-  const out = { ...query };
-  if (tags.length > 0) out.tag = tags.sort(byTag);
-  else delete out.tag;
-  return out;
+  if (!tags.some((t) => byTag(t, to) === 0)) tags.push(to);
+  return { ...query, tag: tags.sort(byTag) };
 }
 
 /**
- * The query without any filter or sort on a deleted field, or `null` when it carries
- * none: the store applies it to the notebook's views when a field is deleted.
+ * The query without its sort on a deleted field, or `null` when it does not sort by it:
+ * the store applies it to the notebook's views when a field is deleted. Its filters on
+ * the field stay; see `renameTagInQuery`.
  */
-export function dropFieldFromQuery(query: ViewQuery, fieldId: string): ViewQuery | null {
-  const fields = (query.field ?? []).filter((raw) => parseFieldFilter(raw)?.fieldId !== fieldId);
-  const sortsBy = query.sortField === fieldId;
-  if (fields.length === (query.field ?? []).length && !sortsBy) return null;
+export function dropFieldSortFromQuery(query: ViewQuery, fieldId: string): ViewQuery | null {
+  if (query.sortField !== fieldId) return null;
   const out = { ...query };
-  if (fields.length > 0) out.field = fields;
-  else delete out.field;
-  if (sortsBy) delete out.sortField;
+  delete out.sortField;
   return out;
 }
 

@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   addressOfView,
   createViewSchema,
-  dropFieldFromQuery,
+  canonicalViewQuery,
+  dropFieldSortFromQuery,
   narrowsList,
   renameOptionInQuery,
   renameTagInQuery,
@@ -90,26 +91,31 @@ describe('renameTagInQuery', () => {
     expect(renameTagInQuery({ tag: ['alpha', 'work'] }, 'work', 'Alpha')).toEqual({ tag: ['alpha'] });
   });
 
-  it('drops a deleted tag, and the key with it when it was the last', () => {
-    expect(renameTagInQuery({ tag: ['alpha'], sort: 'title' }, 'alpha', null)).toEqual({ sort: 'title' });
-  });
-
   it('answers null for a view that does not name the tag', () => {
     expect(renameTagInQuery({ tag: ['alpha'] }, 'beta', 'gamma')).toBeNull();
     expect(renameTagInQuery({}, 'beta', 'gamma')).toBeNull();
   });
 });
 
-describe('dropFieldFromQuery', () => {
-  it('takes out the filters on the field and a sort by it, and nothing else', () => {
-    expect(
-      dropFieldFromQuery({ field: [`${FIELD}:set`, `${OTHER}:empty`], sortField: FIELD, layout: 'table' }, FIELD),
-    ).toEqual({ field: [`${OTHER}:empty`], layout: 'table' });
-    expect(dropFieldFromQuery({ field: [`${FIELD}:set`] }, FIELD)).toEqual({});
+describe('dropFieldSortFromQuery', () => {
+  it('takes out a sort by the field and leaves its filters, which the person takes out', () => {
+    expect(dropFieldSortFromQuery({ field: [`${FIELD}:set`], sortField: FIELD, layout: 'table' }, FIELD)).toEqual({
+      field: [`${FIELD}:set`],
+      layout: 'table',
+    });
   });
 
-  it('answers null when the view does not use the field', () => {
-    expect(dropFieldFromQuery({ field: [`${OTHER}:set`] }, FIELD)).toBeNull();
+  it('answers null when the view does not sort by the field', () => {
+    expect(dropFieldSortFromQuery({ field: [`${FIELD}:set`], sortField: OTHER }, FIELD)).toBeNull();
+  });
+});
+
+describe('canonicalViewQuery', () => {
+  it('is the spelling viewQueryOf gives, so the server stores one text for one list', () => {
+    expect(canonicalViewQuery({ tag: ['b', 'a'], sort: 'created', order: 'desc', layout: 'list' })).toEqual({
+      tag: ['a', 'b'],
+      layout: 'list',
+    });
   });
 });
 

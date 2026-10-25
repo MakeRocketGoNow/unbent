@@ -1,4 +1,11 @@
-import { dropFieldFromQuery, renameOptionInQuery, renameTagInQuery, type NotebookView, type ViewQuery } from '@unbent/shared';
+import {
+  canonicalViewQuery,
+  dropFieldSortFromQuery,
+  renameOptionInQuery,
+  renameTagInQuery,
+  type NotebookView,
+  type ViewQuery,
+} from '@unbent/shared';
 import type { Change, Feed } from './feed.js';
 import { placeholders, runs } from './notes-shared.js';
 import type { Sql } from './sql.js';
@@ -57,22 +64,20 @@ export interface ViewPatch {
  * the position of each view it passes, each of which is its own row on every device, so
  * each is recorded.
  *
- * The cascades at the end (`renameTag`, `dropField`, `dropNotebook`) are what a tag's,
- * a field's or a notebook's management does to the views that name it, called by
- * `NotesStore` from inside the transaction of the write that renamed or deleted it, so
- * the view and the thing it names change together or not at all. They are private
- * helpers in the sense `Sql.tx` means and open no transaction of their own.
+ * The cascades at the end (`renameTag`, `renameOption`, `dropFieldSort`, `dropNotebook`)
+ * are what a tag's, a field's or a notebook's management does to the views that name it,
+ * called by `NotesStore` from inside the transaction of the write that renamed or
+ * deleted it, so the view and the thing it names change together or not at all. They
+ * are private helpers in the sense `Sql.tx` means and open no transaction of their own.
  *
- * A select option renamed reaches a view too (`renameOption`), since a filter on a select
- * compares against the option's text and the notes' values move with the rename; an
- * option removed does not, for the reason `renameOptionInQuery` gives.
- *
- * What does not reach a view: the purge's sweep of tags no note carries any more
- * (`sweepAfterPurge`). That is housekeeping, not anyone deciding the tag should go, and a
- * view that filters by a name nothing carries today shows the notes again the moment one
- * is tagged with it; taking the tag out of the query would quietly widen the view. A
- * field converted to another type keeps its filters too: the filter is still about that
- * field, and the list reads one that no longer fits the type as matching nothing.
+ * One rule decides what reaches a view: a rename follows the name, and nothing but the
+ * person takes a filter out. A tag deleted, a field deleted, an option removed, the
+ * purge's sweep of tags no note carries: each leaves its filter in place, and the view
+ * shows nothing with the chip saying why, which is the truth and is fixable where it is
+ * seen; taking the filter out would widen the view under the same name with nobody told.
+ * The one thing taken out is an ordering on a deleted field, which narrows nothing and
+ * could not be drawn. `renameTagInQuery` in `@unbent/shared` says the same, since the
+ * device applies the rule too.
  */
 export class ViewsStore {
   constructor(
@@ -114,7 +119,10 @@ export class ViewsStore {
    *
    * The unique constraint is the check (`ON CONFLICT DO NOTHING`, and nothing back from
    * `RETURNING` means the name was taken), so a create reads the notebook's row and the
-   * maximum position and nothing else. The notebook is read first rather than left to
+   * maximum position and nothing else. The query is stored in its canonical spelling
+   * (`canonicalViewQuery`): one text for one list, whichever device sent it and in
+   * whatever order it listed the tags, so `update`'s comparison of texts is a comparison
+   * of lists. The notebook is read first rather than left to
    * the foreign key, which would throw where the route wants an answer it can map.
    */
   create(notebookId: string, name: string, query: ViewQuery): NotebookView | 'conflict' | 'missing' {
@@ -131,7 +139,7 @@ export class ViewsStore {
         crypto.randomUUID(),
         notebookId,
         name.trim(),
-        JSON.stringify(query),
+        JSON.stringify(canonicalViewQuery(query)),
         now,
       );
       if (!row) return 'conflict';
@@ -146,7 +154,8 @@ export class ViewsStore {
    * the notebook's views has, and nothing written for either.
    *
    * A name or query the same as the row's writes nothing and records nothing, as a
-   * notebook renamed to its own name does. A taken name is caught by the constraint
+   * notebook renamed to its own name does. The query is compared in its canonical spelling,
+   * so the same list spelled another way is the same query. A taken name is caught by the constraint
    * (`UPDATE OR IGNORE`, and no row back), the way `create` catches it; the view's own
    * row cannot conflict with itself, so changing only a name's case is a rename.
    *
@@ -164,7 +173,7 @@ export class ViewsStore {
       const changed: Change[] = [];
 
       const name = patch.name !== undefined ? patch.name.trim() : row.name;
-      const query = patch.query !== undefined ? JSON.stringify(patch.query) : row.query;
+      const query = patch.query !== undefined ? JSON.stringify(canonicalViewQuery(patch.query)) : row.query;
       if (name !== row.name || query !== row.query) {
         const written = this.sql.exec<{ id: string }>(
           `UPDATE OR IGNORE notebook_views SET name = ?1, query = ?2, updated_at = ?3 WHERE id = ?4 RETURNING id`,
@@ -230,32 +239,33 @@ export class ViewsStore {
   // --- Cascades: run inside the caller's transaction ------------------------------------
 
   /**
-   * Respells a renamed tag in every view that names it, or takes a deleted one out
-   * (`to: null`), with `renameTagInQuery`, the same rule the device would apply. A merge
-   * is a rename to the surviving tag's name, which the helper does not add twice.
+   * Respells a renamed tag in every view that names it, with `renameTagInQuery`, the
+   * same rule the device would apply. A merge is a rename to the surviving tag's name,
+   * which the helper does not add twice. A deleted tag is not this: its filter stays.
    *
    * Every view of the account is read, since a tag is the account's and not a
    * notebook's: a handful of rows, and the rewrite is in JavaScript because the rules for
    * a query are the shared helpers' and SQL would be a second copy of them.
    */
-  renameTag(from: string, to: string | null): void {
+  renameTag(from: string, to: string): void {
     this.rewrite((query) => renameTagInQuery(query, from, to));
   }
 
   /**
-   * Takes a deleted field's filters and its sort out of every view, with
-   * `dropFieldFromQuery`. Every view rather than the field's notebook's alone: a field's
-   * id is unique across the account, so the others are untouched by the helper anyway,
-   * and reading them costs the handful of rows `renameTag` reads.
+   * Takes a deleted field's sort out of every view that ordered by it, with
+   * `dropFieldSortFromQuery`; its filters stay, for the rule above. Every view rather
+   * than the field's notebook's alone: a field's id is unique across the account, so the
+   * others are untouched by the helper anyway, and reading them costs the handful of rows
+   * `renameTag` reads.
    */
-  dropField(fieldId: string): void {
-    this.rewrite((query) => dropFieldFromQuery(query, fieldId));
+  dropFieldSort(fieldId: string): void {
+    this.rewrite((query) => dropFieldSortFromQuery(query, fieldId));
   }
 
   /**
    * Respells a renamed option in every filter on its field, with `renameOptionInQuery`,
    * for `editFieldOptions`, which moves the notes' values in the same transaction. Every
-   * view, as `dropField` reads every view: the field id is the account's.
+   * view, as `dropFieldSort` reads every view: the field id is the account's.
    */
   renameOption(fieldId: string, from: string, to: string): void {
     this.rewrite((query) => renameOptionInQuery(query, fieldId, from, to));

@@ -12,9 +12,9 @@
  * one). A view over the whole library may come later, and a column that could not be
  * null would make that a table rebuilt in every store rather than a route allowed to send
  * it. The cascade is real, since foreign keys are on in every store (the object checks
- * on each wake), so a notebook's delete takes its views; `NotesStore.deleteNotebook`
- * still reads their ids first, because the feed has to carry a tombstone for each and a
- * cascade tells nobody what it removed.
+ * on each wake), so a notebook's delete would take its views; `NotesStore.deleteNotebook`
+ * deletes them itself first, for their ids, because the feed has to carry a tombstone
+ * for each and a cascade tells nobody what it removed.
  *
  * `position` is the view's place among its notebook's views, dense from zero, as
  * `notebook_fields` keeps a notebook's fields; a move rewrites the others so it stays

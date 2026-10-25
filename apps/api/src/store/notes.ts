@@ -2523,15 +2523,14 @@ export class NotesStore {
    */
   deleteTag(id: string): boolean {
     return this.sql.tx(() => {
-      const owned = this.sql.first<{ name: string }>(`SELECT name FROM tags WHERE id = ?1`, id);
-      if (!owned) return false;
+      if (!this.sql.first(`SELECT 1 AS hit FROM tags WHERE id = ?1`, id)) return false;
       this.sql.exec(`DELETE FROM note_tags WHERE tag_id = ?1`, id);
       this.sql.exec(`DELETE FROM tags WHERE id = ?1`, id);
       // The tombstone alone: a client drops the id from every note it holds, the way it
       // would drop a notebook's. See `renameTag` for why not a row per note.
       this.feed.record([{ entity: 'tag', id, deleted: true }]);
-      // A view filtering by the tag would show nothing for good; it drops the filter.
-      this.views.renameTag(owned.name, null);
+      // A view filtering by the tag keeps its filter and shows nothing, with the chip
+      // saying why; see `ViewsStore` for the rule.
       return true;
     });
   }
@@ -3119,8 +3118,9 @@ export class NotesStore {
         { entity: 'notebook', id: notebookId },
         ...held.map((r) => ({ entity: 'note' as const, id: r.note_id })),
       ]);
-      // A view's filters and sort on the field would name nothing; they go.
-      this.views.dropField(fieldId);
+      // A view ordered by the field loses that ordering, which could not be drawn; its
+      // filters on the field stay and the chip says why. See `ViewsStore` for the rule.
+      this.views.dropFieldSort(fieldId);
       return true;
     });
   }
