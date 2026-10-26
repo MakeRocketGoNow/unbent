@@ -223,6 +223,31 @@ describe('saving a view', () => {
     expect(screen.queryByRole('button', { name: 'Save view' })).toBeNull();
   });
 
+  /* The notebook in the order it remembers is the notebook as its rail row opens it. */
+  it('is not offered for a notebook in its remembered order alone', async () => {
+    localStorage.setItem('unbent.notebookSorts', JSON.stringify({ Receipts: { sort: 'title', order: 'asc' } }));
+    setup([]);
+    const { router } = mount('/notes?notebook=Receipts&sort=title&order=asc&view=list');
+    await screen.findByRole('heading', { name: 'Receipts' });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(screen.queryByRole('button', { name: 'Save view' })).toBeNull();
+    // No row is drawn for nothing: the chips row holds neither chips nor the button.
+    expect(document.querySelector('.sidebar > .filter-chips')).toBeNull();
+
+    // Another order than the remembered one is something to save.
+    await router.navigate({ to: '/notes', search: (prev: Record<string, unknown>) => ({ ...prev, sort: 'updated' as const, order: undefined }) });
+    expect(await screen.findByRole('button', { name: 'Save view' })).toBeTruthy();
+  });
+
+  /* A view does not keep the search, so one saved mid-search would open to more notes. */
+  it('is held back while the search box has text', async () => {
+    setup([]);
+    const { router } = mount('/notes?notebook=Receipts&tag=%5B%22Acme%22%5D&view=list');
+    expect(await screen.findByRole('button', { name: 'Save view' })).toBeTruthy();
+    await router.navigate({ to: '/notes', search: (prev: Record<string, unknown>) => ({ ...prev, q: 'alpha' }) });
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Save view' })).toBeNull());
+  });
+
   it('is not offered with a view open', async () => {
     setup();
     mount(viewAddress());

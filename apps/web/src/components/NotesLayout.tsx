@@ -970,11 +970,29 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    * either (`sameViewQuery`). Saving a new view is offered only inside a notebook, where
    * views live, and only when the list is narrowed or ordered at all (`narrowsList`): a
    * plain notebook saved as a view would be a second row for the row above it.
+   *
+   * "Ordered" means ordered otherwise than the notebook remembers. The remembered order
+   * is written into the address on arrival and by the rail's own link (`scopeOf`), so the
+   * notebook in that order is the plain notebook, as its row opens it; counted as a
+   * narrowing, every notebook ever re-sorted grew a row above its list holding only
+   * "Save view", there whenever it was opened and again after a view in it was deleted.
+   *
+   * Not while the search box has text, either. A view leaves the search out on purpose
+   * (see `views.ts`), so one saved mid-search would open to more notes than were on
+   * screen when it was saved, with nothing to have said so; the filter sheet hides its
+   * tag and field rows while searching for the same kind of reason. The Edited line is
+   * not held back: a search inside a view is not an edit of it.
    */
   const listAddress = { tag, field, sort, order, sortField, from, to, view: viewParam ?? view };
   const viewEdited = openView !== undefined && !sameViewQuery(openView.query, viewQueryOf(listAddress));
+  const remembered = rememberedSort(notebook);
+  const inRememberedOrder =
+    sort === remembered.sort && order === remembered.order && sortField === remembered.sortField;
+  const narrowed = narrowsList(
+    inRememberedOrder ? { ...listAddress, sort: undefined, order: undefined, sortField: undefined } : listAddress,
+  );
   const canSaveView =
-    notebookId !== undefined && saved === undefined && !showNotebookMissing && narrowsList(listAddress);
+    notebookId !== undefined && saved === undefined && !showNotebookMissing && q.trim() === '' && narrowed;
   const viewState: 'unsaved' | 'edited' | null = viewEdited ? 'edited' : canSaveView ? 'unsaved' : null;
 
   /** A view the server has answered, into the list the rail and the heading read, at once. */
