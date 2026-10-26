@@ -320,7 +320,9 @@ export const keys = {
   /** The operator page's reads, under one root so an action can invalidate all of them at once. */
   operatorBackups: () => ['operator', 'backups'] as const,
   operatorAccounts: () => ['operator', 'accounts'] as const,
+  /** The root of both feedback lists, so one invalidation after a dismiss refreshes the unread and the full list. */
   operatorFeedback: () => ['operator', 'feedback'] as const,
+  /** One view's pages of the feedback list, under the root above. */
   operatorFeedbackList: (withDismissed: boolean) => ['operator', 'feedback', { withDismissed }] as const,
   /** One search's pages of the list, under its key; an object, so no account id can be mistaken for it. */
   operatorAccountsList: (q: string, order: OperatorOrder = {}) => ['operator', 'accounts', { q, ...order }] as const,
