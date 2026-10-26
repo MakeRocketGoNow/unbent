@@ -593,6 +593,24 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
   }, [viewIds, heldViewOrder]);
   const [renamingView, setRenamingView] = useState<string | null>(null);
   const [pendingViewDelete, setPendingViewDelete] = useState<NotebookView | null>(null);
+  /*
+   * A view's name button gets focus back once its rename field closes, by Rename, Cancel
+   * or Escape: the field took the button's place, so the button is a new element by then
+   * and nothing else focuses it. The list's own rename and Save view do the same; without
+   * it the keyboard and a screen reader were dropped on the page's body.
+   */
+  const viewNameButtons = useRef(new Map<string, HTMLButtonElement>());
+  const refocusView = useRef<string | null>(null);
+  const closeViewRename = (id: string) => {
+    refocusView.current = id;
+    setRenamingView(null);
+  };
+  useEffect(() => {
+    const id = refocusView.current;
+    if (renamingView !== null || id === null) return;
+    refocusView.current = null;
+    viewNameButtons.current.get(id)?.focus();
+  }, [renamingView]);
 
   /** A view's row moves one place; the store shifts its neighbours to make room. */
   function moveView(index: number, by: -1 | 1) {
@@ -1091,13 +1109,17 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
                   className="view-admin-rename"
                   onCommit={async (name) => {
                     await actions.updateView(v.id, { name });
-                    setRenamingView(null);
+                    closeViewRename(v.id);
                     onChanged();
                   }}
-                  onCancel={() => setRenamingView(null)}
+                  onCancel={() => closeViewRename(v.id)}
                 />
               ) : (
                 <button
+                  ref={(el) => {
+                    if (el) viewNameButtons.current.set(v.id, el);
+                    else viewNameButtons.current.delete(v.id);
+                  }}
                   type="button"
                   className="notebook-admin-name"
                   data-tip="Rename"

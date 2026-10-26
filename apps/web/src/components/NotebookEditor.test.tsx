@@ -788,4 +788,14 @@ describe('NotebookEditor views', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Rename' }));
     await waitFor(() => expect(update).toHaveBeenCalledWith('v1', { name: 'Business 2027' }));
   });
+
+  /* The field took the name button's place; closing it gives focus back to that row. */
+  it('gives focus back to the view\'s name when its rename is cancelled', async () => {
+    mount(fields, null, VIEWS);
+    fireEvent.click(await screen.findByText('Personal'));
+    await screen.findByRole('textbox', { name: 'New name for Personal' });
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(document.activeElement?.textContent).toBe('Personal'));
+    expect(document.activeElement?.tagName).toBe('BUTTON');
+  });
 });
