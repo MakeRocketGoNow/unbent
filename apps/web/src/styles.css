@@ -8687,6 +8687,13 @@ button.settings-nav-item {
   gap: 0.25rem;
   flex: 1 1 16rem;
   min-width: 0;
+  /*
+     A name is a few words, and the rail shows it in a 15rem column, so the field stops
+     growing at about that plus its buttons: in the table and cards layouts the chips row
+     is the width of the screen, and a field grown to all of it read as a box for a
+     paragraph, with Save and Cancel at the far edge from the chip the name is for.
+  */
+  max-width: 24rem;
 }
 
 .view-name-row {
