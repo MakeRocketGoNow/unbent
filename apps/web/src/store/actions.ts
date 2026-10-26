@@ -1,6 +1,6 @@
 import { IndexedDBAdapter, NonRetriableError, startOfflineExecutor, type OfflineExecutor, type OnlineDetector, type StorageAdapter } from '@tanstack/offline-transactions';
 import type { Transaction } from '@tanstack/db';
-import { FREE_NOTES, FREE_NOTES_FULL_CODE, MAX_ATTACHMENT_BYTES, PLAN_INACTIVE_CODE, STORAGE_FULL_CODE, filenameSchema, foldNoCase, type FeedNote, type FeedView, type FieldDef, type FieldValue, type Note, type NoteFieldValue, type NotebookDefinition, type NotebookView, type RestoredNote, type ViewQuery } from '@unbent/shared';
+import { FREE_NOTES, FREE_NOTES_FULL_CODE, MAX_ATTACHMENT_BYTES, PLAN_INACTIVE_CODE, STORAGE_FULL_CODE, filenameSchema, foldNoCase, type FeedNote, type FeedView, type FieldDef, type FieldValue, type Note, type NoteFieldValue, type NotebookDefinition, type NotebookView, type RestoredNote, type CreateView, type UpdateView } from '@unbent/shared';
 import * as api from '../notes-api.js';
 import { ApiError, errorText, isNoteChanged, isOfflineError, NoteChangedError } from '../notes-api.js';
 import { offlineNow, recheck, subscribeConnectivity } from '../connectivity.js';
@@ -2380,7 +2380,7 @@ const holdsView = (view: NotebookView) => (views: Rows<FeedView>) => (views.get(
  * Saves a notebook's list as a view, and returns once the library holds it. Throws an
  * `ApiError` with status 409 when the notebook has a view of that name already.
  */
-export async function createView(body: { notebookId: string; name: string; query: ViewQuery }): Promise<NotebookView> {
+export async function createView(body: CreateView): Promise<NotebookView> {
   const view = await api.createView(body);
   await viewLanded(holdsView(view));
   return view;
@@ -2391,7 +2391,7 @@ export async function createView(body: { notebookId: string; name: string; query
  * returns once the library holds the change. A move shifts its neighbours too; they come
  * in the same page of the feed as the view itself.
  */
-export async function updateView(id: string, patch: { name?: string; query?: ViewQuery; position?: number }): Promise<NotebookView> {
+export async function updateView(id: string, patch: UpdateView): Promise<NotebookView> {
   const view = await api.updateView(id, patch);
   await viewLanded(holdsView(view));
   return view;

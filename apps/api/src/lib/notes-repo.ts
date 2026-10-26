@@ -20,6 +20,7 @@ import type {
   SearchResultRow,
   SnapshotPage,
   StaleNote,
+  UpdateView,
   ViewQuery,
 } from '@unbent/shared';
 import { StoreRepo } from './store-client.js';
@@ -27,7 +28,6 @@ import type { FileSummary } from '../store/attachments.js';
 import type { PressLimits, UsageEntry } from '../store/llm-usage.js';
 import type { WriteLimits } from '../store/user-store.js';
 import type { CountOptions, ListOptions, SearchFilters } from '../store/notes.js';
-import type { ViewPatch } from '../store/views.js';
 import {
   keysOfDeletedNotes,
   nextCursor,
@@ -370,7 +370,7 @@ export class NotesRepo extends StoreRepo {
     return this.call(async (s) => s.createView(notebookId, name, query, await this.limits()));
   }
 
-  updateView(id: string, patch: ViewPatch): Promise<NotebookView | 'conflict' | 'missing'> {
+  updateView(id: string, patch: UpdateView): Promise<NotebookView | 'conflict' | 'missing'> {
     return this.call(async (s) => s.updateView(id, patch, await this.limits()));
   }
 

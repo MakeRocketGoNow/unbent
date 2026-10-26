@@ -23,7 +23,8 @@ import type {
   RestoredNote,
   SearchResult,
   SearchResultRow,
-  ViewQuery,
+  CreateView,
+  UpdateView,
   AccountDumps,
   BackupsStatus,
   OperatorAccount,
@@ -748,14 +749,14 @@ export async function listViews(): Promise<{ views: NotebookView[] }> {
 }
 
 /** Saves a view: a notebook's list as it stands, under a name. */
-export async function createView(body: { notebookId: string; name: string; query: ViewQuery }): Promise<NotebookView> {
+export async function createView(body: CreateView): Promise<NotebookView> {
   const res = await request('/api/views', { method: 'POST', headers: jsonHeaders, body: JSON.stringify(body) });
   if (res.status === 409) throw viewNameTaken();
   return json(res);
 }
 
 /** Renames a view, changes what it keeps, or moves it among its notebook's views. */
-export async function updateView(id: string, patch: { name?: string; query?: ViewQuery; position?: number }): Promise<NotebookView> {
+export async function updateView(id: string, patch: UpdateView): Promise<NotebookView> {
   const res = await request(`/api/views/${encodeURIComponent(id)}`, { method: 'PATCH', headers: jsonHeaders, body: JSON.stringify(patch) });
   if (res.status === 409) throw viewNameTaken();
   return json(res);

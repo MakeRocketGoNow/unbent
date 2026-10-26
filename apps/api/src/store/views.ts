@@ -4,6 +4,7 @@ import {
   renameOptionInQuery,
   renameTagInQuery,
   type NotebookView,
+  type UpdateView,
   type ViewQuery,
 } from '@unbent/shared';
 import type { Change, Feed } from './feed.js';
@@ -37,13 +38,6 @@ function toView(row: ViewRow): NotebookView {
     query: JSON.parse(row.query) as ViewQuery,
     updatedAt: row.updated_at,
   };
-}
-
-/** What a view's edit may change; see `updateViewSchema` in `@unbent/shared`. */
-export interface ViewPatch {
-  name?: string | undefined;
-  query?: ViewQuery | undefined;
-  position?: number | undefined;
 }
 
 /**
@@ -165,7 +159,7 @@ export class ViewsStore {
    * read by position and rewritten from zero, so a notebook whose positions had a gap
    * (none should) comes out dense again rather than carrying the gap forward.
    */
-  update(id: string, patch: ViewPatch): NotebookView | 'conflict' | 'missing' {
+  update(id: string, patch: UpdateView): NotebookView | 'conflict' | 'missing' {
     return this.sql.tx(() => {
       const row = this.sql.first<ViewRow>(`SELECT ${COLUMNS} FROM notebook_views WHERE id = ?1`, id);
       if (!row) return 'missing';

@@ -13,6 +13,7 @@ import {
   type NotebookDefinition,
   type OptionEdit,
   type SnapshotPage,
+  type UpdateView,
   FREE_NOTES_FULL_CODE,
   PLAN_INACTIVE_CODE,
   STORAGE_FULL_CODE,
@@ -29,7 +30,7 @@ import { restoreAbortReason, restoreRefusedReason } from './restore.js';
 import { SCHEMA } from './schema/index.js';
 import { instrumentedSql, type Sql } from './sql.js';
 import { DATA_TABLES, DUMP_TABLES, type DataTable, type DumpTable } from './tables.js';
-import { ViewsStore, type ViewPatch } from './views.js';
+import { ViewsStore } from './views.js';
 
 export { DATA_TABLES, DUMP_TABLES, type DataTable, type DumpTable };
 
@@ -1221,7 +1222,7 @@ export class UserStore extends DurableObject<StoreEnv> {
   createView(notebookId: string, name: string, query: Parameters<ViewsStore['create']>[2], limit?: StoreLimit) {
     return this.writing(() => this.views.create(notebookId, name, query), this.freeOnly(limit));
   }
-  updateView(id: string, patch: ViewPatch, limit?: StoreLimit) { return this.writing(() => this.views.update(id, patch), this.freeOnly(limit)); }
+  updateView(id: string, patch: UpdateView, limit?: StoreLimit) { return this.writing(() => this.views.update(id, patch), this.freeOnly(limit)); }
   deleteView(id: string) { return this.writing(() => this.views.delete(id)); }
 
   // --- Attachments: the repository, one for one -----------------------------------------

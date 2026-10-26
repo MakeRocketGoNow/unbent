@@ -83,6 +83,14 @@ export const updateViewSchema = z
     message: 'Nothing to change: give a name, a query, or a position',
   });
 
+/**
+ * The two request bodies as types, from their schemas, so the client's calls and the
+ * store's method take exactly what the route validates: a key the patch gains reaches
+ * every one of them at once rather than one hand-written copy at a time.
+ */
+export type CreateView = z.infer<typeof createViewSchema>;
+export type UpdateView = z.infer<typeof updateViewSchema>;
+
 /** A view as the API answers it and the device keeps it. */
 export interface NotebookView {
   id: string;
