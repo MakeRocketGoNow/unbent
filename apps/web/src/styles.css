@@ -7114,6 +7114,19 @@ button.settings-nav-item {
 .copy-label > [aria-hidden='true'] { visibility: hidden; }
 
 /*
+ * Settings › AI assistants, the standing instructions: a ruled row per place a text is
+ * pasted, the connected list's own shape. The label is two lines, what it is for and
+ * where it goes, stacked rather than side by side because the second is a sentence. The
+ * button sits level with the first line rather than centred: on a phone the sentence
+ * wraps to three or four lines, and a centred button then floats beside nothing in
+ * particular. The list starts at the paragraph's rhythm rather than the list's own gap,
+ * and the paragraph after it takes the same, so the three read as one block.
+ */
+.instructions-list { margin: 0 0 0.7rem; }
+.instructions-list li { align-items: flex-start; }
+.instructions-list li > :first-child { display: flex; flex-direction: column; gap: 0.15rem; }
+
+/*
  * The export link, shaped as a button. It stays an <a href download> so the browser
  * streams the archive straight to disk (a fetch would buffer a multi-gigabyte zip inside
  * the Worker) while looking like the deliberate action it is.

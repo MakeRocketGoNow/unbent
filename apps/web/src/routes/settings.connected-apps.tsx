@@ -1,11 +1,18 @@
-import { createFileRoute } from '@tanstack/react-router';
+import { useQueries, useQuery } from '@tanstack/react-query';
+import { Link, createFileRoute } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 import { Button } from '../components/Button.js';
 import { Confirm } from '../components/Confirm.js';
+import { SOURCE_URL } from '../components/FrontPage.js';
 import { CopiedIcon, CopyIcon } from '../components/icons.js';
 import { oauth2 } from '../auth-client.js';
+import { chatgptInstructions } from '../chatgpt-instructions.js';
+import { claudeInstructions } from '../claude-instructions.js';
+import { claudeProjectInstructions } from '../claude-project-instructions.js';
 import { mcpSetupPrompt } from '../mcp-setup-prompt.js';
 import { request } from '../notes-api.js';
+import { notebookFieldsQuery, notebooksQuery } from '../queries.js';
+import type { InstructionNotebook } from '../standing-instructions.js';
 
 export const Route = createFileRoute('/settings/connected-apps')({
   component: ConnectedAppsPage,
@@ -57,41 +64,176 @@ function McpUrl() {
 }
 
 /**
- * Copies `mcpSetupPrompt` for this instance, for a person whose assistant is a coding
- * agent that can edit its own config.
+ * A labelled button that copies a text built when it is pressed.
  *
  * A labelled button rather than a second icon beside the URL: two copy glyphs side by
  * side would leave the person guessing which copies what. The label holds its width while
  * it reads "Copied" (both words share one grid cell and only one is visible), so the
  * confirmation does not shift what sits beside it. The live region says it for a screen
  * reader, which does not reliably announce a button's own label changing.
+ *
+ * The text is a function so it is built from what the page knows at the press, not at
+ * the last render.
  */
-function CopySetupPrompt() {
+function CopyButton({
+  text,
+  label,
+  copied: copiedLabel,
+  name,
+  size,
+  disabled,
+  tip,
+}: {
+  text: () => string;
+  label: string;
+  /** What the live region says once it is on the clipboard. */
+  copied: string;
+  /** The accessible name, when the visible label alone ("Copy") would not say what is copied. */
+  name?: string;
+  size?: 'small';
+  disabled?: boolean;
+  tip?: string;
+}) {
   const [copied, setCopied] = useState(false);
 
   async function copy() {
     try {
-      await navigator.clipboard.writeText(mcpSetupPrompt(`${window.location.origin}/api/mcp`));
+      await navigator.clipboard.writeText(text());
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      // As in `McpUrl`: the URL is on screen to copy by hand.
+      // As in `McpUrl`: a refused clipboard is not worth an error message here.
     }
   }
 
   return (
     <>
-      <Button onClick={() => void copy()}>
+      <Button size={size} disabled={disabled} tip={tip} aria-label={name} onClick={() => void copy()}>
         {copied ? <CopiedIcon /> : <CopyIcon />}
         <span className="copy-label">
-          <span aria-hidden={copied}>Copy setup prompt</span>
+          <span aria-hidden={copied}>{label}</span>
           <span aria-hidden={!copied}>Copied</span>
         </span>
       </Button>
       <span className="visually-hidden" role="status">
-        {copied ? 'Setup prompt copied' : ''}
+        {copied ? copiedLabel : ''}
       </span>
     </>
+  );
+}
+
+/**
+ * The account's notebooks with their field definitions, as the standing instructions are
+ * built from them. Both come from the local library, so this is a read of the device and
+ * no request; `null` until every notebook with fields has answered, so a copy never
+ * describes a notebook without the fields it has.
+ */
+function useInstructionLibrary(): { notebooks: InstructionNotebook[] | null; failed: boolean } {
+  const list = useQuery(notebooksQuery());
+  const withFields = (list.data?.notebooks ?? []).filter((nb) => nb.fields > 0);
+  const fields = useQueries({ queries: withFields.map((nb) => notebookFieldsQuery(nb.id)) });
+  const failed = list.isError || fields.some((q) => q.isError);
+  if (!list.data || fields.some((q) => !q.data)) return { notebooks: null, failed };
+  const byId = new Map(withFields.map((nb, i) => [nb.id, fields[i]!.data!]));
+  return {
+    notebooks: list.data.notebooks.map((nb) => ({
+      name: nb.name,
+      purpose: nb.purpose,
+      count: nb.count,
+      fields: byId.get(nb.id) ?? [],
+    })),
+    failed,
+  };
+}
+
+/**
+ * Where each text goes. The paths are each app's own words as its help pages give them
+ * (checked October 2026); docs/assistants.md says the same at more length, for every
+ * device, and is where to correct them when an app moves a setting.
+ */
+const DESTINATIONS = [
+  {
+    key: 'claude',
+    title: 'Claude, in every chat',
+    subject: 'Claude',
+    where: 'Paste into Settings › Your Claude › Instructions.',
+    build: claudeInstructions,
+  },
+  {
+    key: 'project',
+    title: 'A Claude Project for filing',
+    subject: 'a Claude Project',
+    where: 'Paste into the project’s Set project instructions. Every message there is read as something to file or look up.',
+    build: claudeProjectInstructions,
+  },
+  {
+    key: 'chatgpt',
+    title: 'ChatGPT',
+    subject: 'ChatGPT',
+    where: 'Paste into Settings › Personalization › Custom instructions.',
+    build: chatgptInstructions,
+  },
+] as const;
+
+const STANDING_INSTRUCTIONS_DOC = `${SOURCE_URL}/blob/main/docs/assistants.md#standing-instructions`;
+
+/**
+ * "Tell it when to use Unbent": the standing instructions for each place they are
+ * pasted (`standing-instructions.ts` says what they do and why they are short).
+ *
+ * Rows ruled like the connected assistants below, so the page keeps one shape for "a
+ * thing and its action", with the copy at the right edge where it lines up down the
+ * list. Each row says where its text is pasted, since that is the step people get stuck
+ * on, and the name of the setting is different in every app. The paragraph says that the
+ * assistant keeps its own memory, because the first question anyone asks of this is
+ * whether Unbent replaces it; that the texts go stale when the notebooks change, because
+ * nothing can update a text once it is pasted into someone else's settings; and where a
+ * notebook's purpose is set, since that is the one sentence in the text that says what a
+ * notebook is for.
+ */
+function StandingInstructions() {
+  const { notebooks, failed } = useInstructionLibrary();
+  const url = `${window.location.origin}/api/mcp`;
+  const tip = notebooks ? undefined : failed ? 'Could not read your notebooks' : 'Reading your notebooks…';
+
+  return (
+    <section className="settings-section">
+      <h3>Tell it when to use Unbent</h3>
+      <p className="muted small">
+        An assistant uses Unbent when you ask it to. Paste one of these into its standing
+        instructions and “file this” or “look up X in my notes” come here without naming
+        Unbent; it keeps its own memory for everything else. Each names your notebooks,
+        their purposes and their fields, so copy it again after you change them. A
+        notebook’s purpose, set under <Link to="/settings/notebooks">Notebooks</Link>, is
+        what tells the assistant what belongs in it.
+      </p>
+      <ul className="owned-list instructions-list">
+        {DESTINATIONS.map((d) => (
+          <li key={d.key}>
+            <span>
+              <span>{d.title}</span>
+              <span className="muted small">{d.where}</span>
+            </span>
+            <CopyButton
+              size="small"
+              label="Copy"
+              name={`Copy instructions for ${d.subject}`}
+              copied={`Instructions for ${d.subject} copied`}
+              disabled={!notebooks}
+              tip={tip}
+              text={() => d.build(url, notebooks ?? [])}
+            />
+          </li>
+        ))}
+      </ul>
+      <p className="muted small">
+        Each assistant asks you to confirm its writes until you trust it.{' '}
+        <a href={STANDING_INSTRUCTIONS_DOC} target="_blank" rel="noopener noreferrer">
+          More on what these do
+        </a>
+        .
+      </p>
+    </section>
   );
 }
 
@@ -213,43 +355,55 @@ function ConnectedAppsPage() {
           it adds the server itself.
         </p>
         <p>
-          <CopySetupPrompt />
+          <CopyButton
+            label="Copy setup prompt"
+            copied="Setup prompt copied"
+            text={() => mcpSetupPrompt(`${window.location.origin}/api/mcp`)}
+          />
         </p>
         <p className="muted small">
           Either way, the client will open a browser window to ask for permission. Once
-          approved, it appears below and stays connected until you disconnect it here.
+          approved, it appears under Connected below and stays connected until you
+          disconnect it there.
         </p>
       </section>
 
-      {error && <p className="bad small">{error}</p>}
+      <StandingInstructions />
 
-      {grants === null ? (
-        <p className="muted small">Loading…</p>
-      ) : grants.length === 0 ? (
-        <p className="muted small">Nothing is connected.</p>
-      ) : (
-        <ul className="owned-list">
-          {grants.map((grant) => (
-            <li key={grant.id}>
-              <span>{grant.name ?? 'Unnamed assistant'}</span>
-              {grant.grantedAt && (
-                <span className="muted small">
-                  connected {new Date(grant.grantedAt).toLocaleDateString()}
-                </span>
-              )}
-              <Button
-                variant="quiet"
-                tone="danger"
-                size="small"
-                disabled={busy}
-                onClick={() => setConfirming(grant)}
-              >
-                Disconnect
-              </Button>
-            </li>
-          ))}
-        </ul>
-      )}
+      {/* Headed now that the standing instructions sit between it and the paragraph that
+          says a connected assistant "appears below". */}
+      <section className="settings-section">
+        <h3>Connected</h3>
+        {error && <p className="bad small">{error}</p>}
+
+        {grants === null ? (
+          <p className="muted small">Loading…</p>
+        ) : grants.length === 0 ? (
+          <p className="muted small">Nothing is connected.</p>
+        ) : (
+          <ul className="owned-list">
+            {grants.map((grant) => (
+              <li key={grant.id}>
+                <span>{grant.name ?? 'Unnamed assistant'}</span>
+                {grant.grantedAt && (
+                  <span className="muted small">
+                    connected {new Date(grant.grantedAt).toLocaleDateString()}
+                  </span>
+                )}
+                <Button
+                  variant="quiet"
+                  tone="danger"
+                  size="small"
+                  disabled={busy}
+                  onClick={() => setConfirming(grant)}
+                >
+                  Disconnect
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
       {confirming && (
         <Confirm
