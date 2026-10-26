@@ -233,6 +233,45 @@ describe('an edited view', () => {
   });
 });
 
+describe('the view actions in the filter sheet, on a phone', () => {
+  beforeEach(() => {
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: query.includes('max-width'),
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    }));
+    // jsdom has no `showModal`; stubbed as in `Sheet.test.tsx`.
+    HTMLDialogElement.prototype.showModal = function (this: HTMLDialogElement) {
+      this.open = true;
+    };
+    HTMLDialogElement.prototype.close = function (this: HTMLDialogElement) {
+      this.open = false;
+    };
+  });
+
+  /* The sheet covers the heading, the one place that says what was saved: a save made
+     in it closes it, and the heading takes focus once the dialog has let go. */
+  it('close the sheet once a save into the view lands, and focus the heading', async () => {
+    setup();
+    vi.mocked(actions.updateView).mockImplementation(async (id, patch) => view({ id, query: patch.query!, updatedAt: 2 }));
+    const { router } = mount(viewAddress());
+    const heading = await screen.findByRole('heading', { name: 'Business 2026' });
+    await router.navigate({ to: '/notes', search: (prev: Record<string, unknown>) => ({ ...prev, tag: ['Acme', 'Travel'] }) });
+    fireEvent.click(await screen.findByRole('button', { name: /^Filter notes/ }));
+    // The drawer is a sheet too on a phone: the one wanted holds the view actions.
+    const dialog = await waitFor(() => {
+      const found = [...document.querySelectorAll('dialog')].find((d) => d.open && d.querySelector('.sheet-view-actions'));
+      expect(found).toBeDefined();
+      return found!;
+    });
+    const inSheet = dialog.querySelector('.sheet-view-actions')!;
+    fireEvent.click([...inSheet.querySelectorAll('button')].find((b) => b.textContent === 'Save')!);
+    await waitFor(() => expect(dialog.open).toBe(false));
+    await waitFor(() => expect(document.activeElement).toBe(heading));
+  });
+});
+
 describe('saving a view', () => {
   it('is offered inside a notebook with a filter or an order, and nowhere else', async () => {
     setup([]);

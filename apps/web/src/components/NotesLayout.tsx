@@ -1044,10 +1044,15 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
       resetScroll: false,
     });
   };
-  /** The open view takes what the list shows now; the Edited line goes with the match. */
+  /*
+   * The open view takes what the list shows now; the Edited line goes with the match, and
+   * the Save that was pressed with it, so focus moves to the heading as a new view's does.
+   */
   const saveView = async () => {
     if (!openView) return;
-    holdView(await actions.updateView(openView.id, { query: viewQueryOf(listAddress) }));
+    const id = openView.id;
+    holdView(await actions.updateView(id, { query: viewQueryOf(listAddress) }));
+    focusAfter.current = { to: 'heading', view: id };
   };
   /*
    * Back to the view as it is kept. Replaced rather than pushed, since it undoes the
@@ -1075,12 +1080,20 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   const headingRef = useRef<HTMLHeadingElement>(null);
   const viewMenuRef = useRef<HTMLButtonElement>(null);
   const focusAfter = useRef<{ to: 'heading' | 'menu'; view: string } | null>(null);
+  /*
+   * Not while the filter sheet is open: it is a modal dialog, the heading is under it and
+   * inert, and a focus call there lands nowhere. A save made from the sheet closes it
+   * (`viewActions`), and the dialog's close hands focus back to the filter button in the
+   * sheet's own effect, which runs before this one, so the heading still has the last word.
+   * `updatedAt` is here for a save into the open view, which changes neither its id nor
+   * its name.
+   */
   useEffect(() => {
     const want = focusAfter.current;
-    if (!want || renamingView || openView?.id !== want.view) return;
+    if (!want || renamingView || sheetOpen || openView?.id !== want.view) return;
     focusAfter.current = null;
     (want.to === 'heading' ? headingRef.current : viewMenuRef.current)?.focus();
-  }, [openView?.id, openView?.name, renamingView]);
+  }, [openView?.id, openView?.name, openView?.updatedAt, renamingView, sheetOpen]);
   const [viewBusy, setViewBusy] = useState(false);
   const [viewError, setViewError] = useState<string | null>(null);
   // Another view, or none: what was half done to the last one is not for this one.
@@ -1162,7 +1175,14 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
       />
     ) : undefined;
 
-  const viewActions = () =>
+  /*
+   * In the filter sheet, a save closes the sheet once it has landed. The sheet is a modal
+   * dialog over the heading, and the heading is the one place that names what was saved;
+   * left open, the sheet lost the actions it had just shown (there is nothing edited or
+   * unsaved any more) and showed nothing in their place. Revert leaves it open: what it
+   * changes is the chips, which the sheet shows.
+   */
+  const viewActions = (inSheet = false) =>
     viewState && (
       <ViewActions
         // A new state is a new control: a name half typed for one is not for the other.
@@ -1170,8 +1190,8 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
         state={viewState}
         viewName={openView?.name}
         offline={offline}
-        onCreate={createView}
-        onSave={saveView}
+        onCreate={inSheet ? (name) => createView(name).then(closeSheet) : createView}
+        onSave={inSheet ? () => saveView().then(closeSheet) : saveView}
         onRevert={revertView}
       />
     );
@@ -1592,7 +1612,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
               {isMobile && viewState && (
                 <>
                   <hr className="sheet-rule" />
-                  <div className="sheet-view-actions">{viewActions()}</div>
+                  <div className="sheet-view-actions">{viewActions(true)}</div>
                 </>
               )}
             </>
