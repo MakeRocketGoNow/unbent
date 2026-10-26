@@ -235,6 +235,24 @@ describe('an edited view', () => {
     await waitFor(() => expect(screen.queryByText('Edited')).toBeNull());
   });
 
+  /* In the tab holding the library the saved row lands, and the views query re-reads it,
+     before the action answers: focus must still move once the Save it was in is gone. */
+  it('focuses the heading after a save into the view, when the row lands before the answer', async () => {
+    const test = setup();
+    vi.mocked(actions.updateView).mockImplementation(async (id, patch) => {
+      const row = view({ id, query: patch.query!, updatedAt: 2 });
+      test.upsert('view', row);
+      await new Promise((r) => setTimeout(r, 30));
+      return row;
+    });
+    const { router } = mount(viewAddress());
+    const heading = await screen.findByRole('heading', { name: 'Business 2026' });
+    await router.navigate({ to: '/notes', search: (prev: Record<string, unknown>) => ({ ...prev, tag: ['Acme', 'Travel'] }) });
+    fireEvent.click(await screen.findByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(screen.queryByText('Edited')).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(heading));
+  });
+
   /* Save as new from an edited view opens the new one: its id replaces the edited one's
      in the address, the heading names it, and there is nothing edited about it. */
   it('opens the view Save as new made, in place of the edited one', async () => {

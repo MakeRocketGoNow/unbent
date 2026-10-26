@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useReducer, useRef, useState, type KeyboardEvent } from 'react';
 import { Link, useNavigate, useSearch } from '@tanstack/react-router';
 import { useQuery, useInfiniteQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import {
@@ -1042,7 +1042,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
       search: (prev) => {
         if (typeof prev.notebook !== 'string' || !sameNotebookName(prev.notebook, madeIn.name)) return prev;
         if (prev.saved !== madeIn.saved) return prev;
-        focusAfter.current = { to: 'heading', view: made.id };
+        focusOn('heading', made.id);
         return { ...prev, saved: made.id };
       },
       replace: true,
@@ -1057,7 +1057,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
     if (!openView) return;
     const id = openView.id;
     holdView(await actions.updateView(id, { query: viewQueryOf(listAddress) }));
-    focusAfter.current = { to: 'heading', view: id };
+    focusOn('heading', id);
   };
   /*
    * Back to the view as it is kept. Replaced rather than pushed, since it undoes the
@@ -1086,19 +1086,31 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   const viewMenuRef = useRef<HTMLButtonElement>(null);
   const focusAfter = useRef<{ to: 'heading' | 'menu'; view: string } | null>(null);
   /*
+   * Asking for focus is a render of its own (`askFocus`), so the effect below runs once
+   * the intent is written whatever else the action changed or did not. It used to wait
+   * on what the answer happened to change (the view's id, name or `updatedAt`), and a
+   * save into the open view in the tab holding the library changed none of them after
+   * the intent: the row had landed and been drawn before the action answered. Focus fell
+   * to the body with the Save it was in, and the intent pulled focus to the heading at
+   * some later, unrelated render.
+   */
+  const [focusAsked, askFocus] = useReducer((n: number) => n + 1, 0);
+  const focusOn = (to: 'heading' | 'menu', view: string) => {
+    focusAfter.current = { to, view };
+    askFocus();
+  };
+  /*
    * Not while the filter sheet is open: it is a modal dialog, the heading is under it and
    * inert, and a focus call there lands nowhere. A save made from the sheet closes it
    * (`viewActions`), and the dialog's close hands focus back to the filter button in the
    * sheet's own effect, which runs before this one, so the heading still has the last word.
-   * `updatedAt` is here for a save into the open view, which changes neither its id nor
-   * its name.
    */
   useEffect(() => {
     const want = focusAfter.current;
     if (!want || renamingView || sheetOpen || openView?.id !== want.view) return;
     focusAfter.current = null;
     (want.to === 'heading' ? headingRef.current : viewMenuRef.current)?.focus();
-  }, [openView?.id, openView?.name, openView?.updatedAt, renamingView, sheetOpen]);
+  }, [openView?.id, openView?.name, focusAsked, renamingView, sheetOpen]);
   const [viewBusy, setViewBusy] = useState(false);
   const [viewError, setViewError] = useState<string | null>(null);
   // Another view, or none: what was half done to the last one is not for this one.
@@ -1110,11 +1122,11 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   const renameView = async (name: string) => {
     if (!openView) return;
     holdView(await actions.updateView(openView.id, { name }));
-    focusAfter.current = { to: 'heading', view: openView.id };
+    focusOn('heading', openView.id);
     setRenamingView(false);
   };
   const cancelRename = () => {
-    if (openView) focusAfter.current = { to: 'menu', view: openView.id };
+    if (openView) focusOn('menu', openView.id);
     setRenamingView(false);
   };
   /*
