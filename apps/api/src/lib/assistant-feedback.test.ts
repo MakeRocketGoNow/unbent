@@ -7,6 +7,7 @@ import {
   FEEDBACK_PER_DAY,
   FEEDBACK_PER_DAY_INSTANCE,
   listFeedback,
+  parseFeedbackCursor,
   markFeedbackRead,
   recordFeedback,
   type FeedbackDb,
@@ -66,7 +67,7 @@ describe('recordFeedback', () => {
     const { db } = fakeDb();
     expect(await recordFeedback(db, sample(), T0)).toBe('kept');
     const page = await listFeedback(db);
-    expect(page.more).toBe(false);
+    expect(page.next).toBeNull();
     expect(page.feedback).toEqual([
       {
         id: expect.any(Number),
@@ -78,6 +79,7 @@ describe('recordFeedback', () => {
         tool: 'edit_note',
         body: sample().body,
         createdAt: T0,
+        readAt: null,
       },
     ]);
   });
@@ -140,12 +142,42 @@ describe('recordFeedback', () => {
 });
 
 describe('listFeedback', () => {
-  it('lists unread rows newest first, a page at a time, and says when there are more', async () => {
+  it('lists unread rows newest first, a page at a time, and carries on from where a page ended', async () => {
     const { db } = fakeDb();
     for (let i = 0; i < 4; i++) await recordFeedback(db, sample({ body: `note ${i}` }), T0 + i);
-    const page = await listFeedback(db, 3);
-    expect(page.feedback.map((f) => f.body)).toEqual(['note 3', 'note 2', 'note 1']);
-    expect(page.more).toBe(true);
+    const first = await listFeedback(db, { limit: 3 });
+    expect(first.feedback.map((f) => f.body)).toEqual(['note 3', 'note 2', 'note 1']);
+    expect(first.next).not.toBeNull();
+    const second = await listFeedback(db, { limit: 3, after: parseFeedbackCursor(first.next!) });
+    expect(second.feedback.map((f) => f.body)).toEqual(['note 0']);
+    expect(second.next).toBeNull();
+  });
+
+  it('neither skips nor repeats reports sent in the same millisecond across a page break', async () => {
+    const { db } = fakeDb();
+    for (let i = 0; i < 5; i++) await recordFeedback(db, sample({ body: `same ${i}` }), T0);
+    const seen: string[] = [];
+    let after = null;
+    for (let pages = 0; pages < 5; pages++) {
+      const page = await listFeedback(db, { limit: 2, after });
+      seen.push(...page.feedback.map((f) => f.body));
+      if (!page.next) break;
+      after = parseFeedbackCursor(page.next);
+    }
+    expect(seen.sort()).toEqual(['same 0', 'same 1', 'same 2', 'same 3', 'same 4']);
+  });
+
+  it('lists the dismissed rows beside the unread, with when each was dismissed, when asked for them', async () => {
+    const { db } = fakeDb();
+    await recordFeedback(db, sample({ body: 'kept unread' }), T0);
+    await recordFeedback(db, sample({ body: 'dismissed' }), T0 + 1);
+    const dismissed = (await listFeedback(db)).feedback.find((f) => f.body === 'dismissed')!;
+    await markFeedbackRead(db, dismissed.id, true, T0 + HOUR);
+    expect((await listFeedback(db, { withDismissed: true })).feedback.map((f) => [f.body, f.readAt])).toEqual([
+      ['dismissed', T0 + HOUR],
+      ['kept unread', null],
+    ]);
+    expect((await listFeedback(db)).feedback.map((f) => f.body)).toEqual(['kept unread']);
   });
 
   it('leaves a dismissed row out, and lists it again once it is brought back', async () => {
@@ -157,5 +189,12 @@ describe('listFeedback', () => {
     expect(await markFeedbackRead(db, row!.id, false)).toBe(true);
     expect((await listFeedback(db)).feedback.map((f) => f.id)).toEqual([row!.id]);
     expect(await markFeedbackRead(db, 9999, true)).toBe(false);
+  });
+});
+
+describe('parseFeedbackCursor', () => {
+  it("reads a page's next, and takes anything else for the first page", () => {
+    expect(parseFeedbackCursor('1790000000000.42')).toEqual({ createdAt: 1790000000000, id: 42 });
+    for (const raw of [undefined, '', 'x', '1.2.3', '-1.2', '1e3.2', '99999999999999999.1']) expect(parseFeedbackCursor(raw)).toBeNull();
   });
 });

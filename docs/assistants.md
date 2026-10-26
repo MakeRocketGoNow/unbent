@@ -87,7 +87,8 @@ having the instance read it.
 category (a wrong or unhelpful result, an error with no way forward, a missing capability,
 a misleading description, slowness, or praise), the tool it is about, and a few sentences,
 and keeps them for the operator page's Assistant feedback list, with the account and the
-app that sent them. The idea is [Axiom's](https://axiom.co/blog/the-agents-would-like-a-word-with-you):
+app that sent them. The list shows what is unread; Show dismissed puts what the operator
+has dismissed back beside it, each with Mark unread. The idea is [Axiom's](https://axiom.co/blog/the-agents-would-like-a-word-with-you):
 the assistant is the only one who sees a tool fail it, and the person it is working for
 is not going to write in about a tool description. Its description tells the model when to
 call it and never to quote the person's notes, since the operator reads it with the

@@ -11797,6 +11797,10 @@ html.host-ios .viewer {
 .feedback-row { align-items: flex-start; }
 .feedback-text { gap: 0.2rem; }
 .feedback-body { white-space: pre-wrap; }
+/* A dismissed report, shown beside the unread: the same row in the muted ink, so the eye
+   finds what is still unread first, and a dismissed one still reads in full. */
+.feedback-dismissed .feedback-about,
+.feedback-dismissed .feedback-body { color: var(--muted); }
 
 /* A command to copy, scrolling sideways rather than wrapping: an id in the middle of it must not break. */
 .operator-command {

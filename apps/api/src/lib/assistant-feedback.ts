@@ -145,30 +145,58 @@ interface FeedbackRow {
   tool: string | null;
   body: string;
   created_at: number;
+  read_at: number | null;
+}
+
+/** Where a page of the list ends: the last row's `created_at` and `id`, as `next` carries them. */
+export type FeedbackCursor = { createdAt: number; id: number };
+
+/** `next` as the page sends it back: `<created_at>.<id>`. Anything else reads as the first page. */
+export function parseFeedbackCursor(raw: string | undefined): FeedbackCursor | null {
+  const match = /^(\d{1,16})\.(\d{1,16})$/.exec(raw ?? '');
+  if (!match) return null;
+  const createdAt = Number(match[1]);
+  const id = Number(match[2]);
+  return Number.isSafeInteger(createdAt) && Number.isSafeInteger(id) ? { createdAt, id } : null;
 }
 
 /**
- * The unread rows, newest first, with each account's address. One more than the page is
- * read to say whether there are more, rather than a count, which would read every unread
- * row to answer a question the page asks only as "is there more".
+ * A page of the unread rows, or with `withDismissed` of every row, dismissed or not,
+ * newest first, with each account's address. One more than the page is read to say
+ * whether there are more, rather than a count, which would read every row of the view to
+ * answer a question the page asks only as "is there more". `after` continues from the
+ * last page's end, by age and then id, so two reports sent in the same millisecond are
+ * neither skipped nor listed twice.
+ *
+ * The unread view goes in by the partial index of unread rows, and the whole list by the
+ * plain age index; each reads only the rows it returns.
  *
  * A left join, so a row is never hidden because its account is gone: the cascade should
  * have taken it, and a row that survived it is worth seeing rather than counting
  * silently against nothing.
  */
-export async function listFeedback(db: FeedbackDb, limit = FEEDBACK_LISTED): Promise<AssistantFeedbackPage> {
+export async function listFeedback(
+  db: FeedbackDb,
+  {
+    withDismissed = false,
+    after = null,
+    limit = FEEDBACK_LISTED,
+  }: { withDismissed?: boolean; after?: FeedbackCursor | null; limit?: number } = {},
+): Promise<AssistantFeedbackPage> {
   const { results } = await db
     .prepare(
-      `SELECT f.id, f.user_id, u.email, f.client_id, f.client_name, f.category, f.tool, f.body, f.created_at
+      `SELECT f.id, f.user_id, u.email, f.client_id, f.client_name, f.category, f.tool, f.body, f.created_at, f.read_at
        FROM assistant_feedback f LEFT JOIN user u ON u.id = f.user_id
-       WHERE f.read_at IS NULL
+       WHERE ${withDismissed ? '' : 'f.read_at IS NULL AND '}(f.created_at, f.id) < (?2, ?3)
        ORDER BY f.created_at DESC, f.id DESC
        LIMIT ?1`,
     )
-    .bind(limit + 1)
+    .bind(limit + 1, after?.createdAt ?? Number.MAX_SAFE_INTEGER, after?.id ?? Number.MAX_SAFE_INTEGER)
     .all<FeedbackRow>();
+  const page = results.slice(0, limit);
+  const last = page[page.length - 1];
   return {
-    feedback: results.slice(0, limit).map(
+    feedback: page.map(
       (r): AssistantFeedback => ({
         id: r.id,
         userId: r.user_id,
@@ -179,9 +207,10 @@ export async function listFeedback(db: FeedbackDb, limit = FEEDBACK_LISTED): Pro
         tool: r.tool,
         body: r.body,
         createdAt: r.created_at,
+        readAt: r.read_at,
       }),
     ),
-    more: results.length > limit,
+    next: results.length > limit && last ? `${last.created_at}.${last.id}` : null,
   };
 }
 

@@ -3,6 +3,7 @@ import { createFileRoute } from '@tanstack/react-router';
 import { z } from 'zod';
 import { OPERATOR_SEARCH_MAX, OPERATOR_SORTS, type OperatorOrder } from '@unbent/shared';
 import { Operator } from '../components/Operator.js';
+import { withDismissedShown, withOrder } from '../operator-address.js';
 import { operatorAccountsQuery, operatorBackupsQuery } from '../queries.js';
 
 /**
@@ -24,6 +25,10 @@ import { operatorAccountsQuery, operatorBackupsQuery } from '../queries.js';
  * `?sort=` and `?dir=` are the accounts' order, in the address for the same reasons, and
  * read by the loader the same way. Each is left out when it is the default
  * (`canonicalOrder`), so the page as it opens has a plain address.
+ *
+ * `?feedback=all` is Show dismissed on the assistants' feedback, in the address so Back
+ * from the account a report came from returns to the list it was found in. Left out for
+ * the unread list, which is the default.
  */
 // Not trimmed here: the field is controlled by `q`, and a trim would eat the space
 // between two words as it was typed. The page and the loader trim what they ask for.
@@ -33,6 +38,7 @@ const search = z.object({
   q: z.string().transform((q) => q.slice(0, OPERATOR_SEARCH_MAX)).optional().catch(undefined),
   sort: z.enum(OPERATOR_SORTS).optional().catch(undefined),
   dir: z.enum(['asc', 'desc']).optional().catch(undefined),
+  feedback: z.enum(['all']).optional().catch(undefined),
 });
 
 /** The order in a parsed search, with nothing for what it leaves out, so the query key is the page's. */
@@ -63,10 +69,25 @@ function OperatorRoute() {
     [navigate],
   );
   // `replace` as well: a sort is a view of the same list, and Back from it should leave
-  // the page rather than step back through every heading pressed.
+  // the page rather than step back through every heading pressed. Each control changes
+  // only its own keys of the address (`operator-address.ts`).
   const onOrder = useCallback(
-    (next: OperatorOrder) => void navigate({ search: (prev) => ({ q: prev.q, ...next }), replace: true, resetScroll: false }),
+    (next: OperatorOrder) => void navigate({ search: (prev) => withOrder(prev, next), replace: true, resetScroll: false }),
     [navigate],
   );
-  return <Operator search={q} onSearch={onSearch} order={orderOf(params)} onOrder={onOrder} />;
+  // `replace` for the same reason as the order: the other list is a view of the same page.
+  const onWithDismissed = useCallback(
+    (shown: boolean) => void navigate({ search: (prev) => withDismissedShown(prev, shown), replace: true, resetScroll: false }),
+    [navigate],
+  );
+  return (
+    <Operator
+      search={q}
+      onSearch={onSearch}
+      order={orderOf(params)}
+      onOrder={onOrder}
+      withDismissed={params.feedback === 'all'}
+      onWithDismissed={onWithDismissed}
+    />
+  );
 }

@@ -6,7 +6,6 @@ import {
   OPERATOR_SEARCH_MAX,
   OPERATOR_SORT_FIRST,
   type AssistantFeedback,
-  type AssistantFeedbackPage,
   type BackupsStatus,
   type DumpStatus,
   type MirrorStatus,
@@ -44,22 +43,30 @@ export function Operator({
   onSearch,
   order = {},
   onOrder,
+  withDismissed = false,
+  onWithDismissed,
 }: {
   search?: string;
   onSearch: (q: string) => void;
   /** The accounts' order, as the address holds it: what is left out is the default. */
   order?: OperatorOrder;
   onOrder: (order: OperatorOrder) => void;
+  /** Whether the feedback list shows the dismissed reports beside the unread (`?feedback=all`). */
+  withDismissed?: boolean;
+  onWithDismissed: (shown: boolean) => void;
 }) {
   const backups = useQuery(operatorBackupsQuery());
-  const feedback = useQuery(operatorFeedbackQuery());
+  const feedback = useInfiniteQuery(operatorFeedbackQuery(withDismissed));
   const queryClient = useQueryClient();
   // Read the list again after each dismiss or Undo, so a full page fills from the older
   // rows behind it. Safe because the list keeps every row it has touched (`FeedbackList`):
-  // what the refetch brings arrives below, and nothing above it moves.
+  // what the refetch brings arrives below, and nothing above it moves. Both views, not
+  // only the one on screen (`refetchType: 'all'`): the other is cached, and ticking over
+  // to it draws a fresh list that knows nothing of this press, which opened on the row as
+  // it was and then moved it once its own refetch landed.
   const setRead = async (id: number, read: boolean) => {
     await setFeedbackRead(id, read);
-    void queryClient.invalidateQueries({ queryKey: keys.operatorFeedback() });
+    void queryClient.invalidateQueries({ queryKey: keys.operatorFeedback(), refetchType: 'all' });
   };
   // The search as asked of the server: trimmed, and once typing settles, as the notes
   // page's is. The address holds every keystroke, so the field stays a plain controlled
@@ -107,11 +114,24 @@ export function Operator({
       <section className="settings-section">
         <h3>Assistant feedback</h3>
         <p className="muted small">
-          What assistants connected to an account said about the tools, unread, newest first. Each was told to leave the
+          What assistants connected to an account said about the tools, newest first. Each was told to leave the
           person&apos;s notes out of it. Dismissed or not, it goes after ninety days.
         </p>
+        <div className="operator-list-controls">
+          <label className="checkbox-row">
+            <input type="checkbox" checked={withDismissed} onChange={(e) => onWithDismissed(e.target.checked)} />
+            <span>Show dismissed</span>
+          </label>
+        </div>
         {feedback.data ? (
-          <FeedbackList page={feedback.data} setRead={setRead} />
+          <FeedbackList
+            // A list of its own for each view: what a press did in one is not what the other shows.
+            key={String(withDismissed)}
+            rows={feedback.data.pages.flatMap((p) => p.feedback)}
+            withDismissed={withDismissed}
+            setRead={setRead}
+            more={feedback.hasNextPage ? { fetching: feedback.isFetchingNextPage, fetch: () => void feedback.fetchNextPage() } : null}
+          />
         ) : feedback.error ? (
           <p className="bad small">{errorText(feedback.error)}</p>
         ) : (
@@ -299,49 +319,64 @@ function Fact({ term, children }: { term: string; children: ReactNode }) {
 const n = (v: number | null) => (v === null ? '?' : v.toLocaleString());
 
 /**
- * The assistants' unread feedback, one row each: what it is about, what the assistant
- * said, and when, from which app, for which account. The account is a link to its page,
- * as in the table below, since "who was this" is where an operator goes next.
+ * The assistants' feedback, one row each: what it is about, what the assistant said, and
+ * when, from which app, for which account. The account is a link to its page, as in the
+ * table below, since "who was this" is where an operator goes next.
  *
  * Dismiss is the row's one action, quiet as a dense list's actions are, and it deletes
  * nothing (the row is marked read and ages out with the rest), which is why it needs no
- * confirm. The row stays where it was as one line with Undo, rather than leaving the list:
- * a dismiss pressed on the wrong row is then undone where the eye already is, and the
- * rows below do not jump up under the pointer. Every row this list has dismissed or
- * brought back is kept here with what was last done to it, beside what the query holds,
- * so a refetch (on focus, on the interval) neither takes an Undo away mid-thought nor,
- * once the server has stopped listing the row, loses the row an Undo brings back. They
- * leave when the page does. Rows nobody touched are the query's alone, so an Undo on a
- * full page can send the newest of the older rows back behind the page at the bottom:
- * that is paging, far from the pointer, and keeping every row ever shown to stop it would
- * keep the list from ever shrinking back to twenty.
+ * confirm. In the unread list the row stays where it was as one line with Undo, rather
+ * than leaving the list: a dismiss pressed on the wrong row is then undone where the eye
+ * already is, and the rows below do not jump up under the pointer. With the dismissed
+ * shown (`withDismissed`), nothing leaves: a dismissed report is drawn quieter, says when
+ * it was dismissed, and offers Mark unread, and each press only turns the row from one
+ * to the other. Every row this list has acted on is kept here with what was last done to
+ * it, beside what the query holds, so a refetch (on focus, on the interval) neither takes
+ * an Undo away mid-thought nor, once the server has stopped listing the row, loses the
+ * row an Undo brings back. They leave when the page does. Rows nobody touched are the
+ * query's alone, so an Undo on a list with more behind it can send the newest of the
+ * older rows back out of the loaded pages at the bottom: that is paging, far from the
+ * pointer, and keeping every row ever shown to stop it would keep the list from ever
+ * shrinking back.
  *
  * The body keeps its line breaks: an assistant writing a bug report writes steps.
  */
 export function FeedbackList({
-  page,
+  rows: loaded,
+  withDismissed = false,
   setRead,
+  more,
   now = Date.now(),
 }: {
-  page: AssistantFeedbackPage;
+  /** What the query has read, every page of it, newest first. */
+  rows: AssistantFeedback[];
+  withDismissed?: boolean;
   setRead: (id: number, read: boolean) => Promise<void>;
+  /** The next page, while there is one: whether it is being read, and how to ask for it. */
+  more: { fetching: boolean; fetch: () => void } | null;
   now?: number;
 }) {
-  const [touched, setTouched] = useState<ReadonlyMap<number, { row: AssistantFeedback; read: boolean }>>(new Map());
-  // Every request in flight, so a second dismiss before the first answers keeps both disabled.
+  // `at` is when the press here landed, which is when a row it dismissed was dismissed.
+  const [touched, setTouched] = useState<ReadonlyMap<number, { row: AssistantFeedback; read: boolean; at: number }>>(new Map());
+  // Every request in flight, so a second press before the first answers keeps both disabled.
   const [busy, setBusy] = useState<ReadonlySet<number>>(new Set());
   const [failed, setFailed] = useState<{ id: number; message: string } | null>(null);
-  const byId = new Map(page.feedback.map((f) => [f.id, f] as const));
+  const byId = new Map(loaded.map((f) => [f.id, f] as const));
   for (const [id, { row }] of touched) if (!byId.has(id)) byId.set(id, row);
   const rows = [...byId.values()].sort((a, b) => b.createdAt - a.createdAt || b.id - a.id);
-  const isDismissed = (id: number) => touched.get(id)?.read === true;
+  // What a press here last did wins over what the query read, which may be from before it.
+  const stateOf = (f: AssistantFeedback): { read: false } | { read: true; at: number } => {
+    const t = touched.get(f.id);
+    if (t) return t.read ? { read: true, at: t.at } : { read: false };
+    return f.readAt === null ? { read: false } : { read: true, at: f.readAt };
+  };
 
   async function toggle(row: AssistantFeedback, read: boolean) {
     setBusy((b) => new Set(b).add(row.id));
     setFailed(null);
     try {
       await setRead(row.id, read);
-      setTouched((t) => new Map(t).set(row.id, { row, read }));
+      setTouched((t) => new Map(t).set(row.id, { row, read, at: Date.now() }));
     } catch (err) {
       setFailed({ id: row.id, message: errorText(err) });
     } finally {
@@ -354,7 +389,12 @@ export function FeedbackList({
   }
 
   if (rows.length === 0) {
-    return <p className="muted small">Nothing unread. When an assistant reports a problem with the tools, it is listed here.</p>;
+    return (
+      <p className="muted small">
+        {withDismissed ? 'Nothing in the last ninety days.' : 'Nothing unread.'} When an assistant reports a problem with the tools, it is
+        listed here.
+      </p>
+    );
   }
   return (
     <>
@@ -368,13 +408,13 @@ export function FeedbackList({
           // that are all called Dismiss say nothing. It starts with the visible word, so a
           // person who says "click Dismiss" still reaches it.
           const what = `${label.toLowerCase()} from ${appInSentence}`;
-          if (isDismissed(f.id)) {
+          const state = stateOf(f);
+          const { read } = state;
+          if (read && !withDismissed) {
             return (
               <li key={f.id} className="dump-row feedback-row">
                 <span className="dump-name">
-                  <span className="muted">
-                    Dismissed: {what}.
-                  </span>
+                  <span className="muted">Dismissed: {what}.</span>
                   {failed?.id === f.id && <span className="bad small">{failed.message}</span>}
                 </span>
                 <span className="dump-actions">
@@ -392,7 +432,7 @@ export function FeedbackList({
             );
           }
           return (
-            <li key={f.id} className="dump-row feedback-row">
+            <li key={f.id} className={`dump-row feedback-row${read ? ' feedback-dismissed' : ''}`}>
               <span className="dump-name feedback-text">
                 <span className="feedback-about">
                   <strong>{label}</strong>
@@ -409,19 +449,38 @@ export function FeedbackList({
                   <Link to="/settings/operator/$userId" params={{ userId: f.userId }}>
                     {f.email ?? f.userId}
                   </Link>
+                  {state.read && (
+                    <>
+                      {' '}
+                      · <span title={formatMoment(state.at)}>dismissed {timeAgo(state.at, now)}</span>
+                    </>
+                  )}
                 </span>
                 {failed?.id === f.id && <span className="bad small">{failed.message}</span>}
               </span>
               <span className="dump-actions">
-                <Button variant="quiet" size="small" aria-label={`Dismiss ${what}`} disabled={busy.has(f.id)} onClick={() => void toggle(f, true)}>
-                  Dismiss
-                </Button>
+                {read ? (
+                  <Button variant="quiet" size="small" aria-label={`Mark ${what} unread`} disabled={busy.has(f.id)} onClick={() => void toggle(f, false)}>
+                    Mark unread
+                  </Button>
+                ) : (
+                  <Button variant="quiet" size="small" aria-label={`Dismiss ${what}`} disabled={busy.has(f.id)} onClick={() => void toggle(f, true)}>
+                    Dismiss
+                  </Button>
+                )}
               </span>
             </li>
           );
         })}
       </ul>
-      {page.more && <p className="muted small">These are the newest {page.feedback.length}; dismissing them brings older ones into the list.</p>}
+      {more && (
+        <p className="operator-more">
+          <Button size="small" disabled={more.fetching} onClick={more.fetch}>
+            {more.fetching ? 'Reading…' : 'Show more feedback'}
+          </Button>
+          <span className="muted small"> {rows.length.toLocaleString()} shown</span>
+        </p>
+      )}
     </>
   );
 }

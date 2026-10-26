@@ -272,11 +272,13 @@ export interface AssistantFeedback {
   tool: string | null;
   body: string;
   createdAt: number;
+  /** When the operator dismissed it; null while it is unread. */
+  readAt: number | null;
 }
 
 export interface AssistantFeedbackPage {
-  /** Unread, newest first. */
+  /** Unread, or every row when the dismissed were asked for too, newest first. */
   feedback: AssistantFeedback[];
-  /** Whether more unread rows exist beyond these. */
-  more: boolean;
+  /** Pass back as `after` for the next page; null when this was the last. */
+  next: string | null;
 }
