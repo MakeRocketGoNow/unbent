@@ -60,10 +60,13 @@ export function Operator({
   const queryClient = useQueryClient();
   // Read the list again after each dismiss or Undo, so a full page fills from the older
   // rows behind it. Safe because the list keeps every row it has touched (`FeedbackList`):
-  // what the refetch brings arrives below, and nothing above it moves.
+  // what the refetch brings arrives below, and nothing above it moves. Both views, not
+  // only the one on screen (`refetchType: 'all'`): the other is cached, and ticking over
+  // to it draws a fresh list that knows nothing of this press, which opened on the row as
+  // it was and then moved it once its own refetch landed.
   const setRead = async (id: number, read: boolean) => {
     await setFeedbackRead(id, read);
-    void queryClient.invalidateQueries({ queryKey: keys.operatorFeedback() });
+    void queryClient.invalidateQueries({ queryKey: keys.operatorFeedback(), refetchType: 'all' });
   };
   // The search as asked of the server: trimmed, and once typing settles, as the notes
   // page's is. The address holds every keystroke, so the field stays a plain controlled
