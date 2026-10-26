@@ -159,6 +159,23 @@ describe('NotebookNav', () => {
   });
 
   /*
+   * A date range a saved view put there is the view's, not how the person is looking:
+   * the notebook's row under an open view is the way back to the whole notebook.
+   */
+  it("drops an open view's date range on the way to a place, and keeps a range with no view open", async () => {
+    localStorage.clear();
+    const { findByText, history } = harness({ notebook: undefined });
+    await history.push('/notes?notebook=Coupons&saved=11111111-1111-4111-8111-111111111111&from=2024-01-01');
+    fireEvent.click(await findByText('Podcast Bookmarks'));
+    await waitFor(() => {
+      const href = history.location.href;
+      expect(href).toContain('Podcast');
+      expect(href).not.toContain('saved=');
+      expect(href).not.toContain('from=');
+    });
+  });
+
+  /*
    * Each place opens in the order it was last left in: the order that suited the place
    * being left says nothing about the one being entered.
    */

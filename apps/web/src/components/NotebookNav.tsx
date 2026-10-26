@@ -16,7 +16,7 @@ import { Collapse } from './Collapse.js';
 import { RollingCount } from './RollingCount.js';
 import { usePersistentState } from '../usePersistentState.js';
 import { rememberedSort } from '../notebook-sort.js';
-import { viewSearch } from '../view-address.js';
+import { leavingView, viewSearch } from '../view-address.js';
 
 /**
  * How many tags the section lists before offering the rest.
@@ -145,14 +145,15 @@ export function NotebookNav({
    * Picking a scope clears the tags, the same rule the notebook select followed: tags
    * cross notebook boundaries, so carrying one into a new notebook routinely lands on an
    * empty list with no visible cause. Field filters go with them: a field belongs to the
-   * notebook being left. So does an open saved view (`saved`): a place is not the view.
+   * notebook being left. So does an open saved view, and its date range with it
+   * (`leavingView`): a place is not the view.
    */
   const scopeOf = (next: string | undefined) => (prev: Record<string, unknown>) => ({
     ...prev,
     notebook: next,
     tag: undefined,
     field: undefined,
-    saved: undefined,
+    ...leavingView(prev),
     ...rememberedSort(next),
   });
 
@@ -170,7 +171,7 @@ export function NotebookNav({
     tag: [name],
     notebook: undefined,
     field: undefined,
-    saved: undefined,
+    ...leavingView(prev),
     ...rememberedSort(undefined),
   });
 

@@ -6,6 +6,7 @@ import { rangeLabel } from './format-when.js';
 import { fieldFilterLabel } from './field-filter.js';
 import { writeTagFilter, writeFieldFilter } from '../routes/notes.js';
 import { rememberedSort } from '../notebook-sort.js';
+import { leavingView } from '../view-address.js';
 
 interface ActiveFiltersProps {
   /**
@@ -66,8 +67,11 @@ export function ActiveFilters({
   const navigate = useNavigate();
   const range = rangeLabel(from, to);
 
-  const drop = (search: Record<string, unknown>) =>
-    void navigate({ to: '/notes', search: (prev) => ({ ...prev, ...search }) });
+  const drop = (search: Record<string, unknown> | ((prev: Record<string, unknown>) => Record<string, unknown>)) =>
+    void navigate({
+      to: '/notes',
+      search: (prev) => ({ ...prev, ...(typeof search === 'function' ? search(prev) : search) }),
+    });
 
   // An empty strip is a gap above the notes with nothing in it.
   if (!notebook && tags.length === 0 && fields.length === 0 && !range && !trailing) return null;
@@ -86,10 +90,17 @@ export function ActiveFilters({
            * notebook boundaries, so leaving one selected here routinely yields an empty list
            * with no visible cause. The field filters too: they belong to this notebook.
            * The list opens in the order All notes was last left in, as the drawer's link
-           * to it would, and out of any saved view, which belonged to the notebook.
+           * to it would, and out of any saved view, which belonged to the notebook, with
+           * the view's date range (`leavingView`).
            */
           onClick={() =>
-            drop({ notebook: undefined, tag: undefined, field: undefined, saved: undefined, ...rememberedSort(undefined) })
+            drop((prev) => ({
+              notebook: undefined,
+              tag: undefined,
+              field: undefined,
+              ...leavingView(prev),
+              ...rememberedSort(undefined),
+            }))
           }
         >
           {notebook === UNFILED ? 'Inbox' : notebook}
