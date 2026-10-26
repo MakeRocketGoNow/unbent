@@ -7524,15 +7524,20 @@ button.settings-nav-item {
 /*
    A notebook's saved views, under its row while it is where you are (`NotebookNav`).
 
-   Indented by the notebook row's glyph and the gap after it, so each view's bookmark
-   stands under the first letter of the notebook's name: the rows read as belonging to
-   the one above, the way a folder's contents do in every sidebar, without a chevron or
-   a rule to say so. The row itself is indented (a margin), not only its contents, so the
-   pill starts at the indent too: drawn across the full column, the current view's fill
-   ran out under the notebook's glyph and read as a row of the notebooks' own level. The
-   margin is the notebook's glyph and gap: both rows keep the same padding, so that is
-   what puts one's bookmark under the other's name. `1.15em` is `RowIcon`'s size and
-   `0.9rem` the row's gap; the rail's denser gap is restated beside the rail's own rows.
+   A view's row is the notebook rows' own shape, stepped in: its pill spans the column
+   like every other row's, and its bookmark and name start a little in from the
+   notebook's glyph, so the rows read as belonging to the one above, the way a folder's
+   contents do in a sidebar, without a chevron or a rule to say so.
+
+   The step is a fixed 0.9rem, under a glyph's width, and it is padding inside the row
+   rather than a margin on it. Both were tried the other way first. Indented by the
+   notebook's whole glyph and gap, so the bookmark stood under the first letter of the
+   name, the words sat a third of the rail over and the row read as a second level of a
+   tree, not a child of the row above; and a margin on the row made the pill start at
+   the indent, a narrower, offset shape beside the full pills around it, which was the
+   thing that looked wrong before anyone could say why (2026-10-25). The fill running
+   under the notebook's glyph is what a nested row's fill does everywhere, and the step
+   inside it is what says which level it is.
 */
 .drawer-views {
   display: flex;
@@ -7541,8 +7546,7 @@ button.settings-nav-item {
 }
 
 .drawer-view {
-  width: auto;
-  margin-left: calc(1.15em + 0.9rem);
+  padding-left: calc(0.7rem + 0.9rem);
 }
 
 /*
@@ -7736,10 +7740,6 @@ button.settings-nav-item {
     gap: 0.7rem;
   }
 
-  /* The views' indent at the rail's gap: see `.drawer-view`. */
-  .rail .drawer-view {
-    margin-left: calc(1.15em + 0.7rem);
-  }
 }
 
 @media (860px < width < 1200px) {
