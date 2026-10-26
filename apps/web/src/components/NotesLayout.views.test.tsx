@@ -207,6 +207,30 @@ describe('an edited view', () => {
     );
     await waitFor(() => expect(screen.queryByText('Edited')).toBeNull());
   });
+
+  /* Save as new from an edited view opens the new one: its id replaces the edited one's
+     in the address, the heading names it, and there is nothing edited about it. */
+  it('opens the view Save as new made, in place of the edited one', async () => {
+    const made = '66666666-6666-4666-8666-666666666666';
+    setup();
+    vi.mocked(actions.createView).mockImplementation(async (body) => {
+      const row = view({ id: made, name: body.name, position: 1, query: body.query });
+      lib?.upsert('view', row);
+      return row;
+    });
+    const { router, search } = mount(viewAddress());
+    await screen.findByRole('heading', { name: 'Business 2026' });
+    await router.navigate({ to: '/notes', search: (prev: Record<string, unknown>) => ({ ...prev, tag: ['Acme', 'Travel'] }) });
+    (await screen.findByRole('button', { name: 'Save as new' })).click();
+    const field = await screen.findByRole('textbox', { name: 'Name for the new view' });
+    fireEvent.change(field, { target: { value: 'Acme travel' } });
+    fireEvent.keyDown(field, { key: 'Enter' });
+    await waitFor(() => expect(search().saved).toBe(made));
+    const heading = await screen.findByRole('heading', { name: 'Acme travel' });
+    await waitFor(() => expect(document.activeElement).toBe(heading));
+    expect(screen.queryByText('Edited')).toBeNull();
+    expect(search().tag).toEqual(['Acme', 'Travel']);
+  });
 });
 
 describe('saving a view', () => {

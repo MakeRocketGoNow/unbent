@@ -1015,26 +1015,31 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    * so opening it is only its id beside the filters, in place, with the open note left
    * open and the search text left as typed.
    *
-   * Only if the person is still where the save was made. The save waits for the row to
-   * land (seconds, in a tab that does not hold the library), and in that time they may
-   * have gone to another notebook; the id of a view of the first written into the second
-   * one's address would name a view that is not there. The view is saved either way and
-   * listed under its notebook.
+   * Only if the person is still where the save was made: the same notebook, and the same
+   * view open as when they pressed (none, for Save view; the edited one, for Save as
+   * new). The save waits for the row to land (seconds, in a tab that does not hold the
+   * library), and in that time they may have gone elsewhere; the id of a view of the
+   * first notebook written into the second one's address would name a view that is not
+   * there. The view is saved either way and listed under its notebook. Focus moves to
+   * the heading only when the id is written, or it would wait on a view the page never
+   * opened and jump the next time someone opened it from the rail; it is asked for
+   * inside the address's callback because the heading renders before `navigate`
+   * resolves, and the effect that moves focus runs on that render.
    */
   const createView = async (name: string) => {
     if (notebookId === undefined || !notebook) return;
-    const madeIn = { name: notebook, id: notebookId };
+    const madeIn = { name: notebook, saved };
     const made = await actions.createView({ notebookId, name, query: viewQueryOf(listAddress) });
     holdView(made);
-    if (made.notebookId !== madeIn.id) return;
     madeHere.current.set(made.id, Date.now());
-    focusAfter.current = { to: 'heading', view: made.id };
     await navigate({
       to: '.',
-      search: (prev) =>
-        typeof prev.notebook === 'string' && sameNotebookName(prev.notebook, madeIn.name) && prev.saved === undefined
-          ? { ...prev, saved: made.id }
-          : prev,
+      search: (prev) => {
+        if (typeof prev.notebook !== 'string' || !sameNotebookName(prev.notebook, madeIn.name)) return prev;
+        if (prev.saved !== madeIn.saved) return prev;
+        focusAfter.current = { to: 'heading', view: made.id };
+        return { ...prev, saved: made.id };
+      },
       replace: true,
       resetScroll: false,
     });
