@@ -8,7 +8,9 @@ Connecting runs the ordinary OAuth flow: the client registers itself, a browser 
 consent screen, and approving it hands the client a token of its own. The tools cover
 search and list, reading a note in full, create, edit, tag, move, trash and restore (create
 and the last four for several notes at once), attaching a file, and notebook management. Note bodies are Markdown and pass whole in both
-directions, so an assistant writes a complete note in one call.
+directions, so an assistant writes a complete note in one call. Once it is connected,
+[standing instructions](#standing-instructions) tell it when to use Unbent without being
+asked by name.
 
 Three are worth knowing about:
 
@@ -112,3 +114,105 @@ message saying to register it as native.
 Locally, point the client at the **SPA** origin rather than the Worker's: the port
 `pnpm dev` prints first. Tokens are bound to the MCP endpoint's URL as their audience, and
 that URL is built from `APP_URL`.
+
+## Standing instructions
+
+A connected assistant uses Unbent when it is asked to, which leaves the person saying "in
+Unbent" at the end of every request. Standing instructions, the text an assistant reads at
+the start of every chat, are what make "file this", "log this" or "look up X in my notes"
+mean Unbent without naming it. Settings › AI assistants writes them, under "Tell it when to
+use Unbent", in one version for each place they are pasted.
+
+Each is built from the account's notebooks at the moment it is copied. It says what
+Unbent is and the address of this instance's server (never unbent.app's), which requests
+mean it, then lists the notebooks as a plain inventory: each one's name, its purpose in
+the person's own words when it has one, and its fields with what each takes ("Rating (1
+to 5)", "Amount (USD)", "Would Get Again (one of Yes, Maybe, No)"). That gives the
+assistant the shape of the library before its first call, which is what a one-line entry
+typed on a phone needs. It then says how to write: read `list_notebooks` first and file
+by each notebook's purpose and field names, leave out what the person did not give, use
+the options a field already has, create no notebooks or fields unasked, and answer with
+the note's link. The text is at most 5,000 characters; a library too large for that loses
+its option lists, then its field lists, then its purposes, and only then names the busiest
+notebooks and counts the rest. Nothing can update a text once it is pasted into another
+app's settings, so copy it again after adding a notebook or a field; a notebook added in
+between is still found, since the assistant reads `list_notebooks` before it writes.
+
+The inventory says nothing about what a notebook is for beyond its purpose. A first
+version sorted notebooks into logs, records and reference from their field shapes and
+told the assistant what to do with each, and that was one person's notebooks generalized.
+The purpose, written on the notebook under Settings › Notebooks and carried by
+`list_notebooks` to every assistant, is the specific instruction: "Meals out: one note
+per visit, with the date and a rating" says more than any guess from the fields, in the
+words of the person who keeps it.
+
+The text also leaves the assistant's own memory alone. Claude and ChatGPT remember what
+comes up in conversation, and the text does not ask them to put that in Unbent instead:
+Unbent is where the person files things on purpose, and the instructions only route the
+requests that say so. The one exception is the Project version, where the person has
+chosen a place for filing and every message in it is read as something to file or look up.
+
+Where each goes, as each app's help pages describe it (checked 2026-10-26):
+
+- **Claude, in every chat.** Settings › Your Claude › Instructions (Settings › Account ›
+  Instructions for Claude in the older layout). It is account-wide, so it applies in the
+  web app, the desktop app and the mobile apps alike. The connector is added once, under
+  Customize › Connectors › Add custom connector, and works from every Claude app, since
+  Claude reaches the server from Anthropic's side whichever app is in use. See
+  [personalization](https://support.claude.com/en/articles/10185728-understanding-claude-s-personalization-features)
+  and [custom connectors](https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp).
+- **A Claude Project for filing.** Create a project at claude.ai/projects, then Set
+  project instructions. Only that project's chats read it, and there every message is
+  taken as something to file or look up, so a line typed on a phone with no verb at all
+  is a note. Open the project in the mobile app to file from a phone. Projects are on
+  every plan; a free account has five. See
+  [projects](https://support.claude.com/en/articles/9519177-how-can-i-create-and-manage-projects).
+- **ChatGPT.** Settings › Personalization › Custom instructions on the web and the desktop
+  app, Settings › Customize ChatGPT on iOS and Android: up to 5,000 characters on a paid
+  plan, 1,500 on Free and Go
+  ([custom instructions](https://help.openai.com/en/articles/8096356-chatgpt-custom-instructions)).
+  The instructions reach every device; the server they describe does not. OpenAI's help
+  center says a custom MCP server is added on ChatGPT on the web only (Plugins, the plus
+  button, Add custom MCP server; Developer Mode is no longer a separate step), that full
+  MCP, write actions included, is for Business and Enterprise/Edu workspaces, where an
+  admin adds and publishes the server, and that a Pro account can connect a custom server
+  for reading and fetching only. ChatGPT uses an app when it is picked for a message
+  (type @ and choose it), so there the instructions shape what it does with Unbent more
+  than whether it reaches for it. See
+  [connecting custom MCP servers](https://help.openai.com/en/articles/12584461-connecting-custom-mcp-servers-in-chatgpt).
+
+**What no instructions can do.** No consumer chat app runs anything after a conversation:
+neither Claude nor ChatGPT has a hook that fires when a chat ends, so "keep your own notes
+as you go" would depend on the model choosing, mid-conversation, to call a tool. The
+instructions do not ask for it: what comes up in conversation is the assistant's own
+memory's to keep, and Unbent gets what the person files. And every platform asks before an assistant writes until it is trusted: Claude
+shows an approval prompt for each tool until Allow always is chosen for it, and ChatGPT
+asks for write actions according to the app's permissions and the action. What does hold
+is Unbent's own side of it: everything an assistant writes is a plain note, kept in the
+note's history as the assistant's, and nothing it can do deletes a note for good.
+
+### Skills
+
+A skill is a set of instructions Claude loads when a request matches it, for a filing job
+repeated often enough to be worth spelling out. Three are published here as examples:
+
+- [unbent-log](assistants/skills/unbent-log/SKILL.md) logs a rated meal, drink or
+  anything else from a terse line ("Acme Diner, mushroom risotto, 4 stars, yes") into
+  whichever notebook has a Date and a Rating field, and answers questions about past
+  entries.
+- [watch-later](assistants/skills/watch-later/SKILL.md) adds a film or series to a Watch
+  Later notebook from a Letterboxd link, checking for a duplicate first.
+- [add-to-wishlist](assistants/skills/add-to-wishlist/SKILL.md) adds a product to a
+  Shopping notebook from its link, with the product's image attached.
+
+Each states the notebook and fields it expects at the top, and is meant to be edited to
+match the library it is used with. To install one in Claude, zip its folder (the folder
+itself, so the archive's root is the skill's directory) and upload it under Customize ›
+Skills, Add. Skills need code execution turned on. See
+[custom skills](https://support.claude.com/en/articles/12512198-how-to-create-custom-skills).
+
+```bash
+cd docs/assistants/skills && zip -r unbent-log.zip unbent-log
+```
+
+In Claude Code, copy the folder into `~/.claude/skills/` instead.
