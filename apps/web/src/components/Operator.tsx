@@ -365,9 +365,10 @@ export function FeedbackList({
   for (const [id, { row }] of touched) if (!byId.has(id)) byId.set(id, row);
   const rows = [...byId.values()].sort((a, b) => b.createdAt - a.createdAt || b.id - a.id);
   // What a press here last did wins over what the query read, which may be from before it.
-  const stateOf = (f: AssistantFeedback): { read: boolean; at: number | null } => {
+  const stateOf = (f: AssistantFeedback): { read: false } | { read: true; at: number } => {
     const t = touched.get(f.id);
-    return t ? { read: t.read, at: t.read ? t.at : null } : { read: f.readAt !== null, at: f.readAt };
+    if (t) return t.read ? { read: true, at: t.at } : { read: false };
+    return f.readAt === null ? { read: false } : { read: true, at: f.readAt };
   };
 
   async function toggle(row: AssistantFeedback, read: boolean) {
@@ -407,7 +408,8 @@ export function FeedbackList({
           // that are all called Dismiss say nothing. It starts with the visible word, so a
           // person who says "click Dismiss" still reaches it.
           const what = `${label.toLowerCase()} from ${appInSentence}`;
-          const { read, at: dismissedAt } = stateOf(f);
+          const state = stateOf(f);
+          const { read } = state;
           if (read && !withDismissed) {
             return (
               <li key={f.id} className="dump-row feedback-row">
@@ -447,10 +449,10 @@ export function FeedbackList({
                   <Link to="/settings/operator/$userId" params={{ userId: f.userId }}>
                     {f.email ?? f.userId}
                   </Link>
-                  {read && (
+                  {state.read && (
                     <>
                       {' '}
-                      · {dismissedAt === null ? 'dismissed' : <span title={formatMoment(dismissedAt)}>dismissed {timeAgo(dismissedAt, now)}</span>}
+                      · <span title={formatMoment(state.at)}>dismissed {timeAgo(state.at, now)}</span>
                     </>
                   )}
                 </span>
