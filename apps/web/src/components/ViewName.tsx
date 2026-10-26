@@ -20,6 +20,12 @@ interface ViewNameFieldProps {
   className?: string;
   /** The input's own class, for a field drawn in a heading's type (`NoteListHead`). */
   inputClassName?: string;
+  /**
+   * Save and Cancel on a line under the field rather than beside it: the heading's rename
+   * at desktop width, where the column keeps its icons and the field has the title's
+   * width alone (see `NoteListHead`'s `renaming`).
+   */
+  stacked?: boolean;
 }
 
 /**
@@ -47,6 +53,7 @@ export function ViewNameField({
   onCancel,
   className,
   inputClassName,
+  stacked = false,
 }: ViewNameFieldProps) {
   const [value, setValue] = useState(initial);
   const [busy, setBusy] = useState(false);
@@ -87,8 +94,19 @@ export function ViewNameField({
     }
   }
 
+  const buttons = (
+    <>
+      <Button variant="secondary" size="small" disabled={busy} onClick={() => void commit()}>
+        {busy ? 'Saving…' : commitLabel}
+      </Button>
+      <Button variant="quiet" size="small" disabled={busy} onClick={onCancel}>
+        Cancel
+      </Button>
+    </>
+  );
+
   return (
-    <div className={['view-name', className].filter(Boolean).join(' ')}>
+    <div className={['view-name', stacked && 'view-name-stacked', className].filter(Boolean).join(' ')}>
       <div className="view-name-row">
         <input
           ref={ref}
@@ -115,13 +133,9 @@ export function ViewNameField({
             }
           }}
         />
-        <Button variant="secondary" size="small" disabled={busy} onClick={() => void commit()}>
-          {busy ? 'Saving…' : commitLabel}
-        </Button>
-        <Button variant="quiet" size="small" disabled={busy} onClick={onCancel}>
-          Cancel
-        </Button>
+        {!stacked && buttons}
       </div>
+      {stacked && <div className="view-name-row view-name-actions">{buttons}</div>}
       {error && (
         <p id={errorId} className="bad small view-name-error" role="alert">
           {error}

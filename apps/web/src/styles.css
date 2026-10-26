@@ -7986,6 +7986,19 @@ button.settings-nav-item {
 */
 .view-name.view-rename { flex: none; }
 
+/* At desktop width Rename and Cancel take the count's line under the field, at the
+   count's size, so the head grows by as little as a pair of buttons can. */
+.view-rename .view-name-actions .btn-small {
+  min-height: 0;
+  height: 1.3rem;
+  padding-block: 0;
+  font-size: 0.75rem;
+}
+
+/* The heading takes focus after a view is saved or renamed (`NotesLayout`), to be read
+   out; a ring around a title the pointer just caused to change would be noise. */
+.list-title h2:focus:not(:focus-visible) { outline: none; }
+
 .view-name-field.view-rename-field {
   height: 1.6rem;
   padding-inline: 0.4rem;

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from './Button';
 import { ViewNameField } from './ViewName.js';
 import { SaveViewIcon } from './icons.js';
@@ -49,6 +49,23 @@ export function ViewActions({ state, viewName, offline, onCreate, onSave, onReve
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const cls = (base: string) => [base, className].filter(Boolean).join(' ');
+  /*
+   * The button that opened the field gets focus back when the field is left without a
+   * save: it is a new element by then (the field took its place), and without this the
+   * keyboard and a screen reader were dropped on the page's body. A save needs nothing
+   * here: the view opens, and the heading takes focus (`NotesLayout`).
+   */
+  const opener = useRef<HTMLButtonElement>(null);
+  const refocus = useRef(false);
+  useEffect(() => {
+    if (naming || !refocus.current) return;
+    refocus.current = false;
+    opener.current?.focus();
+  }, [naming]);
+  const cancel = () => {
+    refocus.current = true;
+    setNaming(false);
+  };
 
   if (naming) {
     return (
@@ -60,7 +77,7 @@ export function ViewActions({ state, viewName, offline, onCreate, onSave, onReve
           await onCreate(name);
           setNaming(false);
         }}
-        onCancel={() => setNaming(false)}
+        onCancel={cancel}
       />
     );
   }
@@ -70,6 +87,7 @@ export function ViewActions({ state, viewName, offline, onCreate, onSave, onReve
   if (state === 'unsaved') {
     return (
       <Button
+        ref={opener}
         variant="quiet"
         size="small"
         className={cls('view-action')}
@@ -108,7 +126,14 @@ export function ViewActions({ state, viewName, offline, onCreate, onSave, onReve
       >
         {saving ? 'Saving…' : 'Save'}
       </Button>
-      <Button variant="quiet" size="small" disabled={offline || saving} tip={tip} onClick={() => setNaming(true)}>
+      <Button
+        ref={opener}
+        variant="quiet"
+        size="small"
+        disabled={offline || saving}
+        tip={tip}
+        onClick={() => setNaming(true)}
+      >
         Save as new
       </Button>
       {/* Not faded offline: it only rewrites the address, which needs nothing of the server. */}

@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, ReactNode } from 'react';
+import type { ButtonHTMLAttributes, ReactNode, Ref } from 'react';
 
 /**
  * How much weight the control carries, not what it does to your data.
@@ -50,6 +50,8 @@ export interface ButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement
   tip?: string | undefined;
   /** Escape hatch for layout only (margins, grid placement), never for restyling. */
   className?: string;
+  /** The `<button>`, for a caller that hands focus back to it (React 19 passes it as a prop). */
+  ref?: Ref<HTMLButtonElement>;
 }
 
 /**

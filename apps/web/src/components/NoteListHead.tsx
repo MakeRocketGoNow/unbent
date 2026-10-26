@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, type ReactNode, type RefObject } from 'react';
+import { useEffect, useLayoutEffect, useRef, type ReactNode, type Ref, type RefObject } from 'react';
 import { SearchIcon, FilterIcon, MenuIcon, CountChevronIcon } from './icons.js';
 import { OverflowMenu, type OverflowItem } from './OverflowMenu.js';
 import { BackArrow } from './BackArrow.js';
@@ -52,11 +52,19 @@ interface NoteListHeadProps {
   titleMenu?: ReactNode;
   /**
    * The title being renamed: the field that takes the name's place, in the name's own
-   * line, so nothing under it moves. The row's icons step aside while it is open, as
-   * they do for a phone's search, since a field sharing a phone's row with four icons
-   * has no room to show what is being typed; they are back when the rename ends.
+   * line. On a phone the row's icons step aside while it is open, as they do for the
+   * phone's search, since a field sharing a 375px row with four icons has no room to show
+   * what is being typed; they are back when the rename ends. At desktop width the icons
+   * and the search field stay where they are, so nothing moves under the pointer, and
+   * the field's buttons take the count's line under it instead (the caller stacks them,
+   * `ViewNameField`'s `stacked`), which is the room a narrow column has.
    */
   renaming?: ReactNode;
+  /**
+   * The heading itself, for a caller that moves focus to it: after a view is saved or
+   * renamed, the control that did it is gone, and the heading is what changed.
+   */
+  headingRef?: Ref<HTMLHeadingElement>;
   /** The search box's value, which is the URL's `q`. */
   query: string;
   onQuery: (next: string) => void;
@@ -158,6 +166,7 @@ export function NoteListHead({
   eyebrow,
   titleMenu,
   renaming,
+  headingRef,
   query,
   onQuery,
   onArrowDown,
@@ -293,13 +302,17 @@ export function NoteListHead({
           {renaming ??
             (titleMenu ? (
               <div className="list-title-row">
-                <h2 title={title}>{title}</h2>
+                <h2 ref={headingRef} tabIndex={-1} title={title}>
+                  {title}
+                </h2>
                 {titleMenu}
               </div>
             ) : (
-              <h2 title={title}>{title}</h2>
+              <h2 ref={headingRef} tabIndex={-1} title={title}>
+                {title}
+              </h2>
             ))}
-          {count === null ? (
+          {renaming && fieldAlways ? null : count === null ? (
             <span className="count" aria-hidden="true">
               {'\u00a0'}
             </span>
@@ -323,8 +336,8 @@ export function NoteListHead({
             <span className="count">{count}</span>
           )}
         </div>
-        {inToolbar && !renaming && <div className="list-search">{input}</div>}
-        {!renaming && (
+        {inToolbar && <div className="list-search">{input}</div>}
+        {!(renaming && !fieldAlways) && (
           <div className="list-head-actions">
             {onOpenSearch && (
               <button type="button" className="icon-btn" aria-label="Search notes" data-tip="Search notes" onClick={onOpenSearch}>

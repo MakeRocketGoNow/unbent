@@ -276,7 +276,9 @@ describe('saving a view', () => {
       expect(actions.createView).toHaveBeenCalledWith({ notebookId: NB, name: 'Acme only', query: { tag: ['Acme'], layout: 'list' } }),
     );
     await waitFor(() => expect(search().saved).toBe(made));
-    expect(await screen.findByRole('heading', { name: 'Acme only' })).toBeTruthy();
+    const heading = await screen.findByRole('heading', { name: 'Acme only' });
+    // The control that saved it is gone; the heading naming the new view has focus.
+    await waitFor(() => expect(document.activeElement).toBe(heading));
   });
 
   /* The save waits for its row; a person who has gone elsewhere meanwhile stays there. */
@@ -309,6 +311,15 @@ describe('saving a view', () => {
     expect(search().saved).toBeUndefined();
   });
 
+  it('hands focus back to Save view when naming is cancelled', async () => {
+    setup([]);
+    mount('/notes?notebook=Receipts&tag=%5B%22Acme%22%5D&view=list');
+    (await screen.findByRole('button', { name: 'Save view' })).click();
+    await screen.findByRole('textbox', { name: 'View name' });
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Save view' })));
+  });
+
   /* A taken name is about the field, so it is said under the field, which keeps the name. */
   it('says under the field when the name is taken', async () => {
     setup();
@@ -333,14 +344,30 @@ describe("an open view's menu", () => {
     });
     mount(viewAddress());
     await screen.findByRole('heading', { name: 'Business 2026' });
-    fireEvent.click(screen.getByRole('button', { name: 'View actions' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for Business 2026' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Rename' }));
     const field = await screen.findByRole('textbox', { name: 'New name for Business 2026' });
     expect((field as HTMLInputElement).value).toBe('Business 2026');
     fireEvent.change(field, { target: { value: 'Business 2027' } });
     fireEvent.click(screen.getByRole('button', { name: 'Rename' }));
     await waitFor(() => expect(actions.updateView).toHaveBeenCalledWith(V1, { name: 'Business 2027' }));
-    expect(await screen.findByRole('heading', { name: 'Business 2027' })).toBeTruthy();
+    const heading = await screen.findByRole('heading', { name: 'Business 2027' });
+    // The field and its buttons are gone; the heading that changed has focus.
+    await waitFor(() => expect(document.activeElement).toBe(heading));
+  });
+
+  /* Left without a rename, focus goes back to the ⋯ it was opened from. */
+  it('hands focus back to the menu when a rename is cancelled', async () => {
+    setup();
+    mount(viewAddress());
+    await screen.findByRole('heading', { name: 'Business 2026' });
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for Business 2026' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Rename' }));
+    const field = await screen.findByRole('textbox', { name: 'New name for Business 2026' });
+    fireEvent.keyDown(field, { key: 'Escape' });
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Actions for Business 2026' })),
+    );
   });
 
   /* Named, and confirmed in place, then out to the notebook as it is. */
@@ -351,7 +378,7 @@ describe("an open view's menu", () => {
     });
     const { search } = mount(viewAddress('&sort=title'));
     await screen.findByRole('heading', { name: 'Business 2026' });
-    fireEvent.click(screen.getByRole('button', { name: 'View actions' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for Business 2026' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Delete' }));
     const confirm = await screen.findByRole('group', { name: 'Confirm delete view' });
     expect(confirm.textContent).toContain('Delete the view “Business 2026”?');

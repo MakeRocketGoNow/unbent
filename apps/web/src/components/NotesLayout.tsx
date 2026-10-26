@@ -1028,6 +1028,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
     holdView(made);
     if (made.notebookId !== madeIn.id) return;
     madeHere.current.set(made.id, Date.now());
+    focusAfter.current = { to: 'heading', view: made.id };
     await navigate({
       to: '.',
       search: (prev) =>
@@ -1060,6 +1061,21 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    */
   const [renamingView, setRenamingView] = useState(false);
   const [deletingView, setDeletingView] = useState(false);
+  /*
+   * Where focus goes once a view's inline field has closed, since the control that was
+   * pressed is gone by then. A save or a rename moves it to the heading, which is what
+   * changed and is read out; leaving a rename gives it back to the ⋯ it was opened from,
+   * a new element by then. Without this both ended on the page's body.
+   */
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const viewMenuRef = useRef<HTMLButtonElement>(null);
+  const focusAfter = useRef<{ to: 'heading' | 'menu'; view: string } | null>(null);
+  useEffect(() => {
+    const want = focusAfter.current;
+    if (!want || renamingView || openView?.id !== want.view) return;
+    focusAfter.current = null;
+    (want.to === 'heading' ? headingRef.current : viewMenuRef.current)?.focus();
+  }, [openView?.id, openView?.name, renamingView]);
   const [viewBusy, setViewBusy] = useState(false);
   const [viewError, setViewError] = useState<string | null>(null);
   // Another view, or none: what was half done to the last one is not for this one.
@@ -1071,6 +1087,11 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   const renameView = async (name: string) => {
     if (!openView) return;
     holdView(await actions.updateView(openView.id, { name }));
+    focusAfter.current = { to: 'heading', view: openView.id };
+    setRenamingView(false);
+  };
+  const cancelRename = () => {
+    if (openView) focusAfter.current = { to: 'menu', view: openView.id };
     setRenamingView(false);
   };
   /*
@@ -1108,8 +1129,9 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   };
   const viewMenu = openView ? (
     <OverflowMenu
-      label="View actions"
+      label={`Actions for ${openView.name}`}
       tip={offline ? VIEW_NEEDS_CONNECTION : 'View actions'}
+      triggerRef={viewMenuRef}
       disabled={offline}
       className="title-menu"
       triggerClassName="title-menu-trigger"
@@ -1129,8 +1151,9 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
         commitLabel="Rename"
         className="view-rename"
         inputClassName="view-rename-field"
+        stacked={!isMobile}
         onCommit={renameView}
-        onCancel={() => setRenamingView(false)}
+        onCancel={cancelRename}
       />
     ) : undefined;
 
@@ -1237,6 +1260,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
           eyebrow={eyebrow}
           titleMenu={viewMenu}
           renaming={viewRename}
+          headingRef={headingRef}
           query={q}
           onQuery={setQuery}
           onArrowDown={() => enterList(listRef.current ?? tableRef.current)}
