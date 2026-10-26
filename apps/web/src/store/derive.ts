@@ -442,8 +442,11 @@ export function notebookList(s: Snapshot): { notebooks: NotebookSummary[]; unfil
  * collection at a time, or a client tab whose holder is mid-page, can hold a view a
  * moment past its notebook, and a view listed under a notebook the rail no longer draws
  * would open an address that answers "not found".
+ *
+ * Takes the two collections alone rather than a whole `Snapshot`, so the views query can
+ * read them straight from the library (`viewsQuery`).
  */
-export function viewList(s: Snapshot): NotebookView[] {
+export function viewList(s: Pick<Snapshot, 'notebooks' | 'views'>): NotebookView[] {
   const notebooks = new Set<string>();
   for (const nb of s.notebooks) notebooks.add(nb.id);
   const out: NotebookView[] = [];

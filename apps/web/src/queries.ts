@@ -663,13 +663,18 @@ export const notebooksQuery = () =>
 /**
  * Every saved view, by notebook then place (`viewList`). From the library like the
  * notebooks, and from the server only on a device with none, as every read here.
+ *
+ * Read from the two collections themselves rather than from `view(lib)`: a view's
+ * change moves the library's version, and the cached snapshot would be rebuilt (every
+ * note of an archive copied into arrays, its lookups and list cache thrown away) to list
+ * a few rows. The notes queries rebuild it when they next need it, as they would anyway.
  */
 export const viewsQuery = () =>
   queryOptions({
     queryKey: keys.views(),
     queryFn: async (): Promise<NotebookView[]> => {
       const lib = await library();
-      return lib ? viewList(view(lib).snapshot) : (await api.listViews()).views;
+      return lib ? viewList({ notebooks: lib.notebooks.values(), views: lib.views.values() }) : (await api.listViews()).views;
     },
   });
 
