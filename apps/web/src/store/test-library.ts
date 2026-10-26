@@ -38,6 +38,8 @@ export interface TestLibrary extends ReadableLibrary {
   reset: () => void;
   /** The walk after a reset finishing: the library is whole again. */
   settle: () => void;
+  /** Whether the views are whole (`FeedState.views`): a copy made before views, until it is filled. */
+  viewsWhole: (whole: boolean) => void;
   uninstall: () => void;
 }
 
@@ -66,7 +68,8 @@ export function installTestLibrary(rows: Rows = {}): TestLibrary {
     views: make<FeedView>('view', rows.views ?? [], (v) => v.id),
   };
   const cursor = rows.cursor === undefined ? { seq: 1, epoch: 'test' } : rows.cursor;
-  const state: FeedState = { phase: cursor ? 'current' : 'starting', cursor, lastError: null, total: null, applied: 0, pulls: 1, resets: 0 };
+  // Views are whole whenever the copy is: a test that wants otherwise sets `state.views`.
+  const state: FeedState = { phase: cursor ? 'current' : 'starting', cursor, lastError: null, total: null, applied: 0, pulls: 1, resets: 0, views: cursor !== null };
   const listeners = new Set<(s: FeedState) => void>();
   const of = (entity: FeedEntity) => ({ note: lib.notes, notebook: lib.notebooks, tag: lib.tags, attachment: lib.attachments, view: lib.views })[entity] as Collection<object, string>;
   let version = 0;
@@ -114,6 +117,10 @@ export function installTestLibrary(rows: Rows = {}): TestLibrary {
     },
     settle: () => {
       state.phase = 'current';
+      listeners.forEach((l) => l({ ...state }));
+    },
+    viewsWhole: (whole) => {
+      state.views = whole;
       listeners.forEach((l) => l({ ...state }));
     },
     version: () => version,

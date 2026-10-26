@@ -130,6 +130,16 @@ export interface FeedState {
    * (an operator's wind-back; MAK-196), and a timestamp alone cannot tell it so.
    */
   resets: number;
+  /**
+   * Whether the views collection holds every view the server had at `cursor` (see
+   * `viewsWhole` below). In the state rather than kept to the engine because what is
+   * drawn needs it: an address naming a view (`?saved=`) is dropped as stale only once
+   * the device can know its views, and before `seedViews` has filled a copy made by a
+   * build that did not keep them, or in a client tab whose holder is on such a build,
+   * the empty collection says nothing about whether the view exists. Optional because a
+   * holder on that build mirrors a state without it, which reads as not known.
+   */
+  views?: boolean;
 }
 
 /**
@@ -197,7 +207,7 @@ type StallStep = 'reading the cursor' | 'writing the cursor' | 'applying a page'
 const RETRY_MAX_MS = 5 * 60 * 1000;
 
 export class FeedEngine {
-  readonly state: FeedState = { phase: 'starting', cursor: null, lastError: null, total: null, applied: 0, pulls: 0, resets: 0 };
+  readonly state: FeedState = { phase: 'starting', cursor: null, lastError: null, total: null, applied: 0, pulls: 0, resets: 0, views: false };
   private controls: Partial<FeedControls> = {};
   private running: Promise<void> | null = null;
   private again = false;
@@ -214,9 +224,15 @@ export class FeedEngine {
    * Whether the views collection holds every view the server had at `state.cursor`. Read
    * from the stored position on the first pull (`viewsAt`), set at the end of a walk, and
    * by `seedViews`; every cursor this engine writes carries it on, so a later open reads
-   * it back. False until the stored position has been read.
+   * it back. False until the stored position has been read. Kept in `state.views`, so it
+   * reaches the state's listeners (and client tabs) on the next `changed()`.
    */
-  private viewsWhole = false;
+  private get viewsWhole(): boolean {
+    return this.state.views === true;
+  }
+  private set viewsWhole(whole: boolean) {
+    this.state.views = whole;
+  }
   private stopped = false;
   private readonly stopping = new AbortController();
   private retryTimer: ReturnType<typeof setTimeout> | null = null;

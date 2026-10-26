@@ -154,6 +154,19 @@ describe('the heading of a saved view', () => {
   });
 
   /* A view keeps its own order: the notebook's remembered one must not be written in. */
+  /* A copy made before views answers an empty list until it is filled, which says
+     nothing about whether the view exists: a shared link must not lose its view to it. */
+  it('keeps a saved id it cannot find while the device cannot know its views yet', async () => {
+    const test = setup([]);
+    test.viewsWhole(false);
+    const { search } = mount(`/notes?notebook=Receipts&saved=${GONE}&tag=%5B%22Acme%22%5D`);
+    await screen.findByRole('heading', { name: 'Receipts' });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(search().saved).toBe(GONE);
+    test.viewsWhole(true);
+    await waitFor(() => expect(search().saved).toBeUndefined());
+  });
+
   it("does not seed the notebook's remembered order into a view", async () => {
     localStorage.setItem('unbent.notebookSorts', JSON.stringify({ Receipts: { sort: 'title', order: 'asc' } }));
     setup();

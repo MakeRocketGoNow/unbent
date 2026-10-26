@@ -95,7 +95,7 @@ import { MoveSheet } from './MoveSheet.js';
 import { TagsSheet } from './TagsSheet.js';
 import { editOpenNoteFiling } from '../open-note-fields.js';
 import { useAppSession } from '../useAppSession.js';
-import { useLibraryArriving, useLibraryWhole } from '../store/use-feed-state.js';
+import { useLibraryArriving, useLibraryWhole, useViewsKnown } from '../store/use-feed-state.js';
 import { sameNotebookName } from '../store/derive.js';
 import { ListRowsContext, showsWholeAccount, useLibraryTotal } from '../useLibraryTotal.js';
 import { useSignOut } from '../useSignOut.js';
@@ -202,6 +202,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
       : undefined;
   /** The notebook list is the whole account's; see `useLibraryWhole`. */
   const libraryWhole = useLibraryWhole();
+  const viewsKnown = useViewsKnown();
   /*
    * The saved view the list was opened from (`?saved=`), once it is known to be one of
    * this notebook's. It names the heading and is what an edit is measured against.
@@ -233,12 +234,15 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    * sort is below: the list it opens is the notebook with the filters the link carries,
    * and the heading names the notebook. Replaced, not pushed: Back should not return to
    * an address naming a view that is gone. Not while the views or the notebooks are
-   * still arriving, which is not knowing.
+   * still arriving, which is not knowing, and not while the device cannot know its views
+   * at all (`useViewsKnown`): a copy made before views, until it is filled, answers an
+   * empty list that says nothing, and a shared link would lose its view to it.
    */
   const savedStale =
     saved !== undefined &&
     openView === undefined &&
     !madeHere.current.has(saved) &&
+    viewsKnown &&
     views.isSuccess &&
     !views.isFetching &&
     notebooks.isSuccess &&

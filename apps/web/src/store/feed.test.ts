@@ -439,6 +439,7 @@ describe('FeedEngine and saved views', () => {
     expect([...h.c.view.rows.values()].map((v) => v.name)).toEqual(['Business', 'Personal']);
     // A walk is whole for views too: the cursor says so, and no seed is asked for.
     expect(h.cursor()).toMatchObject({ seq: 10, viewsAt: 10 });
+    expect(h.engine.state.views).toBe(true);
     await h.engine.pull();
     expect([...h.c.view.rows.values()].map((v) => v.name)).toEqual(['Business 2025']);
     expect(h.requests).not.toContain('/api/views');
@@ -544,6 +545,8 @@ describe('FeedEngine and saved views', () => {
     expect(h.engine.state).toMatchObject({ phase: 'current', lastError: null });
     expect([...h.c.view.rows.keys()]).toEqual(['v1']);
     expect(h.cursor()?.viewsAt ?? null).toBeNull();
+    // And the state says the views are not known, so a view's address is not dropped.
+    expect(h.engine.state.views).toBe(false);
     // An answer that is the app's page rather than JSON is the same server.
     await h.engine.pull();
     expect(h.engine.state.phase).toBe('current');
@@ -551,6 +554,7 @@ describe('FeedEngine and saved views', () => {
     expect(h.requests.filter((r) => r === '/api/views')).toHaveLength(3);
     expect(h.c.view.rows.size).toBe(0);
     expect(h.cursor()).toMatchObject({ viewsAt: 10 });
+    expect(h.engine.state.views).toBe(true);
   });
 
   it('fails the pull when the views could not be fetched for now, as a page of the feed would', async () => {
