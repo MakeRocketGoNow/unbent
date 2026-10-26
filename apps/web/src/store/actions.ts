@@ -16,6 +16,7 @@ import { FreeNotesFullError } from '../free-notes.js';
 import { onStoreFreed, onStoreFull, storeAccepted, storeFreed, storeFull, storeFullMessage, storeRefused, storeRefusedFor, type StoreRefusal } from '../store-full.js';
 import { behindDeploy, heldForReload, onCaughtUp } from '../update-notice.js';
 import { outboxLeaderName, outboxName } from './names.js';
+import { LIBRARY_ROOTS, VIEW_ROOTS } from './library-roots.js';
 import { OutboxLeader } from './leader.js';
 
 /**
@@ -1250,7 +1251,7 @@ export function onUploaded(listener: (noteId: string, uploaded: api.UploadedFile
   return () => void uploadListeners.delete(listener);
 }
 
-const directListeners = new Set<() => void>();
+const directListeners = new Set<(roots: ReadonlySet<string>) => void>();
 
 /**
  * Hears every write made as a request rather than queued: on a device with no library,
@@ -1258,8 +1259,14 @@ const directListeners = new Set<() => void>();
  * is one; with none, nothing else tells the list that a note was trashed or a title
  * changed, so the query bridge listens here as well and refetches what a write reaches
  * (review of #232, where the list kept a trashed note on such a device).
+ *
+ * With the query roots the write reaches, as the library's own change notices carry
+ * them: a note's write reaches every list (`LIBRARY_ROOTS`), a view's only the views
+ * (`VIEW_ROOTS`). A view's write refetched every notes list, count and tag query too,
+ * which on a device with no library was a burst of requests for each arrow pressed on a
+ * notebook's settings page.
  */
-export function onDirectWrite(listener: () => void): () => void {
+export function onDirectWrite(listener: (roots: ReadonlySet<string>) => void): () => void {
   directListeners.add(listener);
   return () => void directListeners.delete(listener);
 }
@@ -1353,7 +1360,7 @@ async function pulled<T>(write: Promise<T>, local: LocalWrite, frees = false): P
     planFreed();
   }
   aboutToWrite(local);
-  directListeners.forEach((l) => l());
+  directListeners.forEach((l) => l(LIBRARY_ROOTS));
   const lib = await resolve();
   if (lib) void lib.engine.pull();
   return out;
@@ -1788,7 +1795,7 @@ export async function restoreRevision(noteId: string, revisionId: number, opts: 
   const restored = await api.restoreRevision(noteId, revisionId, opts);
   // A version that was already the note changed nothing: no write to tell anyone about.
   if (restored.kept === null) return restored;
-  directListeners.forEach((l) => l());
+  directListeners.forEach((l) => l(LIBRARY_ROOTS));
   if (lib) await lib.outbox.take(restored.note);
   return restored;
 }
@@ -2311,7 +2318,7 @@ export async function applyNotebookTemplate(
   if (far) return far('applyNotebookTemplate', [definition, opts]);
   const out = await api.importNotebook(definition, opts);
   if (out === 'taken') return out;
-  directListeners.forEach((l) => l());
+  directListeners.forEach((l) => l(LIBRARY_ROOTS));
   const lib = await resolve();
   if (lib && isWhole(lib.engine.state)) await lib.engine.pull();
   else if (lib) void lib.engine.pull();
@@ -2356,7 +2363,7 @@ export const VIEW_LANDED_MS = 3000;
  * only the row, which comes anyway.
  */
 async function viewLanded(until: (views: Rows<FeedView>) => boolean): Promise<void> {
-  directListeners.forEach((l) => l());
+  directListeners.forEach((l) => l(VIEW_ROOTS));
   const lib = await resolve();
   if (!lib) return mirrored(until, VIEW_LANDED_MS);
   const pulled = lib.engine.pull();

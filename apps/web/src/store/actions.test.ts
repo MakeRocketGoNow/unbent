@@ -2118,6 +2118,18 @@ describe('saving a view', () => {
     }
   });
 
+  /* A view's write reaches the views and nothing else: every notes list refetched for
+     an arrow pressed on the settings page was a burst of requests with no library. */
+  it('tells the query bridge it reached the views alone', async () => {
+    provideLibrary(async () => null);
+    const heard = vi.fn();
+    const off = actions.onDirectWrite(heard);
+    vi.mocked(api.updateView).mockResolvedValueOnce(saved);
+    await actions.updateView('v1', { position: 1 });
+    off();
+    expect(heard).toHaveBeenCalledWith(new Set(['views']));
+  });
+
   it('in a client tab, waits for the holder to bring the row rather than pulling', async () => {
     provideLibrary(async () => null);
     const views = new Map<string, typeof saved>();

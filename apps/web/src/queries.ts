@@ -193,7 +193,8 @@ export function installLibraryQueries(queryClient: QueryClient): () => void {
   const stopLibrary = onLibraryChange(refetch);
   const reread = () => refetch(LIBRARY_ROOTS);
   rereadAll = reread;
-  const stopDirect = onDirectWrite(() => refetch(LIBRARY_ROOTS));
+  // What the write reaches, as the library's own notices say (a view's write, the views).
+  const stopDirect = onDirectWrite(refetch);
   /*
    * A reset is more than a change. The rows it brings can be older than a cached
    * answer, and an answer nobody is looking at is not refetched: it is handed, as it
