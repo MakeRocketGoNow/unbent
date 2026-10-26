@@ -3,8 +3,11 @@ import { Button } from './Button';
 import { ViewNameField } from './ViewName.js';
 import { SaveViewIcon } from './icons.js';
 
-/** Why the actions that write a view are faded offline: they are requests, with no queue. */
-export const VIEW_NEEDS_CONNECTION = 'Saving a view needs a connection';
+/**
+ * Why the controls that write a view are faded offline: they are requests, with no queue.
+ * Worded for all of them (saving, renaming, deleting), since the heading's ⋯ uses it too.
+ */
+export const VIEW_NEEDS_CONNECTION = 'Changing a view needs a connection';
 
 interface ViewActionsProps {
   /**
@@ -22,8 +25,6 @@ interface ViewActionsProps {
   onSave: () => Promise<void>;
   /** Puts the list back the way the open view keeps it. */
   onRevert: () => void;
-  /** Extra class on each piece, for where it sits: the chips row or the filter sheet. */
-  className?: string;
 }
 
 /**
@@ -44,11 +45,10 @@ interface ViewActionsProps {
  * Saving names the view in place: the button becomes the field (`ViewNameField`), in the
  * same row, and the row goes back to what it was once the name is saved or abandoned.
  */
-export function ViewActions({ state, viewName, offline, onCreate, onSave, onRevert, className }: ViewActionsProps) {
+export function ViewActions({ state, viewName, offline, onCreate, onSave, onRevert }: ViewActionsProps) {
   const [naming, setNaming] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const cls = (base: string) => [base, className].filter(Boolean).join(' ');
   /*
    * The button that opened the field gets focus back when the field is left without a
    * save: it is a new element by then (the field took its place), and without this the
@@ -70,7 +70,6 @@ export function ViewActions({ state, viewName, offline, onCreate, onSave, onReve
   if (naming) {
     return (
       <ViewNameField
-        className={cls('view-actions-name')}
         label={state === 'edited' ? 'Name for the new view' : 'View name'}
         commitLabel="Save"
         onCommit={async (name) => {
@@ -90,7 +89,7 @@ export function ViewActions({ state, viewName, offline, onCreate, onSave, onReve
         ref={opener}
         variant="quiet"
         size="small"
-        className={cls('view-action')}
+        className="view-action"
         disabled={offline}
         tip={tip}
         onClick={() => setNaming(true)}
@@ -114,7 +113,7 @@ export function ViewActions({ state, viewName, offline, onCreate, onSave, onReve
   }
 
   return (
-    <div className={cls('view-actions')} role="group" aria-label="This view has been edited">
+    <div className="view-actions" role="group" aria-label="This view has been edited">
       {/* A word, not a control: the state the three buttons after it are about. */}
       <span className="view-edited">Edited</span>
       <Button

@@ -1157,7 +1157,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
       />
     ) : undefined;
 
-  const viewActions = (className?: string) =>
+  const viewActions = () =>
     viewState && (
       <ViewActions
         // A new state is a new control: a name half typed for one is not for the other.
@@ -1168,7 +1168,6 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
         onCreate={createView}
         onSave={saveView}
         onRevert={revertView}
-        className={className}
       />
     );
 
@@ -1588,7 +1587,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
               {isMobile && viewState && (
                 <>
                   <hr className="sheet-rule" />
-                  <div className="sheet-view-actions">{viewActions('in-sheet')}</div>
+                  <div className="sheet-view-actions">{viewActions()}</div>
                 </>
               )}
             </>
