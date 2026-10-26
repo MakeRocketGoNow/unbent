@@ -752,9 +752,11 @@ describe('NotebookEditor views', () => {
     expect(names).toEqual(['Business 2026', 'Personal']);
   });
 
-  it('says where views come from when there are none', async () => {
+  it('says where views come from when there are none, with the way there', async () => {
     mount(fields, null, []);
-    expect(await screen.findByText("No views yet. Save one from the notebook's list.")).toBeTruthy();
+    const link = await screen.findByRole('link', { name: "the notebook's list" });
+    expect(link.closest('li')?.textContent).toBe("No views yet. Save one from the notebook's list.");
+    expect(link.getAttribute('href')).toContain('/notes?notebook=');
   });
 
   it('moves a view one place, and holds the order until the library has it', async () => {

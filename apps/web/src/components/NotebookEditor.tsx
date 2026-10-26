@@ -1176,8 +1176,19 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
             </li>
           ))}
 
+          {/* The list it points at is one click away, so the words are the way there. */}
           {viewList.length === 0 && allViews.isSuccess && (
-            <li className="muted small">No views yet. Save one from the notebook's list.</li>
+            <li className="muted small">
+              No views yet. Save one from{' '}
+              {notebook ? (
+                <Link to="/notes" search={{ notebook: notebook.name }}>
+                  the notebook's list
+                </Link>
+              ) : (
+                "the notebook's list"
+              )}
+              .
+            </li>
           )}
         </ul>
 
