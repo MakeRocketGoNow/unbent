@@ -14,7 +14,7 @@ import { beginDump } from '../lib/dump.js';
 import { MIRROR_STATUS_KEY, STATUS_KEY, dumpPrefix } from '../lib/backups.js';
 import { beforeLoadKey, describeDump, dumpBeforeLoad, loadReserve, resolveDumpDownload, resolveDumpKey, streamDump } from '../lib/load.js';
 import { isOperator } from '../lib/instance.js';
-import { listFeedback, markFeedbackRead } from '../lib/assistant-feedback.js';
+import { listFeedback, markFeedbackRead, parseFeedbackCursor } from '../lib/assistant-feedback.js';
 import { userPrefix } from '../lib/repo.js';
 import { clearAccount, deleteAccount } from '../lib/account-deletion.js';
 import { accountDeletionOffered } from '../auth.js';
@@ -835,15 +835,17 @@ export const admin = new Hono<AppEnv>()
   })
 
   /**
-   * The assistants' unread feedback on the tools, newest first, with each account's
-   * address (MAK-212, `lib/assistant-feedback.ts`). Across accounts, so logged as every
-   * read of other people's accounts here is.
+   * The assistants' feedback on the tools, newest first, with each account's address
+   * (MAK-212, `lib/assistant-feedback.ts`): the unread rows, or with `?include=dismissed`
+   * every row, a page at a time from `?after=`, the last page's `next`. Across accounts,
+   * so logged as every read of other people's accounts here is.
    */
   .get('/admin/feedback', requireAuth, async (c) => {
     const email = c.get('user')?.email;
     if (!isOperator(c.env, email)) return c.json({ error: 'Not found' }, 404);
-    console.log(`[store] operator=${email} feedback`);
-    return c.json(await listFeedback(c.env.DB));
+    const withDismissed = c.req.query('include') === 'dismissed';
+    console.log(`[store] operator=${email} feedback${withDismissed ? ' with dismissed' : ''}`);
+    return c.json(await listFeedback(c.env.DB, { withDismissed, after: parseFeedbackCursor(c.req.query('after')) }));
   })
 
   /**

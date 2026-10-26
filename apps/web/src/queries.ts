@@ -321,6 +321,7 @@ export const keys = {
   operatorBackups: () => ['operator', 'backups'] as const,
   operatorAccounts: () => ['operator', 'accounts'] as const,
   operatorFeedback: () => ['operator', 'feedback'] as const,
+  operatorFeedbackList: (withDismissed: boolean) => ['operator', 'feedback', { withDismissed }] as const,
   /** One search's pages of the list, under its key; an object, so no account id can be mistaken for it. */
   operatorAccountsList: (q: string, order: OperatorOrder = {}) => ['operator', 'accounts', { q, ...order }] as const,
   /** Under the list's key, so one invalidation refreshes the list and every account page. */
@@ -916,14 +917,18 @@ export const operatorAccountsQuery = (q = '', order: OperatorOrder = {}) =>
   });
 
 /**
- * The assistants' unread feedback (MAK-212). Refetched as the page's other reads are, so
- * a page left open picks up what came in, and after each dismiss or Undo, so a full page
- * fills from behind; the list keeps the rows it has touched (`FeedbackList`).
+ * The assistants' feedback (MAK-212): the unread reports, or with `withDismissed` every
+ * report, a page at a time. Refetched as the page's other reads are, so a page left open
+ * picks up what came in, and after each dismiss or Undo; the list keeps the rows it has
+ * touched (`FeedbackList`). Two keys, so ticking Show dismissed and back again finds the
+ * other list where it was rather than reading it again from the first page.
  */
-export const operatorFeedbackQuery = () =>
-  queryOptions({
-    queryKey: keys.operatorFeedback(),
-    queryFn: () => api.operatorFeedback(),
+export const operatorFeedbackQuery = (withDismissed = false) =>
+  infiniteQueryOptions({
+    queryKey: keys.operatorFeedbackList(withDismissed),
+    queryFn: ({ pageParam }) => api.operatorFeedback(pageParam, withDismissed),
+    initialPageParam: '' as string,
+    getNextPageParam: (last) => last.next ?? undefined,
     staleTime: 60 * 1000,
     refetchInterval: 5 * 60 * 1000,
     refetchOnWindowFocus: true,

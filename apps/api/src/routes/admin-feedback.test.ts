@@ -21,14 +21,19 @@ const ROW = {
   tool: 'list_notes',
   body: 'The compact list left out the notebook.',
   created_at: 1_790_000_000_000,
+  read_at: null,
 };
 
 function fakeEnv() {
   const updates: unknown[][] = [];
+  const lists: Array<{ sql: string; args: unknown[] }> = [];
   const DB = {
     prepare: (sql: string) => ({
       bind: (...args: unknown[]) => ({
-        all: async () => ({ results: sql.includes('FROM assistant_feedback') ? [ROW] : [] }),
+        all: async () => {
+          lists.push({ sql, args });
+          return { results: sql.includes('FROM assistant_feedback') ? [ROW] : [] };
+        },
         run: async () => {
           updates.push(args);
           return { meta: { changes: args[0] === ROW.id ? 1 : 0 } };
@@ -36,7 +41,7 @@ function fakeEnv() {
       }),
     }),
   };
-  return { env: { OPERATOR_EMAILS: OPERATOR.email, APP_URL: 'https://notes.example.com', DB } as unknown as AppEnv['Bindings'], updates };
+  return { env: { OPERATOR_EMAILS: OPERATOR.email, APP_URL: 'https://notes.example.com', DB } as unknown as AppEnv['Bindings'], updates, lists };
 }
 
 function app(user: { id: string; email: string } = OPERATOR) {
@@ -70,11 +75,22 @@ describe('the operator feedback routes', () => {
           tool: 'list_notes',
           body: ROW.body,
           createdAt: ROW.created_at,
+          readAt: null,
         },
       ],
-      more: false,
+      next: null,
     });
     expect(log).toHaveBeenCalledWith('[store] operator=operator@example.com feedback');
+    log.mockRestore();
+  });
+
+  it('lists the dismissed rows too when asked, from where the last page ended', async () => {
+    const { env, lists } = fakeEnv();
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    expect((await app().request('/api/admin/feedback?include=dismissed&after=1790000000000.42', {}, env)).status).toBe(200);
+    expect(lists[0]!.sql).not.toContain('read_at IS NULL');
+    expect(lists[0]!.args.slice(1)).toEqual([1_790_000_000_000, 42]);
+    expect(log).toHaveBeenCalledWith('[store] operator=operator@example.com feedback with dismissed');
     log.mockRestore();
   });
 

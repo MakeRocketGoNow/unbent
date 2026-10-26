@@ -1259,9 +1259,13 @@ export async function accountRestores(userId: string): Promise<StoreRestores> {
   return json<StoreRestores>(await request(`/api/admin/accounts/${encodeURIComponent(userId)}/restores`));
 }
 
-/** The assistants' unread feedback on the tools, newest first (MAK-212). */
-export async function operatorFeedback(): Promise<AssistantFeedbackPage> {
-  return json<AssistantFeedbackPage>(await request('/api/admin/feedback'));
+/**
+ * A page of the assistants' feedback on the tools, newest first (MAK-212): the unread, or
+ * every report with `withDismissed`. `after` is the previous page's `next`.
+ */
+export async function operatorFeedback(after = '', withDismissed = false): Promise<AssistantFeedbackPage> {
+  const qs = new URLSearchParams({ ...(withDismissed ? { include: 'dismissed' } : {}), ...(after ? { after } : {}) });
+  return json<AssistantFeedbackPage>(await request(`/api/admin/feedback${qs.size ? `?${qs}` : ''}`));
 }
 
 /** Dismisses one piece of feedback from the list, or brings it back with `read: false`. */
