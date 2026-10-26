@@ -2097,6 +2097,27 @@ describe('saving a view', () => {
     await done;
   });
 
+  /* A pull follows every page there is: a device catching up has many, and the Save
+     button is not to wait for all of them. The page holds the server's answer meanwhile. */
+  it('answers after VIEW_LANDED_MS in the tab that holds the library, however long the pull runs', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.mocked(api.createView).mockResolvedValueOnce(saved);
+      const { engine } = library([]);
+      let answered = false;
+      const done = actions.createView({ notebookId: 'nb1', name: 'Business', query: { tag: ['tax'] } }).then(() => (answered = true));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(engine.pull).toHaveBeenCalledOnce();
+      await vi.advanceTimersByTimeAsync(actions.VIEW_LANDED_MS - 1);
+      expect(answered).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      await done;
+      expect(answered).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('in a client tab, waits for the holder to bring the row rather than pulling', async () => {
     provideLibrary(async () => null);
     const views = new Map<string, typeof saved>();

@@ -2330,10 +2330,14 @@ export function provideMirrorWait(fn: typeof mirrored): void {
 }
 
 /**
- * How long a client tab waits for a view it saved to arrive from the holder. The holder
- * pulls on the socket's nudge, which follows the write by well under a second; past
- * this the action returns all the same, since the view is saved and the rail lists it
- * when the row lands, and a person must not be kept waiting on a slow socket.
+ * How long a view action waits for its row to land in this tab's library. In a client
+ * tab the holder pulls on the socket's nudge, which follows the write by well under a
+ * second; in the holding tab the pull is this tab's own, and can run long (a device
+ * catching up after a large import elsewhere has many pages to follow, and a nudge
+ * during a pull queues another). Past this the action returns all the same, since the
+ * view is saved and the rail lists it when the row lands (the page puts the server's
+ * answer in its cache meanwhile, `holdView`), and a person must not be kept waiting on
+ * a Save button for the rest of the feed.
  */
 export const VIEW_LANDED_MS = 3000;
 
@@ -2341,20 +2345,25 @@ export const VIEW_LANDED_MS = 3000;
  * A view write has been answered: waits until this tab's library holds what it did, so
  * the caller can open the view's address and find the rail already listing it.
  *
- * The tab that holds the library pulls, as `applyNotebookTemplate` does and for its
- * reasons: awaited while the library is whole, only asked for while a walk is under way
- * (the walk ends by following the feed past this write). A client tab cannot pull: its
- * rows are the holder's, which pulls when the socket says the feed moved, so it watches
- * its own rows for the change instead, bounded by `VIEW_LANDED_MS`. Not forwarded to the
- * holder as the note writes are: a view write is a request either way, any tab can make
- * it, and what a client needs from the holder is only the row, which comes anyway.
+ * The tab that holds the library pulls, as `applyNotebookTemplate` does: awaited while
+ * the library is whole and the row is not there yet, bounded by `VIEW_LANDED_MS` (a
+ * pull follows every page there is, which is not this write's to wait for), and only
+ * asked for while a walk is under way (the walk ends by following the feed past this
+ * write). A client tab cannot pull: its rows are the holder's, which pulls when the
+ * socket says the feed moved, so it watches its own rows for the change instead, under
+ * the same bound. Not forwarded to the holder as the note writes are: a view write is a
+ * request either way, any tab can make it, and what a client needs from the holder is
+ * only the row, which comes anyway.
  */
 async function viewLanded(until: (views: Rows<FeedView>) => boolean): Promise<void> {
   directListeners.forEach((l) => l());
   const lib = await resolve();
-  if (lib && isWhole(lib.engine.state)) await lib.engine.pull();
-  else if (lib) void lib.engine.pull();
-  else await mirrored(until, VIEW_LANDED_MS);
+  if (!lib) return mirrored(until, VIEW_LANDED_MS);
+  const pulled = lib.engine.pull();
+  if (!isWhole(lib.engine.state) || until(lib.views)) return;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  await Promise.race([pulled, new Promise<void>((done) => (timer = setTimeout(done, VIEW_LANDED_MS)))]);
+  clearTimeout(timer);
 }
 
 /** A row of the view at least as new as the server's answer: the write, or a later one. */
