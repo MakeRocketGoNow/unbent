@@ -212,6 +212,21 @@ describe('an edited view', () => {
     expect((screen.getByRole('button', { name: 'Revert' }) as HTMLButtonElement).disabled).toBe(false);
   });
 
+  /* The same, reached through a name field opened before the search was typed. */
+  it('refuses a new view from a field opened before a search was typed, and says why', async () => {
+    setup();
+    const { router } = mount(viewAddress());
+    await screen.findByRole('heading', { name: 'Business 2026' });
+    await router.navigate({ to: '/notes', search: (prev: Record<string, unknown>) => ({ ...prev, tag: ['Acme', 'Travel'] }) });
+    (await screen.findByRole('button', { name: 'Save as new' })).click();
+    const field = await screen.findByRole('textbox', { name: 'Name for the new view' });
+    fireEvent.change(field, { target: { value: 'Acme travel' } });
+    await router.navigate({ to: '/notes', search: (prev: Record<string, unknown>) => ({ ...prev, q: 'alpha' }) });
+    fireEvent.keyDown(await screen.findByRole('textbox', { name: 'Name for the new view' }), { key: 'Enter' });
+    expect(await screen.findByText('Clear the search to save: a view does not keep it')).toBeTruthy();
+    expect(actions.createView).not.toHaveBeenCalled();
+  });
+
   /* The search text is not part of a view: typing one inside a view is not wandering. */
   it('does not count a search as an edit', async () => {
     setup();

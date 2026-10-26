@@ -84,6 +84,9 @@ export function ViewActions({ state, viewName, offline, searching = false, onCre
         label={state === 'edited' ? 'Name for the new view' : 'View name'}
         commitLabel="Save"
         onCommit={async (name) => {
+          // A search typed after the field opened: the button that opened it fades then,
+          // and the field says the same thing under itself rather than saving without it.
+          if (searching) throw new Error(VIEW_NOT_WITH_SEARCH);
           await onCreate(name);
           setNaming(false);
         }}
