@@ -3,6 +3,7 @@ import { createFileRoute } from '@tanstack/react-router';
 import { z } from 'zod';
 import { OPERATOR_SEARCH_MAX, OPERATOR_SORTS, type OperatorOrder } from '@unbent/shared';
 import { Operator } from '../components/Operator.js';
+import { withDismissedShown, withOrder } from '../operator-address.js';
 import { operatorAccountsQuery, operatorBackupsQuery } from '../queries.js';
 
 /**
@@ -68,15 +69,15 @@ function OperatorRoute() {
     [navigate],
   );
   // `replace` as well: a sort is a view of the same list, and Back from it should leave
-  // the page rather than step back through every heading pressed.
+  // the page rather than step back through every heading pressed. Each control changes
+  // only its own keys of the address (`operator-address.ts`).
   const onOrder = useCallback(
-    (next: OperatorOrder) => void navigate({ search: (prev) => ({ q: prev.q, feedback: prev.feedback, ...next }), replace: true, resetScroll: false }),
+    (next: OperatorOrder) => void navigate({ search: (prev) => withOrder(prev, next), replace: true, resetScroll: false }),
     [navigate],
   );
   // `replace` for the same reason as the order: the other list is a view of the same page.
   const onWithDismissed = useCallback(
-    (shown: boolean) =>
-      void navigate({ search: (prev) => ({ ...prev, feedback: shown ? ('all' as const) : undefined }), replace: true, resetScroll: false }),
+    (shown: boolean) => void navigate({ search: (prev) => withDismissedShown(prev, shown), replace: true, resetScroll: false }),
     [navigate],
   );
   return (
