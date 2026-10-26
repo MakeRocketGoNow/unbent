@@ -414,6 +414,10 @@ export class FeedEngine {
         return;
       }
       const gone = (entity: FeedEntity) => page.tombstones.filter((t) => t.entity === entity).map((t) => t.id);
+      // This server sends `views` on every page, so a page without the key is from a
+      // Worker built before views (a rollback) which dropped any view rows in its range;
+      // the cursor moves past them, so the views are not whole from here.
+      if (page.views === undefined) this.viewsWhole = false;
       await this.apply({
         notes: page.notes,
         noteTombstones: gone('note'),
@@ -423,7 +427,6 @@ export class FeedEngine {
         tagTombstones: gone('tag'),
         attachments: page.attachments,
         attachmentTombstones: gone('attachment'),
-        // Absent from a server built before views, which has none to send.
         views: page.views ?? [],
         viewTombstones: gone('view'),
       });
@@ -497,8 +500,13 @@ export class FeedEngine {
      * into the row and leaves whatever was there; its insert writes none), and a walk it
      * started and this build finished, after a reload or a takeover mid-copy, would
      * otherwise have stamped the copy whole and never asked for them.
+     *
+     * From the start, the first page itself says: this server sends `views` on it always
+     * (`[]` when there are none), so a first page without the key is from a Worker built
+     * before views. That is a rollback (the account's store still has its views), and a
+     * copy stamped whole from it would never be sent them once this build is back.
      */
-    const viewsFromStart = !from || from.viewsAt === from.seq;
+    let viewsFromStart = !!from && from.viewsAt === from.seq;
     do {
       if (this.stopped) return;
       let page: SnapshotPage;
@@ -527,6 +535,7 @@ export class FeedEngine {
       if (!seeded) {
         seeded = { seq: page.seq, epoch: page.epoch };
         this.state.total = page.total ?? null;
+        viewsFromStart = page.views !== undefined;
       }
       // The views ride on the first page beside the notebooks and tags; absent from a
       // server built before views.
@@ -544,9 +553,9 @@ export class FeedEngine {
     } while (cursor);
     // A walk that saw the first page is whole for views too: that page carried every one
     // the server had, and the feed from its `seq` replays whatever changed during the
-    // walk. A walk of a server from before views carried none because it has none; the
-    // feed brings the first one the moment it is made. A walk resumed from a position a
-    // build from before views wrote did not see them, and asks for them now, once.
+    // walk. A walk whose first page had no `views` key, or one resumed from a position a
+    // build from before views wrote, did not see them, and asks for them now, once (and
+    // again on later pulls, while a rolled-back server refuses).
     this.viewsWhole = viewsFromStart;
     await this.moveCursor(seeded);
     if (!this.viewsWhole) await this.seedViews();

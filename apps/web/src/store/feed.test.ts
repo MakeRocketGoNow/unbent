@@ -115,8 +115,10 @@ function harness(answers: Record<string, unknown[] | unknown>) {
   return { engine, c, requests, cursorWrites, seq, cursor: () => cursor, setCursor: (p: Position | null) => void (cursor = stamped(p)) };
 }
 
-const snapshotFirst = (notes: FeedNote[], next: string | null, seq = 10): SnapshotPage => ({ seq, epoch: 'e1', notes, next, notebooks: [{ id: 'nb1', name: 'Receipts', purpose: null, emoji: null, fieldDefs: [] }], tags: [{ id: 't1', name: 'home', color: 0 }], total: 3 });
-const feedPage = (over: Partial<FeedPage>): FeedPage => ({ reset: false, seq: 10, epoch: 'e1', next: 10, more: false, notes: [], notebooks: [], tags: [], attachments: [], tombstones: [], ...over });
+// As this server answers: `views` on the first snapshot page and on every feed page,
+// `[]` when there are none. A page without the key is a Worker built before views.
+const snapshotFirst = (notes: FeedNote[], next: string | null, seq = 10): SnapshotPage => ({ seq, epoch: 'e1', notes, next, notebooks: [{ id: 'nb1', name: 'Receipts', purpose: null, emoji: null, fieldDefs: [] }], tags: [{ id: 't1', name: 'home', color: 0 }], views: [], total: 3 });
+const feedPage = (over: Partial<FeedPage>): FeedPage => ({ reset: false, seq: 10, epoch: 'e1', next: 10, more: false, notes: [], notebooks: [], tags: [], attachments: [], views: [], tombstones: [], ...over });
 
 describe('FeedEngine', () => {
   it('walks the snapshot when there is no cursor, storing the first page\'s seq before it applies anything', async () => {
@@ -476,14 +478,37 @@ describe('FeedEngine and saved views', () => {
     expect(h.cursor()).toEqual({ seq: 10, epoch: 'e1', viewsAt: 10 });
   });
 
-  it('reads a page from a server built before views as having none', async () => {
-    const h = harness({ '/api/changes?since=10&epoch=e1&limit=2': feedPage({ next: 11, views: undefined }) });
-    h.setCursor({ seq: 10, epoch: 'e1' });
+  /* A page without `views` is a Worker built before views: a rollback, with the views
+     still in the store and their rows passed over by the cursor. Not whole from there. */
+  it('reads a feed page from a server built before views as dropping the views it passed over', async () => {
+    const missing = Object.assign(new Error('/api/views answered 404'), { status: 404 });
+    const h = harness({
+      '/api/changes?since=10&epoch=e1&limit=2': feedPage({ next: 11, views: undefined }),
+      '/api/views': missing,
+    });
+    h.setCursor({ seq: 10, epoch: 'e1', viewsAt: 10 });
     h.c.view.rows.set('v1', savedView('v1'));
     register(h);
     await h.engine.settled();
-    expect(h.engine.state.phase).toBe('current');
+    expect(h.engine.state).toMatchObject({ phase: 'current', views: false });
     expect([...h.c.view.rows.keys()]).toEqual(['v1']);
+    // The cursor moved without the stamp, and the views were asked for (and refused).
+    expect(h.cursor()).toEqual({ seq: 11, epoch: 'e1' });
+    expect(h.requests).toContain('/api/views');
+  });
+
+  it('does not stamp a walk whose first page had no views, and asks for them', async () => {
+    const { views: _none, ...older } = snapshotFirst([note('a')], null);
+    const h = harness({
+      '/api/changes/snapshot?limit=2': older satisfies SnapshotPage,
+      '/api/views': { views: [savedView('v1')] },
+    });
+    register(h);
+    await h.engine.settled();
+    expect(h.cursorWrites[0]).toEqual({ seq: 10, epoch: 'e1' });
+    expect(h.requests.at(-1)).toBe('/api/views');
+    expect(h.cursor()).toEqual({ seq: 10, epoch: 'e1', viewsAt: 10 });
+    expect(h.engine.state.views).toBe(true);
   });
 
   it('fills the views once for a copy whose cursor was moved without them, and deletes what the server no longer has', async () => {
