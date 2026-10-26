@@ -91,6 +91,7 @@ import { SelectionBar } from './SelectionBar.js';
 import { listDropZone, dropSentence } from '../list-drop-zone.js';
 import { notesFromFiles } from '../file-notes.js';
 import { Confirm } from './Confirm.js';
+import { DeleteViewConfirm } from './DeleteViewConfirm.js';
 import { MoveSheet } from './MoveSheet.js';
 import { TagsSheet } from './TagsSheet.js';
 import { editOpenNoteFiling } from '../open-note-fields.js';
@@ -1431,13 +1432,11 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
             about something on screen (the heading names the view), and a modal would
             cover it. Its notes are untouched, which is the thing worth saying. */}
         {deletingView && openView && (
-          <Confirm
-            label="Confirm delete view"
-            question={`Delete the view “${openView.name}”?`}
-            detail="Its notes stay where they are."
+          <DeleteViewConfirm
+            name={openView.name}
             busy={viewBusy}
             onCancel={() => setDeletingView(false)}
-            actions={[{ label: 'Delete view', busyLabel: 'Deleting…', tone: 'danger', onConfirm: deleteOpenView }]}
+            onConfirm={() => void deleteOpenView()}
           />
         )}
 

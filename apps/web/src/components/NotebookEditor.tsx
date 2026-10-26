@@ -27,6 +27,7 @@ import { keys, notebookFieldCountsQuery, notebooksQuery, viewsQuery } from '../q
 import * as actions from '../store/actions.js';
 import { Button } from './Button';
 import { Confirm } from './Confirm.js';
+import { DeleteViewConfirm } from './DeleteViewConfirm.js';
 import { DeleteNotebookConfirm } from './DeleteNotebookConfirm.js';
 import { EmojiField } from './EmojiField.js';
 import { KeepOffline } from './KeepOffline.js';
@@ -1159,24 +1160,16 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
         </ul>
 
         {pendingViewDelete && (
-          <Confirm
-            label="Confirm delete view"
-            question={`Delete the view “${pendingViewDelete.name}”?`}
-            detail="Its notes stay where they are."
+          <DeleteViewConfirm
+            name={pendingViewDelete.name}
             busy={busy}
             onCancel={() => setPendingViewDelete(null)}
-            actions={[
-              {
-                label: 'Delete view',
-                busyLabel: 'Deleting…',
-                tone: 'danger',
-                onConfirm: () =>
-                  run(async () => {
-                    await actions.deleteView(pendingViewDelete.id);
-                    setPendingViewDelete(null);
-                  }),
-              },
-            ]}
+            onConfirm={() =>
+              run(async () => {
+                await actions.deleteView(pendingViewDelete.id);
+                setPendingViewDelete(null);
+              })
+            }
           />
         )}
       </section>
