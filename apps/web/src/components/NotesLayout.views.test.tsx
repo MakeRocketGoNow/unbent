@@ -185,6 +185,20 @@ describe('an edited view', () => {
     await waitFor(() => expect(screen.queryByText('Edited')).toBeNull());
   });
 
+  /* A view does not keep the search, so saving one mid-search would lose it quietly. */
+  it('fades Save and Save as new while the search box has text, and keeps Revert', async () => {
+    setup();
+    const { router } = mount(viewAddress());
+    await screen.findByRole('heading', { name: 'Business 2026' });
+    await router.navigate({ to: '/notes', search: (prev: Record<string, unknown>) => ({ ...prev, tag: ['Acme', 'Travel'], q: 'alpha' }) });
+    expect(await screen.findByText('Edited')).toBeTruthy();
+    const save = screen.getByRole('button', { name: 'Save' }) as HTMLButtonElement;
+    expect(save.disabled).toBe(true);
+    expect(save.getAttribute('aria-description')).toBe('Clear the search to save: a view does not keep it');
+    expect((screen.getByRole('button', { name: 'Save as new' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'Revert' }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
   /* The search text is not part of a view: typing one inside a view is not wandering. */
   it('does not count a search as an edit', async () => {
     setup();

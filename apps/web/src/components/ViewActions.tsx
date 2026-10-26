@@ -9,6 +9,15 @@ import { SaveViewIcon } from './icons.js';
  */
 export const VIEW_NEEDS_CONNECTION = 'Changing a view needs a connection';
 
+/**
+ * Why an edited view's Save and Save as new are faded while the search box has text. A
+ * view leaves the search out on purpose (see `views.ts`), so a view saved mid-search
+ * opens to more notes than were on screen when it was saved; with no view open, Save
+ * view is simply not offered then (`NotesLayout`). Here the controls stay, faded, since
+ * the Edited word beside them is still true and Revert still works.
+ */
+export const VIEW_NOT_WITH_SEARCH = 'Clear the search to save: a view does not keep it';
+
 interface ViewActionsProps {
   /**
    * What there is to offer. `unsaved`: the list is a notebook narrowed or ordered, with no
@@ -19,6 +28,8 @@ interface ViewActionsProps {
   /** The open view's name, for what Save says it will do. Only with `edited`. */
   viewName?: string | undefined;
   offline: boolean;
+  /** The search box has text; see `VIEW_NOT_WITH_SEARCH`. */
+  searching?: boolean | undefined;
   /** Saves the list as a new view under `name`, and opens it. Rejects with the reason. */
   onCreate: (name: string) => Promise<void>;
   /** Saves the list into the open view. Rejects with the reason. */
@@ -45,7 +56,7 @@ interface ViewActionsProps {
  * Saving names the view in place: the button becomes the field (`ViewNameField`), in the
  * same row, and the row goes back to what it was once the name is saved or abandoned.
  */
-export function ViewActions({ state, viewName, offline, onCreate, onSave, onRevert }: ViewActionsProps) {
+export function ViewActions({ state, viewName, offline, searching = false, onCreate, onSave, onRevert }: ViewActionsProps) {
   const [naming, setNaming] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -100,6 +111,9 @@ export function ViewActions({ state, viewName, offline, onCreate, onSave, onReve
     );
   }
 
+  // What fades the two saves, worst first: no server at all, then a search they would drop.
+  const saveBlocked = offline ? VIEW_NEEDS_CONNECTION : searching ? VIEW_NOT_WITH_SEARCH : undefined;
+
   async function save() {
     setSaving(true);
     setError(null);
@@ -119,8 +133,8 @@ export function ViewActions({ state, viewName, offline, onCreate, onSave, onReve
       <Button
         variant="quiet"
         size="small"
-        disabled={offline || saving}
-        tip={tip ?? (viewName ? `Keep these changes in “${viewName}”` : undefined)}
+        disabled={saveBlocked !== undefined || saving}
+        tip={saveBlocked ?? (viewName ? `Keep these changes in “${viewName}”` : undefined)}
         onClick={() => void save()}
       >
         {saving ? 'Saving…' : 'Save'}
@@ -129,8 +143,8 @@ export function ViewActions({ state, viewName, offline, onCreate, onSave, onReve
         ref={opener}
         variant="quiet"
         size="small"
-        disabled={offline || saving}
-        tip={tip}
+        disabled={saveBlocked !== undefined || saving}
+        tip={saveBlocked}
         onClick={() => setNaming(true)}
       >
         Save as new

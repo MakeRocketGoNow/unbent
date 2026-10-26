@@ -1190,6 +1190,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
         state={viewState}
         viewName={openView?.name}
         offline={offline}
+        searching={q.trim() !== ''}
         onCreate={inSheet ? (name) => createView(name).then(closeSheet) : createView}
         onSave={inSheet ? () => saveView().then(closeSheet) : saveView}
         onRevert={revertView}
