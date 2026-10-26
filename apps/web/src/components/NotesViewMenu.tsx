@@ -32,7 +32,16 @@ const VIEWS: { mode: NotesViewMode; name: string; showing: string; Icon: Compone
 ];
 
 /**
- * List, cards or table: how the notes under the header are drawn.
+ * List, cards or table: how the notes under the header are drawn. The layout.
+ *
+ * Called the layout in everything a person reads, and only there. "View" now names a
+ * saved view (a notebook's list kept under a name, `@unbent/shared`'s `views.ts`), and a
+ * menu that also called itself the view would have had two things answering to one word
+ * on the same screen. The code keeps its old names (this component, `NotesViewMode`,
+ * `useNotesView`, and the address's `?view=`): the param is in every link and history
+ * entry people already have and in the compatibility contract between builds, and a view
+ * saved by a build that has it reads the layout from it (`addressOfView`). A rename sweep
+ * would buy nothing a reader sees.
  *
  * One icon that opens a menu of the three. It was one button that flipped between list
  * and table, which suited two views: the icon was the view on screen and the name said
@@ -75,8 +84,8 @@ export function NotesViewMenu({ value, requested = value, onChange, tableDisable
   });
   return (
     <OverflowMenu
-      label={current.showing}
-      tip="Change view"
+      label={`Layout, ${current.showing.toLowerCase()}`}
+      tip="Change layout"
       trigger={<current.Icon />}
       items={items}
       className="view-menu"

@@ -41,7 +41,7 @@ async function indexed(snapshot: Snapshot, texts: Record<string, string> = {}) {
   return index;
 }
 
-const library = (notes: LocalNote[], attachments: FeedAttachment[] = []): Snapshot => ({ notes, notebooks, tags, attachments });
+const library = (notes: LocalNote[], attachments: FeedAttachment[] = []): Snapshot => ({ notes, notebooks, tags, attachments, views: [] });
 
 describe('searchLocal', () => {
   it('finds a note by a phrase in its body, stemmed, and marks the snippet', async () => {

@@ -13,6 +13,7 @@ import {
   type NotebookDefinition,
   type OptionEdit,
   type SnapshotPage,
+  type UpdateView,
   FREE_NOTES_FULL_CODE,
   PLAN_INACTIVE_CODE,
   STORAGE_FULL_CODE,
@@ -29,6 +30,7 @@ import { restoreAbortReason, restoreRefusedReason } from './restore.js';
 import { SCHEMA } from './schema/index.js';
 import { instrumentedSql, type Sql } from './sql.js';
 import { DATA_TABLES, DUMP_TABLES, type DataTable, type DumpTable } from './tables.js';
+import { ViewsStore } from './views.js';
 
 export { DATA_TABLES, DUMP_TABLES, type DataTable, type DumpTable };
 
@@ -313,6 +315,7 @@ export class UserStore extends DurableObject<StoreEnv> {
   private attachments: AttachmentsStore;
   private deletedBlobs: DeletedBlobs;
   private llmUsage: LlmUsageCounter;
+  private views: ViewsStore;
   private wiped = false;
   private loading: LoadMarker | null = null;
   private loadInFlight: LoadInFlight | null = null;
@@ -331,7 +334,10 @@ export class UserStore extends DurableObject<StoreEnv> {
     // so "every row deletion tombstones" is a property of one object, not of three
     // agreeing.
     this.deletedBlobs = new DeletedBlobs(this.sql);
-    this.notes = new NotesStore(this.sql, this.feed, this.deletedBlobs);
+    // Before the notes, which hold it for the cascades a tag's, a field's or a
+    // notebook's management runs on the views that name them.
+    this.views = new ViewsStore(this.sql, this.feed);
+    this.notes = new NotesStore(this.sql, this.feed, this.deletedBlobs, this.views);
     this.attachments = new AttachmentsStore(this.sql, this.feed, this.deletedBlobs);
     this.llmUsage = new LlmUsageCounter(this.sql, name);
     ctx.blockConcurrencyWhile(async () => {
@@ -1092,7 +1098,8 @@ export class UserStore extends DurableObject<StoreEnv> {
   // sender makes it whatever the file's size. A delete, a purge and a cleared history
   // take none: they are the way back under the limit. A trashing takes none either,
   // and frees nothing until the trash is emptied. A notebook's, a tag's or a field's
-  // management, and a file's row, take a limit for the free plan alone (`freeOnly`):
+  // management, a notebook's views, and a file's row, take a limit for the free plan
+  // alone (`freeOnly`):
   // they write rows of their own size and not the person's text, so the store's room
   // does not hold them, but an account past the free plan is read-only for them too.
   // A file's text is the other way round (`roomOnly`): exempt from the read-only rule,
@@ -1203,6 +1210,20 @@ export class UserStore extends DurableObject<StoreEnv> {
   }
 
   importNotebook(definition: NotebookDefinition, opts: { create?: boolean } = {}, limit?: StoreLimit) { return this.writing(() => this.notes.importNotebook(definition, opts), this.freeOnly(limit)); }
+
+  // --- Saved views (MAK-249) ---------------------------------------------------------------
+  //
+  // `ViewsStore`'s methods, prefixed because `list`, `create`, `update` and `delete` are
+  // the notes' names here. A create and an edit are management, held to the free plan
+  // alone (see the list above): a view is a small row of the person's arrangement, not
+  // their text. A delete takes no limit, as every delete here does.
+
+  listViews() { this.ready(); return this.views.list(); }
+  createView(notebookId: string, name: string, query: Parameters<ViewsStore['create']>[2], limit?: StoreLimit) {
+    return this.writing(() => this.views.create(notebookId, name, query), this.freeOnly(limit));
+  }
+  updateView(id: string, patch: UpdateView, limit?: StoreLimit) { return this.writing(() => this.views.update(id, patch), this.freeOnly(limit)); }
+  deleteView(id: string) { return this.writing(() => this.views.delete(id)); }
 
   // --- Attachments: the repository, one for one -----------------------------------------
   //
@@ -1562,7 +1583,7 @@ export class UserStore extends DurableObject<StoreEnv> {
    *
    * The rows after the cursor are read off the primary key (only what the page returns)
    * then collapsed to the last word per entity and loaded whole: notes with their
-   * tags, values and files, notebooks with their definitions, tags, files. Cut short
+   * tags, values and files, notebooks with their definitions, tags, files, views. Cut short
    * when the bodies pass `FEED_PAGE_BYTES`, with `next` at the last row kept, so a page
    * never nears the RPC ceiling; a page of a hundred changed notes reads about 860 rows
    * (measured 2026-10-02, bounded in the rows-read test).
@@ -1629,6 +1650,7 @@ export class UserStore extends DurableObject<StoreEnv> {
         notebooks: this.notes.notebooksWhole(ids('notebook', false)),
         tags: this.notes.tagsWhole(ids('tag', false)),
         attachments: this.attachments.attachmentsWhole(ids('attachment', false)),
+        views: this.views.whole(ids('view', false)),
         tombstones: changes.filter((c) => c.deleted).map((c) => ({ entity: c.entity, id: c.id })),
       };
     });
@@ -1637,7 +1659,7 @@ export class UserStore extends DurableObject<StoreEnv> {
   /**
    * `GET /changes/snapshot`: a page of the whole library by note id, for a client with
    * no copy yet; see `SnapshotPage` for the contract. The first page carries the
-   * notebooks, the tags and the total as well, and the `seq` every page reports is the
+   * notebooks, the tags, the saved views and the total as well, and the `seq` every page reports is the
    * counter at the time, which the client stores before applying the first page.
    */
   snapshotPage(cursor: string | null, limit: number): SnapshotPage {
@@ -1665,6 +1687,7 @@ export class UserStore extends DurableObject<StoreEnv> {
       if (cursor === null) {
         page.notebooks = this.notes.notebooksWhole(null);
         page.tags = this.notes.tagsWhole(null);
+        page.views = this.views.whole(null);
         page.total = this.notes.totalNotes();
       }
       return page;

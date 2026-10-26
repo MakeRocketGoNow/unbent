@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, type ReactNode, type RefObject } from 'react';
+import { useEffect, useLayoutEffect, useRef, type ReactNode, type Ref, type RefObject } from 'react';
 import { SearchIcon, FilterIcon, MenuIcon, CountChevronIcon } from './icons.js';
 import { OverflowMenu, type OverflowItem } from './OverflowMenu.js';
 import { BackArrow } from './BackArrow.js';
@@ -38,6 +38,33 @@ interface NoteListHeadProps {
    * way Evernote heads its middle column with the notebook's name and count.
    */
   title: string;
+  /**
+   * A small muted line above the title, when the title alone would not say where the list
+   * is: with a saved view open the title is the view's name and this is its notebook's.
+   * Left out otherwise, so a plain notebook's head is exactly as tall as it was.
+   */
+  eyebrow?: string | undefined;
+  /**
+   * A menu beside the title, for what can be done to the place the title names: a saved
+   * view's Rename and Delete. Drawn after the name rather than among the icons, since it
+   * is about the name and not about how the list is drawn.
+   */
+  titleMenu?: ReactNode;
+  /**
+   * The title being renamed: the field that takes the name's place, in the name's own
+   * line. On a phone the row's icons step aside while it is open, as they do for the
+   * phone's search, since a field sharing a 375px row with four icons has no room to show
+   * what is being typed; they are back when the rename ends. At desktop width the icons
+   * and the search field stay where they are, so nothing moves under the pointer, and
+   * the field's buttons take the count's line under it instead (the caller stacks them,
+   * `ViewNameField`'s `stacked`), which is the room a narrow column has.
+   */
+  renaming?: ReactNode;
+  /**
+   * The heading itself, for a caller that moves focus to it: after a view is saved or
+   * renamed, the control that did it is gone, and the heading is what changed.
+   */
+  headingRef?: Ref<HTMLHeadingElement>;
   /** The search box's value, which is the URL's `q`. */
   query: string;
   onQuery: (next: string) => void;
@@ -136,6 +163,10 @@ export function NoteListHead({
   count,
   countMenu,
   title,
+  eyebrow,
+  titleMenu,
+  renaming,
+  headingRef,
   query,
   onQuery,
   onArrowDown,
@@ -263,8 +294,25 @@ export function NoteListHead({
             The title is the notebook's own name, which can outrun a narrow column; the
             tooltip carries what the ellipsis drops. */}
         <div className="list-title">
-          <h2 title={title}>{title}</h2>
-          {count === null ? (
+          {eyebrow && (
+            <span className="list-eyebrow" title={eyebrow}>
+              {eyebrow}
+            </span>
+          )}
+          {renaming ??
+            (titleMenu ? (
+              <div className="list-title-row">
+                <h2 ref={headingRef} tabIndex={-1} title={title}>
+                  {title}
+                </h2>
+                {titleMenu}
+              </div>
+            ) : (
+              <h2 ref={headingRef} tabIndex={-1} title={title}>
+                {title}
+              </h2>
+            ))}
+          {renaming && fieldAlways ? null : count === null ? (
             <span className="count" aria-hidden="true">
               {'\u00a0'}
             </span>
@@ -289,33 +337,35 @@ export function NoteListHead({
           )}
         </div>
         {inToolbar && <div className="list-search">{input}</div>}
-        <div className="list-head-actions">
-          {onOpenSearch && (
-            <button type="button" className="icon-btn" aria-label="Search notes" data-tip="Search notes" onClick={onOpenSearch}>
-              <SearchIcon />
+        {!(renaming && !fieldAlways) && (
+          <div className="list-head-actions">
+            {onOpenSearch && (
+              <button type="button" className="icon-btn" aria-label="Search notes" data-tip="Search notes" onClick={onOpenSearch}>
+                <SearchIcon />
+              </button>
+            )}
+            <button
+              ref={filterRef}
+              type="button"
+              className="icon-btn"
+              /*
+               * The state goes in the name, not only in the dot. The dot is the glanceable half
+               * and it is invisible to a screen reader; a control that reads "Filter notes"
+               * either way would leave the one fact worth knowing (that the list is already
+               * narrowed) available to sighted users alone.
+               */
+              aria-label={filtered ? 'Filter notes, filters are active' : 'Filter notes'}
+              data-tip={filtered ? 'Filter notes, some are on' : 'Filter notes'}
+              onClick={onOpenFilters}
+            >
+              <FilterIcon />
+              {filtered && <span className="badge-dot" aria-hidden="true" />}
             </button>
-          )}
-          <button
-            ref={filterRef}
-            type="button"
-            className="icon-btn"
-            /*
-             * The state goes in the name, not only in the dot. The dot is the glanceable half
-             * and it is invisible to a screen reader; a control that reads "Filter notes"
-             * either way would leave the one fact worth knowing (that the list is already
-             * narrowed) available to sighted users alone.
-             */
-            aria-label={filtered ? 'Filter notes, filters are active' : 'Filter notes'}
-            data-tip={filtered ? 'Filter notes, some are on' : 'Filter notes'}
-            onClick={onOpenFilters}
-          >
-            <FilterIcon />
-            {filtered && <span className="badge-dot" aria-hidden="true" />}
-          </button>
-          {sort}
-          {view}
-          {action}
-        </div>
+            {sort}
+            {view}
+            {action}
+          </div>
+        )}
       </div>
       {fieldAlways && !inToolbar && <div className="list-search">{input}</div>}
     </>

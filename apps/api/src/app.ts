@@ -13,6 +13,7 @@ import { wellKnown } from './routes/well-known.js';
 import { ingest } from './routes/ingest.js';
 import { notes } from './routes/notes.js';
 import { notebooks } from './routes/notebooks.js';
+import { views } from './routes/views.js';
 import { tags } from './routes/tags.js';
 import { exportRoutes } from './routes/export.js';
 import { attachments } from './routes/attachments.js';
@@ -118,6 +119,7 @@ const routes = app
   .route('/api', authRoutes)
   .route('/api', notes)
   .route('/api', notebooks)
+  .route('/api', views)
   .route('/api', tags)
   .route('/api', exportRoutes)
   .route('/api', attachments)

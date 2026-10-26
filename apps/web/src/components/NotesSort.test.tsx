@@ -105,6 +105,24 @@ describe('NotesSort', () => {
     });
   });
 
+  /* The order is remembered for the notebook, except inside a saved view, whose order
+     is its own: re-sorting a view must not change how the plain notebook opens. */
+  it('remembers the order for the notebook, and not inside a view', async () => {
+    localStorage.clear();
+    const first = harness({ notebook: 'Receipts' });
+    fireEvent.click(await first.findByLabelText(/^Sort notes, currently/));
+    fireEvent.click(await first.findByText('Title A–Z'));
+    await waitFor(() => expect(localStorage.getItem('unbent.notebookSorts')).toContain('Receipts'));
+
+    cleanup();
+    localStorage.clear();
+    const inView = harness({ notebook: 'Receipts', remember: false });
+    fireEvent.click(await inView.findByLabelText(/^Sort notes, currently/));
+    fireEvent.click(await inView.findByText('Title A–Z'));
+    await waitFor(() => expect(inView.history.location.href).toContain('title'));
+    expect(localStorage.getItem('unbent.notebookSorts')).toBeNull();
+  });
+
   /* No named order may claim to be current over a list ordered by something else; the
      field's own direction is what is marked. */
   it('names a field sort and marks its direction, not a named order', async () => {

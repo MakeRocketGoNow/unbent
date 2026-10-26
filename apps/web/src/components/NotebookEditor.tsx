@@ -19,18 +19,22 @@ import {
   type FieldDef,
   type FieldScale,
   type FieldType,
+  type NotebookView,
 } from '@unbent/shared';
 import * as api from '../notes-api.js';
 import { SAVE_LABEL, useAutosave, type SaveState } from '../useAutosave.js';
-import { keys, notebookFieldCountsQuery, notebooksQuery } from '../queries.js';
+import { keys, notebookFieldCountsQuery, notebooksQuery, viewsQuery } from '../queries.js';
+import * as actions from '../store/actions.js';
 import { Button } from './Button';
 import { Confirm } from './Confirm.js';
+import { DeleteViewConfirm } from './DeleteViewConfirm.js';
 import { DeleteNotebookConfirm } from './DeleteNotebookConfirm.js';
 import { EmojiField } from './EmojiField.js';
 import { KeepOffline } from './KeepOffline.js';
 import { TagInput } from './TagInput.js';
 import { formatCurrency } from './format-field.js';
-import { FieldTypeIcon, MoveDownIcon, MoveUpIcon } from './icons.js';
+import { FieldTypeIcon, MoveDownIcon, MoveUpIcon, ViewRowIcon } from './icons.js';
+import { ViewNameField } from './ViewName.js';
 
 interface NotebookEditorProps {
   notebookId: string;
@@ -573,6 +577,58 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
     });
   }
 
+  /*
+   * The notebook's saved views, in their order, with the same held-order rule the fields
+   * use: a move is a request, and the library learns the new positions from the feed a
+   * beat later, so the order asked for is held over the answer until the answer has it.
+   */
+  const allViews = useQuery(viewsQuery());
+  const answeredViews = (allViews.data ?? []).filter((v) => v.notebookId === notebookId);
+  const [heldViewOrder, setHeldViewOrder] = useState<string[] | null>(null);
+  const viewList = heldViewOrder ? inOrder(answeredViews, heldViewOrder) : answeredViews;
+  const viewIds = answeredViews.map((v) => v.id).join(',');
+  useEffect(() => {
+    if (heldViewOrder && sameOrder(answeredViews, heldViewOrder)) setHeldViewOrder(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewIds, heldViewOrder]);
+  const [renamingView, setRenamingView] = useState<string | null>(null);
+  const [pendingViewDelete, setPendingViewDelete] = useState<NotebookView | null>(null);
+  /*
+   * A view's name button gets focus back once its rename field closes, by Rename, Cancel
+   * or Escape: the field took the button's place, so the button is a new element by then
+   * and nothing else focuses it. The list's own rename and Save view do the same; without
+   * it the keyboard and a screen reader were dropped on the page's body.
+   */
+  const viewNameButtons = useRef(new Map<string, HTMLButtonElement>());
+  const refocusView = useRef<string | null>(null);
+  const closeViewRename = (id: string) => {
+    refocusView.current = id;
+    setRenamingView(null);
+  };
+  useEffect(() => {
+    const id = refocusView.current;
+    if (renamingView !== null || id === null) return;
+    refocusView.current = null;
+    viewNameButtons.current.get(id)?.focus();
+  }, [renamingView]);
+
+  /** A view's row moves one place; the store shifts its neighbours to make room. */
+  function moveView(index: number, by: -1 | 1) {
+    const target = index + by;
+    if (target < 0 || target >= viewList.length) return;
+    const next = [...viewList];
+    [next[index], next[target]] = [next[target]!, next[index]!];
+    setHeldViewOrder(next.map((v) => v.id));
+    void run(async () => {
+      try {
+        await actions.updateView(viewList[index]!.id, { position: target });
+      } catch (err) {
+        setHeldViewOrder(null);
+        throw err;
+      }
+    });
+  }
+
   return (
     <div className="panel notebook-edit">
       <div className="panel-head">
@@ -1029,6 +1085,128 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
         </p>
       </section>
 
+      {/*
+          The notebook's saved views: their order in the rail, their names, and the way to
+          delete one. Between the fields and Keep offline, since a view is made of the
+          fields' filters and is part of what the notebook is, where keeping it offline is
+          about this device. Made from the list rather than here: a view is the list the
+          way someone left it, and this page has no list to leave.
+
+          The name renames, as a field's does; Delete confirms, naming the view, and says
+          the notes stay. The arrows are the fields' arrows, for the fields' reasons.
+      */}
+      <section className="notebook-section">
+        <h3 className="notebook-section-head">Views</h3>
+
+        <ul className="notebook-admin view-admin">
+          {viewList.map((v, index) => (
+            <li key={v.id}>
+              {renamingView === v.id ? (
+                <ViewNameField
+                  initial={v.name}
+                  label={`New name for ${v.name}`}
+                  commitLabel="Rename"
+                  className="view-admin-rename"
+                  onCommit={async (name) => {
+                    await actions.updateView(v.id, { name });
+                    closeViewRename(v.id);
+                    onChanged();
+                  }}
+                  onCancel={() => closeViewRename(v.id)}
+                />
+              ) : (
+                <button
+                  ref={(el) => {
+                    if (el) viewNameButtons.current.set(v.id, el);
+                    else viewNameButtons.current.delete(v.id);
+                  }}
+                  type="button"
+                  className="notebook-admin-name"
+                  data-tip="Rename"
+                  disabled={busy}
+                  onClick={() => {
+                    setPendingViewDelete(null);
+                    setRenamingView(v.id);
+                  }}
+                >
+                  <ViewRowIcon />
+                  <span className="view-admin-name" title={v.name}>
+                    {v.name}
+                  </span>
+                </button>
+              )}
+
+              {renamingView !== v.id && (
+                <span className="notebook-admin-actions">
+                  <Button
+                    variant="quiet"
+                    size="small"
+                    aria-label={`Move ${v.name} up`}
+                    data-tip="Move up"
+                    disabled={busy || index === 0}
+                    onClick={() => moveView(index, -1)}
+                  >
+                    <MoveUpIcon />
+                  </Button>
+                  <Button
+                    variant="quiet"
+                    size="small"
+                    aria-label={`Move ${v.name} down`}
+                    data-tip="Move down"
+                    disabled={busy || index === viewList.length - 1}
+                    onClick={() => moveView(index, 1)}
+                  >
+                    <MoveDownIcon />
+                  </Button>
+                  <Button
+                    variant="quiet"
+                    tone="danger"
+                    size="small"
+                    aria-label={`Delete ${v.name}`}
+                    disabled={busy}
+                    onClick={() => {
+                      setRenamingView(null);
+                      setPendingViewDelete(v);
+                    }}
+                  >
+                    Delete
+                  </Button>
+                </span>
+              )}
+            </li>
+          ))}
+
+          {/* The list it points at is one click away, so the words are the way there. */}
+          {viewList.length === 0 && allViews.isSuccess && (
+            <li className="muted small">
+              No views yet. Save one from{' '}
+              {notebook ? (
+                <Link to="/notes" search={{ notebook: notebook.name }}>
+                  the notebook's list
+                </Link>
+              ) : (
+                "the notebook's list"
+              )}
+              .
+            </li>
+          )}
+        </ul>
+
+        {pendingViewDelete && (
+          <DeleteViewConfirm
+            name={pendingViewDelete.name}
+            busy={busy}
+            onCancel={() => setPendingViewDelete(null)}
+            onConfirm={() =>
+              run(async () => {
+                await actions.deleteView(pendingViewDelete.id);
+                setPendingViewDelete(null);
+              })
+            }
+          />
+        )}
+      </section>
+
       {/* Between the fields and the deletion: it is about this notebook on this device, not
           about what the notebook is, so it comes after everything that is, and before the
           one section nobody should pass on the way to another. Draws nothing where files
@@ -1263,13 +1441,13 @@ function CurrencyPicker({
 }
 
 /** `fields` in the order `ids` names; a field `ids` does not name (one just added) goes last. */
-function inOrder(fields: FieldDef[], ids: string[]): FieldDef[] {
+function inOrder<T extends { id: string }>(fields: T[], ids: string[]): T[] {
   const rank = new Map(ids.map((id, i) => [id, i]));
   return [...fields].sort((a, b) => (rank.get(a.id) ?? ids.length) - (rank.get(b.id) ?? ids.length));
 }
 
 /** Whether `fields` already stand in `ids`' order, ignoring ids no longer among them. */
-function sameOrder(fields: FieldDef[], ids: string[]): boolean {
+function sameOrder(fields: { id: string }[], ids: string[]): boolean {
   const present = new Set(fields.map((f) => f.id));
   const wanted = ids.filter((id) => present.has(id));
   return wanted.length === fields.length && wanted.every((id, i) => fields[i]!.id === id);

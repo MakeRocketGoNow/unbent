@@ -28,7 +28,7 @@ async function library(notes: FeedNote[], attachments: FeedAttachment[] = []) {
   const index = new SearchIndex(await openTestSearchDb());
   const sync = createSearchSync({
     index,
-    snapshot: () => ({ notes: lib.notes.values(), notebooks: lib.notebooks.values(), tags: lib.tags.values(), attachments: lib.attachments.values() }),
+    snapshot: () => ({ notes: lib.notes.values(), notebooks: lib.notebooks.values(), tags: lib.tags.values(), attachments: lib.attachments.values(), views: [] }),
     settled: () => true,
     leading: () => true,
     kept: async () => [],

@@ -159,6 +159,23 @@ describe('NotebookNav', () => {
   });
 
   /*
+   * A date range a saved view put there is the view's, not how the person is looking:
+   * the notebook's row under an open view is the way back to the whole notebook.
+   */
+  it("drops an open view's date range on the way to a place, and keeps a range with no view open", async () => {
+    localStorage.clear();
+    const { findByText, history } = harness({ notebook: undefined });
+    await history.push('/notes?notebook=Coupons&saved=11111111-1111-4111-8111-111111111111&from=2024-01-01');
+    fireEvent.click(await findByText('Podcast Bookmarks'));
+    await waitFor(() => {
+      const href = history.location.href;
+      expect(href).toContain('Podcast');
+      expect(href).not.toContain('saved=');
+      expect(href).not.toContain('from=');
+    });
+  });
+
+  /*
    * Each place opens in the order it was last left in: the order that suited the place
    * being left says nothing about the one being entered.
    */
@@ -359,5 +376,87 @@ describe('NotebookNav', () => {
     const edit = await findByText('Edit');
     expect(edit.tagName).toBe('A');
     expect(edit.getAttribute('href')).toBe('/settings/notebooks');
+  });
+  describe('saved views', () => {
+    const V1 = '11111111-1111-4111-8111-111111111111';
+    const V2 = '22222222-2222-4222-8222-222222222222';
+    const V3 = '33333333-3333-4333-8333-333333333333';
+    const VIEWS = [
+      { id: V1, notebookId: '1', name: 'Business 2026', position: 0, query: { tag: ['Acme'], sort: 'title' as const, layout: 'table' as const }, updatedAt: 1 },
+      { id: V2, notebookId: '1', name: 'Expiring', position: 1, query: { from: '2026-01-01' }, updatedAt: 1 },
+      { id: V3, notebookId: '2', name: 'Favourites', position: 0, query: { tag: ['Starred'] }, updatedAt: 1 },
+    ];
+
+    /* The rail stays as short as the notebooks: only the one you are in opens out. */
+    it("lists a notebook's views under it only while it is where you are", async () => {
+      const { container, findByText } = harness({ views: VIEWS, notebook: 'coupons' });
+      await findByText('Business 2026');
+      expect(rows(container)).toEqual([
+        'All notes',
+        'Inbox4',
+        'Coupons5',
+        'Business 2026',
+        'Expiring',
+        'Podcast Bookmarks3',
+        'New notebook',
+        'Trash1',
+        'Settings',
+      ]);
+      cleanup();
+      const elsewhere = harness({ views: VIEWS });
+      await elsewhere.findByText('Coupons');
+      expect(elsewhere.queryByText('Business 2026')).toBeNull();
+      expect(elsewhere.queryByText('Favourites')).toBeNull();
+    });
+
+    /* A view is the whole address: its filters, its order, its layout, and its own id. */
+    it('links each view to the whole address it keeps', async () => {
+      const { findByRole, history } = harness({ views: VIEWS, notebook: 'Coupons' });
+      await history.push('/notes?notebook=Coupons&q=milk&from=2020-01-01');
+      fireEvent.click(await findByRole('link', { name: 'Business 2026' }));
+      await waitFor(() => {
+        const href = decodeURIComponent(history.location.href);
+        expect(href).toContain(`saved=${V1}`);
+        expect(href).toContain('notebook=Coupons');
+        expect(href).toContain('tag=["Acme"]');
+        expect(href).toContain('sort=title');
+        expect(href).toContain('view=table');
+        // Nothing of where the person was leaks in: a view is a whole list.
+        expect(href).not.toContain('milk');
+        expect(href).not.toContain('from=');
+      });
+    });
+
+    /* One place is current at a time: the open view, with its notebook as the parent. */
+    it('marks the open view as where you are, and its notebook as its parent', async () => {
+      const { findByRole } = harness({ views: VIEWS, notebook: 'Coupons', saved: V2 });
+      const view = await findByRole('link', { name: 'Expiring' });
+      expect(view.className).toContain('current');
+      expect(view.getAttribute('aria-current')).toBe('true');
+      expect((await findByRole('link', { name: 'Business 2026' })).className).not.toContain('current');
+      const notebook = await findByRole('link', { name: /^Coupons/ });
+      expect(notebook.className).not.toContain('current');
+      expect(notebook.getAttribute('aria-current')).toBeNull();
+      expect(notebook.className).toContain('drawer-parent');
+    });
+
+    /* A `saved` that names no view of this notebook is no view: the notebook is current. */
+    it('marks the notebook when the open id is not one of its views', async () => {
+      const { findByRole } = harness({ views: VIEWS, notebook: 'Coupons', saved: V3 });
+      const notebook = await findByRole('link', { name: /^Coupons/ });
+      expect(notebook.className).toContain('current');
+      expect(notebook.className).not.toContain('drawer-parent');
+    });
+
+    /* Leaving for another notebook leaves the view too. */
+    it('drops the open view when another notebook is picked', async () => {
+      const { findByText, history } = harness({ views: VIEWS, notebook: 'Coupons', saved: V1 });
+      await history.push(`/notes?notebook=Coupons&saved=${V1}`);
+      fireEvent.click(await findByText('Podcast Bookmarks'));
+      await waitFor(() => {
+        expect(history.location.href).toContain('Podcast');
+        expect(history.location.href).not.toContain('saved');
+      });
+    });
   });
 });

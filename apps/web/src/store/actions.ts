@@ -1,6 +1,6 @@
 import { IndexedDBAdapter, NonRetriableError, startOfflineExecutor, type OfflineExecutor, type OnlineDetector, type StorageAdapter } from '@tanstack/offline-transactions';
 import type { Transaction } from '@tanstack/db';
-import { FREE_NOTES, FREE_NOTES_FULL_CODE, MAX_ATTACHMENT_BYTES, PLAN_INACTIVE_CODE, STORAGE_FULL_CODE, filenameSchema, foldNoCase, type FeedNote, type FieldDef, type FieldValue, type Note, type NoteFieldValue, type NotebookDefinition, type RestoredNote } from '@unbent/shared';
+import { FREE_NOTES, FREE_NOTES_FULL_CODE, MAX_ATTACHMENT_BYTES, PLAN_INACTIVE_CODE, STORAGE_FULL_CODE, filenameSchema, foldNoCase, type FeedNote, type FeedView, type FieldDef, type FieldValue, type Note, type NoteFieldValue, type NotebookDefinition, type NotebookView, type RestoredNote, type CreateView, type UpdateView } from '@unbent/shared';
 import * as api from '../notes-api.js';
 import { ApiError, errorText, isNoteChanged, isOfflineError, NoteChangedError } from '../notes-api.js';
 import { offlineNow, recheck, subscribeConnectivity } from '../connectivity.js';
@@ -10,12 +10,13 @@ import type { Collections, LocalNote } from './collections.js';
 import { askToPersist, filesSupported, readFile, removeFile, writeFile } from './files.js';
 import { FILES_CACHE, FILES_CHANGED, MAX_KEPT_FILE } from '../sw/routes.js';
 import { isWhole, refusedForGood, type FeedEngine } from './feed.js';
-import { CallUnsettledError, LibraryMovedError, SEND_ONCE } from './client-library.js';
+import { CallUnsettledError, LibraryMovedError, SEND_ONCE, type Rows } from './client-library.js';
 import { onPlanActive, onPlanRead, planAccepted, planFree, planFreeRestored, planFreed, planHeld, planIs, planLapsed, planRefused, readOnlyKnown } from '../plan-refused.js';
 import { FreeNotesFullError } from '../free-notes.js';
 import { onStoreFreed, onStoreFull, storeAccepted, storeFreed, storeFull, storeFullMessage, storeRefused, storeRefusedFor, type StoreRefusal } from '../store-full.js';
 import { behindDeploy, heldForReload, onCaughtUp } from '../update-notice.js';
 import { outboxLeaderName, outboxName } from './names.js';
+import { LIBRARY_ROOTS, VIEW_ROOTS } from './library-roots.js';
 import { OutboxLeader } from './leader.js';
 
 /**
@@ -27,10 +28,10 @@ import { OutboxLeader } from './leader.js';
  * to the account's `pending` shelf, a row for it at once, and its upload an entry here,
  * behind whatever its note already has waiting.
  *
- * Otherwise only note writes go this way. Notebook, tag and field management (renames, merges,
- * deletes, field definitions, option removal, conversions) are settings-page actions
- * with uniqueness and conversion rules the server decides, and stay direct calls that
- * need a connection; the feed delivers what they did to every device.
+ * Otherwise only note writes go this way. Notebook, tag, field and saved view management
+ * (renames, merges, deletes, field definitions, option removal, conversions, a view saved
+ * or reordered) are actions with uniqueness and conversion rules the server decides, and
+ * stay direct calls that need a connection; the feed delivers what they did to every device.
  *
  * The outbox (`@tanstack/offline-transactions`) is one queue, replayed in order, one
  * entry at a time, with a growing wait between attempts. Two rules keep the queue from
@@ -1141,7 +1142,7 @@ function connectivityDetector(): OnlineDetector {
 }
 
 function snapshot(lib: Collections): Snapshot {
-  return { notes: lib.notes.values(), notebooks: lib.notebooks.values(), tags: lib.tags.values(), attachments: lib.attachments.values() };
+  return { notes: lib.notes.values(), notebooks: lib.notebooks.values(), tags: lib.tags.values(), attachments: lib.attachments.values(), views: lib.views.values() };
 }
 
 // --- The actions ----------------------------------------------------------------------
@@ -1250,7 +1251,7 @@ export function onUploaded(listener: (noteId: string, uploaded: api.UploadedFile
   return () => void uploadListeners.delete(listener);
 }
 
-const directListeners = new Set<() => void>();
+const directListeners = new Set<(roots: ReadonlySet<string>) => void>();
 
 /**
  * Hears every write made as a request rather than queued: on a device with no library,
@@ -1258,8 +1259,14 @@ const directListeners = new Set<() => void>();
  * is one; with none, nothing else tells the list that a note was trashed or a title
  * changed, so the query bridge listens here as well and refetches what a write reaches
  * (review of #232, where the list kept a trashed note on such a device).
+ *
+ * With the query roots the write reaches, as the library's own change notices carry
+ * them: a note's write reaches every list (`LIBRARY_ROOTS`), a view's only the views
+ * (`VIEW_ROOTS`). A view's write refetched every notes list, count and tag query too,
+ * which on a device with no library was a burst of requests for each arrow pressed on a
+ * notebook's settings page.
  */
-export function onDirectWrite(listener: () => void): () => void {
+export function onDirectWrite(listener: (roots: ReadonlySet<string>) => void): () => void {
   directListeners.add(listener);
   return () => void directListeners.delete(listener);
 }
@@ -1353,7 +1360,7 @@ async function pulled<T>(write: Promise<T>, local: LocalWrite, frees = false): P
     planFreed();
   }
   aboutToWrite(local);
-  directListeners.forEach((l) => l());
+  directListeners.forEach((l) => l(LIBRARY_ROOTS));
   const lib = await resolve();
   if (lib) void lib.engine.pull();
   return out;
@@ -1788,7 +1795,7 @@ export async function restoreRevision(noteId: string, revisionId: number, opts: 
   const restored = await api.restoreRevision(noteId, revisionId, opts);
   // A version that was already the note changed nothing: no write to tell anyone about.
   if (restored.kept === null) return restored;
-  directListeners.forEach((l) => l());
+  directListeners.forEach((l) => l(LIBRARY_ROOTS));
   if (lib) await lib.outbox.take(restored.note);
   return restored;
 }
@@ -2311,11 +2318,98 @@ export async function applyNotebookTemplate(
   if (far) return far('applyNotebookTemplate', [definition, opts]);
   const out = await api.importNotebook(definition, opts);
   if (out === 'taken') return out;
-  directListeners.forEach((l) => l());
+  directListeners.forEach((l) => l(LIBRARY_ROOTS));
   const lib = await resolve();
   if (lib && isWhole(lib.engine.state)) await lib.engine.pull();
   else if (lib) void lib.engine.pull();
   return out;
+}
+
+/**
+ * How a view saved in a tab that does not hold the library waits for its row; set by
+ * `store/library.ts`. Resolves once `until` holds of the views this tab reads, or after
+ * `ms`, and at once in a tab with no library or one that holds it.
+ */
+let mirrored: (until: (views: Rows<FeedView>) => boolean, ms: number) => Promise<void> = async () => {};
+
+export function provideMirrorWait(fn: typeof mirrored): void {
+  mirrored = fn;
+}
+
+/**
+ * How long a view action waits for its row to land in this tab's library. In a client
+ * tab the holder pulls on the socket's nudge, which follows the write by well under a
+ * second; in the holding tab the pull is this tab's own, and can run long (a device
+ * catching up after a large import elsewhere has many pages to follow, and a nudge
+ * during a pull queues another). Past this the action returns all the same, since the
+ * view is saved and the rail lists it when the row lands (the page puts the server's
+ * answer in its cache meanwhile, `holdView`), and a person must not be kept waiting on
+ * a Save button for the rest of the feed.
+ */
+export const VIEW_LANDED_MS = 3000;
+
+/**
+ * A view write has been answered: waits until this tab's library holds what it did, so
+ * the caller can open the view's address and find the rail already listing it.
+ *
+ * The tab that holds the library pulls, as `applyNotebookTemplate` does: awaited while
+ * the library is whole and the row is not there yet, bounded by `VIEW_LANDED_MS` (a
+ * pull follows every page there is, which is not this write's to wait for), and only
+ * asked for while a walk is under way (the walk ends by following the feed past this
+ * write). A client tab cannot pull: its rows are the holder's, which pulls when the
+ * socket says the feed moved, so it watches its own rows for the change instead, under
+ * the same bound. Not forwarded to the holder as the note writes are: a view write is a
+ * request either way, any tab can make it, and what a client needs from the holder is
+ * only the row, which comes anyway.
+ */
+async function viewLanded(until: (views: Rows<FeedView>) => boolean): Promise<void> {
+  directListeners.forEach((l) => l(VIEW_ROOTS));
+  const lib = await resolve();
+  if (!lib) return mirrored(until, VIEW_LANDED_MS);
+  const pulled = lib.engine.pull();
+  if (!isWhole(lib.engine.state) || until(lib.views)) return;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  await Promise.race([pulled, new Promise<void>((done) => (timer = setTimeout(done, VIEW_LANDED_MS)))]);
+  clearTimeout(timer);
+}
+
+/** A row of the view at least as new as the server's answer: the write, or a later one. */
+const holdsView = (view: NotebookView) => (views: Rows<FeedView>) => (views.get(view.id)?.updatedAt ?? -Infinity) >= view.updatedAt;
+
+/**
+ * Saves a notebook's list as a view, and returns once the library holds it. Throws an
+ * `ApiError` with status 409 when the notebook has a view of that name already.
+ */
+export async function createView(body: CreateView): Promise<NotebookView> {
+  const view = await api.createView(body);
+  await viewLanded(holdsView(view));
+  return view;
+}
+
+/**
+ * Renames a view, changes what it keeps, or moves it among its notebook's views, and
+ * returns once the library holds the change. A move shifts its neighbours too; they come
+ * in the same page of the feed as the view itself.
+ */
+export async function updateView(id: string, patch: UpdateView): Promise<NotebookView> {
+  const view = await api.updateView(id, patch);
+  await viewLanded(holdsView(view));
+  return view;
+}
+
+/**
+ * Deletes a view, and returns once the library no longer holds it. A view another device
+ * deleted first (a 404) is the outcome asked for, not a failure: the tombstone is on its
+ * way, and the person would otherwise be told a view they can still see could not be
+ * deleted.
+ */
+export async function deleteView(id: string): Promise<void> {
+  try {
+    await api.deleteView(id);
+  } catch (err) {
+    if (!(err instanceof ApiError && err.status === 404)) throw err;
+  }
+  await viewLanded((views) => !views.has(id));
 }
 
 /*

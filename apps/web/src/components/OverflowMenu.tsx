@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode, type Ref } from 'react';
 import { Link } from '@tanstack/react-router';
 
 export interface OverflowItem {
@@ -116,6 +116,8 @@ interface OverflowMenuProps {
   disabled?: boolean;
   /** The trigger's tooltip (`tooltips.ts`) and accessible description, as on `Button`. */
   tip?: string | undefined;
+  /** The trigger, for a caller that hands focus back to it after what an item opened. */
+  triggerRef?: Ref<HTMLButtonElement>;
 }
 
 export function OverflowMenu({
@@ -126,6 +128,7 @@ export function OverflowMenu({
   triggerClassName,
   disabled = false,
   tip,
+  triggerRef,
 }: OverflowMenuProps) {
   const [open, setOpen] = useState(false);
   const wrap = useRef<HTMLDivElement>(null);
@@ -159,6 +162,7 @@ export function OverflowMenu({
       }}
     >
       <button
+        ref={triggerRef}
         type="button"
         className={
           triggerClassName ? `overflow-trigger ${triggerClassName}` : 'overflow-trigger'

@@ -17,6 +17,11 @@ import { rememberSort } from '../notebook-sort.js';
 interface NotesSortProps {
   /** Where the list is, so the choice is remembered for this place; see `rememberSort`. */
   notebook?: string | undefined;
+  /**
+   * Whether a choice is remembered for the place at all. False inside a saved view, whose
+   * order is its own; see `remembersSort` in `NotesLayout`. Defaults to true.
+   */
+  remember?: boolean;
   sort: NoteSort | undefined;
   order: 'asc' | 'desc' | undefined;
   /** The custom field the list is sorted by instead, if any; see `sortLabel`. */
@@ -62,7 +67,7 @@ interface NotesSortProps {
  * column's whole problem was rows of controls above a list with no room left for notes.
  * Above the breakpoint the sheet is drawn as a panel beside the list (see `Sheet`).
  */
-export function NotesSort({ notebook, sort, order, sortField, fields = [], disabledReason }: NotesSortProps) {
+export function NotesSort({ notebook, remember = true, sort, order, sortField, fields = [], disabledReason }: NotesSortProps) {
   const navigate = useNavigate();
   const [picking, setPicking] = useState(false);
   const toggle = useRef<HTMLButtonElement>(null);
@@ -85,7 +90,7 @@ export function NotesSort({ notebook, sort, order, sortField, fields = [], disab
     order: 'asc' | 'desc' | undefined;
     sortField: string | undefined;
   }) => {
-    rememberSort(notebook, next);
+    if (remember) rememberSort(notebook, next);
     void navigate({ to: '/notes', search: (prev) => ({ ...prev, ...next }) });
     setPicking(false);
   };

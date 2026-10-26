@@ -3,6 +3,7 @@ import { runInDurableObject } from 'cloudflare:test';
 import { REVISIONS_KEPT, UNFILED, encodeCursor } from '@unbent/shared';
 import { beginDump } from '@unbent/api/lib/dump';
 import { DUMP_TABLES } from '@unbent/api/store/tables';
+import type { ViewsStore } from '@unbent/api/store/views';
 import { feedRows, feedSeq, freshStore } from './helpers.js';
 
 /**
@@ -1178,6 +1179,21 @@ describe('rows read on an archive-sized store', () => {
             );
           }
         }
+        // Four saved views in each notebook, more than an account keeps in practice, so a
+        // read of the views that walked anything but their own table, or of one notebook's
+        // that walked every view, would show.
+        for (let n = 0; n < 6; n++) {
+          for (let k = 0; k < 4; k++) {
+            sql.exec(
+              `INSERT INTO notebook_views (id, notebook_id, name, position, query, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, 1, 1)`,
+              `view-${n}-${k}`,
+              `nb${n}`,
+              `View ${k}`,
+              k,
+              JSON.stringify({ tag: ['common'], field: ['amount:gte:10'], sortField: 'amount', layout: 'table' }),
+            );
+          }
+        }
         // Two years of Auto-fill used every day, four rows a day (MAK-180): the year's read
         // must take this year's rows off the key and never last year's.
         const thisYear = new Date().getUTCFullYear();
@@ -1362,6 +1378,16 @@ describe('rows read on an archive-sized store', () => {
       await measure('save that makes a tag', () => stub.update('n00024', { tags: ['brand new'] })),
       await measure('option sort', () => stub.editFieldOptions('nb0', 'kind', { sort: 'alpha', pinLast: ['Other'] })),
       await measure('option rename', () => stub.editFieldOptions('nb0', 'kind', { rename: [{ from: 'Fuel', to: 'Petrol' }] })),
+      // Saved views (MAK-249): the account's list, the feed's read by id (private to the
+      // object, so reached inside it), and the writes, each of which reads one
+      // notebook's views and no other's.
+      await measure('views list', () => stub.listViews()),
+      await measure('views by id', () =>
+        runInDurableObject(stub, (instance) => (instance as unknown as { views: ViewsStore }).views.whole(['view-0-1', 'view-3-2', 'view-5-0'])),
+      ),
+      await measure('view create', () => stub.createView('nb2', 'Fresh view', { tag: ['rare'] })),
+      await measure('view move', () => stub.updateView('view-1-3', { position: 0 })),
+      await measure('view delete', () => stub.deleteView('view-4-0')),
     ];
     console.log(results.map((r) => `${r.label}: ${r.rowsRead} read, ${r.rowsWritten} written`).join('\n'));
     // The store's limit must not fire for an archive that only filed what it scanned:
@@ -1535,6 +1561,18 @@ describe('rows read on an archive-sized store', () => {
       'save on the free plan': 170,
       // The counts row alone: refused before anything of the note is read (1).
       'create refused by the free plan': 3,
+      // Every view of the account and nothing else, two rows a view with the sort: 48 for
+      // the twenty-four here (measured 2026-10-25). An account has a handful.
+      'views list': 60,
+      // Three views by primary key, three rows each (9).
+      'views by id': 12,
+      // The notebook's row, its views' maximum position off the index, the feed (7).
+      'view create': 15,
+      // The view, its notebook's four views off the index and the four rewritten, the
+      // feed (22). Grows with the notebook's views, never the account's.
+      'view move': 30,
+      // The row, the views after it in its notebook moved up one, the feed (22).
+      'view delete': 30,
     };
     for (const r of results) {
       if (r.label === 'dump') continue;

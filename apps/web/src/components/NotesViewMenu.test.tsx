@@ -13,16 +13,16 @@ describe('NotesViewMenu', () => {
   it('names the view on screen, and is a single control until opened', () => {
     const { rerender } = render(<NotesViewMenu value="list" onChange={() => {}} />);
     expect(screen.getAllByRole('button')).toHaveLength(1);
-    expect(screen.getByRole('button', { name: 'Showing as a list' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Layout, showing as a list' })).toBeTruthy();
     rerender(<NotesViewMenu value="cards" onChange={() => {}} />);
-    expect(screen.getByRole('button', { name: 'Showing as cards' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Layout, showing as cards' })).toBeTruthy();
     rerender(<NotesViewMenu value="table" onChange={() => {}} />);
-    expect(screen.getByRole('button', { name: 'Showing as a table' }).dataset.tip).toBe('Change view');
+    expect(screen.getByRole('button', { name: 'Layout, showing as a table' }).dataset.tip).toBe('Change layout');
   });
 
   it('offers the three views by name, the current one marked', () => {
     render(<NotesViewMenu value="cards" onChange={() => {}} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Showing as cards' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Layout, showing as cards' }));
     const list = screen.getByRole('button', { name: 'List' });
     const cards = screen.getByRole('button', { name: 'Cards' });
     const table = screen.getByRole('button', { name: 'Table' });
@@ -34,11 +34,11 @@ describe('NotesViewMenu', () => {
   it('switches to the view picked, and does nothing for the one on screen', () => {
     const onChange = vi.fn();
     render(<NotesViewMenu value="list" onChange={onChange} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Showing as a list' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Layout, showing as a list' }));
     fireEvent.click(screen.getByRole('button', { name: 'List' }));
     expect(onChange).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Showing as a list' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Layout, showing as a list' }));
     fireEvent.click(screen.getByRole('button', { name: 'Cards' }));
     expect(onChange).toHaveBeenCalledWith('cards');
   });
@@ -55,7 +55,7 @@ describe('NotesViewMenu', () => {
         tableDisabledReason="Choose a notebook to see its fields as columns"
       />,
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Showing as a list' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Layout, showing as a list' }));
     expect(screen.getByRole('button', { name: 'List' }).getAttribute('aria-pressed')).toBe('true');
     fireEvent.click(screen.getByRole('button', { name: 'List' }));
     expect(onChange).toHaveBeenCalledWith('list');
@@ -73,7 +73,7 @@ describe('NotesViewMenu', () => {
         tableDisabledReason="Choose a notebook to see its fields as columns"
       />,
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Showing as a list' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Layout, showing as a list' }));
     const table = screen.getByRole('button', { name: /^Table/ }) as HTMLButtonElement;
     expect(table.disabled).toBe(true);
     expect(table.textContent).toContain('Choose a notebook to see its fields as columns');

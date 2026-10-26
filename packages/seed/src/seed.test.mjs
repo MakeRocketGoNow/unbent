@@ -8,7 +8,7 @@
 import { describe, expect, it } from 'vitest';
 import { makePdf, makeReceiptPng } from './files.mjs';
 import { seedNotes } from './load.mjs';
-import { NOTEBOOKS } from './notebooks.mjs';
+import { NOTEBOOKS, VIEWS } from './notebooks.mjs';
 
 const FIELD_TYPES = ['text', 'number', 'date', 'checkbox', 'url', 'email', 'phone', 'select', 'multiselect'];
 
@@ -63,6 +63,25 @@ describe('the seed', () => {
           default:
             expect(typeof value, where).toBe('string');
         }
+      }
+    }
+  });
+
+  it('saves views only over notebooks it defines, on fields they have, with values their options allow', () => {
+    for (const view of VIEWS) {
+      const notebook = NOTEBOOKS.find((n) => n.name === view.notebook);
+      expect(notebook, view.name).toBeDefined();
+      const defs = new Map(notebook.fields.map((f) => [f.name, f]));
+      for (const [name, op, value] of view.query.field ?? []) {
+        const def = defs.get(name);
+        expect(def, `${view.name}: ${name}`).toBeDefined();
+        expect(['eq', 'ne', 'gte', 'lte', 'set', 'empty'], `${view.name}: ${name}`).toContain(op);
+        if (def.type === 'select' || def.type === 'multiselect') expect(def.options, `${view.name}: ${name}`).toContain(value);
+        if (def.type === 'checkbox') expect(['true', 'false'], `${view.name}: ${name}`).toContain(value);
+      }
+      if (view.query.sortField) expect(defs.has(view.query.sortField), `${view.name}: sort`).toBe(true);
+      for (const tag of view.query.tag ?? []) {
+        expect(notes.some((n) => n.notebook === view.notebook && (n.tags ?? []).includes(tag)), `${view.name}: ${tag}`).toBe(true);
       }
     }
   });

@@ -1,19 +1,20 @@
 import { z } from 'zod';
 import type { FieldDef } from './fields.js';
 import type { AttachmentInfo, Note, NotebookSummary } from './schemas.js';
+import type { NotebookView } from './views.js';
 
 /**
  * The change feed: what `GET /api/changes` and `GET /api/changes/snapshot` answer.
  *
- * Written from the reader's side. A client keeps four collections (notes, notebooks,
- * tags, files) and applies a page by upserting each row it carries and deleting each
- * tombstone; the shapes here are the rows those collections hold, which is why a note
+ * Written from the reader's side. A client keeps five collections (notes, notebooks,
+ * tags, files, views) and applies a page by upserting each row it carries and deleting
+ * each tombstone; the shapes here are the rows those collections hold, which is why a note
  * comes whole (body, tags, fields, files) rather than as the list's excerpt. The server
  * side is `UserStore.changesSince` and `snapshotPage`.
  */
 
 /** What the feed names. A note covers its tags, fields and files; a notebook its field definitions. */
-export type FeedEntity = 'note' | 'notebook' | 'tag' | 'attachment';
+export type FeedEntity = 'note' | 'notebook' | 'tag' | 'attachment' | 'view';
 
 /**
  * A note as the feed carries it: the note, trashed or not, with its files and its tags by
@@ -69,7 +70,13 @@ export interface FeedAttachment extends AttachmentInfo {
   createdAt: number;
 }
 
-/** Something gone for good: a purged note, a deleted notebook or tag, a removed file. */
+/**
+ * A saved view, whole: the row is small and a change to its query is the whole row again.
+ * A notebook deleted tombstones each of its views, so a client never derives that.
+ */
+export type FeedView = NotebookView;
+
+/** Something gone for good: a purged note, a deleted notebook, tag or view, a removed file. */
 export interface FeedTombstone {
   entity: FeedEntity;
   id: string;
@@ -94,6 +101,12 @@ export interface FeedPage {
   notebooks: FeedNotebook[];
   tags: FeedTag[];
   attachments: FeedAttachment[];
+  /**
+   * Always sent, `[]` when none changed. Absent only from a Worker built before views (a
+   * rollback, with the views still in the store), which a client reads as view rows it
+   * has passed over: its views are not whole from there, and it asks for them (`FeedEngine`).
+   */
+  views?: FeedView[];
   tombstones: FeedTombstone[];
 }
 
@@ -124,6 +137,11 @@ export interface SnapshotPage {
   /** On the first page only: the rest of the library, and how many notes the walk will visit. */
   notebooks?: FeedNotebook[];
   tags?: FeedTag[];
+  /**
+   * On the first page too, `[]` when there are none. Absent only from a Worker built
+   * before views, which a client reads as a walk that did not see them (`FeedEngine`).
+   */
+  views?: FeedView[];
   total?: number;
 }
 

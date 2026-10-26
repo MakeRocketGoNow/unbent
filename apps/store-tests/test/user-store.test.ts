@@ -17,14 +17,14 @@ describe('UserStore lifecycle', () => {
 
     const stats = await stub.stats();
     expect(stats.userId).toBe(userId);
-    expect(stats.migrations).toEqual(['0001-init', '0002-changes', '0003-revisions', '0004-revision-props', '0005-deleted-blobs', '0006-tags-nocase', '0007-llm-usage', '0008-attachment-bytes', '0009-colours']);
+    expect(stats.migrations).toEqual(['0001-init', '0002-changes', '0003-revisions', '0004-revision-props', '0005-deleted-blobs', '0006-tags-nocase', '0007-llm-usage', '0008-attachment-bytes', '0009-colours', '0010-notebook-views']);
     expect(stats.counts.notes).toBe(0);
 
     // A second wake of the same object applies nothing and reads the same schema. The
     // `_meta.user_id` row written on the first wake is what a mismatch is checked against.
     await evictDurableObject(stub);
     const again = env.USER_STORE.get(env.USER_STORE.idFromName(userId));
-    expect((await again.stats()).migrations).toEqual(['0001-init', '0002-changes', '0003-revisions', '0004-revision-props', '0005-deleted-blobs', '0006-tags-nocase', '0007-llm-usage', '0008-attachment-bytes', '0009-colours']);
+    expect((await again.stats()).migrations).toEqual(['0001-init', '0002-changes', '0003-revisions', '0004-revision-props', '0005-deleted-blobs', '0006-tags-nocase', '0007-llm-usage', '0008-attachment-bytes', '0009-colours', '0010-notebook-views']);
     const meta = await runInDurableObject(again, (_i, state) =>
       state.storage.sql.exec<{ value: string }>(`SELECT value FROM _meta WHERE key = 'user_id'`).toArray(),
     );
@@ -53,13 +53,14 @@ describe('UserStore lifecycle', () => {
       sql.exec(`ALTER TABLE note_counts DROP COLUMN attachment_bytes`);
       sql.exec(`ALTER TABLE tags DROP COLUMN color`);
       sql.exec(`ALTER TABLE notebook_fields DROP COLUMN option_colors`);
-      sql.exec(`DELETE FROM _migrations WHERE name IN ('0002-changes', '0003-revisions', '0004-revision-props', '0005-deleted-blobs', '0006-tags-nocase', '0007-llm-usage', '0008-attachment-bytes', '0009-colours')`);
+      sql.exec(`DROP TABLE notebook_views`);
+      sql.exec(`DELETE FROM _migrations WHERE name IN ('0002-changes', '0003-revisions', '0004-revision-props', '0005-deleted-blobs', '0006-tags-nocase', '0007-llm-usage', '0008-attachment-bytes', '0009-colours', '0010-notebook-views')`);
       sql.exec(`DELETE FROM _meta WHERE key IN ('seq', 'feed_epoch')`);
     });
     await evictDurableObject(stub);
     const woke = env.USER_STORE.get(env.USER_STORE.idFromName(userId));
     const stats = await woke.stats();
-    expect(stats.migrations).toEqual(['0001-init', '0002-changes', '0003-revisions', '0004-revision-props', '0005-deleted-blobs', '0006-tags-nocase', '0007-llm-usage', '0008-attachment-bytes', '0009-colours']);
+    expect(stats.migrations).toEqual(['0001-init', '0002-changes', '0003-revisions', '0004-revision-props', '0005-deleted-blobs', '0006-tags-nocase', '0007-llm-usage', '0008-attachment-bytes', '0009-colours', '0010-notebook-views']);
     expect(stats.counts.notes).toBe(1);
     expect(stats.counts.changes).toBe(0);
     const meta = await runInDurableObject(woke, (_i, state) =>
@@ -86,7 +87,8 @@ describe('UserStore lifecycle', () => {
       state.storage.sql.exec(`ALTER TABLE note_counts DROP COLUMN attachment_bytes`);
       state.storage.sql.exec(`ALTER TABLE tags DROP COLUMN color`);
       state.storage.sql.exec(`ALTER TABLE notebook_fields DROP COLUMN option_colors`);
-      state.storage.sql.exec(`DELETE FROM _migrations WHERE name IN ('0003-revisions', '0004-revision-props', '0005-deleted-blobs', '0006-tags-nocase', '0007-llm-usage', '0008-attachment-bytes', '0009-colours')`);
+      state.storage.sql.exec(`DROP TABLE notebook_views`);
+      state.storage.sql.exec(`DELETE FROM _migrations WHERE name IN ('0003-revisions', '0004-revision-props', '0005-deleted-blobs', '0006-tags-nocase', '0007-llm-usage', '0008-attachment-bytes', '0009-colours', '0010-notebook-views')`);
     });
     await evictDurableObject(stub);
     const woke = env.USER_STORE.get(env.USER_STORE.idFromName(userId));
@@ -114,7 +116,8 @@ describe('UserStore lifecycle', () => {
       state.storage.sql.exec(`ALTER TABLE note_counts DROP COLUMN attachment_bytes`);
       state.storage.sql.exec(`ALTER TABLE tags DROP COLUMN color`);
       state.storage.sql.exec(`ALTER TABLE notebook_fields DROP COLUMN option_colors`);
-      state.storage.sql.exec(`DELETE FROM _migrations WHERE name IN ('0004-revision-props', '0005-deleted-blobs', '0006-tags-nocase', '0007-llm-usage', '0008-attachment-bytes', '0009-colours')`);
+      state.storage.sql.exec(`DROP TABLE notebook_views`);
+      state.storage.sql.exec(`DELETE FROM _migrations WHERE name IN ('0004-revision-props', '0005-deleted-blobs', '0006-tags-nocase', '0007-llm-usage', '0008-attachment-bytes', '0009-colours', '0010-notebook-views')`);
     });
     await evictDurableObject(stub);
     const woke = env.USER_STORE.get(env.USER_STORE.idFromName(userId));
@@ -150,7 +153,8 @@ describe('UserStore lifecycle', () => {
       sql.exec(`ALTER TABLE note_counts DROP COLUMN attachment_bytes`);
       sql.exec(`ALTER TABLE tags DROP COLUMN color`);
       sql.exec(`ALTER TABLE notebook_fields DROP COLUMN option_colors`);
-      sql.exec(`DELETE FROM _migrations WHERE name IN ('0006-tags-nocase', '0007-llm-usage', '0008-attachment-bytes', '0009-colours')`);
+      sql.exec(`DROP TABLE notebook_views`);
+      sql.exec(`DELETE FROM _migrations WHERE name IN ('0006-tags-nocase', '0007-llm-usage', '0008-attachment-bytes', '0009-colours', '0010-notebook-views')`);
       sql.exec(
         `INSERT INTO tags (id, name) VALUES ('t-receipts', 'receipts'), ('t-Receipts', 'Receipts'),
                                             ('t-RECEIPTS', 'RECEIPTS'), ('t-tax', 'tax'), ('t-Tax', 'Tax'),
@@ -292,7 +296,7 @@ describe('UserStore lifecycle', () => {
     // Reached again on the same instance: schema back, still this user's, empty.
     expect(await stub.schemaSql()).toEqual(expect.arrayContaining([expect.stringContaining('CREATE TABLE notes')]));
     const rebuilt = await stub.stats();
-    expect(rebuilt).toMatchObject({ userId, wiped: false, migrations: ['0001-init', '0002-changes', '0003-revisions', '0004-revision-props', '0005-deleted-blobs', '0006-tags-nocase', '0007-llm-usage', '0008-attachment-bytes', '0009-colours'] });
+    expect(rebuilt).toMatchObject({ userId, wiped: false, migrations: ['0001-init', '0002-changes', '0003-revisions', '0004-revision-props', '0005-deleted-blobs', '0006-tags-nocase', '0007-llm-usage', '0008-attachment-bytes', '0009-colours', '0010-notebook-views'] });
     expect(rebuilt.counts.notes).toBe(0);
 
     // And after an eviction the object wakes as it was left (empty, no schema, and
@@ -302,7 +306,7 @@ describe('UserStore lifecycle', () => {
     const woke = env.USER_STORE.get(env.USER_STORE.idFromName(userId));
     expect(await woke.stats()).toMatchObject({ wiped: true, migrations: [] });
     expect(await woke.schemaSql()).toEqual(expect.arrayContaining([expect.stringContaining('CREATE TABLE notes')]));
-    expect(await woke.stats()).toMatchObject({ wiped: false, migrations: ['0001-init', '0002-changes', '0003-revisions', '0004-revision-props', '0005-deleted-blobs', '0006-tags-nocase', '0007-llm-usage', '0008-attachment-bytes', '0009-colours'] });
+    expect(await woke.stats()).toMatchObject({ wiped: false, migrations: ['0001-init', '0002-changes', '0003-revisions', '0004-revision-props', '0005-deleted-blobs', '0006-tags-nocase', '0007-llm-usage', '0008-attachment-bytes', '0009-colours', '0010-notebook-views'] });
   });
 
   it('dumpSlice writes each row as one INSERT, in rowid order, without the paging column', async () => {

@@ -6373,6 +6373,28 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 }
 
 /*
+   A notebook's saved views on its settings page: the notebook list's rows, a name and an
+   order. A view's name is anyone's length, so the name yields and ellipsises rather than
+   pushing the arrows and Delete off the row; the rename field takes the whole row while
+   it is open, with its own Rename and Cancel, as the row's actions step aside.
+*/
+.view-admin .notebook-admin-name { min-width: 0; }
+
+.view-admin-name {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.view-admin .notebook-admin-name > svg {
+  flex: none;
+  color: var(--muted);
+}
+
+.view-name.view-admin-rename { flex: 1 1 auto; }
+
+/*
    A notebook's field page: the notebook list's rows, each with a type and an order.
 
    The rows wrap so a select field's options can sit on a second line under the name,
@@ -7499,6 +7521,43 @@ button.settings-nav-item {
   gap: 0.1rem;
 }
 
+/*
+   A notebook's saved views, under its row while it is where you are (`NotebookNav`).
+
+   A view's row is the notebook rows' own shape, stepped in: its pill spans the column
+   like every other row's, and its bookmark and name start a little in from the
+   notebook's glyph, so the rows read as belonging to the one above, the way a folder's
+   contents do in a sidebar, without a chevron or a rule to say so.
+
+   The step is a fixed 0.9rem, under a glyph's width, and it is padding inside the row
+   rather than a margin on it. Both were tried the other way first. Indented by the
+   notebook's whole glyph and gap, so the bookmark stood under the first letter of the
+   name, the words sat a third of the rail over and the row read as a second level of a
+   tree, not a child of the row above; and a margin on the row made the pill start at
+   the indent, a narrower, offset shape beside the full pills around it, which was the
+   thing that looked wrong before anyone could say why (2026-10-25). The fill running
+   under the notebook's glyph is what a nested row's fill does everywhere, and the step
+   inside it is what says which level it is.
+*/
+.drawer-views {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.drawer-view {
+  padding-left: calc(0.7rem + 0.9rem);
+}
+
+/*
+   The notebook whose view is open. Not `current`, since one place is current at a time
+   and that is the view, but its words and its book take the current row's weight and ink,
+   so the pair reads as one place with the fill on the part that is on screen. Left as a
+   plain row, the notebook read as somewhere else entirely, one row above where you are.
+*/
+.drawer-parent { font-weight: 500; }
+.drawer-parent > svg { color: var(--fg); }
+
 /* A link, drawn as a word rather than a row: it leaves the drawer for the settings page. */
 .drawer-section-action {
   padding: 0.3rem 0.4rem;
@@ -7680,6 +7739,7 @@ button.settings-nav-item {
     min-height: 2.25rem;
     gap: 0.7rem;
   }
+
 }
 
 @media (860px < width < 1200px) {
@@ -7736,6 +7796,7 @@ button.settings-nav-item {
     .drawer-place-notebook,
     .drawer-new,
     .drawer-tags,
+    .drawer-views,
     .drawer-list > .drawer-rule,
     .rail-wordmark
   ) { display: none; }
@@ -7851,6 +7912,99 @@ button.settings-nav-item {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+/*
+   The notebook a saved view is in, over the view's name (`NoteListHead`'s `eyebrow`).
+
+   One small line, and the only thing that makes a view's head taller than a notebook's:
+   the count stays the count, and the name stays the title's size, since the view's name
+   is the answer to "where am I" and the notebook only qualifies it. Muted and smaller
+   than the count, so the eye lands on the name first; ellipsised, since a notebook's name
+   is anyone's length. The line-height is tight so the three lines still sit in a phone's
+   44px row plus one small line, not two.
+*/
+.list-eyebrow {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 0.72rem;
+  line-height: 1.1;
+  color: var(--muted);
+}
+
+/*
+   A saved view's name and its ⋯ (`NoteListHead`'s `titleMenu`), on the title's one line.
+
+   The name yields to the ⋯ rather than pushing it out of the column, and the ⋯ is drawn at
+   the name's height, not as a 44px square: in a square the title's line would grow by
+   the difference and the count under it would move. Under a finger an invisible layer
+   gives it the full target, as the count's menu does. Its menu hangs from its left edge,
+   since it sits near the start of the row where the default right-anchored list would
+   hang off a phone's left side.
+*/
+.list-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.list-title-row h2 { min-width: 0; }
+
+.title-menu { flex: none; }
+
+.overflow-trigger.title-menu-trigger {
+  position: relative;
+  min-width: 1.6rem;
+  height: 1.45rem;
+  font-size: 1rem;
+}
+
+@media (pointer: coarse) {
+  .title-menu-trigger::after {
+    content: '';
+    position: absolute;
+    inset: -0.65rem -0.4rem;
+  }
+}
+
+.title-menu .overflow-list {
+  left: 0;
+  right: auto;
+  /* Two short words. The default floor is sized for an email address, and hung from a
+     trigger in the middle of a phone's row it ran off the right edge. */
+  min-width: 10rem;
+}
+
+/*
+   Renaming a view in the heading: the field in the name's place, in the name's type, so
+   the line keeps its height and the count under it stays put. Fenced like the other view
+   name fields, at the heading's size; Rename and Cancel follow on the same line. The
+   fence is not pulled out into the margin to keep the letters exactly where the title's
+   were: the column clips at its edge, and the pull cut the first letter in half.
+*/
+.view-name.view-rename { flex: none; }
+
+/* At desktop width Rename and Cancel take the count's line under the field, at the
+   count's size, so the head grows by as little as a pair of buttons can. */
+.view-rename .view-name-actions .view-action.btn-small {
+  min-height: 0;
+  height: 1.3rem;
+  padding-block: 0;
+  font-size: 0.75rem;
+}
+
+/* The heading takes focus after a view is saved or renamed (`NotesLayout`), to be read
+   out; a ring around a title the pointer just caused to change would be noise. */
+.list-title h2:focus:not(:focus-visible) { outline: none; }
+
+.view-name-field.view-rename-field {
+  height: 1.6rem;
+  padding-inline: 0.4rem;
+  font-size: 1.05rem;
+  font-weight: 600;
+  border-radius: 0.35rem;
 }
 
 .list-head-actions {
@@ -8461,6 +8615,124 @@ button.settings-nav-item {
 .filter-chip:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+
+/*
+   The list as a saved view, at the end of the chips (`ViewActions`).
+
+   "Edited · Save · Save as new · Revert" is one group that wraps as a whole: after the
+   chips while the row has room, on a line of its own under them when it has not. Laid
+   out as siblings of the chips it wrapped word by word, and a narrow column read "Edited
+   Save" on one line and "Save as new Revert" on the next, which is two sentences that
+   are neither. The buttons are the chips' height, so a row that mixes them stays one
+   height, and in the page's ink rather than the quiet button's muted grey: beside filled
+   chips a grey word read as a caption, not as something to press. "Edited" is the one
+   muted word, the state the buttons are about, with a dot after it to set it apart.
+
+   Every rule here that changes a button is scoped to `.view-action`, the class each of
+   these buttons carries, rather than to the row: `Button`'s shapes are its own, and a
+   different quiet button placed in the chips row later (a bulk action, say) keeps them.
+*/
+.view-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0;
+  min-width: 0;
+}
+
+.filter-chips .view-action.btn-small {
+  min-height: calc(0.75rem * 1.2 + 0.5rem + 2px);
+  padding-block: 0;
+}
+
+.filter-chips .view-action.btn-quiet:not(.btn-danger),
+.sheet-view-actions .view-action.btn-quiet:not(.btn-danger) { color: var(--fg); }
+
+.view-edited {
+  display: inline-flex;
+  align-items: center;
+  padding-inline: 0.25rem 0.15rem;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.view-edited::after {
+  content: '·';
+  margin-left: 0.3rem;
+}
+
+/* "Save view" leads with its bookmark, the rail's glyph for a view, with a plus. */
+.view-action:has(svg) {
+  gap: 0.3rem;
+}
+
+.view-actions-error {
+  flex-basis: 100%;
+  margin: 0;
+}
+
+/*
+   The field a view is named in (`ViewNameField`), wherever it opens: in the chips row, in
+   the filter sheet, on the notebook's settings page.
+
+   Fenced, small and rounded like the chips beside it, with the input's own border, since
+   among chips a bare input is text with a caret in it. It takes the rest of the row and
+   wraps to a line of its own when the rest is too short for a name, rather than squeezing
+   the field to a few letters; Save and Cancel stay beside it on that line.
+*/
+.view-name {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  flex: 1 1 16rem;
+  min-width: 0;
+  /*
+     A name is a few words, and the rail shows it in a 15rem column, so the field stops
+     growing at about that plus its buttons: in the table and cards layouts the chips row
+     is the width of the screen, and a field grown to all of it read as a box for a
+     paragraph, with Save and Cancel at the far edge from the chip the name is for.
+  */
+  max-width: 24rem;
+}
+
+.view-name-row {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.view-name-field {
+  flex: 1;
+  min-width: 0;
+  height: 1.75rem;
+  padding: 0 0.6rem;
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  outline: none;
+}
+
+.view-name-field:focus-visible,
+.view-name-field:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.view-name-field::placeholder { color: var(--muted); }
+
+.view-name-error { margin: 0 0 0 0.6rem; }
+
+/* In the filter sheet, on a phone: its own row under the filters, the sheet's padding. */
+.sheet-view-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
 }
 
 
@@ -9978,6 +10250,19 @@ button.settings-nav-item {
   .filter-chip {
     min-height: 2.25rem;
     padding-inline: 0.6rem;
+  }
+
+  /* The saved-view actions after the chips (`ViewActions`) are pressed by the same thumb,
+     so they take the chips' height, and the name field the same. */
+  .filter-chips .view-action.btn-small,
+  .sheet-view-actions .view-action.btn-small {
+    min-height: 2.25rem;
+  }
+
+  .filter-chips .view-name-field,
+  .sheet-view-actions .view-name-field {
+    height: 2.25rem;
+    font-size: 1rem;
   }
 }
 

@@ -4,11 +4,11 @@ import {
   keepPreviousData,
   type QueryClient,
 } from '@tanstack/react-query';
-import type { AttachmentInfo, BackupsStatus, OperatorOrder, FieldDef, Note, NoteSort, NoteSummary, NotebookSummary } from '@unbent/shared';
+import type { AttachmentInfo, BackupsStatus, OperatorOrder, FieldDef, Note, NoteSort, NoteSummary, NotebookSummary, NotebookView } from '@unbent/shared';
 import * as api from './notes-api.js';
 import { ApiError, OfflineError } from './notes-api.js';
 import { offlineNow } from './connectivity.js';
-import { count, fieldSums, list, lookups, notebookFields, notebookFiles, notebookList, summaries, tagSummaries, toAttachmentInfo, toNote, type LocalAttachmentInfo, type Lookups, type Snapshot } from './store/derive.js';
+import { count, fieldSums, list, lookups, notebookFields, notebookFiles, notebookList, summaries, tagSummaries, toAttachmentInfo, toNote, viewList, type LocalAttachmentInfo, type Lookups, type Snapshot } from './store/derive.js';
 import type { LocalNote } from './store/collections.js';
 import { currentLibrary, onLibraryChange, onLibraryReset, onSearchIndexed, type ReadableLibrary as Library } from './store/library.js';
 import { LIBRARY_ROOTS } from './store/library-roots.js';
@@ -65,7 +65,7 @@ async function library(patient = offlineNow()): Promise<Library | null> {
     rereadWhenOpen(open);
     return null;
   }
-  await Promise.all([lib.notes.preload(), lib.notebooks.preload(), lib.tags.preload(), lib.attachments.preload()]);
+  await Promise.all([lib.notes.preload(), lib.notebooks.preload(), lib.tags.preload(), lib.attachments.preload(), lib.views.preload()]);
   return lib;
 }
 
@@ -153,6 +153,7 @@ function view(lib: Library): View {
       notebooks: [...lib.notebooks.values()],
       tags: [...lib.tags.values()],
       attachments: [...lib.attachments.values()],
+      views: [...lib.views.values()],
     };
     v = { version, snapshot, lookups: lookups(snapshot), lists: new Map() };
     views.set(lib, v);
@@ -192,7 +193,8 @@ export function installLibraryQueries(queryClient: QueryClient): () => void {
   const stopLibrary = onLibraryChange(refetch);
   const reread = () => refetch(LIBRARY_ROOTS);
   rereadAll = reread;
-  const stopDirect = onDirectWrite(() => refetch(LIBRARY_ROOTS));
+  // What the write reaches, as the library's own notices say (a view's write, the views).
+  const stopDirect = onDirectWrite(refetch);
   /*
    * A reset is more than a change. The rows it brings can be older than a cached
    * answer, and an answer nobody is looking at is not refetched: it is handed, as it
@@ -270,6 +272,14 @@ export const keys = {
   attachments: (noteId: string) => ['attachments', noteId] as const,
   tags: () => ['tags'] as const,
   notebooks: () => ['notebooks'] as const,
+  /**
+   * Every saved view of the account, under a root of its own (`VIEW_ROOTS`): a view
+   * saved or renamed reaches this and nothing else, and the notebook list, which every
+   * save invalidates, does not take the views with it. One list rather than one per
+   * notebook, since the rail draws every notebook's views at once and the whole set is
+   * a few rows.
+   */
+  views: () => ['views'] as const,
   /**
    * Under its own root rather than `['notebooks', id]`: invalidating the notebook list
    * (which happens on every save) must not refetch every open notebook's definitions.
@@ -647,6 +657,24 @@ export const notebooksQuery = () =>
     queryFn: async (): Promise<{ notebooks: NotebookSummary[]; unfiled: number }> => {
       const lib = await library();
       return lib ? notebookList(view(lib).snapshot) : api.listNotebooks();
+    },
+  });
+
+/**
+ * Every saved view, by notebook then place (`viewList`). From the library like the
+ * notebooks, and from the server only on a device with none, as every read here.
+ *
+ * Read from the two collections themselves rather than from `view(lib)`: a view's
+ * change moves the library's version, and the cached snapshot would be rebuilt (every
+ * note of an archive copied into arrays, its lookups and list cache thrown away) to list
+ * a few rows. The notes queries rebuild it when they next need it, as they would anyway.
+ */
+export const viewsQuery = () =>
+  queryOptions({
+    queryKey: keys.views(),
+    queryFn: async (): Promise<NotebookView[]> => {
+      const lib = await library();
+      return lib ? viewList({ notebooks: lib.notebooks.values(), views: lib.views.values() }) : (await api.listViews()).views;
     },
   });
 

@@ -1,6 +1,7 @@
 import { Sheet } from './Sheet.js';
 import { AccountMenu } from './AccountMenu.js';
 import { InstanceRibbon } from './InstanceRibbon.js';
+import type { NotebookView } from '@unbent/shared';
 import { NotebookNav, type NotebookData } from './NotebookNav.js';
 import type { TagCount } from './TagPicker.js';
 
@@ -13,6 +14,9 @@ interface NotebookDrawerProps {
   notebooks: { data: NotebookData | undefined };
   trashed: number;
   tags: TagCount[];
+  /** Every saved view, and the open one's id: see `NotebookNav`. */
+  views: NotebookView[] | undefined;
+  saved: string | undefined;
   email: string;
   onSignOut: () => void;
 }
@@ -39,6 +43,8 @@ export function NotebookDrawer({
   notebooks,
   trashed,
   tags,
+  views,
+  saved,
   email,
   onSignOut,
 }: NotebookDrawerProps) {
@@ -57,6 +63,8 @@ export function NotebookDrawer({
         notebooks={notebooks}
         trashed={trashed}
         tags={tags}
+        views={views}
+        saved={saved}
         onNavigate={onClose}
       />
     </Sheet>

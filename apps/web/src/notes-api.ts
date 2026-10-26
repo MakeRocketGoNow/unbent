@@ -18,10 +18,13 @@ import type {
   NoteSummary,
   NotebookDefinition,
   NotebookSummary,
+  NotebookView,
   OptionEdit,
   RestoredNote,
   SearchResult,
   SearchResultRow,
+  CreateView,
+  UpdateView,
   AccountDumps,
   BackupsStatus,
   OperatorAccount,
@@ -723,6 +726,46 @@ export async function deleteNotebook(
   const qs = params.toString();
   const res = await request(`/api/notebooks/${id}${qs ? `?${qs}` : ''}`, { method: 'DELETE' });
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+}
+
+// --- Saved views -----------------------------------------------------------------------
+
+/**
+ * A view's name is taken within its notebook (the server compares without case). An
+ * `ApiError` rather than a plain one, so the form that names a view can tell this
+ * refusal, which the person mends by choosing another name, from one they cannot.
+ */
+function viewNameTaken(): ApiError {
+  return new ApiError(409, 'This notebook already has a view with that name.');
+}
+
+/**
+ * Every saved view of the account. Read only where there is no local copy to derive
+ * them from (`viewsQuery`), and once per device to fill a copy made before views
+ * (`seedViews` in `store/feed.ts`, which fetches it through the engine).
+ */
+export async function listViews(): Promise<{ views: NotebookView[] }> {
+  return json<{ views: NotebookView[] }>(await request('/api/views'));
+}
+
+/** Saves a view: a notebook's list as it stands, under a name. */
+export async function createView(body: CreateView): Promise<NotebookView> {
+  const res = await request('/api/views', { method: 'POST', headers: jsonHeaders, body: JSON.stringify(body) });
+  if (res.status === 409) throw viewNameTaken();
+  return json(res);
+}
+
+/** Renames a view, changes what it keeps, or moves it among its notebook's views. */
+export async function updateView(id: string, patch: UpdateView): Promise<NotebookView> {
+  const res = await request(`/api/views/${encodeURIComponent(id)}`, { method: 'PATCH', headers: jsonHeaders, body: JSON.stringify(patch) });
+  if (res.status === 409) throw viewNameTaken();
+  return json(res);
+}
+
+/** Deletes a view. Its notes are untouched: a view holds none, only the way to list them. */
+export async function deleteView(id: string): Promise<void> {
+  const res = await request(`/api/views/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  if (!res.ok) throw new ApiError(res.status, await httpErrorMessage(res));
 }
 
 // --- Custom fields ---------------------------------------------------------------------

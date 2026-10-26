@@ -1,7 +1,16 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useReducer, useRef, useState, type KeyboardEvent } from 'react';
 import { Link, useNavigate, useSearch } from '@tanstack/react-router';
 import { useQuery, useInfiniteQuery, useQueryClient, useMutation } from '@tanstack/react-query';
-import { DEFAULT_NOTE_SORT, UNFILED, type FieldDef, type FieldValue } from '@unbent/shared';
+import {
+  DEFAULT_NOTE_SORT,
+  UNFILED,
+  narrowsList,
+  sameViewQuery,
+  viewQueryOf,
+  type FieldDef,
+  type FieldValue,
+  type NotebookView,
+} from '@unbent/shared';
 import * as api from '../notes-api.js';
 import * as actions from '../store/actions.js';
 import { isOfflineError } from '../notes-api.js';
@@ -15,6 +24,7 @@ import {
   trashCountQuery,
   invalidateNoteMembership,
   configQuery,
+  viewsQuery,
 } from '../queries.js';
 import { useNotesLayout, type NotesViewMode } from '../useNotesLayout.js';
 import { ResizeHandle } from './ResizeHandle.js';
@@ -70,6 +80,10 @@ import { editOpenNoteField } from '../open-note-fields.js';
 import { keys, type SearchAnswer } from '../queries.js';
 import { SearchCoverage } from './SearchCoverage.js';
 import { ActiveFilters } from './ActiveFilters.js';
+import { ViewActions, VIEW_NEEDS_CONNECTION } from './ViewActions.js';
+import { ViewNameField } from './ViewName.js';
+import { OverflowMenu } from './OverflowMenu.js';
+import { viewSearch } from '../view-address.js';
 import { ScopeMatches, scopeMatches } from './ScopeMatches.js';
 import { useMediaQuery, MOBILE_QUERY } from '../useMediaQuery.js';
 import { useSelection } from '../useSelection.js';
@@ -77,11 +91,12 @@ import { SelectionBar } from './SelectionBar.js';
 import { listDropZone, dropSentence } from '../list-drop-zone.js';
 import { notesFromFiles } from '../file-notes.js';
 import { Confirm } from './Confirm.js';
+import { DeleteViewConfirm } from './DeleteViewConfirm.js';
 import { MoveSheet } from './MoveSheet.js';
 import { TagsSheet } from './TagsSheet.js';
 import { editOpenNoteFiling } from '../open-note-fields.js';
 import { useAppSession } from '../useAppSession.js';
-import { useLibraryArriving, useLibraryWhole } from '../store/use-feed-state.js';
+import { useLibraryArriving, useLibraryWhole, useViewsKnown } from '../store/use-feed-state.js';
 import { sameNotebookName } from '../store/derive.js';
 import { ListRowsContext, showsWholeAccount, useLibraryTotal } from '../useLibraryTotal.js';
 import { useSignOut } from '../useSignOut.js';
@@ -102,6 +117,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
     from,
     to,
     new: asked,
+    saved,
   } = useSearch({ from: '/notes' });
   /** The tag filter as a list, so the sidebar never has to care that it may be absent. */
   const selectedTags = tag ?? [];
@@ -172,6 +188,8 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   const tags = useQuery(tagsQuery());
   const tagColor = useTagColors();
   const notebooks = useQuery(notebooksQuery());
+  /** Every saved view: the drawer lists them, and the heading names the open one. */
+  const views = useQuery(viewsQuery());
   /*
    * The selected notebook's field definitions, which name the field chips and are what
    * the sheet's Fields page offers. Field definitions belong to a notebook, so with no
@@ -185,6 +203,60 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
       : undefined;
   /** The notebook list is the whole account's; see `useLibraryWhole`. */
   const libraryWhole = useLibraryWhole();
+  const viewsKnown = useViewsKnown();
+  /*
+   * The saved view the list was opened from (`?saved=`), once it is known to be one of
+   * this notebook's. It names the heading and is what an edit is measured against.
+   */
+  const openView =
+    saved !== undefined && notebookId !== undefined
+      ? views.data?.find((v) => v.id === saved && v.notebookId === notebookId)
+      : undefined;
+  /*
+   * Ids of views saved from this page, which the list opens at the moment the save
+   * returns. `createView` resolves once the library holds the row, but the query that
+   * reads it re-runs a beat later, and in that beat the id names no view it knows: this
+   * keeps the drop below from taking a view that was made a moment ago for a stale one.
+   *
+   * Only for that beat: an id leaves the set once the views query has answered with it
+   * on its own, after the row this page put in its cache (`holdView`, which is why the
+   * time it was held is kept), and the query is the judge from then on like any other
+   * id's, so a view deleted later on another device is dropped from the address here too.
+   */
+  const madeHere = useRef(new Map<string, number>());
+  useEffect(() => {
+    for (const [id, heldAt] of madeHere.current) {
+      if (views.dataUpdatedAt > heldAt && views.data?.some((v) => v.id === id)) madeHere.current.delete(id);
+    }
+  }, [views.data, views.dataUpdatedAt]);
+  /*
+   * A `saved` that names no view of this notebook (deleted on another device, an old
+   * link, a notebook renamed under it) is dropped once that is known, as a stale field
+   * sort is below: the list it opens is the notebook with the filters the link carries,
+   * and the heading names the notebook. Replaced, not pushed: Back should not return to
+   * an address naming a view that is gone. Not while the views or the notebooks are
+   * still arriving, which is not knowing, and not while the device cannot know its views
+   * at all (`useViewsKnown`): a copy made before views, until it is filled, answers an
+   * empty list that says nothing, and a shared link would lose its view to it.
+   */
+  const savedStale =
+    saved !== undefined &&
+    openView === undefined &&
+    !madeHere.current.has(saved) &&
+    viewsKnown &&
+    views.isSuccess &&
+    !views.isFetching &&
+    notebooks.isSuccess &&
+    (notebookId !== undefined || libraryWhole);
+  useEffect(() => {
+    if (!savedStale) return;
+    void navigate({
+      to: '.',
+      search: (prev) => ({ ...prev, saved: undefined }),
+      replace: true,
+      resetScroll: false,
+    });
+  }, [savedStale, navigate]);
   const fieldDefs = useQuery(notebookFieldsQuery(notebookId));
   const config = useQuery(configQuery());
   /** The definition behind a sort by a field, once the notebook's fields have loaded. */
@@ -225,6 +297,10 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    * the order the writes land in. Back to a bare entry is an arrival too, and opens in
    * the remembered order rather than the default that entry happened to be made with:
    * remembering is the point, and the list is the same notes either way.
+   *
+   * Not into a saved view. A view keeps its own order, the default included, and a view
+   * saved in "Newest first" would open in the notebook's remembered "A–Z" and read as
+   * edited the moment it opened.
    */
   const seededFor = useRef<string | null>(null);
   const scope = notebook ?? '';
@@ -232,7 +308,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (seededFor.current === scope) return;
     seededFor.current = scope;
-    if (!orderingUnsaid || !hasRememberedSort(notebook)) return;
+    if (!orderingUnsaid || saved !== undefined || !hasRememberedSort(notebook)) return;
     void navigate({
       to: '.',
       search: (prev) => ({ ...prev, ...rememberedSort(notebook) }),
@@ -688,9 +764,16 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
         hasNextPage: list.hasNextPage,
       })
     : undefined;
+  /*
+   * Whether a sort chosen here is remembered for the notebook (`rememberSort`). Not while
+   * a view is open: the order on screen is then the view's, edited or not, and a re-sort
+   * made to look at a view a different way would otherwise change how the plain notebook
+   * opens next time, which nobody asked of it. Saving the view is how that order is kept.
+   */
+  const remembersSort = openView === undefined;
   /** A column header was clicked: write the order it asks for. */
   const sortBy = (target: SortTarget) => {
-    rememberSort(notebook, nextColumnSort(target, { sort, order, sortField }));
+    if (remembersSort) rememberSort(notebook, nextColumnSort(target, { sort, order, sortField }));
     void navigate({
       to: '/notes',
       search: (prev) => ({ ...prev, ...nextColumnSort(target, prev) }),
@@ -810,7 +893,14 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    * tag stays a chip: the chips are what can be taken off, and a heading listing several
    * would either duplicate them or truncate.
    */
-  const heading = scopeLabel(notebook, selectedTags);
+  /*
+   * With a view open, the view is where you are: its name is the heading and its
+   * notebook the line over it, in the notebook's own spelling rather than the address's
+   * (a link may say `receipts`), as the rail draws it.
+   */
+  const notebookName = notebooks.data?.notebooks.find((nb) => nb.id === notebookId)?.name ?? notebook;
+  const heading = openView ? openView.name : scopeLabel(notebook, selectedTags);
+  const eyebrow = openView ? notebookName : undefined;
   const tagAsPlace = tagPlace(notebook, selectedTags);
   const chipTags = tagAsPlace ? [] : selectedTags;
 
@@ -886,6 +976,243 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
           onSelectAll: selection.selectAll,
         })
       : undefined;
+
+  /*
+   * The list as a saved view would keep it, and what can be done with that.
+   *
+   * `edited` is the open view against the address: the search text is not part of a view
+   * and never counts (see `views.ts`), and a layout not yet written in counts for nothing
+   * either (`sameViewQuery`). Saving a new view is offered only inside a notebook, where
+   * views live, and only when the list is narrowed or ordered at all (`narrowsList`): a
+   * plain notebook saved as a view would be a second row for the row above it.
+   *
+   * "Ordered" means ordered otherwise than the notebook remembers. The remembered order
+   * is written into the address on arrival and by the rail's own link (`scopeOf`), so the
+   * notebook in that order is the plain notebook, as its row opens it; counted as a
+   * narrowing, every notebook ever re-sorted grew a row above its list holding only
+   * "Save view", there whenever it was opened and again after a view in it was deleted.
+   *
+   * Not while the search box has text, either. A view leaves the search out on purpose
+   * (see `views.ts`), so one saved mid-search would open to more notes than were on
+   * screen when it was saved, with nothing to have said so; the filter sheet hides its
+   * tag and field rows while searching for the same kind of reason. The Edited line is
+   * not held back: a search inside a view is not an edit of it.
+   */
+  const listAddress = { tag, field, sort, order, sortField, from, to, view: viewParam ?? view };
+  const viewEdited = openView !== undefined && !sameViewQuery(openView.query, viewQueryOf(listAddress));
+  const remembered = rememberedSort(notebook);
+  const inRememberedOrder =
+    sort === remembered.sort && order === remembered.order && sortField === remembered.sortField;
+  const narrowed = narrowsList(
+    inRememberedOrder ? { ...listAddress, sort: undefined, order: undefined, sortField: undefined } : listAddress,
+  );
+  const canSaveView =
+    notebookId !== undefined && saved === undefined && !showNotebookMissing && q.trim() === '' && narrowed;
+  const viewState: 'unsaved' | 'edited' | null = viewEdited ? 'edited' : canSaveView ? 'unsaved' : null;
+
+  /** A view the server has answered, into the list the rail and the heading read, at once. */
+  const holdView = (made: NotebookView) =>
+    queryClient.setQueryData(keys.views(), (list: NotebookView[] | undefined) =>
+      list?.some((v) => v.id === made.id) ? list.map((v) => (v.id === made.id ? made : v)) : [...(list ?? []), made],
+    );
+  /*
+   * The list saved as a new view, then opened as one: the address is already the view's,
+   * so opening it is only its id beside the filters, in place, with the open note left
+   * open and the search text left as typed.
+   *
+   * Only if the person is still where the save was made: the same notebook, and the same
+   * view open as when they pressed (none, for Save view; the edited one, for Save as
+   * new). The save waits for the row to land (seconds, in a tab that does not hold the
+   * library), and in that time they may have gone elsewhere; the id of a view of the
+   * first notebook written into the second one's address would name a view that is not
+   * there. The view is saved either way and listed under its notebook. Focus moves to
+   * the heading only when the id is written, or it would wait on a view the page never
+   * opened and jump the next time someone opened it from the rail; it is asked for
+   * inside the address's callback because the heading renders before `navigate`
+   * resolves, and the effect that moves focus runs on that render.
+   */
+  const createView = async (name: string) => {
+    if (notebookId === undefined || !notebook) return;
+    const madeIn = { name: notebook, saved };
+    const made = await actions.createView({ notebookId, name, query: viewQueryOf(listAddress) });
+    holdView(made);
+    madeHere.current.set(made.id, Date.now());
+    await navigate({
+      to: '.',
+      search: (prev) => {
+        if (typeof prev.notebook !== 'string' || !sameNotebookName(prev.notebook, madeIn.name)) return prev;
+        if (prev.saved !== madeIn.saved) return prev;
+        focusOn('heading', made.id);
+        return { ...prev, saved: made.id };
+      },
+      replace: true,
+      resetScroll: false,
+    });
+  };
+  /*
+   * The open view takes what the list shows now; the Edited line goes with the match, and
+   * the Save that was pressed with it, so focus moves to the heading as a new view's does.
+   */
+  const saveView = async () => {
+    if (!openView) return;
+    const id = openView.id;
+    holdView(await actions.updateView(id, { query: viewQueryOf(listAddress) }));
+    focusOn('heading', id);
+  };
+  /*
+   * Back to the view as it is kept. Replaced rather than pushed, since it undoes the
+   * entries the edit made rather than being a move of its own. The search text stays: it
+   * was never the view's to take away. To the list rather than `.`, as every filter is:
+   * the view's filters may not include the note that is open.
+   */
+  const revertView = () => {
+    if (!openView || !notebook) return;
+    void navigate({ to: '/notes', search: { ...viewSearch(notebook, openView), q: q || undefined }, replace: true });
+  };
+  /*
+   * The open view's own menu, beside its name: Rename, in the name's place, and Delete,
+   * through the confirm above the list. Both need the server, so the ⋯ fades offline
+   * with the reason, as a note's does, rather than leaving the head.
+   */
+  const [renamingView, setRenamingView] = useState(false);
+  const [deletingView, setDeletingView] = useState(false);
+  /*
+   * Where focus goes once a view's inline field has closed, since the control that was
+   * pressed is gone by then. A save or a rename moves it to the heading, which is what
+   * changed and is read out; leaving a rename gives it back to the ⋯ it was opened from,
+   * a new element by then. Without this both ended on the page's body.
+   */
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const viewMenuRef = useRef<HTMLButtonElement>(null);
+  const focusAfter = useRef<{ to: 'heading' | 'menu'; view: string } | null>(null);
+  /*
+   * Asking for focus is a render of its own (`askFocus`), so the effect below runs once
+   * the intent is written whatever else the action changed or did not. It used to wait
+   * on what the answer happened to change (the view's id, name or `updatedAt`), and a
+   * save into the open view in the tab holding the library changed none of them after
+   * the intent: the row had landed and been drawn before the action answered. Focus fell
+   * to the body with the Save it was in, and the intent pulled focus to the heading at
+   * some later, unrelated render.
+   */
+  const [focusAsked, askFocus] = useReducer((n: number) => n + 1, 0);
+  const focusOn = (to: 'heading' | 'menu', view: string) => {
+    focusAfter.current = { to, view };
+    askFocus();
+  };
+  /*
+   * Not while the filter sheet is open: it is a modal dialog, the heading is under it and
+   * inert, and a focus call there lands nowhere. A save made from the sheet closes it
+   * (`viewActions`), and the dialog's close hands focus back to the filter button in the
+   * sheet's own effect, which runs before this one, so the heading still has the last word.
+   */
+  useEffect(() => {
+    const want = focusAfter.current;
+    if (!want || renamingView || sheetOpen || openView?.id !== want.view) return;
+    focusAfter.current = null;
+    (want.to === 'heading' ? headingRef.current : viewMenuRef.current)?.focus();
+  }, [openView?.id, openView?.name, focusAsked, renamingView, sheetOpen]);
+  const [viewBusy, setViewBusy] = useState(false);
+  const [viewError, setViewError] = useState<string | null>(null);
+  // Another view, or none: what was half done to the last one is not for this one.
+  useEffect(() => {
+    setRenamingView(false);
+    setDeletingView(false);
+    setViewError(null);
+  }, [openView?.id]);
+  const renameView = async (name: string) => {
+    if (!openView) return;
+    holdView(await actions.updateView(openView.id, { name }));
+    focusOn('heading', openView.id);
+    setRenamingView(false);
+  };
+  const cancelRename = () => {
+    if (openView) focusOn('menu', openView.id);
+    setRenamingView(false);
+  };
+  /*
+   * Deleted, then out to the notebook as it is: its own row's address, in the order the
+   * notebook remembers. The view's filters go with it rather than staying as an unnamed
+   * narrowing, since what was asked for is the view gone, and a list still narrowed by
+   * it with nothing to say so would look like the delete had not happened.
+   */
+  const deleteOpenView = async () => {
+    if (!openView) return;
+    const gone = openView;
+    setViewBusy(true);
+    setViewError(null);
+    try {
+      await actions.deleteView(gone.id);
+      queryClient.setQueryData(keys.views(), (list: NotebookView[] | undefined) => list?.filter((v) => v.id !== gone.id));
+      setDeletingView(false);
+      void navigate({
+        to: '/notes',
+        search: (prev) => ({
+          ...prev,
+          saved: undefined,
+          tag: undefined,
+          field: undefined,
+          from: undefined,
+          to: undefined,
+          ...rememberedSort(notebook),
+        }),
+      });
+    } catch (err) {
+      setViewError((err as Error).message);
+    } finally {
+      setViewBusy(false);
+    }
+  };
+  const viewMenu = openView ? (
+    <OverflowMenu
+      label={`Actions for ${openView.name}`}
+      tip={offline ? VIEW_NEEDS_CONNECTION : 'View actions'}
+      triggerRef={viewMenuRef}
+      disabled={offline}
+      className="title-menu"
+      triggerClassName="title-menu-trigger"
+      items={[
+        { label: 'Rename', onSelect: () => setRenamingView(true) },
+        { separator: true, label: null },
+        { label: 'Delete', tone: 'danger', onSelect: () => setDeletingView(true) },
+      ]}
+    />
+  ) : undefined;
+  const viewRename =
+    openView && renamingView ? (
+      <ViewNameField
+        key={openView.id}
+        initial={openView.name}
+        label={`New name for ${openView.name}`}
+        commitLabel="Rename"
+        className="view-rename"
+        inputClassName="view-rename-field"
+        stacked={!isMobile}
+        onCommit={renameView}
+        onCancel={cancelRename}
+      />
+    ) : undefined;
+
+  /*
+   * In the filter sheet, a save closes the sheet once it has landed. The sheet is a modal
+   * dialog over the heading, and the heading is the one place that names what was saved;
+   * left open, the sheet lost the actions it had just shown (there is nothing edited or
+   * unsaved any more) and showed nothing in their place. Revert leaves it open: what it
+   * changes is the chips, which the sheet shows.
+   */
+  const viewActions = (inSheet = false) =>
+    viewState && (
+      <ViewActions
+        // A new state is a new control: a name half typed for one is not for the other.
+        key={`${viewState}:${openView?.id ?? ''}`}
+        state={viewState}
+        viewName={openView?.name}
+        offline={offline}
+        searching={q.trim() !== ''}
+        onCreate={inSheet ? (name) => createView(name).then(closeSheet) : createView}
+        onSave={inSheet ? () => saveView().then(closeSheet) : saveView}
+        onRevert={revertView}
+      />
+    );
 
   const selectionExportLabel = exportRunning
     ? 'Export: another export is running'
@@ -972,6 +1299,10 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
           count={countLabel}
           countMenu={countMenu}
           title={heading}
+          eyebrow={eyebrow}
+          titleMenu={viewMenu}
+          renaming={viewRename}
+          headingRef={headingRef}
           query={q}
           onQuery={setQuery}
           onArrowDown={() => enterList(listRef.current ?? tableRef.current)}
@@ -1004,6 +1335,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
             results === null || shownView !== 'list' ? (
               <NotesSort
                 notebook={notebook}
+                remember={remembersSort}
                 sort={sort}
                 order={order}
                 sortField={sortField}
@@ -1073,6 +1405,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
           <p className="muted small">That change wasn’t saved: the connection dropped.</p>
         )}
         {bulkError && <p className="bad small">{bulkError}</p>}
+        {viewError && <p className="bad small">{viewError}</p>}
 
         {/*
             Under the header rather than only inside the sheet, so what is narrowing the
@@ -1089,6 +1422,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
           fieldDefs={fieldDefs.data ?? []}
           from={from}
           to={to}
+          trailing={viewActions()}
         />
 
         {/* Above the list, where the trash view puts its confirms: a row is too narrow to
@@ -1103,6 +1437,18 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
             actions={[
               { label: 'Delete', busyLabel: 'Deleting…', tone: 'danger', onConfirm: trashSelected },
             ]}
+          />
+        )}
+
+        {/* The view's delete, in the same slot and for the same reason: the question is
+            about something on screen (the heading names the view), and a modal would
+            cover it. Its notes are untouched, which is the thing worth saying. */}
+        {deletingView && openView && (
+          <DeleteViewConfirm
+            name={openView.name}
+            busy={viewBusy}
+            onCancel={() => setDeletingView(false)}
+            onConfirm={() => void deleteOpenView()}
           />
         )}
 
@@ -1134,6 +1480,8 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
             notebooks={notebooks}
             trashed={trashed}
             tags={tags.data ?? []}
+            views={views.data}
+            saved={saved}
             email={session?.user.email ?? ''}
             onSignOut={signOutAndLeave}
           />
@@ -1269,6 +1617,20 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
                 value={rangeLabel(from, to) ?? undefined}
                 onClick={() => setSheetPage('dates')}
               />
+
+              {/*
+                  The list as a view, on a phone, where the sheet is where the filters are
+                  set and the chips row is behind it. Under the filters it would keep,
+                  after a rule, since it is about all of them rather than one more of them.
+                  Not at desktop width: the sheet is a panel beside the list there, and the
+                  same actions are already in view at the end of the chips.
+              */}
+              {isMobile && viewState && (
+                <>
+                  <hr className="sheet-rule" />
+                  <div className="sheet-view-actions">{viewActions(true)}</div>
+                </>
+              )}
             </>
           )}
 

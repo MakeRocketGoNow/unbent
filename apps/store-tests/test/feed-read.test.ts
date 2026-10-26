@@ -72,6 +72,26 @@ describe('changesSince', () => {
     expect(after.notes).toEqual([expect.objectContaining({ id: b.id, deletedAt: expect.any(Number) })]);
   });
 
+  it('carries a saved view whole as it now is, and a tombstone for one deleted', async () => {
+    const { stub } = freshStore('read-feed-views');
+    const nb = (await stub.createNotebook('Receipts'))!;
+    const since = await feedSeq(stub);
+    const kept = (await stub.createView(nb.id, 'Business 2026', { tag: ['acme'] })) as { id: string };
+    await stub.updateView(kept.id, { name: 'Acme', query: { tag: ['acme'], layout: 'table' } });
+    const gone = (await stub.createView(nb.id, 'Personal', {})) as { id: string };
+    await stub.deleteView(gone.id);
+
+    const p = page(await stub.changesSince(since, 100));
+    // Made and edited within the page: one row, as it is now. Made and deleted: a tombstone, no row.
+    expect(p.views).toEqual([
+      { id: kept.id, notebookId: nb.id, name: 'Acme', position: 0, query: { tag: ['acme'], layout: 'table' }, updatedAt: expect.any(Number) },
+    ]);
+    expect(p.tombstones).toEqual([{ entity: 'view', id: gone.id }]);
+    // A page with no view in it carries an empty list, not a missing one.
+    await stub.create(note());
+    expect(page(await stub.changesSince(p.next, 100)).views).toEqual([]);
+  });
+
   it('pages: a full page says more, the next continues from its last seq', async () => {
     const { stub } = freshStore('read-pages');
     const ids: string[] = [];
@@ -190,18 +210,23 @@ describe('snapshotPage', () => {
     const made: string[] = [];
     for (let i = 0; i < 5; i++) made.push((await stub.create(note({ notebook: 'Coupons', tags: ['t'] }))).id);
     await stub.remove(made[4]!);
+    const view = (await stub.createView(nb.id, 'Acme', { sort: 'title', layout: 'cards' })) as { id: string };
     const seq = await feedSeq(stub);
 
     const first = await stub.snapshotPage(null, 2);
     expect(first.seq).toBe(seq);
     expect(first.notebooks).toEqual([{ id: nb.id, name: 'Coupons', purpose: null, emoji: null, fieldDefs: [expect.objectContaining({ name: 'Amount' })] }]);
     expect(first.tags).toEqual([{ id: expect.any(String), name: 't', color: expect.any(Number) }]);
+    expect(first.views).toEqual([
+      { id: view.id, notebookId: nb.id, name: 'Acme', position: 0, query: { sort: 'title', layout: 'cards' }, updatedAt: expect.any(Number) },
+    ]);
     expect(first.total).toBe(5);
     expect(first.notes).toHaveLength(2);
     expect(first.next).toBe(first.notes[1]!.id);
 
     const second = await stub.snapshotPage(first.next, 2);
     expect(second.notebooks).toBeUndefined();
+    expect(second.views).toBeUndefined();
     expect(second.total).toBeUndefined();
     const third = await stub.snapshotPage(second.next, 2);
     expect(third.notes).toHaveLength(1);

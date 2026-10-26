@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import type { FeedAttachment, FeedNote, FeedNotebook, FeedTag } from '@unbent/shared';
-import { count, fieldSums, list, lookups, notebookFields, notebookFiles, notebookList, sameNotebookName, summaries, tagSummaries, toNote, toSummary, type Snapshot } from './derive.js';
+import type { FeedAttachment, FeedNote, FeedNotebook, FeedTag, FeedView } from '@unbent/shared';
+import { count, fieldSums, list, lookups, notebookFields, notebookFiles, notebookList, sameNotebookName, summaries, tagSummaries, toNote, toSummary, viewList, type Snapshot } from './derive.js';
 
 const nb = (id: string, name: string, fieldDefs: FeedNotebook['fieldDefs'] = []): FeedNotebook => ({ id, name, purpose: null, emoji: null, fieldDefs });
 const tag = (id: string, name: string, color: number | null = null): FeedTag => ({ id, name, color });
 const note = (id: string, over: Partial<FeedNote> = {}): FeedNote => ({ id, title: id, body: '', createdAt: 1, updatedAt: 1, tagIds: [], notebookId: null, files: [], ...over });
+const savedView = (id: string, notebookId: string, position: number, name = id): FeedView => ({ id, notebookId, name, position, query: {}, updatedAt: 1 });
 const file = (id: string, noteId: string, createdAt = 1): FeedAttachment => ({ id, noteId, filename: `${id}.pdf`, contentType: 'application/pdf', size: 1, hasText: false, createdAt });
 
 const amount = { id: 'amount', notebookId: 'nb1', name: 'Amount', type: 'number' as const, options: [], scale: null, currency: null, position: 0 };
@@ -14,6 +15,7 @@ const s: Snapshot = {
   notebooks: [nb('nb1', 'receipts', [amount, kind]), nb('nb2', 'Taxes')],
   tags: [tag('t1', 'home'), tag('t2', 'acme'), tag('t3', 'unused')],
   attachments: [file('f2', 'a', 2), file('f1', 'a', 1), file('f3', 'c')],
+  views: [],
   notes: [
     note('a', { title: 'beta', body: 'Hello **world**', createdAt: 10, updatedAt: 50, tagIds: ['t1', 't2'], notebookId: 'nb1', fields: [{ fieldId: 'amount', name: 'Old name', type: 'number', value: 12, notebookId: 'nb1', notebook: 'old' }] }),
     note('b', { title: 'Alpha', createdAt: 20, updatedAt: 40, tagIds: ['t1'], notebookId: 'nb1', fields: [{ fieldId: 'amount', name: 'Amount', type: 'number', value: 3, notebookId: 'nb1', notebook: 'receipts' }, { fieldId: 'kind', name: 'Kind', type: 'multiselect', value: ['a'], notebookId: 'nb1', notebook: 'receipts' }] }),
@@ -100,6 +102,22 @@ describe('derive', () => {
     expect(notebookFields(s, 'nb1', false)).toEqual([amount, kind]);
     expect(notebookFields(s, 'nb1', true)).toEqual([{ ...amount, valueCount: 2 }, { ...kind, valueCount: 1 }]);
     expect(notebookFields(s, 'nope', false)).toBeNull();
+  });
+
+  it('lists the saved views as GET /views does: by notebook, then place, then name, and only under a notebook it holds', () => {
+    const views: Snapshot = {
+      ...s,
+      views: [
+        savedView('v3', 'nb2', 0, 'Tax year'),
+        savedView('v2', 'nb1', 1, 'Personal'),
+        savedView('gone', 'nb-deleted', 0),
+        savedView('v1', 'nb1', 0, 'Business'),
+        // Two at one place for a moment (a move here meeting a save on another device): the name decides.
+        savedView('v5', 'nb1', 1, 'acme'),
+      ],
+    };
+    expect(viewList(views).map((v) => v.id)).toEqual(['v1', 'v5', 'v2', 'v3']);
+    expect(viewList(s)).toEqual([]);
   });
 
   it('finds a notebook by name as COLLATE NOCASE does: ASCII case folded, nothing else', () => {

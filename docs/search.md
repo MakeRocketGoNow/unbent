@@ -39,6 +39,47 @@ columns. The range filters the date the sort's rows show (updated or created, an
 under the title sort, which has no date of its own) so the filter and the row always mean
 the same date; search, having no sort, filters on `created_at`.
 
+### Saved views
+
+A notebook ends up doing several jobs (one Receipts notebook for personal, business and
+tax-year duty, told apart by its fields), and the list narrowed to one job used to
+evaporate with the next tap. A saved view is that list the way it was left, under a name:
+its tags, field filters, sort, date range and layout. It is kept in the account and listed
+under its notebook on every device, as indented rows in the rail and the phone's drawer,
+shown while that notebook is the place you are in.
+
+A view is a bookmark, never a mode. Opening one writes every filter back into the address,
+where the chips show them and take them off as they always have, and the view's id rides
+beside them (`?saved=`). The heading names the view with the notebook above it. Change a
+filter or the sort and the heading says the view is edited, with Save (the view becomes
+what is on screen), Save as new, and Revert; a search typed inside a view is not an edit,
+because a search narrows whatever is on screen, and it is not part of what a view saves.
+Inside a notebook that is filtered or sorted with no view open, Save view sits at the end
+of the chips, and in the filter sheet on a phone; it asks for a name in place. Rename and
+Delete are in the heading's menu while a view is open, and the notebook's settings page
+orders its views.
+
+Per notebook, because that is where the lists worth saving are: field filters and the
+table exist only inside a notebook. The table's columns are not saved either, since every
+field is a column today. The store keeps `notebook_id` nullable so a view over the whole
+library can come later without a migration; nothing writes one yet.
+
+What a rename or a delete does to a view follows one rule: a rename follows the name, and
+nothing but the person takes a filter out. A renamed tag or select option is respelled in
+every view that names it, in the same write that moves the notes. A deleted tag, a deleted
+field or a removed option leaves its filter in place, so the view shows nothing and its
+chip says why, which is fixable where it is seen; taking the filter out would widen the
+view under the same name with nobody told. The one thing taken out is a sort on a deleted
+field, which narrows nothing. A deleted notebook takes its views with it.
+
+The API is `GET /api/views`, `POST /api/views` with `{ notebookId, name, query }`,
+`PATCH /api/views/:id` with any of `name`, `query` and `position`, and `DELETE
+/api/views/:id`; the query's shape is `viewQuerySchema` in `@unbent/shared`, which refuses
+a key it does not know so an older page is never handed one. Views travel in the change
+feed as their own entity and live in the device's library beside the notes, notebooks and
+tags ([Sync and offline](sync-and-offline.md)); saving one needs a connection, as a
+notebook's settings do.
+
 ### Acting on several notes
 
 The list has a selection, in the shape people arrive with from Evernote. Cmd/Ctrl-click

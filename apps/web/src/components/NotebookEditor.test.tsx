@@ -8,9 +8,10 @@ import {
   createMemoryHistory,
   RouterProvider,
 } from '@tanstack/react-router';
-import type { FieldDef } from '@unbent/shared';
+import type { FieldDef, NotebookView } from '@unbent/shared';
 import { keys } from '../queries.js';
 import * as api from '../notes-api.js';
+import * as actions from '../store/actions.js';
 import { NotebookEditor } from './NotebookEditor.js';
 
 /**
@@ -41,11 +42,12 @@ const rating: FieldDef = {
   valueCount: 5,
 };
 
-function mount(seed: FieldDef[] = fields, emoji: string | null = null) {
+function mount(seed: FieldDef[] = fields, emoji: string | null = null, views: NotebookView[] = []) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Infinity } },
   });
   client.setQueryData(keys.notebookFieldCounts('nb1'), seed);
+  client.setQueryData(keys.views(), views);
   client.setQueryData(keys.notebooks(), {
     notebooks: [{ id: 'nb1', name: 'Receipts', count: 3, fields: seed.length, purpose: null, emoji }],
     unfiled: 0,
@@ -726,5 +728,76 @@ describe('NotebookEditor', () => {
       expect(api.updateNotebookField).toHaveBeenCalledWith('nb1', 'f4', { scale: { max: 10, step: 1 } }),
     );
     expect(screen.queryByLabelText('Confirm change rating scale')).toBeNull();
+  });
+});
+
+describe('NotebookEditor views', () => {
+  const VIEWS: NotebookView[] = [
+    { id: 'v1', notebookId: 'nb1', name: 'Business 2026', position: 0, query: { tag: ['Acme'] }, updatedAt: 1 },
+    { id: 'v2', notebookId: 'nb1', name: 'Personal', position: 1, query: { tag: ['Home'] }, updatedAt: 1 },
+    { id: 'v3', notebookId: 'nb2', name: 'Elsewhere', position: 0, query: {}, updatedAt: 1 },
+  ];
+  beforeAll(() => {
+    vi.stubGlobal('scrollTo', () => {});
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    cleanup();
+  });
+
+  it("lists the notebook's own views, in order, between the fields and the rest", async () => {
+    mount(fields, null, VIEWS);
+    const section = (await screen.findByRole('heading', { name: 'Views' })).closest('section')!;
+    const names = [...section.querySelectorAll('.view-admin-name')].map((e) => e.textContent);
+    expect(names).toEqual(['Business 2026', 'Personal']);
+  });
+
+  it('says where views come from when there are none, with the way there', async () => {
+    mount(fields, null, []);
+    const link = await screen.findByRole('link', { name: "the notebook's list" });
+    expect(link.closest('li')?.textContent).toBe("No views yet. Save one from the notebook's list.");
+    expect(link.getAttribute('href')).toContain('/notes?notebook=');
+  });
+
+  it('moves a view one place, and holds the order until the library has it', async () => {
+    const update = vi.spyOn(actions, 'updateView').mockResolvedValue({ ...VIEWS[1]!, position: 0 });
+    mount(fields, null, VIEWS);
+    expect((await screen.findByRole('button', { name: 'Move Business 2026 up' })).hasAttribute('disabled')).toBe(true);
+    expect(screen.getByRole('button', { name: 'Move Personal down' }).hasAttribute('disabled')).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Move Personal up' }));
+    await waitFor(() => expect(update).toHaveBeenCalledWith('v2', { position: 0 }));
+    const section = screen.getByRole('heading', { name: 'Views' }).closest('section')!;
+    expect([...section.querySelectorAll('.view-admin-name')].map((e) => e.textContent)).toEqual(['Personal', 'Business 2026']);
+  });
+
+  it('deletes a view after a confirm that names it', async () => {
+    const remove = vi.spyOn(actions, 'deleteView').mockResolvedValue(undefined);
+    mount(fields, null, VIEWS);
+    fireEvent.click(await screen.findByRole('button', { name: 'Delete Personal' }));
+    const confirm = await screen.findByRole('group', { name: 'Confirm delete view' });
+    expect(confirm.textContent).toContain('Delete the view “Personal”?');
+    expect(remove).not.toHaveBeenCalled();
+    fireEvent.click(within(confirm).getByRole('button', { name: 'Delete view' }));
+    await waitFor(() => expect(remove).toHaveBeenCalledWith('v2'));
+  });
+
+  it('renames a view in its row', async () => {
+    const update = vi.spyOn(actions, 'updateView').mockResolvedValue({ ...VIEWS[0]!, name: 'Business 2027' });
+    mount(fields, null, VIEWS);
+    fireEvent.click(await screen.findByText('Business 2026'));
+    const field = await screen.findByRole('textbox', { name: 'New name for Business 2026' });
+    fireEvent.change(field, { target: { value: 'Business 2027' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Rename' }));
+    await waitFor(() => expect(update).toHaveBeenCalledWith('v1', { name: 'Business 2027' }));
+  });
+
+  /* The field took the name button's place; closing it gives focus back to that row. */
+  it('gives focus back to the view\'s name when its rename is cancelled', async () => {
+    mount(fields, null, VIEWS);
+    fireEvent.click(await screen.findByText('Personal'));
+    await screen.findByRole('textbox', { name: 'New name for Personal' });
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(document.activeElement?.textContent).toBe('Personal'));
+    expect(document.activeElement?.tagName).toBe('BUTTON');
   });
 });

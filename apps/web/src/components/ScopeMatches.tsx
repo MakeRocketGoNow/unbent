@@ -3,6 +3,7 @@ import { sameName } from '@unbent/shared';
 import { TagIcon, NotebookGlyph } from './icons.js';
 import { writeTagFilter } from '../routes/notes.js';
 import { rememberedSort } from '../notebook-sort.js';
+import { leavingView } from '../view-address.js';
 import type { TagCount } from './TagPicker.js';
 import type { NotebookData } from './NotebookNav.js';
 
@@ -104,8 +105,11 @@ export function ScopeMatches({
    * places, this is a refinement. From All notes with nothing applied the two land on the
    * same URL, and the rail marks that tag as where you are.
    */
-  const pick = (search: Record<string, unknown>) => {
-    void navigate({ to: '/notes', search: (prev) => ({ ...prev, ...search, q: undefined }) });
+  const pick = (search: Record<string, unknown> | ((prev: Record<string, unknown>) => Record<string, unknown>)) => {
+    void navigate({
+      to: '/notes',
+      search: (prev) => ({ ...prev, ...(typeof search === 'function' ? search(prev) : search), q: undefined }),
+    });
     onPick();
   };
 
@@ -135,7 +139,15 @@ export function ScopeMatches({
             className="scope-match-btn"
             aria-label={`Show notebook: ${nb.name}`}
             onClick={() =>
-              pick({ notebook: nb.name, tag: undefined, field: undefined, ...rememberedSort(nb.name) })
+              // A place, like the rail's row for it: out of any saved view, which named the
+              // notebook being left, and its date range with it (`leavingView`).
+              pick((prev) => ({
+                notebook: nb.name,
+                tag: undefined,
+                field: undefined,
+                ...leavingView(prev),
+                ...rememberedSort(nb.name),
+              }))
             }
           >
             <span className="scope-match-icon">

@@ -9,6 +9,7 @@ export * from './notebook-file.js';
 export * from './notebook-templates.js';
 export * from './export-format.js';
 export * from './feed.js';
+export * from './views.js';
 export * from './search.js';
 export * from './text-facts.js';
 export * from './operator.js';

@@ -1,6 +1,6 @@
-import { useId, useState, type ReactNode } from 'react';
+import { Fragment, useId, useState, type ReactNode } from 'react';
 import { Link } from '@tanstack/react-router';
-import { sameName, UNFILED } from '@unbent/shared';
+import { sameName, UNFILED, type NotebookView } from '@unbent/shared';
 import {
   NotesRowIcon,
   InboxRowIcon,
@@ -9,12 +9,14 @@ import {
   TagIcon,
   TrashRowIcon,
   SettingsRowIcon,
+  ViewRowIcon,
 } from './icons.js';
 import type { TagCount } from './TagPicker.js';
 import { Collapse } from './Collapse.js';
 import { RollingCount } from './RollingCount.js';
 import { usePersistentState } from '../usePersistentState.js';
 import { rememberedSort } from '../notebook-sort.js';
+import { leavingView, viewSearch } from '../view-address.js';
 
 /**
  * How many tags the section lists before offering the rest.
@@ -61,6 +63,14 @@ interface NotebookNavProps {
   /** Every tag with its count, in the API's order: the most used first. */
   tags: TagCount[];
   /**
+   * Every saved view of the account, by notebook then place (`viewsQuery`). Passed in
+   * rather than asked for here, as the notebooks are, so the rows stay a function of
+   * their props and each surface decides where its data comes from.
+   */
+  views?: NotebookView[] | undefined;
+  /** The open view's id, the address's `saved`: which view row is where you are. */
+  saved?: string | undefined;
+  /**
    * Called after a scope is picked. The phone's drawer closes itself here, because the
    * list behind it has changed; a surface that is always on screen passes nothing.
    */
@@ -103,6 +113,8 @@ export function NotebookNav({
   notebooks,
   trashed,
   tags,
+  views = [],
+  saved,
   onNavigate,
   labelsHidden = false,
   footer,
@@ -133,13 +145,15 @@ export function NotebookNav({
    * Picking a scope clears the tags, the same rule the notebook select followed: tags
    * cross notebook boundaries, so carrying one into a new notebook routinely lands on an
    * empty list with no visible cause. Field filters go with them: a field belongs to the
-   * notebook being left.
+   * notebook being left. So does an open saved view, and its date range with it
+   * (`leavingView`): a place is not the view.
    */
   const scopeOf = (next: string | undefined) => (prev: Record<string, unknown>) => ({
     ...prev,
     notebook: next,
     tag: undefined,
     field: undefined,
+    ...leavingView(prev),
     ...rememberedSort(next),
   });
 
@@ -157,6 +171,7 @@ export function NotebookNav({
     tag: [name],
     notebook: undefined,
     field: undefined,
+    ...leavingView(prev),
     ...rememberedSort(undefined),
   });
 
@@ -170,6 +185,20 @@ export function NotebookNav({
    */
   const here = place === 'notes';
   const allActive = here && !notebook && selectedTags.length === 0;
+  /*
+   * The notebook the list is in, matched without case as the list's filter matches it
+   * (`?notebook=receipts` is Receipts), and the open view among its own. Only that
+   * notebook lists its views: the rail stays as short as the notebooks, and entering a
+   * notebook is the one click that shows what was saved in it, with no chevron to find
+   * and no open state to remember per notebook.
+   */
+  const currentNotebook =
+    here && notebook && notebook !== UNFILED
+      ? notebooks.data?.notebooks.find((nb) => sameName(nb.name, notebook))
+      : undefined;
+  const viewsOf = (id: string) => views.filter((v) => v.notebookId === id);
+  const openView =
+    currentNotebook && saved !== undefined ? viewsOf(currentNotebook.id).find((v) => v.id === saved) : undefined;
   const inboxActive = here && notebook === UNFILED;
   /** The one tag that is the place, when a tag is: no notebook, exactly one tag. */
   const tagPlace = here && !notebook && selectedTags.length === 1 ? selectedTags[0] : undefined;
@@ -272,26 +301,69 @@ export function NotebookNav({
         </div>
 
         {notebooks.data?.notebooks.map((nb) => {
-          const on = here && notebook === nb.name;
+          const inside = currentNotebook?.id === nb.id;
+          /*
+           * One place is current at a time. With one of its views open the view's row is
+           * where you are, and the notebook's row is only the way back to the whole of it:
+           * marked as the parent of the current row (`.drawer-parent`, its words in the
+           * current row's weight with no fill), so the pair still reads as one place and
+           * the fill says which part of it is on screen.
+           */
+          const on = inside && openView === undefined;
+          const nbViews = viewsOf(nb.id);
           return (
-            <Link
-              key={nb.id}
-              to="/notes"
-              search={scopeOf(nb.name)}
-              // `drawer-place-notebook` is how a strip knows to hide these: a notebook with
-              // no emoji draws the same book as every other, so as icons alone they would be
-              // a column of identical squares, and the strip is opened to tell them apart.
-              className={on ? 'drawer-item drawer-place-notebook current' : 'drawer-item drawer-place-notebook'}
-              aria-current={on ? 'true' : undefined}
-              // A name can be longer than the column; the row ellipsises it and the
-              // tooltip carries the rest, the way `.overflow-label` does for an address.
-              title={nb.name}
-              onClick={picked}
-            >
-              <NotebookGlyph emoji={nb.emoji} />
-              <span className="drawer-item-label">{nb.name}</span>
-              <RollingCount className="tag-count" value={nb.count} />
-            </Link>
+            <Fragment key={nb.id}>
+              <Link
+                to="/notes"
+                search={scopeOf(nb.name)}
+                // `drawer-place-notebook` is how a strip knows to hide these: a notebook with
+                // no emoji draws the same book as every other, so as icons alone they would be
+                // a column of identical squares, and the strip is opened to tell them apart.
+                className={[
+                  'drawer-item drawer-place-notebook',
+                  on && 'current',
+                  inside && openView !== undefined && 'drawer-parent',
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
+                aria-current={on ? 'true' : undefined}
+                // A name can be longer than the column; the row ellipsises it and the
+                // tooltip carries the rest, the way `.overflow-label` does for an address.
+                title={nb.name}
+                onClick={picked}
+              >
+                <NotebookGlyph emoji={nb.emoji} />
+                <span className="drawer-item-label">{nb.name}</span>
+                <RollingCount className="tag-count" value={nb.count} />
+              </Link>
+              {/*
+                  The notebook's saved views, under it while it is where you are. They grow
+                  in rather than appear (`Collapse`, as the tags do), so entering a notebook
+                  pushes the rows below it down instead of jumping them. A row per view, a
+                  link to the whole address the view keeps (`viewSearch`), and no count: a
+                  count would be a second query per view on every change, for a number the
+                  list's own head gives the moment the view is open.
+              */}
+              <Collapse open={inside && nbViews.length > 0} className="drawer-views">
+                {nbViews.map((v) => {
+                  const current = openView?.id === v.id;
+                  return (
+                    <Link
+                      key={v.id}
+                      to="/notes"
+                      search={viewSearch(nb.name, v)}
+                      className={current ? 'drawer-item drawer-view current' : 'drawer-item drawer-view'}
+                      aria-current={current ? 'true' : undefined}
+                      title={v.name}
+                      onClick={picked}
+                    >
+                      <ViewRowIcon />
+                      <span className="drawer-item-label">{v.name}</span>
+                    </Link>
+                  );
+                })}
+              </Collapse>
+            </Fragment>
           );
         })}
 

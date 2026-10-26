@@ -205,6 +205,9 @@ vi.mock('../notes-api.js', async (importOriginal) => ({
   restoreRevision: vi.fn(),
   clearRevisions: vi.fn(),
   importNotebook: vi.fn(),
+  createView: vi.fn(),
+  updateView: vi.fn(),
+  deleteView: vi.fn(),
   purgeNotes: vi.fn(),
   // No read of the plan answers unless a test gives it one (`roomForNotes`).
   getPlan: vi.fn(() => Promise.reject(new Error('no plan read in this test'))),
@@ -265,8 +268,9 @@ function library(notes: LocalNote[], notebooks: FeedNotebook[] = []) {
   const nb = collection(notebooks, (r) => r.id);
   const t = collection<{ id: string }>([], (r) => r.id);
   const a = collection<{ id: string }>([], (r) => r.id);
+  const v = collection<{ id: string }>([], (r) => r.id);
   const s = collection<{ id: string }>([], (r) => r.id);
-  const collections = { notes: n.c, notebooks: nb.c, tags: t.c, attachments: a.c, syncState: s.c } as unknown as Collections;
+  const collections = { notes: n.c, notebooks: nb.c, tags: t.c, attachments: a.c, views: v.c, syncState: s.c } as unknown as Collections;
   let release: (() => void) | null = null;
   const engine = {
     // A whole copy unless a test says the first one is still walking.
@@ -289,7 +293,7 @@ function library(notes: LocalNote[], notebooks: FeedNotebook[] = []) {
     engine,
     /** Lets a pull the actions are waiting on land. */
     landPull: () => release?.(),
-    note: (id: string): Note => toNote(lib.notes.get(id)!, lookups({ notes: lib.notes.values(), notebooks: [], tags: [], attachments: [] })),
+    note: (id: string): Note => toNote(lib.notes.get(id)!, lookups({ notes: lib.notes.values(), notebooks: [], tags: [], attachments: [], views: [] })),
   };
 }
 
@@ -302,7 +306,7 @@ function library(notes: LocalNote[], notebooks: FeedNotebook[] = []) {
 async function fedLibrary(notes: LocalNote[]) {
   /** What the server has written, in order: a note as it now stands, or a purge. */
   const log: { seq: number; note?: FeedNote; purged?: string }[] = [];
-  let position: Position | null = { seq: 1, epoch: 'test' };
+  let position: Position | null = { seq: 1, epoch: 'test', viewsAt: 1 };
   const page = (path: string): FeedPage => {
     const since = Number(new URL(path, 'http://x').searchParams.get('since'));
     const after = log.filter((e) => e.seq > since);
@@ -344,6 +348,7 @@ async function fedLibrary(notes: LocalNote[]) {
     notebooks: fed<{ id: string }>('notebook', [], (r) => r.id),
     tags: fed<{ id: string }>('tag', [], (r) => r.id),
     attachments: fed<{ id: string }>('attachment', [], (r) => r.id),
+    views: fed<{ id: string }>('view', [], (r) => r.id),
     syncState: collection<{ id: string }>([], (r) => r.id).c,
   } as unknown as Collections;
   const outbox = createOutbox('u1', { ...collections, userId: 'u1', engine });
@@ -1084,7 +1089,7 @@ describe('a replayed write', () => {
     vi.mocked(api.deleteNote).mockImplementationOnce(real.deleteNote);
     vi.mocked(api.deleteNotePermanently).mockImplementationOnce(real.deleteNotePermanently);
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ error: 'Not found' }), { status: 404, headers: { 'Content-Type': 'application/json' } })));
-    vi.mocked(api.restoreNote).mockResolvedValueOnce(toNote(row('n3'), lookups({ notes: [], notebooks: [], tags: [], attachments: [] })));
+    vi.mocked(api.restoreNote).mockResolvedValueOnce(toNote(row('n3'), lookups({ notes: [], notebooks: [], tags: [], attachments: [], views: [] })));
     await actions.trashNote('n1');
     await actions.purgeNote('n2');
     await actions.restoreNote('n3');
@@ -2068,6 +2073,90 @@ describe('applying a notebook template', () => {
     const { engine } = library([]);
     await expect(actions.applyNotebookTemplate(definition, { create: true })).resolves.toBe('taken');
     expect(engine.pull).not.toHaveBeenCalled();
+  });
+});
+
+/*
+ * Saved views are requests, like a notebook's management, and the caller opens the
+ * view's address straight after: the action answers once this tab's library holds it.
+ */
+describe('saving a view', () => {
+  const saved = { id: 'v1', notebookId: 'nb1', name: 'Business', position: 0, query: { tag: ['tax'] }, updatedAt: 5 };
+  afterEach(() => actions.provideMirrorWait(async () => {}));
+
+  it('waits for the library to hold the view before answering, in the tab that holds it', async () => {
+    vi.mocked(api.createView).mockResolvedValueOnce(saved);
+    const { engine, landPull } = library([]);
+    let answered = false;
+    const done = actions.createView({ notebookId: 'nb1', name: 'Business', query: { tag: ['tax'] } }).then(() => (answered = true));
+    await tick();
+    await tick();
+    expect(engine.pull).toHaveBeenCalledOnce();
+    expect(answered).toBe(false);
+    landPull();
+    await done;
+  });
+
+  /* A pull follows every page there is: a device catching up has many, and the Save
+     button is not to wait for all of them. The page holds the server's answer meanwhile. */
+  it('answers after VIEW_LANDED_MS in the tab that holds the library, however long the pull runs', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.mocked(api.createView).mockResolvedValueOnce(saved);
+      const { engine } = library([]);
+      let answered = false;
+      const done = actions.createView({ notebookId: 'nb1', name: 'Business', query: { tag: ['tax'] } }).then(() => (answered = true));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(engine.pull).toHaveBeenCalledOnce();
+      await vi.advanceTimersByTimeAsync(actions.VIEW_LANDED_MS - 1);
+      expect(answered).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      await done;
+      expect(answered).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  /* A view's write reaches the views and nothing else: every notes list refetched for
+     an arrow pressed on the settings page was a burst of requests with no library. */
+  it('tells the query bridge it reached the views alone', async () => {
+    provideLibrary(async () => null);
+    const heard = vi.fn();
+    const off = actions.onDirectWrite(heard);
+    vi.mocked(api.updateView).mockResolvedValueOnce(saved);
+    await actions.updateView('v1', { position: 1 });
+    off();
+    expect(heard).toHaveBeenCalledWith(new Set(['views']));
+  });
+
+  it('in a client tab, waits for the holder to bring the row rather than pulling', async () => {
+    provideLibrary(async () => null);
+    const views = new Map<string, typeof saved>();
+    const rows = { values: () => views.values(), get: (id: string) => views.get(id), has: (id: string) => views.has(id), preload: async () => {}, size: 0 };
+    const waits: Array<{ ms: number; held: () => boolean }> = [];
+    actions.provideMirrorWait(async (until, ms) => void waits.push({ ms, held: () => until(rows) }));
+    vi.mocked(api.updateView).mockResolvedValueOnce(saved);
+    await actions.updateView('v1', { name: 'Business' });
+    expect(waits.map((w) => w.ms)).toEqual([actions.VIEW_LANDED_MS]);
+    // The row as it was before the write is not it; the server's answer, or later, is.
+    views.set('v1', { ...saved, updatedAt: 4 });
+    expect(waits[0]!.held()).toBe(false);
+    views.set('v1', saved);
+    expect(waits[0]!.held()).toBe(true);
+  });
+
+  it('takes a view another device deleted first as deleted, and passes any other refusal on', async () => {
+    const { engine, landPull } = library([]);
+    vi.mocked(api.deleteView).mockRejectedValueOnce(new ApiError(404, 'Not found'));
+    const done = actions.deleteView('v1');
+    await tick();
+    await tick();
+    landPull();
+    await expect(done).resolves.toBeUndefined();
+    expect(engine.pull).toHaveBeenCalledOnce();
+    vi.mocked(api.deleteView).mockRejectedValueOnce(new ApiError(403, 'Forbidden'));
+    await expect(actions.deleteView('v1')).rejects.toMatchObject({ status: 403 });
   });
 });
 

@@ -77,7 +77,7 @@ export function NotebookMissing({ notebook, notebooks, whole }: NotebookMissingP
       actions={
         <Link
           to="/notes"
-          search={(prev) => ({ ...prev, notebook: undefined, ...rememberedSort(undefined) })}
+          search={(prev) => ({ ...prev, notebook: undefined, saved: undefined, ...rememberedSort(undefined) })}
           className="btn btn-secondary btn-large empty-state-action"
         >
           Show all notes

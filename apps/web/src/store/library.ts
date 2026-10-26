@@ -4,7 +4,7 @@ import { reportError } from '../report-error.js';
 import { offlineNow, recheck, subscribeConnectivity } from '../connectivity.js';
 import { openLocalStore, openSearchDatabase, closeLocalStore } from './db.js';
 import { createCollections, cursorStore, type Collections, type LocalAttachment, type LocalNote } from './collections.js';
-import { countStoredWrites, createOutbox, provideForwarder, provideLibrary, type Outbox } from './actions.js';
+import { countStoredWrites, createOutbox, provideForwarder, provideLibrary, provideMirrorWait, type Outbox } from './actions.js';
 import { FeedEngine, isWhole, type FeedState } from './feed.js';
 import { createKeeper, type Keeper } from './keep.js';
 import { askToPersist, readKeptNotebooks } from './files.js';
@@ -15,8 +15,8 @@ import { attachClientLibrary, type ClientLibrary, type Rows } from './client-lib
 import type { SearchReader } from './search-index.js';
 import { openPort } from './library-channel.js';
 import { serveLibrary, type Server } from './library-serve.js';
-import { LIBRARY_ROOTS, rootsOfNoteChanges } from './library-roots.js';
-import type { FeedNotebook, FeedTag } from '@unbent/shared';
+import { LIBRARY_ROOTS, VIEW_ROOTS, rootsOfNoteChanges } from './library-roots.js';
+import type { FeedNotebook, FeedTag, FeedView } from '@unbent/shared';
 
 /**
  * One account's library on this device: its local store, the collections in it, the
@@ -78,6 +78,7 @@ export interface ReadableLibrary {
   notebooks: Rows<FeedNotebook>;
   tags: Rows<FeedTag>;
   attachments: Rows<LocalAttachment>;
+  views: Rows<FeedView>;
   state: () => FeedState;
   version: () => number;
   search?: { index: SearchReader; sync: { opened: (noteId: string) => Promise<void> } } | null;
@@ -132,6 +133,34 @@ provideForwarder(async () => {
   } catch {
     return null;
   }
+});
+
+/*
+ * A client tab's wait for a view it saved to reach its rows (`viewLanded` in
+ * `actions.ts`): they change only when the holder's do, so the wait is on this tab's
+ * change listeners, bounded by the caller. Nothing to wait for in a tab that holds the
+ * library (the action pulls there) or has none.
+ */
+provideMirrorWait(async (until, ms) => {
+  if (forTests || !current) return;
+  let lib: AnyLibrary;
+  try {
+    lib = await current.library;
+  } catch {
+    return;
+  }
+  if (!lib.remote || until(lib.views)) return;
+  await new Promise<void>((done) => {
+    const finish = () => {
+      clearTimeout(timer);
+      stop();
+      done();
+    };
+    const timer = setTimeout(finish, ms);
+    const stop = onLibraryChange(() => {
+      if (until(lib.views)) finish();
+    });
+  });
 });
 
 /** The library open now, or null before anyone has signed in on this tab. */
@@ -860,6 +889,11 @@ async function open(userId: string, halting: Halting, isMine: () => boolean, hol
       everything();
       search?.sync.touchFiles();
     }, every),
+    // A root of its own: no list, count or note reads a view, so a view saved or renamed
+    // must not refetch them all, as `everything` would. The rail's list of views is what
+    // reads it. (A notebook's change still reaches it through `everything`, since a view
+    // whose notebook has gone is not listed.) Nothing in the search index reads one.
+    collections.views.subscribeChanges(() => changed(VIEW_ROOTS), every),
   ];
 
   // What makes the engine pull. None of these is a timer: a device that is open and
@@ -1075,7 +1109,7 @@ async function open(userId: string, halting: Halting, isMine: () => boolean, hol
         index,
         sync: createSearchSync({
           index,
-          snapshot: () => ({ notes: rows.notes.values(), notebooks: rows.notebooks.values(), tags: rows.tags.values(), attachments: rows.attachments.values() }),
+          snapshot: () => ({ notes: rows.notes.values(), notebooks: rows.notebooks.values(), tags: rows.tags.values(), attachments: rows.attachments.values(), views: rows.views.values() }),
           settled,
           leading,
           kept: () => readKeptNotebooks(userId),

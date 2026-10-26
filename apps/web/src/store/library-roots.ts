@@ -8,7 +8,14 @@ import type { LocalNote } from './collections.js';
  */
 
 /** The query roots a change to the library can reach. */
-export const LIBRARY_ROOTS: ReadonlySet<string> = new Set(['notes', 'note', 'trash', 'tags', 'notebooks', 'notebook-fields', 'attachments']);
+export const LIBRARY_ROOTS: ReadonlySet<string> = new Set(['notes', 'note', 'trash', 'tags', 'notebooks', 'notebook-fields', 'attachments', 'views']);
+
+/**
+ * The roots a change to the saved views reaches: their own list and nothing else. No list
+ * of notes, count or name is derived from a view, so a view saved, renamed or reordered
+ * refetching every query (as a notebook's or a tag's change does) would be work for nothing.
+ */
+export const VIEW_ROOTS: ReadonlySet<string> = new Set(['views']);
 
 /** A change message as the collection reports it; the rows are read as notes. */
 export type NoteChange = { type: string; value?: object | undefined; previousValue?: object | undefined };

@@ -5,6 +5,8 @@ import {
   ArrowUp,
   ArrowUpDown,
   Book,
+  Bookmark,
+  BookmarkPlus,
   BookSearch,
   Bot,
   Calendar,
@@ -175,6 +177,25 @@ export function NotebookGlyph({ emoji }: { emoji: string | null | undefined }) {
       {emoji}
     </span>
   );
+}
+
+/**
+ * A saved view's row, under its notebook's (`NotebookNav`). A bookmark, because that is
+ * what a view is: a place in the notebook kept under a name, which opens as the address
+ * it was saved from. A funnel was the other candidate and was turned down: the filter
+ * control already draws one, and a view is where you go, not what you apply.
+ */
+export function ViewRowIcon() {
+  return <RowIcon icon={Bookmark} />;
+}
+
+/**
+ * Saving the list as a view: the rail's bookmark with a plus, beside the words "Save view"
+ * at the end of the chips. The chips' cross's size, since it reads with a small word
+ * rather than standing alone in a target.
+ */
+export function SaveViewIcon() {
+  return <BookmarkPlus size="1.05em" strokeWidth={2} aria-hidden="true" focusable="false" />;
 }
 
 export function PlusRowIcon() {

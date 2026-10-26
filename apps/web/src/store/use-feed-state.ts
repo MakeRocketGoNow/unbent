@@ -57,6 +57,20 @@ export function useLibraryWhole(): boolean {
   return presence === 'open' && state !== null && isWhole(state);
 }
 
+/**
+ * Whether the views this device reads are every view the account has: a library whose
+ * views are whole (`FeedState.views`), or no library at all, where the views are read
+ * from the server. False while the store opens, during a walk, before `seedViews` has
+ * filled a copy made by a build that did not keep views, and in a client tab whose
+ * holder is on such a build: when a view not in the list may simply not have arrived.
+ */
+export function useViewsKnown(): boolean {
+  const presence = useLibraryPresence();
+  const state = useFeedState();
+  if (presence === 'none') return true;
+  return presence === 'open' && state !== null && isWhole(state) && state.views === true;
+}
+
 type Subscribable = { subscribe: (fn: (s: FeedState) => void) => () => void; state: () => FeedState };
 
 /**
