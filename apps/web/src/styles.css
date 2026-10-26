@@ -7988,7 +7988,7 @@ button.settings-nav-item {
 
 /* At desktop width Rename and Cancel take the count's line under the field, at the
    count's size, so the head grows by as little as a pair of buttons can. */
-.view-rename .view-name-actions .btn-small {
+.view-rename .view-name-actions .view-action.btn-small {
   min-height: 0;
   height: 1.3rem;
   padding-block: 0;
@@ -8628,6 +8628,10 @@ button.settings-nav-item {
    height, and in the page's ink rather than the quiet button's muted grey: beside filled
    chips a grey word read as a caption, not as something to press. "Edited" is the one
    muted word, the state the buttons are about, with a dot after it to set it apart.
+
+   Every rule here that changes a button is scoped to `.view-action`, the class each of
+   these buttons carries, rather than to the row: `Button`'s shapes are its own, and a
+   different quiet button placed in the chips row later (a bulk action, say) keeps them.
 */
 .view-actions {
   display: inline-flex;
@@ -8637,13 +8641,13 @@ button.settings-nav-item {
   min-width: 0;
 }
 
-.filter-chips .btn-small {
+.filter-chips .view-action.btn-small {
   min-height: calc(0.75rem * 1.2 + 0.5rem + 2px);
   padding-block: 0;
 }
 
-.filter-chips .btn-quiet:not(.btn-danger),
-.sheet-view-actions .btn-quiet:not(.btn-danger) { color: var(--fg); }
+.filter-chips .view-action.btn-quiet:not(.btn-danger),
+.sheet-view-actions .view-action.btn-quiet:not(.btn-danger) { color: var(--fg); }
 
 .view-edited {
   display: inline-flex;
@@ -8659,7 +8663,7 @@ button.settings-nav-item {
 }
 
 /* "Save view" leads with its bookmark, the rail's glyph for a view, with a plus. */
-.view-action {
+.view-action:has(svg) {
   gap: 0.3rem;
 }
 
@@ -10243,8 +10247,8 @@ button.settings-nav-item {
 
   /* The saved-view actions after the chips (`ViewActions`) are pressed by the same thumb,
      so they take the chips' height, and the name field the same. */
-  .filter-chips .btn-small,
-  .sheet-view-actions .btn-small {
+  .filter-chips .view-action.btn-small,
+  .sheet-view-actions .view-action.btn-small {
     min-height: 2.25rem;
   }
 

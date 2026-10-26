@@ -133,6 +133,7 @@ export function ViewActions({ state, viewName, offline, searching = false, onCre
       <Button
         variant="quiet"
         size="small"
+        className="view-action"
         disabled={saveBlocked !== undefined || saving}
         tip={saveBlocked ?? (viewName ? `Keep these changes in “${viewName}”` : undefined)}
         onClick={() => void save()}
@@ -143,6 +144,7 @@ export function ViewActions({ state, viewName, offline, searching = false, onCre
         ref={opener}
         variant="quiet"
         size="small"
+        className="view-action"
         disabled={saveBlocked !== undefined || saving}
         tip={saveBlocked}
         onClick={() => setNaming(true)}
@@ -150,7 +152,7 @@ export function ViewActions({ state, viewName, offline, searching = false, onCre
         Save as new
       </Button>
       {/* Not faded offline: it only rewrites the address, which needs nothing of the server. */}
-      <Button variant="quiet" size="small" disabled={saving} onClick={onRevert}>
+      <Button variant="quiet" size="small" className="view-action" disabled={saving} onClick={onRevert}>
         Revert
       </Button>
       {error && (

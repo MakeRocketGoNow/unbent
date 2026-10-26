@@ -96,10 +96,10 @@ export function ViewNameField({
 
   const buttons = (
     <>
-      <Button variant="secondary" size="small" disabled={busy} onClick={() => void commit()}>
+      <Button variant="secondary" size="small" className="view-action" disabled={busy} onClick={() => void commit()}>
         {busy ? 'Saving…' : commitLabel}
       </Button>
-      <Button variant="quiet" size="small" disabled={busy} onClick={onCancel}>
+      <Button variant="quiet" size="small" className="view-action" disabled={busy} onClick={onCancel}>
         Cancel
       </Button>
     </>
