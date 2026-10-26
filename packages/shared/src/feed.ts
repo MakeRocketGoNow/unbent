@@ -101,7 +101,11 @@ export interface FeedPage {
   notebooks: FeedNotebook[];
   tags: FeedTag[];
   attachments: FeedAttachment[];
-  /** Absent from a server built before views; a client reads it as none changed. */
+  /**
+   * Always sent, `[]` when none changed. Absent only from a Worker built before views (a
+   * rollback, with the views still in the store), which a client reads as view rows it
+   * has passed over: its views are not whole from there, and it asks for them (`FeedEngine`).
+   */
   views?: FeedView[];
   tombstones: FeedTombstone[];
 }
@@ -133,7 +137,10 @@ export interface SnapshotPage {
   /** On the first page only: the rest of the library, and how many notes the walk will visit. */
   notebooks?: FeedNotebook[];
   tags?: FeedTag[];
-  /** On the first page too; absent from a server built before views, which has none. */
+  /**
+   * On the first page too, `[]` when there are none. Absent only from a Worker built
+   * before views, which a client reads as a walk that did not see them (`FeedEngine`).
+   */
   views?: FeedView[];
   total?: number;
 }
