@@ -33,6 +33,7 @@ vi.mock('../notes-api.js', async (importOriginal) => ({
 vi.mock('../index-files.js', () => ({ indexUploadedFile: vi.fn(), useIndexing: () => ({ queued: 0, running: false, failed: 0 }) }));
 
 const NB = 'aaaaaaaa-0000-4000-8000-000000000001';
+const NB2 = 'aaaaaaaa-0000-4000-8000-000000000002';
 const V1 = '11111111-1111-4111-8111-111111111111';
 const GONE = '99999999-9999-4999-8999-999999999999';
 
@@ -64,7 +65,10 @@ let stopLibraryQueries: (() => void) | null = null;
 function setup(views: FeedView[] = [view()]) {
   lib = installTestLibrary({
     notes: [note('a', { title: 'Alpha', tagIds: ['t1'] }), note('b', { title: 'Beta' })],
-    notebooks: [{ id: NB, name: 'Receipts', purpose: null, emoji: null, fieldDefs: [] }],
+    notebooks: [
+      { id: NB, name: 'Receipts', purpose: null, emoji: null, fieldDefs: [] },
+      { id: NB2, name: 'Projects', purpose: null, emoji: null, fieldDefs: [] },
+    ],
     tags: [
       { id: 't1', name: 'Acme', color: null },
       { id: 't2', name: 'Travel', color: null },
@@ -273,6 +277,36 @@ describe('saving a view', () => {
     );
     await waitFor(() => expect(search().saved).toBe(made));
     expect(await screen.findByRole('heading', { name: 'Acme only' })).toBeTruthy();
+  });
+
+  /* The save waits for its row; a person who has gone elsewhere meanwhile stays there. */
+  it('does not open the view in another notebook the person moved to while it saved', async () => {
+    const made = '55555555-5555-4555-8555-555555555555';
+    setup([]);
+    let land: (() => void) | undefined;
+    vi.mocked(actions.createView).mockImplementation(
+      (body) =>
+        new Promise((resolve) => {
+          land = () => {
+            const row = view({ id: made, name: body.name, query: body.query });
+            lib?.upsert('view', row);
+            resolve(row);
+          };
+        }),
+    );
+    const { router, search } = mount('/notes?notebook=Receipts&tag=%5B%22Acme%22%5D&view=list');
+    (await screen.findByRole('button', { name: 'Save view' })).click();
+    const field = await screen.findByRole('textbox', { name: 'View name' });
+    fireEvent.change(field, { target: { value: 'Acme only' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(land).toBeDefined());
+
+    await router.navigate({ to: '/notes', search: { notebook: 'Projects', view: 'list' } });
+    await screen.findByRole('heading', { name: 'Projects' });
+    land!();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(search().notebook).toBe('Projects');
+    expect(search().saved).toBeUndefined();
   });
 
   /* A taken name is about the field, so it is said under the field, which keeps the name. */

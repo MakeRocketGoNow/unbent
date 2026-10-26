@@ -215,8 +215,18 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    * returns. `createView` resolves once the library holds the row, but the query that
    * reads it re-runs a beat later, and in that beat the id names no view it knows: this
    * keeps the drop below from taking a view that was made a moment ago for a stale one.
+   *
+   * Only for that beat: an id leaves the set once the views query has answered with it
+   * on its own, after the row this page put in its cache (`holdView`, which is why the
+   * time it was held is kept), and the query is the judge from then on like any other
+   * id's, so a view deleted later on another device is dropped from the address here too.
    */
-  const madeHere = useRef(new Set<string>());
+  const madeHere = useRef(new Map<string, number>());
+  useEffect(() => {
+    for (const [id, heldAt] of madeHere.current) {
+      if (views.dataUpdatedAt > heldAt && views.data?.some((v) => v.id === id)) madeHere.current.delete(id);
+    }
+  }, [views.data, views.dataUpdatedAt]);
   /*
    * A `saved` that names no view of this notebook (deleted on another device, an old
    * link, a notebook renamed under it) is dropped once that is known, as a stale field
@@ -1004,13 +1014,29 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    * The list saved as a new view, then opened as one: the address is already the view's,
    * so opening it is only its id beside the filters, in place, with the open note left
    * open and the search text left as typed.
+   *
+   * Only if the person is still where the save was made. The save waits for the row to
+   * land (seconds, in a tab that does not hold the library), and in that time they may
+   * have gone to another notebook; the id of a view of the first written into the second
+   * one's address would name a view that is not there. The view is saved either way and
+   * listed under its notebook.
    */
   const createView = async (name: string) => {
-    if (notebookId === undefined) return;
+    if (notebookId === undefined || !notebook) return;
+    const madeIn = { name: notebook, id: notebookId };
     const made = await actions.createView({ notebookId, name, query: viewQueryOf(listAddress) });
-    madeHere.current.add(made.id);
     holdView(made);
-    await navigate({ to: '.', search: (prev) => ({ ...prev, saved: made.id }), replace: true, resetScroll: false });
+    if (made.notebookId !== madeIn.id) return;
+    madeHere.current.set(made.id, Date.now());
+    await navigate({
+      to: '.',
+      search: (prev) =>
+        typeof prev.notebook === 'string' && sameNotebookName(prev.notebook, madeIn.name) && prev.saved === undefined
+          ? { ...prev, saved: made.id }
+          : prev,
+      replace: true,
+      resetScroll: false,
+    });
   };
   /** The open view takes what the list shows now; the Edited line goes with the match. */
   const saveView = async () => {
