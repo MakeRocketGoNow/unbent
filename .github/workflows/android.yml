@@ -26,17 +26,17 @@ defaults:
     working-directory: apps/android
 
 jobs:
+  # Every run, pull requests included. It holds no signing or Play secrets, so it is safe to
+  # run the build files of a branch nobody has reviewed yet: the bundle comes out unsigned,
+  # which still proves the release path compiles.
   build:
     runs-on: ubuntu-latest
-    # Every build that could reach Play needs a version code Play has not seen. The run
-    # number only ever increases and is unique across the repository, so nothing has to be
-    # remembered or bumped by hand. See `versionCode` in app/build.gradle.kts.
     env:
-      UNBENT_VERSION_CODE: ${{ github.run_number }}
       # Without this the release build compiles a client id of "", which disables the
       # native account sheet silently: `isConfigured` sends the user to the browser
       # instead, and nothing in the build says the button was dropped. A fork without the
-      # secret still builds; it just gets the browser path.
+      # secret still builds; it just gets the browser path. It stays a repository secret,
+      # unlike the ones in `release`: a web client id is shipped inside the app anyway.
       UNBENT_GOOGLE_WEB_CLIENT_ID: ${{ secrets.GOOGLE_WEB_CLIENT_ID }}
       # Both optional, and both for a fork building the app for an instance of its own:
       # the id Play knows the app by, and the instance it signs in to until changed in
@@ -53,30 +53,80 @@ jobs:
       - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
 
       - run: ./gradlew test
-
-      # An unsigned build on every run proves the release path compiles. Signing only
-      # happens when the keystore secret is present, so a fork's PR still builds.
       - run: ./gradlew bundleRelease assembleRelease
 
-      # `secrets` cannot be read in an `if:`, so the presence check is an env var the
-      # expression can see. A fork or a PR without the keystore still gets an unsigned build
-      # rather than a failed run.
+  # Signs and uploads, on `main` only. The signing and Play secrets live on the `play`
+  # Environment, not on the repository, and the Environment accepts only `main` (Settings,
+  # Environments). That check is GitHub's, made before the job starts, so it holds even
+  # against a pull request that edits this file: a run from any other ref is refused the
+  # Environment and never sees a secret. The `if:` below only skips the job cleanly instead
+  # of letting it fail on that refusal, which also means a manual run on another branch
+  # builds but does not publish.
+  release:
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: play
+    # Every build that could reach Play needs a version code Play has not seen. The run
+    # number only ever increases and is unique across the repository, so nothing has to be
+    # remembered or bumped by hand. See `versionCode` in app/build.gradle.kts.
+    env:
+      UNBENT_VERSION_CODE: ${{ github.run_number }}
+      # The same three as `build`, for the same reasons: this job builds the app again.
+      UNBENT_GOOGLE_WEB_CLIENT_ID: ${{ secrets.GOOGLE_WEB_CLIENT_ID }}
+      UNBENT_APPLICATION_ID: ${{ vars.ANDROID_APPLICATION_ID }}
+      UNBENT_DEFAULT_INSTANCE: ${{ vars.ANDROID_DEFAULT_INSTANCE }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # `secrets` cannot be read in an `if:`, and a step that pulls in an action cannot
+      # carry the `env:` a shell step uses to smuggle one in, so presence is decided once,
+      # here, and the steps below read the output.
+      #
+      # Both, not either: the service account says where to publish, and the keystore is
+      # what makes a bundle Play will accept. Without the keystore check a missing signing
+      # secret would fail in the upload rather than skipping, which reads as a broken
+      # publish rather than a build nobody asked to ship.
+      - name: Can this run publish?
+        id: publishable
+        env:
+          KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          PLAY_SERVICE_ACCOUNT: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: |
+          if [ -n "$KEYSTORE" ] && [ -n "$PLAY_SERVICE_ACCOUNT" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "No Play service account or no keystore on the \`play\` Environment, skipping publish." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        if: steps.publishable.outputs.ready == 'true'
+        with:
+          distribution: temurin
+          java-version: 25
+      - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+        if: steps.publishable.outputs.ready == 'true'
+
+      # A trap rather than a closing `rm`: the step runs under `bash -e`, so a failed build
+      # would exit before reaching it and leave the keystore on disk.
       - name: Sign release
-        if: github.event_name != 'pull_request' && env.KEYSTORE != ''
+        if: steps.publishable.outputs.ready == 'true'
         env:
           KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           UNBENT_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           UNBENT_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           UNBENT_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
+          trap 'rm -f "$RUNNER_TEMP/release.jks"' EXIT
           echo "$KEYSTORE" | base64 -d > "$RUNNER_TEMP/release.jks"
           UNBENT_KEYSTORE_PATH="$RUNNER_TEMP/release.jks" ./gradlew bundleRelease assembleRelease
-          rm -f "$RUNNER_TEMP/release.jks"
 
       # Both formats, because they are for different places. Play takes only the bundle
       # and re-signs it per device; the APK is what `adb install` and a sideload take, and
       # is what the emulator instructions in AGENTS.md assume.
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: steps.publishable.outputs.ready == 'true'
         with:
           name: unbent-android
           path: |
@@ -84,9 +134,6 @@ jobs:
             apps/android/app/build/outputs/apk/release/*.apk
           if-no-files-found: error
 
-      # `secrets` cannot be read in an `if:`, and a step that pulls in an action cannot
-      # carry the `env:` that the signing step uses to smuggle one in, so presence is
-      # decided once, here, and the publish reads the output.
       # Play names a release after `versionName` alone when nothing is supplied, so every
       # release reads "0.1.0" and the list gives no way to tell which build a tester has.
       # This mirrors what Play shows beside the bundle, "39 (0.1.0)", so the run number
@@ -96,28 +143,10 @@ jobs:
       # second copy is one nobody updates when the first one changes.
       - name: Name the release
         id: release_name
-        if: github.event_name != 'pull_request'
+        if: steps.publishable.outputs.ready == 'true'
         run: |
           name=$(grep -m1 'versionName = ' app/build.gradle.kts | sed 's/.*versionName = "\(.*\)".*/\1/')
           echo "name=${UNBENT_VERSION_CODE} (${name})" >> "$GITHUB_OUTPUT"
-
-      - name: Can this run publish?
-        id: publishable
-        if: github.event_name != 'pull_request'
-        env:
-          KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-          PLAY_SERVICE_ACCOUNT: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
-        # Both, not either: the service account says where to publish, and the keystore is
-        # what makes a bundle Play will accept. Without the keystore check a missing signing
-        # secret would fail in the upload rather than skipping, which reads as a broken
-        # publish rather than a build nobody asked to ship.
-        run: |
-          if [ -n "$KEYSTORE" ] && [ -n "$PLAY_SERVICE_ACCOUNT" ]; then
-            echo "ready=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "ready=false" >> "$GITHUB_OUTPUT"
-            echo "No Play service account or no keystore, skipping publish." >> "$GITHUB_STEP_SUMMARY"
-          fi
 
       # Straight to the testing track, because the step this replaces was a person
       # downloading the artifact above and uploading that same file by hand.

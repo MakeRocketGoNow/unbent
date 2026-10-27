@@ -540,7 +540,12 @@ Never build a bundle by hand for Play. A local build gets `versionCode = 1`, whi
 rejects as a duplicate; CI takes the run number, which is unique and always rising.
 
 The publish needs `PLAY_SERVICE_ACCOUNT_JSON` alongside the keystore secrets, and skips
-cleanly without it. Play also requires **one bundle uploaded by hand** before the API will
+cleanly without it. All five live on the `play` Environment, which accepts only `main`,
+never on the repository: a pull request runs its own copy of the workflow, so a repository
+secret is one any branch can read, and the upload key is the one secret here that cannot be
+rotated by redeploying. Set them with `--env play` (`gh secret set ANDROID_KEY_PASSWORD
+--env play`); one set without it lands back on the repository. Pull requests run only the
+`build` job, which holds none of them. Play also requires **one bundle uploaded by hand** before the API will
 accept any: a brand new app or a renamed `applicationId` has to be primed that way once.
 
 **A change someone would notice on their phone updates the release note in the same pull
