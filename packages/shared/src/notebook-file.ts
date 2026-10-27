@@ -121,6 +121,12 @@ export const notebookDefinitionSchema = z.object({
         scale: fieldScaleSchema.optional(),
         currency: currencySchema.optional(),
         style: fieldStyleSchema.optional(),
+      })
+      // Refused by name, as `createFieldSchema` refuses it: the store keeps one, and a
+      // file that asked for a year beside a currency would apply as something else.
+      .refine((f) => !(f.style && (f.scale || f.currency)), {
+        message: 'A year cannot also be a rating or a currency',
+        path: ['style'],
       }),
     )
     .max(MAX_FIELDS_PER_NOTEBOOK)
