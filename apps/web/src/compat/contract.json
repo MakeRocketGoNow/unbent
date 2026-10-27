@@ -138,6 +138,19 @@
               "type": "null"
             }
           ]
+        },
+        "style": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": [
+                "year"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "required": [
@@ -544,6 +557,12 @@
       "required": [
         "max",
         "step"
+      ]
+    },
+    "fieldStyleSchema": {
+      "type": "string",
+      "enum": [
+        "year"
       ]
     },
     "fieldTypeSchema": {
@@ -1026,6 +1045,12 @@
               "currency": {
                 "type": "string",
                 "pattern": "^[A-Z]{3}$"
+              },
+              "style": {
+                "type": "string",
+                "enum": [
+                  "year"
+                ]
               }
             },
             "required": [
@@ -1429,6 +1454,19 @@
               "type": "null"
             }
           ]
+        },
+        "style": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": [
+                "year"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       }
     },
@@ -1730,13 +1768,14 @@
       "packages/shared/src/fields.ts › ConversionPlan": "7ed61445bbba578e|07c142382d|099ffbf628|6161c5410e",
       "packages/shared/src/fields.ts › CreateFieldInput": "43251eb2c573216f",
       "packages/shared/src/fields.ts › EncodedFieldValue": "2fae6e02cbe97900|099beb361a|fefc3aab89",
-      "packages/shared/src/fields.ts › FieldDef": "6e6f86474267c688|2cf492a036|306b09e367|3fe91fb414|453ce034aa|62c2b0307c|69ec55d8a4|ae28463b52|b843c5048c|ba2dcd747c|d9d88b2b04",
+      "packages/shared/src/fields.ts › FieldDef": "6e6f86474267c688|1dd6af9221|2cf492a036|306b09e367|3fe91fb414|453ce034aa|62c2b0307c|69ec55d8a4|ae28463b52|b843c5048c|ba2dcd747c|d9d88b2b04",
       "packages/shared/src/fields.ts › FieldFilter": "088f6970545f0012|1c1c71926b|26189fe9e9|959f89d90e",
       "packages/shared/src/fields.ts › FieldFilterOp": "85d7ef8e61f3f165",
       "packages/shared/src/fields.ts › FieldScale": "bb733a5a1def162f|28d516ad0b|b88a57c1b5",
+      "packages/shared/src/fields.ts › FieldStyle": "8ed5eaedd0b446e9",
       "packages/shared/src/fields.ts › FieldType": "fc44c0f846f69b6d",
       "packages/shared/src/fields.ts › FieldValue": "34c694d1cd61916a",
-      "packages/shared/src/fields.ts › NoteFieldValue": "3f9e4ef3763006a0|1c1c71926b|3fe91fb414|453ce034aa|69ec55d8a4|89437ff59d|b1df7daf82|ba2186fa84|f67aff11af",
+      "packages/shared/src/fields.ts › NoteFieldValue": "3f9e4ef3763006a0|1c1c71926b|1dd6af9221|3fe91fb414|453ce034aa|69ec55d8a4|89437ff59d|b1df7daf82|ba2186fa84|f67aff11af",
       "packages/shared/src/fields.ts › NoteFieldsPatch": "45c388f4d324821f",
       "packages/shared/src/fields.ts › RatingStep": "6ba9e1f9eda20d2d",
       "packages/shared/src/fields.ts › UpdateFieldInput": "d25f123152ddfa5b",

@@ -172,7 +172,7 @@ function Swap({ from, to }: { from: string | null; to: string | null }) {
 }
 
 /** A field's value as the note's own rows draw it: stars, money, Yes and No. */
-export const formatPropValue = (v: PropValue) => formatFieldValue(v.type, v.value, v.scale, v.currency);
+export const formatPropValue = (v: PropValue) => formatFieldValue(v.type, v.value, v.scale, v.currency, v.style);
 
 /**
  * Why Restore would leave something as it is, in the words of what happened to it.

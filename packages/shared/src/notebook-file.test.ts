@@ -102,6 +102,14 @@ describe('the notebook definitions file', () => {
     expect(() => parseNotebook('name: ""\n')).toThrow(NotebookFileError);
     expect(() => parseNotebook('- not\n- a mapping\n')).toThrow(NotebookFileError);
     expect(() => parseNotebook('name: [unterminated\n')).toThrow(/Malformed YAML/);
+    expect(() =>
+      parseNotebook('name: X\nfields:\n  - name: Paid\n    type: number\n    style: year\n    currency: USD\n'),
+    ).toThrow(/fields\.0\.style/);
+  });
+
+  it('round-trips a year', () => {
+    const text = serializeNotebook({ name: 'Taxes' }, [def({ name: 'Tax year', type: 'number', style: 'year' })]);
+    expect(parseNotebook(text).fields).toEqual([{ name: 'Tax year', type: 'number', style: 'year' }]);
   });
 });
 

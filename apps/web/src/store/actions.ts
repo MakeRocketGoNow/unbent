@@ -1414,7 +1414,7 @@ function valuesOf(value: NoteDraft, lib: WritableLibrary): NoteFieldValue[] {
     if (v === null || v === undefined) continue;
     const def = l.fieldDefs.get(fieldId);
     if (!def) continue;
-    out.push({ fieldId, name: def.name, type: def.type, value: v, scale: def.scale, currency: def.currency, notebookId: def.notebookId, notebook: l.notebooks.get(def.notebookId)?.name ?? '' });
+    out.push({ fieldId, name: def.name, type: def.type, value: v, scale: def.scale, currency: def.currency, style: def.style, notebookId: def.notebookId, notebook: l.notebooks.get(def.notebookId)?.name ?? '' });
   }
   return out;
 }

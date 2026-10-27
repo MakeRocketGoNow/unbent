@@ -3,6 +3,7 @@ import {
   DEFAULT_NOTE_SORT,
   type FieldDef,
   type FieldScale,
+  type FieldStyle,
   type FieldType,
   type FeedNote,
   type FeedPage,
@@ -1189,15 +1190,15 @@ export class UserStore extends DurableObject<StoreEnv> {
   listFields(notebookId: string, opts?: { counts?: boolean | undefined }) { this.ready(); return this.notes.listFields(notebookId, opts); }
   fieldById(id: string) { this.ready(); return this.notes.fieldById(id); }
   listAllFields() { this.ready(); return this.notes.listAllFields(); }
-  createField(notebookId: string, input: { name: string; type: FieldType; options: string[]; scale?: FieldScale | null | undefined; currency?: string | null | undefined }, limit?: StoreLimit) {
+  createField(notebookId: string, input: Parameters<NotesStore['createField']>[1], limit?: StoreLimit) {
     return this.writing(() => this.notes.createField(notebookId, input), this.freeOnly(limit));
   }
   updateField(notebookId: string, fieldId: string, patch: Parameters<NotesStore['updateField']>[2], limit?: StoreLimit) {
     return this.writing(() => this.notes.updateField(notebookId, fieldId, patch), this.freeOnly(limit));
   }
-  previewConversion(notebookId: string, fieldId: string, to: FieldType, toScale?: FieldScale | null | 'fit' | undefined) {
+  previewConversion(notebookId: string, fieldId: string, to: FieldType, toScale?: FieldScale | null | 'fit' | undefined, toStyle?: FieldStyle | null | undefined) {
     this.ready();
-    return this.notes.previewConversion(notebookId, fieldId, to, toScale);
+    return this.notes.previewConversion(notebookId, fieldId, to, toScale, toStyle);
   }
   reorderFields(notebookId: string, ids: string[], limit?: StoreLimit) { return this.writing(() => this.notes.reorderFields(notebookId, ids), this.freeOnly(limit)); }
   deleteField(notebookId: string, fieldId: string) { return this.writing(() => this.notes.deleteField(notebookId, fieldId)); }

@@ -388,6 +388,28 @@ describe('the batch tools', () => {
   });
 });
 
+describe('update_notebook_field with a style', () => {
+  it('refuses a year beside a currency, and passes a year alone through', async () => {
+    const patches: unknown[] = [];
+    const repo = {
+      updateField: async (_nb: string, _id: string, patch: Record<string, unknown>) => {
+        patches.push(patch);
+        return { field: { id: 'f1', ...patch }, cleared: 0 };
+      },
+    } as unknown as NotesRepo;
+    const update = collect(repo).get('update_notebook_field')!;
+    const fieldId = '22222222-2222-4222-8222-222222222222';
+
+    const both = await update({ notebookId: 'nb', fieldId, style: 'year', currency: 'USD' });
+    expect(both.isError).toBe(true);
+    expect(both.content[0]!.text).toContain('cannot also be a currency');
+    expect(patches).toHaveLength(0);
+
+    await update({ notebookId: 'nb', fieldId, style: 'year' });
+    expect(patches).toEqual([{ name: undefined, type: undefined, options: undefined, currency: undefined, style: 'year' }]);
+  });
+});
+
 /*
  * A rating is a number with a scale. The repo drops a scale it cannot keep, so the tool
  * refuses those instead: a model told "created" must have made the rating it asked for.
@@ -414,14 +436,27 @@ describe('create_notebook_field with a scale', () => {
     });
     expect(result.isError).toBeFalsy();
     expect(created).toEqual([
-      { name: 'Rating', type: 'number', options: [], scale: { max: 5, step: 0.5 }, currency: null },
+      { name: 'Rating', type: 'number', options: [], scale: { max: 5, step: 0.5 }, currency: null, style: null },
     ]);
   });
 
   it('leaves a plain number unscaled', async () => {
     const { created, create } = fieldRepo();
     await create({ notebookId: 'nb', name: 'Amount', type: 'number', currency: 'USD' });
-    expect(created).toEqual([{ name: 'Amount', type: 'number', options: [], scale: null, currency: 'USD' }]);
+    expect(created).toEqual([{ name: 'Amount', type: 'number', options: [], scale: null, currency: 'USD', style: null }]);
+  });
+
+  it('passes the year style through, and refuses it beside a scale or a currency', async () => {
+    const { created, create } = fieldRepo();
+    await create({ notebookId: 'nb', name: 'Tax year', type: 'number', style: 'year' });
+    expect(created).toEqual([{ name: 'Tax year', type: 'number', options: [], scale: null, currency: null, style: 'year' }]);
+
+    const money = await create({ notebookId: 'nb', name: 'Paid', type: 'number', style: 'year', currency: 'USD' });
+    expect(money.isError).toBe(true);
+    expect(money.content[0]!.text).toContain('cannot also be a rating or a currency');
+    const onText = await create({ notebookId: 'nb', name: 'Year', type: 'text', style: 'year' });
+    expect(onText.content[0]!.text).toContain('Only a number field can be a year');
+    expect(created).toHaveLength(1);
   });
 
   it('refuses a scale on anything but a number, and beside a currency', async () => {

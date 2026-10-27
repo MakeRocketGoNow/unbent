@@ -17,11 +17,13 @@ import {
   formatFieldFilter,
   inferFieldType,
   isRatingField,
+  isYearField,
   isReservedFieldName,
   parseFieldFilter,
   planConversion,
   ratingRendersAsStars,
   ratingSteps,
+  updateFieldSchema,
   withHeldOptions,
   type FieldType,
   type NoteFieldValue,
@@ -489,6 +491,39 @@ describe('currency', () => {
     expect(isCurrencyField({ type: 'number', scale: null, currency: null })).toBe(false);
     expect(isCurrencyField({ type: 'number', scale: { max: 5, step: 1 }, currency: 'USD' })).toBe(false);
     expect(isCurrencyField({ type: 'text', currency: 'USD' })).toBe(false);
+  });
+});
+
+describe('a year', () => {
+  const year = { type: 'number' as const, options: [], style: 'year' as const };
+
+  it('holds whole numbers only', () => {
+    expect(encodeFieldValue(year, 2026)).toEqual({ text: '2026', num: 2026 });
+    expect(encodeFieldValue(year, '2025')).toEqual({ text: '2025', num: 2025 });
+    expect(encodeFieldValue(year, 2025.5)).toBeNull();
+    expect(expectedFieldValue(year)).toMatch(/year/);
+  });
+
+  it('cannot also be a rating or a currency', () => {
+    const base = { name: 'Year', type: 'number', style: 'year' };
+    expect(createFieldSchema.safeParse(base).success).toBe(true);
+    expect(createFieldSchema.safeParse({ ...base, currency: 'USD' }).success).toBe(false);
+    expect(createFieldSchema.safeParse({ ...base, scale: { max: 5, step: 1 } }).success).toBe(false);
+    expect(updateFieldSchema.safeParse({ style: null, currency: 'USD' }).success).toBe(true);
+  });
+
+  it('is a number with the style, and nothing else is', () => {
+    expect(isYearField({ type: 'number', style: 'year' })).toBe(true);
+    expect(isYearField({ type: 'number', style: null })).toBe(false);
+    expect(isYearField({ type: 'number' })).toBe(false);
+    expect(isYearField({ type: 'text', style: 'year' })).toBe(false);
+  });
+
+  it('clears a fraction when a number becomes one', () => {
+    const rows = ['2024', '12.5', '7'].map((text) => ({ text }));
+    const plan = planConversion('number', 'number', rows, null, 'year');
+    expect(plan.keep.map((k) => k.num)).toEqual([2024, 7]);
+    expect(plan.drop).toEqual([{ text: '12.5' }]);
   });
 });
 

@@ -11,6 +11,7 @@ import {
   MIN_RATING_MAX,
   UNFILED,
   currencySchema,
+  fieldStyleSchema,
   encodeFieldValue,
   expectedFieldValue,
   fieldNameSchema,
@@ -943,8 +944,9 @@ export function registerWriteTools(server: Pick<McpServer, 'registerTool'>, note
       description:
         'Define a field on a notebook, so notes in it can carry a value under that name. ' +
         `Types: ${FIELD_TYPES.join(', ')}. A select or multiselect needs its options. A number ` +
-        'may carry a currency, which draws its values as money, or a scale, which makes it ' +
-        'a rating drawn as stars; not both. Get the notebook id from list_notebooks; set ' +
+        'may carry a currency, which draws its values as money, a scale, which makes it ' +
+        'a rating drawn as stars, or style "year", which holds whole years drawn without a ' +
+        'thousands separator; one at most. Get the notebook id from list_notebooks; set ' +
         'values with create_note or update_note.',
       inputSchema: z.object({
         notebookId: z.string().min(1),
@@ -960,21 +962,27 @@ export function registerWriteTools(server: Pick<McpServer, 'registerTool'>, note
             `For number: makes it a rating from 1 to max (${MIN_RATING_MAX} to ` +
               `${MAX_RATING_MAX}), in whole steps (step 1) or halves (step 0.5).`,
           ),
+        style: fieldStyleSchema
+          .optional()
+          .describe('For number: "year" for a field that holds years, such as a tax year.'),
       }),
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     },
-    async ({ notebookId, name, type, options, currency, scale }) => {
+    async ({ notebookId, name, type, options, currency, scale, style }) => {
       // Refused rather than passed on: the repo keeps a scale only on a number and drops a
       // currency beside one, which is right for the editor's patches but would leave a
       // model believing it made a rating, or money, that it did not.
       if (scale && type !== 'number') return toolError('Only a number field can have a scale.');
       if (scale && currency) return toolError('A rating cannot also be a currency.');
+      if (style && type !== 'number') return toolError('Only a number field can be a year.');
+      if (style && (scale || currency)) return toolError('A year cannot also be a rating or a currency.');
       const result = await notes.createField(notebookId, {
         name,
         type,
         options: options ?? [],
         scale: scale ?? null,
         currency: currency ?? null,
+        style: style ?? null,
       });
       if (result === 'missing') return notFound('notebook', notebookId);
       if (result === 'conflict') {
@@ -1020,7 +1028,10 @@ export function registerWriteTools(server: Pick<McpServer, 'registerTool'>, note
         'be read as the new type is cleared, and the result says how many were. Changing ' +
         'to select or multiselect makes the existing values the options, so it cannot be ' +
         'combined with options or the edits. A currency on a number is display only: ' +
-        'setting or clearing one changes no value.',
+        'setting or clearing one changes no value. Style "year" on a number keeps whole ' +
+        'numbers only, so setting it clears any value with a fraction, and the result ' +
+        'says how many; it takes a currency or a rating scale off the field, so tell the ' +
+        'person before setting it on one. null makes it a plain number again and clears nothing.',
       inputSchema: z.object({
         notebookId: z.string().min(1),
         fieldId: z.string().uuid(),
@@ -1052,10 +1063,17 @@ export function registerWriteTools(server: Pick<McpServer, 'registerTool'>, note
           .nullable()
           .optional()
           .describe('For number: an ISO 4217 code such as USD, or null to show a plain number.'),
+        style: fieldStyleSchema
+          .nullable()
+          .optional()
+          .describe('For number: "year" for a field that holds years, or null for a plain number.'),
       }),
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
     },
-    async ({ notebookId, fieldId, name, type, options, currency, ...edits }) => {
+    async ({ notebookId, fieldId, name, type, options, currency, style, ...edits }) => {
+      // Refused for create_notebook_field's reason: the store keeps one of the two, and the
+      // model would be told it made something it did not.
+      if (style && currency) return toolError('A year cannot also be a currency.');
       const edit = {
         rename: edits.renameOptions,
         remove: edits.removeOptions,
@@ -1075,7 +1093,7 @@ export function registerWriteTools(server: Pick<McpServer, 'registerTool'>, note
             'Leave type out when editing options, even to repeat the current one; a type change goes in a call of its own.',
           );
         }
-        const result = await notes.updateField(notebookId, fieldId, { name, type, options, currency });
+        const result = await notes.updateField(notebookId, fieldId, { name, type, options, currency, style });
         if (result === 'missing') return notFound('field', fieldId);
         if (result === 'conflict') {
           return toolError(`This notebook already has a field called "${name}".`);

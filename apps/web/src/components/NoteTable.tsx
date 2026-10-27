@@ -350,7 +350,7 @@ function cell(
       }
       // Blank, not "Empty": a table cell with nothing in it is legible on its own, and the
       // word is the property list's for a control that would otherwise draw nothing.
-      return held ? formatFieldValue(def.type, held.value, def.scale, def.currency) : '';
+      return held ? formatFieldValue(def.type, held.value, def.scale, def.currency, def.style) : '';
     }
     case 'tags':
       // The list row's line of tags, each in its stored colour.

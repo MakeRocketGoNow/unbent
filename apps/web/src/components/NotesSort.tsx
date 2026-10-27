@@ -3,7 +3,7 @@ import { useNavigate } from '@tanstack/react-router';
 import { Sheet } from './Sheet.js';
 import { Button } from './Button';
 import { FieldTypeIcon, SortIcon } from './icons.js';
-import { isCurrencyField, isRatingField, type FieldDef, type NoteSort } from '@unbent/shared';
+import { isCurrencyField, isRatingField, isYearField, type FieldDef, type NoteSort } from '@unbent/shared';
 import {
   SORT_OPTIONS,
   sortKey,
@@ -167,6 +167,7 @@ export function NotesSort({ notebook, remember = true, sort, order, sortField, f
                     type={def.type}
                     rating={isRatingField(def)}
                     currency={isCurrencyField(def)}
+                    year={isYearField(def)}
                   />
                   <span className="sort-field-label" title={def.name}>
                     {def.name}

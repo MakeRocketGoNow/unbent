@@ -1,4 +1,4 @@
-import type { FieldDef } from '@unbent/shared';
+import { isYearField, type FieldDef } from '@unbent/shared';
 import type { SortTarget } from './sort-options.js';
 
 /**
@@ -50,7 +50,8 @@ export function noteColumns(defs: readonly FieldDef[]): NoteColumn[] {
  * Whether a column gets a total in the table's footer: a number field that is a plain
  * number or an amount. Not a rating: the sum of a column of stars is a number nobody can
  * read anything from, and an average, which would mean something, is a different line.
+ * Not a year either, for the same reason: 2025 and 2026 add up to nothing.
  */
 export function totalable(col: NoteColumn): col is NoteColumn & { def: FieldDef } {
-  return col.kind === 'field' && col.def?.type === 'number' && !col.def.scale;
+  return col.kind === 'field' && col.def?.type === 'number' && !col.def.scale && !isYearField(col.def);
 }

@@ -940,6 +940,46 @@ describe('custom fields', () => {
     expect(await stub.recountNotes()).toBe(0);
   });
 
+  it('keeps a year to whole numbers: refused on a write, cleared on becoming one, and dropped by a currency', async () => {
+    const { stub } = freshStore('field-year');
+    const nb = (await stub.createNotebook('Taxes'))!;
+    const year = (await stub.createField(nb.id, { name: 'Tax year', type: 'number', options: [], style: 'year' })) as { id: string; style: string };
+    expect(year.style).toBe('year');
+    const a = await stub.create(note({ notebook: 'Taxes', fields: { [year.id]: 2025 } }));
+    expect((await stub.get(a.id))!.fields![0]).toMatchObject({ value: 2025, style: 'year' });
+    await expect(stub.update(a.id, { fields: { [year.id]: 2025.5 } })).rejects.toMatchObject({ name: 'InvalidFieldValue' });
+
+    // A plain number becoming a year clears what has a fraction, and the preview says so.
+    const count = (await stub.createField(nb.id, { name: 'Count', type: 'number', options: [] })) as { id: string };
+    const b = await stub.create(note({ notebook: 'Taxes', fields: { [count.id]: 12.5 } }));
+    const c = await stub.create(note({ notebook: 'Taxes', fields: { [count.id]: 2024 } }));
+    expect(await stub.previewConversion(nb.id, count.id, 'number', undefined, 'year')).toMatchObject({ values: 2, incompatible: 1 });
+    expect(await stub.updateField(nb.id, count.id, { style: 'year' })).toMatchObject({ cleared: 1, field: { style: 'year' } });
+    expect((await stub.get(b.id))!.fields).toBeUndefined();
+    expect((await stub.get(c.id))!.fields![0]!.value).toBe(2024);
+
+    // Back to a plain number clears nothing; a currency or a scale takes the style away.
+    expect(await stub.updateField(nb.id, count.id, { style: null })).toMatchObject({ cleared: 0, field: { style: null } });
+    expect(await stub.updateField(nb.id, year.id, { currency: 'USD' })).toMatchObject({ field: { currency: 'USD', style: null } });
+    // An amount becoming a year: the preview judges the cents the write will clear, rather
+    // than the field's currency letting them all through, and the write takes the currency off.
+    const paid = (await stub.createField(nb.id, { name: 'Paid', type: 'number', options: [], currency: 'USD' })) as { id: string };
+    const d = await stub.create(note({ notebook: 'Taxes', fields: { [paid.id]: 12.5 } }));
+    await stub.create(note({ notebook: 'Taxes', fields: { [paid.id]: 2024 } }));
+    expect(await stub.previewConversion(nb.id, paid.id, 'number', undefined, 'year')).toMatchObject({ values: 2, incompatible: 1 });
+    expect(await stub.updateField(nb.id, paid.id, { style: 'year' })).toMatchObject({ cleared: 1, field: { currency: null, style: 'year' } });
+    expect(((await stub.get(d.id))!.fields ?? []).some((v) => v.name === 'Paid')).toBe(false);
+
+    // A notebook file naming a year for a number already here leaves it, and says so.
+    const applied = await stub.importNotebook({ name: 'Taxes', fields: [{ name: 'Count', type: 'number', style: 'year' }, { name: 'Filed', type: 'number', style: 'year' }] } as Parameters<typeof stub.importNotebook>[0]);
+    if (applied === 'conflict') throw new Error('expected the notebook to be applied');
+    expect(applied.skipped).toEqual([{ name: 'Count', reason: 'Already here as a number, not a year; left as it is' }]);
+    expect((await stub.listFields(nb.id))!.find((f) => f.name === 'Filed')).toMatchObject({ style: 'year' });
+    // And a type that is not a number takes it too, so it does not lie in wait.
+    expect(await stub.updateField(nb.id, count.id, { style: 'year' })).toMatchObject({ field: { style: 'year' } });
+    expect(await stub.updateField(nb.id, count.id, { type: 'text' })).toMatchObject({ field: { style: null } });
+  });
+
   it('edits options by what changes, moving a renamed option\'s values with it', async () => {
     const { stub } = freshStore('option-edits');
     const nb = (await stub.createNotebook('Coupons'))!;

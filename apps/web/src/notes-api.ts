@@ -9,6 +9,7 @@ import type {
   ExportPage,
   FieldDef,
   FieldScale,
+  FieldStyle,
   FieldType,
   Note,
   NoteFieldsPatch,
@@ -789,6 +790,7 @@ export async function createNotebookField(
     options: string[];
     scale?: FieldScale | null;
     currency?: string | null;
+    style?: FieldStyle | null;
   },
 ): Promise<FieldDef> {
   const res = await request(`/api/notebooks/${notebookId}/fields`, {
@@ -815,6 +817,7 @@ export async function updateNotebookField(
     optionColors?: Record<string, number>;
     scale?: FieldScale | null;
     currency?: string | null;
+    style?: FieldStyle | null;
   },
 ): Promise<{ field: FieldDef; cleared: number }> {
   const res = await request(`/api/notebooks/${notebookId}/fields/${fieldId}`, {
@@ -831,6 +834,7 @@ export async function previewFieldConversion(
   fieldId: string,
   type: FieldType,
   scale?: FieldScale | null | 'fit',
+  style?: FieldStyle | null,
 ): Promise<{ values: number; incompatible: number; scale: FieldScale | null }> {
   const query = new URLSearchParams({ type });
   // Absent means "whatever the field has now", which is what the repo assumes; an
@@ -839,6 +843,8 @@ export async function previewFieldConversion(
   if (scale !== undefined) {
     query.set('scale', scale === 'fit' ? 'fit' : scale ? `${scale.max}:${scale.step}` : '');
   }
+  // The same for a year: `year` asks what becoming one clears, empty asks for a plain number.
+  if (style !== undefined) query.set('style', style ?? '');
   return json(
     await request(`/api/notebooks/${notebookId}/fields/${fieldId}/conversion?${query}`),
   );

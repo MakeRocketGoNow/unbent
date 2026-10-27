@@ -140,6 +140,7 @@ export function fieldValues(note: FeedNote, l: Lookups): NoteFieldValue[] {
       type: def.type,
       scale: def.scale,
       currency: def.currency,
+      style: def.style ?? null,
       notebookId: def.notebookId,
       notebook: l.notebooks.get(def.notebookId)?.name ?? v.notebook,
     };

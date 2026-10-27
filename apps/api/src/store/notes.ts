@@ -12,12 +12,14 @@ import {
   MAX_SELECT_OPTIONS,
   planConversion,
   fitRatingScale,
+  isYearField,
   UNFILED,
   applyOptionEdit,
   type OptionEdit,
   type FieldDef,
   type FieldFilter,
   type FieldScale,
+  type FieldStyle,
   type FieldType,
   type FieldValue,
   type FeedNote,
@@ -56,6 +58,7 @@ import {
   SORTS,
   TRASH_SORT,
   currencyColumn,
+  styleColumn,
   decodeAttachmentsJson,
   decodeCursor,
   decodeFieldsJson,
@@ -1331,7 +1334,7 @@ export class NotesStore {
     const defs = new Map(
       this.sql
         .exec<FieldRow & { deleted_at: number | null }>(
-          `SELECT id, notebook_id, name, type, options, option_colors, scale_max, scale_step, currency, position, deleted_at
+          `SELECT id, notebook_id, name, type, options, option_colors, scale_max, scale_step, currency, style, position, deleted_at
              FROM notebook_fields
             WHERE id IN (SELECT value FROM json_each(?1))`,
           // The copy's fields and the note's own: the second loop asks about those too.
@@ -2610,7 +2613,7 @@ export class NotesStore {
       const byId = new Map(notebooks.map((nb) => [nb.id, { ...nb, fieldDefs: [] as FieldDef[] }]));
       const fieldWhere = run ? `AND f.notebook_id IN (${placeholders(1, run.length)})` : '';
       for (const row of this.sql.exec<FieldRow>(
-        `SELECT f.id, f.notebook_id, f.name, f.type, f.options, f.option_colors, f.scale_max, f.scale_step, f.currency, f.position
+        `SELECT f.id, f.notebook_id, f.name, f.type, f.options, f.option_colors, f.scale_max, f.scale_step, f.currency, f.style, f.position
            FROM notebook_fields f
           WHERE f.deleted_at IS NULL ${fieldWhere}
           ORDER BY f.notebook_id, f.position`,
@@ -2852,7 +2855,7 @@ export class NotesStore {
 
     return this.sql
       .exec<FieldRow>(
-        `SELECT f.id, f.notebook_id, f.name, f.type, f.options, f.option_colors, f.scale_max, f.scale_step, f.currency, f.position
+        `SELECT f.id, f.notebook_id, f.name, f.type, f.options, f.option_colors, f.scale_max, f.scale_step, f.currency, f.style, f.position
                 ${counts ? ', (SELECT COUNT(*) FROM note_fields nf WHERE nf.field_id = f.id) AS value_count' : ''}
            FROM notebook_fields f
           WHERE f.notebook_id = ?1 AND f.deleted_at IS NULL
@@ -2872,7 +2875,7 @@ export class NotesStore {
    */
   fieldById(id: string): FieldDef | null {
     const row = this.sql.first<FieldRow>(
-      `SELECT id, notebook_id, name, type, options, option_colors, scale_max, scale_step, currency, position
+      `SELECT id, notebook_id, name, type, options, option_colors, scale_max, scale_step, currency, style, position
          FROM notebook_fields WHERE id = ?1 AND deleted_at IS NULL`,
       id,
     );
@@ -2886,7 +2889,7 @@ export class NotesStore {
   listAllFields(): FieldDef[] {
     return this.sql
       .exec<FieldRow>(
-        `SELECT id, notebook_id, name, type, options, option_colors, scale_max, scale_step, currency, position
+        `SELECT id, notebook_id, name, type, options, option_colors, scale_max, scale_step, currency, style, position
            FROM notebook_fields WHERE deleted_at IS NULL
           ORDER BY notebook_id, position`,
       )
@@ -2910,6 +2913,7 @@ export class NotesStore {
       optionColors?: Record<string, number> | null | undefined;
       scale?: FieldScale | null | undefined;
       currency?: string | null | undefined;
+      style?: FieldStyle | null | undefined;
     },
   ): FieldDef | 'missing' | 'conflict' | 'full' {
     return this.sql.tx(() => {
@@ -2934,8 +2938,8 @@ export class NotesStore {
       const scale = scaleColumns(input.type, input.scale);
       this.sql.exec(
         `INSERT INTO notebook_fields
-           (id, notebook_id, name, type, options, option_colors, scale_max, scale_step, currency, position, created_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?10, ?6, ?7, ?8,
+           (id, notebook_id, name, type, options, option_colors, scale_max, scale_step, currency, style, position, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?10, ?6, ?7, ?8, ?11,
                  (SELECT COALESCE(MAX(position) + 1, 0) FROM notebook_fields
                    WHERE notebook_id = ?2 AND deleted_at IS NULL),
                  ?9)`,
@@ -2949,6 +2953,7 @@ export class NotesStore {
         currencyColumn(input.type, input.scale, input.currency),
         Date.now(),
         optionColorsColumn(input.type, input.options, null, input.optionColors),
+        styleColumn(input.type, input.scale, input.currency, input.style),
       );
 
       // A notebook row covers its definitions, so a field change is a notebook change.
@@ -2986,6 +2991,7 @@ export class NotesStore {
       optionColors?: Record<string, number> | null | undefined;
       scale?: FieldScale | null | undefined;
       currency?: string | null | undefined;
+      style?: FieldStyle | null | undefined;
     },
   ): { field: FieldDef; cleared: number } | 'missing' | 'conflict' {
     return this.sql.tx(() => {
@@ -3008,17 +3014,26 @@ export class NotesStore {
       let cleared = 0;
       let touched: Change[] = [];
       const type = patch.type ?? current.type;
-      // `undefined` leaves the scale alone; `null` clears it back to a plain number.
-      const scale = patch.scale === undefined ? current.scale : patch.scale;
+      // `undefined` leaves the scale alone; `null` clears it back to a plain number. A style
+      // asked for takes a standing scale and currency off unless the patch names them,
+      // since a year is neither (the schema refuses all three named at once); left to
+      // `styleColumn`, the field would keep its currency and the year would be dropped
+      // with a success, which is what a model calling the tool would be told.
+      const styleAsked = Boolean(patch.style);
+      const scale = patch.scale !== undefined ? patch.scale : styleAsked ? null : current.scale;
       const stored = scaleColumns(type, scale);
       // The same rule: absent leaves it, null clears it. Display only, so nothing to convert.
       const currency = currencyColumn(
         type,
         scale,
-        patch.currency === undefined ? current.currency : patch.currency,
+        patch.currency !== undefined ? patch.currency : styleAsked ? null : current.currency,
       );
-      if (type !== current.type || scaleTightens(current.scale, stored)) {
-        const converted = this.convertFieldValues(fieldId, current.type, type, scale);
+      // The same rule again, and not display only: a number becoming a year cannot keep a
+      // 12.5, so gaining the style converts the values the way a tightened scale does.
+      const style = styleColumn(type, scale, currency, patch.style === undefined ? current.style : patch.style);
+      const becomesYear = style === 'year' && !isYearField(current);
+      if (type !== current.type || scaleTightens(current.scale, stored) || becomesYear) {
+        const converted = this.convertFieldValues(fieldId, current.type, type, scale, style);
         cleared = converted.cleared;
         touched = converted.touched;
         if (converted.seededOptions) options = converted.seededOptions;
@@ -3026,7 +3041,8 @@ export class NotesStore {
 
       this.sql.exec(
         `UPDATE notebook_fields
-            SET name = ?1, type = ?2, options = ?3, option_colors = ?9, scale_max = ?4, scale_step = ?5, currency = ?6
+            SET name = ?1, type = ?2, options = ?3, option_colors = ?9, scale_max = ?4, scale_step = ?5, currency = ?6,
+                style = ?10
           WHERE id = ?7 AND notebook_id = ?8`,
         patch.name ?? current.name,
         type,
@@ -3037,6 +3053,7 @@ export class NotesStore {
         fieldId,
         notebookId,
         optionColorsColumn(type, options, current.optionColors, patch.optionColors),
+        style,
       );
 
       // The definition's notebook, and every note whose stored value the conversion
@@ -3061,19 +3078,35 @@ export class NotesStore {
     fieldId: string,
     to: FieldType,
     toScale?: FieldScale | null | 'fit' | undefined,
+    toStyle?: FieldStyle | null | undefined,
   ): { values: number; incompatible: number; scale: FieldScale | null } | null {
     const field = this.getField(notebookId, fieldId);
     if (!field) return null;
     const rows = this.fieldValueRows(fieldId);
     // Matches `updateField`: an absent scale in the patch means the current one stands, so
     // previewing a rename or a pure type change does not silently unbound the field.
+    // A style asked for takes the scale and the currency off, as `updateField` does: judged
+    // against the field's currency instead, a currency becoming a year previewed as a
+    // plain number, cleared nothing here, and then cleared every amount with cents on the
+    // write, with no confirmation between.
+    const styleAsked = Boolean(toStyle);
     const scale =
       toScale === 'fit'
         ? fitRatingScale(field.type, rows)
         : toScale === undefined
-          ? field.scale
+          ? styleAsked
+            ? null
+            : field.scale
           : toScale;
-    const plan = planConversion(field.type, to, rows, scale);
+    // Absent keeps the style too, as `updateField` does, and a scale or a type that cannot
+    // hold one drops it, as the write would.
+    const style = styleColumn(
+      to,
+      scale,
+      styleAsked ? null : field.currency,
+      toStyle === undefined ? field.style : toStyle,
+    );
+    const plan = planConversion(field.type, to, rows, scale, style);
     return { values: rows.length, incompatible: plan.drop.length, scale };
   }
 
@@ -3331,7 +3364,7 @@ export class NotesStore {
 
   private getField(notebookId: string, fieldId: string): FieldDef | null {
     const row = this.sql.first<FieldRow>(
-      `SELECT id, notebook_id, name, type, options, option_colors, scale_max, scale_step, currency, position
+      `SELECT id, notebook_id, name, type, options, option_colors, scale_max, scale_step, currency, style, position
          FROM notebook_fields
         WHERE id = ?1 AND notebook_id = ?2 AND deleted_at IS NULL`,
       fieldId,
@@ -3362,9 +3395,10 @@ export class NotesStore {
     from: FieldType,
     to: FieldType,
     toScale?: FieldScale | null | undefined,
+    toStyle?: FieldStyle | null | undefined,
   ): { cleared: number; touched: Change[]; seededOptions?: string[] } {
     const rows = this.fieldValueRows(fieldId);
-    const plan = planConversion(from, to, rows, toScale);
+    const plan = planConversion(from, to, rows, toScale, toStyle);
 
     for (const k of plan.keep) {
       this.sql.exec(
@@ -3427,7 +3461,7 @@ export class NotesStore {
     const defs = new Map(
       this.sql
         .exec<FieldRow>(
-          `SELECT id, notebook_id, name, type, options, option_colors, scale_max, scale_step, currency, position
+          `SELECT id, notebook_id, name, type, options, option_colors, scale_max, scale_step, currency, style, position
              FROM notebook_fields
             WHERE id IN (SELECT value FROM json_each(?1))`,
           JSON.stringify(ids),
@@ -3625,7 +3659,7 @@ export class NotesStore {
       }
 
       const row = this.sql.first<FieldRow>(
-        `SELECT id, notebook_id, name, type, options, option_colors, scale_max, scale_step, currency, position
+        `SELECT id, notebook_id, name, type, options, option_colors, scale_max, scale_step, currency, style, position
            FROM notebook_fields
           WHERE notebook_id = ?1 AND name = ?2 COLLATE NOCASE AND deleted_at IS NULL`,
         notebookId,
@@ -3796,6 +3830,7 @@ export class NotesStore {
             optionColors: field.optionColors ?? null,
             scale: field.scale ?? null,
             currency: field.currency ?? null,
+            style: field.style ?? null,
           });
           if (created === 'full') {
             skipped.push({ name: field.name, reason: 'This notebook has as many fields as it can hold' });
@@ -3832,6 +3867,15 @@ export class NotesStore {
               reason: `Already here in ${current.currency}, not ${field.currency}; left as it is`,
             });
           }
+        }
+
+        /*
+           A year is not applied to a number already here, unlike a currency: becoming one
+           clears any value with a fraction, which a file applied in bulk must not do
+           unasked. Said, like a type, so the report does not claim the field matched.
+        */
+        if (field.style === 'year' && current.type === 'number' && !isYearField(current)) {
+          skipped.push({ name: field.name, reason: 'Already here as a number, not a year; left as it is' });
         }
 
         if (fieldHasOptions(field.type)) {

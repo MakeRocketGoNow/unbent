@@ -613,6 +613,7 @@ export function registerReadTools(
               options: f.options,
               ...(f.scale ? { scale: f.scale } : {}),
               ...(f.currency ? { currency: f.currency } : {}),
+              ...(f.style ? { style: f.style } : {}),
             })),
         })),
         unfiled,

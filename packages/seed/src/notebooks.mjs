@@ -8,8 +8,8 @@
  * feature built for custom fields has something real-shaped to run against: the table
  * view, sorting and filtering by field, a field's settings page, auto-fill's prompt.
  *
- * Between them they hold every field type; a number plain, as a rating at both steps and
- * as a currency; selects long and short; and a notebook with no fields at all. The names,
+ * Between them they hold every field type; a number plain, as a rating at both steps, as
+ * a currency and as a year; selects long and short; and a notebook with no fields at all. The names,
  * options and every value are invented, with one deliberate exception: the field shapes,
  * and option lists that say nothing about anyone (a watch list's Type, Status and
  * Priority, a Yes/Maybe/No) were taken from a real account's notebooks, because those are
@@ -59,6 +59,8 @@ export const NOTEBOOKS = [
       // A plain number (no scale, no currency), the one variant of `number` nothing else
       // here has. A series' total runs past a thousand, so grouping is exercised too.
       { name: 'Runtime (min)', type: 'number' },
+      // A year beside it: no separator where the runtime has one, and no total under it.
+      { name: 'Year', type: 'number', style: 'year' },
     ],
   },
   {

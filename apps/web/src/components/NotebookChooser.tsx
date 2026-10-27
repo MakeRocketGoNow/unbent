@@ -4,6 +4,7 @@ import {
   NOTEBOOK_TEMPLATES,
   fieldHasOptions,
   isCurrencyField,
+  isYearField,
   type NotebookFileField,
   type NotebookTemplate,
 } from '@unbent/shared';
@@ -406,6 +407,7 @@ function FieldGlyph({ field }: { field: NotebookFileField }) {
       type={field.type}
       rating={Boolean(field.scale)}
       currency={isCurrencyField({ type: field.type, scale: field.scale ?? null, currency: field.currency ?? null })}
+      year={isYearField(field)}
     />
   );
 }
@@ -419,6 +421,7 @@ function FieldGlyph({ field }: { field: NotebookFileField }) {
 export function describeField(field: NotebookFileField): string {
   if (field.scale) return `Rating out of ${field.scale.max}${field.scale.step === 0.5 ? ', in halves' : ''}`;
   if (field.currency) return `Amount in ${field.currency}`;
+  if (isYearField(field)) return 'Year';
   const label = FIELD_TYPE_LABELS[field.type];
   if (fieldHasOptions(field.type) && field.options?.length) {
     const shown = field.options.slice(0, 4).join(', ');

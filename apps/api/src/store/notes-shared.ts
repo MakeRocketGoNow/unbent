@@ -1,5 +1,6 @@
 import {
   decodeFieldValue,
+  FIELD_STYLES,
   encodeCursor,
   endOfDay,
   fieldRangeBound,
@@ -10,6 +11,7 @@ import {
   type FieldDef,
   type FieldFilter,
   type FieldScale,
+  type FieldStyle,
   type FieldType,
   type FieldValue,
   type Note,
@@ -84,6 +86,8 @@ export interface FieldRow {
   scale_max: number | null;
   scale_step: number | null;
   currency: string | null;
+  /** A plain number's style (0011): `year`, or NULL. */
+  style: string | null;
   position: number;
   value_count?: number;
 }
@@ -97,6 +101,7 @@ export interface FieldJson {
   scaleMax: number | null;
   scaleStep: number | null;
   currency: string | null;
+  style: string | null;
   position: number;
   notebookId: string;
   notebook: string;
@@ -118,6 +123,7 @@ export function rowToField(row: FieldRow): FieldDef {
         ? { max: row.scale_max, step: row.scale_step === 0.5 ? 0.5 : 1 }
         : null,
     currency: row.currency,
+    style: styleOf(row.style),
     position: row.position,
     ...(row.value_count !== undefined ? { valueCount: row.value_count } : {}),
   };
@@ -169,6 +175,24 @@ export function currencyColumn(
   currency: string | null | undefined,
 ): string | null {
   return type === 'number' && !scale && currency ? currency : null;
+}
+
+/**
+ * A style belongs only to a plain `number`, by `currencyColumn`'s rule: converted away
+ * from number it goes, and a rating or an amount drops it, since a year is neither.
+ */
+export function styleColumn(
+  type: FieldType,
+  scale: FieldScale | null | undefined,
+  currency: string | null | undefined,
+  style: FieldStyle | null | undefined,
+): FieldStyle | null {
+  return type === 'number' && !scale && !currency && style ? style : null;
+}
+
+/** The column read back: a value this build does not know is a plain number, not an error. */
+export function styleOf(stored: string | null | undefined): FieldStyle | null {
+  return (FIELD_STYLES as readonly string[]).includes(stored ?? '') ? (stored as FieldStyle) : null;
 }
 
 /**
@@ -227,6 +251,7 @@ export function decodeFieldsJson(json: string | null, ownNotebookId: string | nu
           ? { max: r.scaleMax, step: r.scaleStep === 0.5 ? (0.5 as const) : (1 as const) }
           : null,
       currency: r.currency,
+      style: styleOf(r.style),
       notebookId: r.notebookId,
       notebook: r.notebook,
     }));
@@ -273,6 +298,7 @@ export function fieldsSubquery(only?: string): string {
   return `(SELECT json_group_array(json_object(
                  'fieldId', f.id, 'name', f.name, 'type', f.type, 'text', nf.value_text,
                  'scaleMax', f.scale_max, 'scaleStep', f.scale_step, 'currency', f.currency,
+                 'style', f.style,
                  'position', f.position, 'notebookId', f.notebook_id,
                  'notebook', COALESCE(
                    CASE WHEN f.notebook_id = n.notebook_id THEN nb.name END,
