@@ -31,7 +31,7 @@ words than search and Auto-fill had been built on.
 `notebooks/` holds what is about a notebook rather than a note: one `<slug>.yaml` per
 notebook with its emoji and its purpose when it has them (the purpose is what Auto-fill
 files by, so a restore without it files differently) and its fields in order, each with its type and, where it has them, its select
-or multi-select options with their colours (`colors:`, each option to a colour's name such as `green`, which import honours for the options it adds), its rating scale or its currency. A multi-select's value is a YAML list under the
+or multi-select options with their colours (`colors:`, each option to a colour's name such as `green`, which import honours for the options it adds), its rating scale, its currency, or its style (`year`). A multi-select's value is a YAML list under the
 field's name, the way `tags` is. A value in frontmatter says nothing about the field that holds it,
 and without this file a restore rebuilt every field from the first value it met: URLs and
 selects as text, ratings as plain numbers, and a field with no values not at all. An
