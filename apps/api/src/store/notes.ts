@@ -3014,14 +3014,19 @@ export class NotesStore {
       let cleared = 0;
       let touched: Change[] = [];
       const type = patch.type ?? current.type;
-      // `undefined` leaves the scale alone; `null` clears it back to a plain number.
-      const scale = patch.scale === undefined ? current.scale : patch.scale;
+      // `undefined` leaves the scale alone; `null` clears it back to a plain number. A style
+      // asked for takes a standing scale and currency off unless the patch names them,
+      // since a year is neither (the schema refuses all three named at once); left to
+      // `styleColumn`, the field would keep its currency and the year would be dropped
+      // with a success, which is what a model calling the tool would be told.
+      const styleAsked = Boolean(patch.style);
+      const scale = patch.scale !== undefined ? patch.scale : styleAsked ? null : current.scale;
       const stored = scaleColumns(type, scale);
       // The same rule: absent leaves it, null clears it. Display only, so nothing to convert.
       const currency = currencyColumn(
         type,
         scale,
-        patch.currency === undefined ? current.currency : patch.currency,
+        patch.currency !== undefined ? patch.currency : styleAsked ? null : current.currency,
       );
       // The same rule again, and not display only: a number becoming a year cannot keep a
       // 12.5, so gaining the style converts the values the way a tightened scale does.
@@ -3080,15 +3085,27 @@ export class NotesStore {
     const rows = this.fieldValueRows(fieldId);
     // Matches `updateField`: an absent scale in the patch means the current one stands, so
     // previewing a rename or a pure type change does not silently unbound the field.
+    // A style asked for takes the scale and the currency off, as `updateField` does: judged
+    // against the field's currency instead, a currency becoming a year previewed as a
+    // plain number, cleared nothing here, and then cleared every amount with cents on the
+    // write, with no confirmation between.
+    const styleAsked = Boolean(toStyle);
     const scale =
       toScale === 'fit'
         ? fitRatingScale(field.type, rows)
         : toScale === undefined
-          ? field.scale
+          ? styleAsked
+            ? null
+            : field.scale
           : toScale;
     // Absent keeps the style too, as `updateField` does, and a scale or a type that cannot
     // hold one drops it, as the write would.
-    const style = styleColumn(to, scale, field.currency, toStyle === undefined ? field.style : toStyle);
+    const style = styleColumn(
+      to,
+      scale,
+      styleAsked ? null : field.currency,
+      toStyle === undefined ? field.style : toStyle,
+    );
     const plan = planConversion(field.type, to, rows, scale, style);
     return { values: rows.length, incompatible: plan.drop.length, scale };
   }

@@ -961,6 +961,15 @@ describe('custom fields', () => {
     // Back to a plain number clears nothing; a currency or a scale takes the style away.
     expect(await stub.updateField(nb.id, count.id, { style: null })).toMatchObject({ cleared: 0, field: { style: null } });
     expect(await stub.updateField(nb.id, year.id, { currency: 'USD' })).toMatchObject({ field: { currency: 'USD', style: null } });
+    // An amount becoming a year: the preview judges the cents the write will clear, rather
+    // than the field's currency letting them all through, and the write takes the currency off.
+    const paid = (await stub.createField(nb.id, { name: 'Paid', type: 'number', options: [], currency: 'USD' })) as { id: string };
+    const d = await stub.create(note({ notebook: 'Taxes', fields: { [paid.id]: 12.5 } }));
+    await stub.create(note({ notebook: 'Taxes', fields: { [paid.id]: 2024 } }));
+    expect(await stub.previewConversion(nb.id, paid.id, 'number', undefined, 'year')).toMatchObject({ values: 2, incompatible: 1 });
+    expect(await stub.updateField(nb.id, paid.id, { style: 'year' })).toMatchObject({ cleared: 1, field: { currency: null, style: 'year' } });
+    expect(((await stub.get(d.id))!.fields ?? []).some((v) => v.name === 'Paid')).toBe(false);
+
     // And a type that is not a number takes it too, so it does not lie in wait.
     expect(await stub.updateField(nb.id, count.id, { style: 'year' })).toMatchObject({ field: { style: 'year' } });
     expect(await stub.updateField(nb.id, count.id, { type: 'text' })).toMatchObject({ field: { style: null } });

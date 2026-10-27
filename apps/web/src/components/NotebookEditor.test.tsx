@@ -583,6 +583,21 @@ describe('NotebookEditor', () => {
     await waitFor(() => expect(api.updateNotebookField).toHaveBeenCalledWith('nb1', 'f3', { type: 'number', style: 'year' }));
   });
 
+  it('asks before an amount becomes a year, and takes the currency off', async () => {
+    vi.mocked(api.previewFieldConversion).mockResolvedValue({ values: 2, incompatible: 1, scale: null });
+    vi.mocked(api.updateNotebookField).mockResolvedValue({ field: { ...fields[2]!, style: 'year' }, cleared: 1 });
+    mount([{ ...fields[2]!, currency: 'USD' }]);
+    await screen.findByText('Amount');
+    fireEvent.change(screen.getByLabelText('Type of Amount'), { target: { value: 'year' } });
+    await screen.findByText((_, node) => node?.textContent === 'Change Amount to Year?');
+    expect(api.previewFieldConversion).toHaveBeenCalledWith('nb1', 'f3', 'number', undefined, 'year');
+    expect(api.updateNotebookField).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByText('Change and clear 1 value'));
+    await waitFor(() =>
+      expect(api.updateNotebookField).toHaveBeenCalledWith('nb1', 'f3', { type: 'number', currency: null, style: 'year' }),
+    );
+  });
+
   it('turns a year back into a plain number without asking', async () => {
     vi.mocked(api.updateNotebookField).mockResolvedValue({ field: { ...fields[2]!, style: null }, cleared: 0 });
     mount([{ ...fields[2]!, style: 'year' }]);
