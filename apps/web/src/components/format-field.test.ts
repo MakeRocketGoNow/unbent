@@ -70,6 +70,11 @@ describe('a rating', () => {
     expect(formatFieldValue('number', 3.5)).toBe((3.5).toLocaleString());
     expect(formatFieldValue('number', 3.5, null)).toBe((3.5).toLocaleString());
   });
+
+  it('writes a year as it was typed, without the separator a quantity gets', () => {
+    expect(formatFieldValue('number', 2026, null, null, 'year')).toBe('2026');
+    expect(formatFieldValue('number', 2026)).toBe((2026).toLocaleString());
+  });
 });
 
 describe('an amount in its input', () => {

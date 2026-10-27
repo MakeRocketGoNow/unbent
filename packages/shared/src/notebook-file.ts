@@ -39,9 +39,11 @@ import {
   fieldNameSchema,
   fieldOptionsSchema,
   fieldScaleSchema,
+  fieldStyleSchema,
   fieldTypeSchema,
   type FieldDef,
   type FieldScale,
+  type FieldStyle,
   type FieldType,
 } from './fields.js';
 import { notebookEmojiSchema, notebookNameSchema, notebookPurposeSchema } from './schemas.js';
@@ -64,6 +66,8 @@ export interface NotebookFileField {
   scale?: FieldScale;
   /** Present only on a number drawn as money. */
   currency?: string;
+  /** Present only on a number that is not a quantity: `year`. */
+  style?: FieldStyle;
 }
 
 /** A notebook as the file describes it: its name, its look and purpose, its fields in order. */
@@ -116,6 +120,7 @@ export const notebookDefinitionSchema = z.object({
         colors: optionColorFileSchema.optional(),
         scale: fieldScaleSchema.optional(),
         currency: currencySchema.optional(),
+        style: fieldStyleSchema.optional(),
       }),
     )
     .max(MAX_FIELDS_PER_NOTEBOOK)
@@ -151,6 +156,7 @@ export function serializeNotebook(
         : {}),
       ...(f.type === 'number' && f.scale ? { scale: f.scale } : {}),
       ...(f.type === 'number' && !f.scale && f.currency ? { currency: f.currency } : {}),
+      ...(f.type === 'number' && !f.scale && !f.currency && f.style ? { style: f.style } : {}),
     })),
   };
   return stringifyYaml(definition, {

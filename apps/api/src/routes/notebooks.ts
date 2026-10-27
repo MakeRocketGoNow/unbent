@@ -4,6 +4,7 @@ import { z } from 'zod';
 import {
   createFieldSchema,
   fieldScaleSchema,
+  fieldStyleSchema,
   fieldTypeSchema,
   notebookEmojiSchema,
   notebookNameSchema,
@@ -158,6 +159,9 @@ export const notebooks = new Hono<AppEnv>()
    * scale the field's own values suggest: the answer names the scale either way. Omitting it
    * means the field keeps whatever scale it has, which is what a pure type change wants:
    * the repo reads an absent scale as "unchanged" rather than as "none".
+   *
+   * `style` is the same for a year: `year` to ask what becoming one clears, empty for a
+   * plain number, absent to keep the field's own.
    */
   .get(
     '/notebooks/:id/fields/:fieldId/conversion',
@@ -181,13 +185,17 @@ export const notebooks = new Hono<AppEnv>()
             }
             return parsed.data;
           }),
+        style: z
+          .union([fieldStyleSchema, z.literal('')])
+          .optional()
+          .transform((raw) => (raw === '' ? null : raw)),
       }),
     ),
     async (c) => {
-      const { type, scale } = c.req.valid('query');
+      const { type, scale, style } = c.req.valid('query');
       const preview = await c
         .get('notes')
-        .previewConversion(c.req.param('id'), c.req.param('fieldId'), type, scale);
+        .previewConversion(c.req.param('id'), c.req.param('fieldId'), type, scale, style);
       if (!preview) return c.json({ error: 'Not found' }, 404);
       return c.json(preview);
     },

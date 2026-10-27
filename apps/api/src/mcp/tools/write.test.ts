@@ -414,14 +414,27 @@ describe('create_notebook_field with a scale', () => {
     });
     expect(result.isError).toBeFalsy();
     expect(created).toEqual([
-      { name: 'Rating', type: 'number', options: [], scale: { max: 5, step: 0.5 }, currency: null },
+      { name: 'Rating', type: 'number', options: [], scale: { max: 5, step: 0.5 }, currency: null, style: null },
     ]);
   });
 
   it('leaves a plain number unscaled', async () => {
     const { created, create } = fieldRepo();
     await create({ notebookId: 'nb', name: 'Amount', type: 'number', currency: 'USD' });
-    expect(created).toEqual([{ name: 'Amount', type: 'number', options: [], scale: null, currency: 'USD' }]);
+    expect(created).toEqual([{ name: 'Amount', type: 'number', options: [], scale: null, currency: 'USD', style: null }]);
+  });
+
+  it('passes the year style through, and refuses it beside a scale or a currency', async () => {
+    const { created, create } = fieldRepo();
+    await create({ notebookId: 'nb', name: 'Tax year', type: 'number', style: 'year' });
+    expect(created).toEqual([{ name: 'Tax year', type: 'number', options: [], scale: null, currency: null, style: 'year' }]);
+
+    const money = await create({ notebookId: 'nb', name: 'Paid', type: 'number', style: 'year', currency: 'USD' });
+    expect(money.isError).toBe(true);
+    expect(money.content[0]!.text).toContain('cannot also be a rating or a currency');
+    const onText = await create({ notebookId: 'nb', name: 'Year', type: 'text', style: 'year' });
+    expect(onText.content[0]!.text).toContain('Only a number field can be a year');
+    expect(created).toHaveLength(1);
   });
 
   it('refuses a scale on anything but a number, and beside a currency', async () => {

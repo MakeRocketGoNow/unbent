@@ -1,4 +1,11 @@
-import { MAX_STAR_GLYPHS, ratingRendersAsStars, type FieldScale, type FieldType, type FieldValue } from '@unbent/shared';
+import {
+  MAX_STAR_GLYPHS,
+  ratingRendersAsStars,
+  type FieldScale,
+  type FieldStyle,
+  type FieldType,
+  type FieldValue,
+} from '@unbent/shared';
 
 /**
  * A rating as glyphs: filled, half and empty stars up to the scale's max.
@@ -26,13 +33,15 @@ function formatRating(value: number, scale: FieldScale): string {
  * Only the kinds whose stored form is not already readable are touched: a checkbox says
  * Yes or No rather than true or false, a number gets the viewer's separators, a rating is
  * drawn as its stars, an amount as money, and a multi-select's options are joined with
- * commas. Dates stay `YYYY-MM-DD`: it sorts by eye, and it is what the person typed.
+ * commas. Dates stay `YYYY-MM-DD`: it sorts by eye, and it is what the person typed. A
+ * year is left as it was typed too: `2,026` is how a quantity reads, and a year is not one.
  */
 export function formatFieldValue(
   type: FieldType,
   value: FieldValue,
   scale?: FieldScale | null,
   currency?: string | null,
+  style?: FieldStyle | null,
 ): string {
   if (Array.isArray(value)) return value.join(', ');
   if (type === 'checkbox') return value === true || value === 'true' ? 'Yes' : 'No';
@@ -43,6 +52,7 @@ export function formatFieldValue(
     // the definition rather than the type; see `isRatingField` and `isCurrencyField`.
     if (scale) return formatRating(n, scale);
     if (currency) return formatCurrency(n, currency);
+    if (style === 'year') return String(n);
     return n.toLocaleString();
   }
   return String(value);

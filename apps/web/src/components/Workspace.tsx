@@ -1036,7 +1036,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
         if (value === null || value === '' || (Array.isArray(value) && value.length === 0)) return [];
         const def = defs.get(fieldId);
         if (def) {
-          return [{ fieldId, name: def.name, type: def.type, value, scale: def.scale, currency: def.currency, notebookId: def.notebookId }];
+          return [{ fieldId, name: def.name, type: def.type, value, scale: def.scale, currency: def.currency, style: def.style, notebookId: def.notebookId }];
         }
         const was = carried.get(fieldId);
         return was ? [{ ...was, value }] : [];
@@ -1866,7 +1866,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
             ...(autofillReplace.title !== undefined ? [`Title: ${autofillReplace.title}`] : []),
             ...(autofillReplace.notebook !== undefined ? [`Notebook: ${autofillReplace.notebook}`] : []),
             ...autofillReplace.fields.map(
-              ({ def, value }) => `${def.name}: ${formatFieldValue(def.type, value, def.scale, def.currency)}`,
+              ({ def, value }) => `${def.name}: ${formatFieldValue(def.type, value, def.scale, def.currency, def.style)}`,
             ),
           ].join(' · ')}
           actions={[

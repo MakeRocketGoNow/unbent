@@ -1,4 +1,4 @@
-import { isCurrencyField, isRatingField, type FieldDef } from '@unbent/shared';
+import { isCurrencyField, isRatingField, isYearField, type FieldDef } from '@unbent/shared';
 
 /**
  * The standing instructions Settings › AI assistants hands out: the text an assistant
@@ -36,7 +36,7 @@ export interface InstructionNotebook {
   purpose: string | null;
   /** Live notes, which orders the list so a cut keeps the notebooks in use. */
   count: number;
-  fields: Array<Pick<FieldDef, 'name' | 'type' | 'options' | 'scale' | 'currency'>>;
+  fields: Array<Pick<FieldDef, 'name' | 'type' | 'options' | 'scale' | 'currency' | 'style'>>;
 }
 
 type Field = InstructionNotebook['fields'][number];
@@ -56,6 +56,7 @@ function describeField(f: Field, options: boolean): string {
     return `1 to ${f.scale!.max}${f.scale!.step < 1 ? ', halves allowed' : ''}`;
   }
   if (isCurrencyField({ type: f.type, scale: f.scale ?? null, currency: f.currency ?? null })) return f.currency!;
+  if (isYearField(f)) return 'year';
   switch (f.type) {
     case 'checkbox':
       return 'yes or no';

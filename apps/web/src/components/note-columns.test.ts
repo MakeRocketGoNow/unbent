@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { FieldDef } from '@unbent/shared';
-import { noteColumns } from './note-columns.js';
+import { noteColumns, totalable } from './note-columns.js';
 
 const def = (id: string, name: string, type: FieldDef['type'], position: number): FieldDef => ({
   id,
@@ -34,5 +34,17 @@ describe('noteColumns', () => {
       def('t', 'Where', 'text', 2),
     ]);
     expect(cols.slice(1, 4).map((c) => c.align)).toEqual(['end', 'center', 'start']);
+  });
+});
+
+describe('totalable', () => {
+  it('totals a plain number and an amount, not a rating or a year', () => {
+    const [cost, money, stars, year] = noteColumns([
+      def('n', 'Cost', 'number', 0),
+      { ...def('m', 'Price', 'number', 1), currency: 'USD' },
+      { ...def('r', 'Stars', 'number', 2), scale: { max: 5, step: 1 } },
+      { ...def('y', 'Tax year', 'number', 3), style: 'year' },
+    ]).slice(1);
+    expect([cost, money, stars, year].map((c) => totalable(c!))).toEqual([true, true, false, false]);
   });
 });

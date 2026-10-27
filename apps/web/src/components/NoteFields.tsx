@@ -5,6 +5,7 @@ import {
   fieldHasOptions,
   fieldNameSchema,
   isCurrencyField,
+  isYearField,
   isRatingField,
   type FieldDef,
   type FieldType,
@@ -160,7 +161,7 @@ export function NoteFields({
             {v.name}
             <span className="note-field-origin">from {v.notebook}</span>
           </span>
-          <span className="note-field-value">{formatFieldValue(v.type, v.value, v.scale, v.currency)}</span>
+          <span className="note-field-value">{formatFieldValue(v.type, v.value, v.scale, v.currency, v.style)}</span>
           <span className="note-field-side">
             {!readOnly && (
               <Button variant="quiet" size="small" onClick={() => onChange(v.fieldId, null)}>
@@ -286,16 +287,17 @@ function FieldRow({ def, value, readOnly, filledAt, onChange }: FieldRowProps) {
          is still typing the decimal. `buildNotePatch` is written to *hold* "12." until it
          is a number; that only works if the string actually reaches the draft.
 
-         `inputMode="decimal"` still brings up the numeric keypad on a phone. The
-         property list also has no use for spinner buttons, which is the other thing
-         `type="number"` would have drawn.
+         `inputMode="decimal"` still brings up the numeric keypad on a phone, and a year
+         takes `numeric`, the keypad without the point it cannot hold. The property list
+         also has no use for spinner buttons, which is the other thing `type="number"`
+         would have drawn.
       */
       control = (
         <input
           {...common}
           {...blank}
           type="text"
-          inputMode="decimal"
+          inputMode={isYearField(def) ? 'numeric' : 'decimal'}
           value={text}
           onChange={(e) => setText(e.target.value)}
         />
@@ -400,7 +402,7 @@ function FieldRow({ def, value, readOnly, filledAt, onChange }: FieldRowProps) {
       style={filledStyle(filledAt)}
     >
       <span className="note-field-glyph" aria-hidden="true">
-        <FieldTypeIcon type={def.type} rating={isRatingField(def)} currency={isCurrencyField(def)} />
+        <FieldTypeIcon type={def.type} rating={isRatingField(def)} currency={isCurrencyField(def)} year={isYearField(def)} />
       </span>
       {/* The title carries the whole name for one the fixed name column has to cut. */}
       <label className="note-field-label" htmlFor={id} title={def.name}>

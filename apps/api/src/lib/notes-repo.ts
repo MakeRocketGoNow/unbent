@@ -4,6 +4,7 @@ import type {
   FeedReset,
   FieldDef,
   FieldScale,
+  FieldStyle,
   FieldType,
   FieldValue,
   Note,
@@ -392,7 +393,14 @@ export class NotesRepo extends StoreRepo {
 
   createField(
     notebookId: string,
-    input: { name: string; type: FieldType; options: string[]; scale?: FieldScale | null | undefined; currency?: string | null | undefined },
+    input: {
+      name: string;
+      type: FieldType;
+      options: string[];
+      scale?: FieldScale | null | undefined;
+      currency?: string | null | undefined;
+      style?: FieldStyle | null | undefined;
+    },
   ): Promise<FieldDef | 'missing' | 'conflict' | 'full'> {
     return this.call(async (s) => s.createField(notebookId, input, await this.limits()));
   }
@@ -406,6 +414,7 @@ export class NotesRepo extends StoreRepo {
       options?: string[] | undefined;
       scale?: FieldScale | null | undefined;
       currency?: string | null | undefined;
+      style?: FieldStyle | null | undefined;
     },
   ): Promise<{ field: FieldDef; cleared: number } | 'missing' | 'conflict'> {
     return this.call(async (s) => s.updateField(notebookId, fieldId, patch, await this.limits()));
@@ -416,8 +425,9 @@ export class NotesRepo extends StoreRepo {
     fieldId: string,
     to: FieldType,
     toScale?: FieldScale | null | 'fit' | undefined,
+    toStyle?: FieldStyle | null | undefined,
   ): Promise<{ values: number; incompatible: number; scale: FieldScale | null } | null> {
-    return this.call((s) => s.previewConversion(notebookId, fieldId, to, toScale));
+    return this.call((s) => s.previewConversion(notebookId, fieldId, to, toScale, toStyle));
   }
 
   reorderFields(notebookId: string, ids: string[]): Promise<boolean> {

@@ -8,6 +8,7 @@ import llmUsage from './0007-llm-usage.js';
 import attachmentBytes from './0008-attachment-bytes.js';
 import colours from './0009-colours.js';
 import notebookViews from './0010-notebook-views.js';
+import fieldStyle from './0011-field-style.js';
 
 /** One schema file: its name, as recorded in `_migrations`, and the SQL it applies. */
 export interface SchemaFile {
@@ -41,4 +42,5 @@ export const SCHEMA: SchemaFile[] = [
   { name: '0008-attachment-bytes', sql: attachmentBytes },
   { name: '0009-colours', sql: colours },
   { name: '0010-notebook-views', sql: notebookViews },
+  { name: '0011-field-style', sql: fieldStyle },
 ];

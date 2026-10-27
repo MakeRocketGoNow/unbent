@@ -16,8 +16,10 @@ import {
   fieldNameSchema,
   isCurrencyField,
   isRatingField,
+  isYearField,
   type FieldDef,
   type FieldScale,
+  type FieldStyle,
   type FieldType,
   type NotebookView,
 } from '@unbent/shared';
@@ -55,6 +57,8 @@ interface PendingType {
   scale?: FieldScale | null;
   /** Set when the change puts a currency on the field or takes one off; see `changeType`. */
   currency?: string | null;
+  /** Set when the change makes the field a year or a plain number again; see `changeType`. */
+  style?: FieldStyle | null;
   /**
    * Set when `scale` is the one the server read from the field's values rather than one
    * the person picked: a field becoming a rating. The confirmation then names that scale
@@ -154,6 +158,8 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
   // beside it, held here and turned back into a type and a currency on create.
   const [newIsCurrency, setNewIsCurrency] = useState(false);
   const [newCurrency, setNewCurrency] = useState<string>(DEFAULT_CURRENCY);
+  // And "Year": a `number` with the year style, which needs nothing picked beside it.
+  const [newIsYear, setNewIsYear] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -286,6 +292,7 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
         options: fieldHasOptions(newType) ? newOptions : [],
         ...(newIsRating ? { scale: newScale } : {}),
         ...(newIsCurrency ? { currency: newCurrency } : {}),
+        ...(newIsYear ? { style: 'year' as const } : {}),
       });
       setNewName('');
       setNewType('text');
@@ -294,6 +301,7 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
       setNewScale(DEFAULT_RATING_SCALE);
       setNewIsCurrency(false);
       setNewCurrency(DEFAULT_CURRENCY);
+      setNewIsYear(false);
     });
   }
 
@@ -347,28 +355,39 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
    * `currency` is the same for the "Currency" entry, with one difference: a currency is
    * display only, so a number gaining or losing one clears nothing, and when that is all
    * that changes there is nothing to preview and it writes at once.
+   *
+   * `style` is the "Year" entry's, and sits between the two: losing it clears nothing and
+   * writes at once, like a currency, but gaining it can (a 12.5 is no year), so a number
+   * becoming a year is previewed like a scale arriving.
    */
   async function changeType(
     field: FieldDef,
     to: FieldType,
     scaleAsked?: FieldScale | null | 'fit',
     currency?: string | null,
+    style?: FieldStyle | null,
   ) {
     const fitted = scaleAsked === 'fit';
     let scale = fitted ? undefined : scaleAsked;
     const scaleChanged = scaleAsked !== undefined && (scaleAsked === null) !== (field.scale === null);
     const currencyChanged = currency !== undefined && (currency ?? null) !== (field.currency ?? null);
-    if (to === field.type && !scaleChanged && !currencyChanged) return;
+    const styleChanged = style !== undefined && (style ?? null) !== (field.style ?? null);
+    if (to === field.type && !scaleChanged && !currencyChanged && !styleChanged) return;
     setError(null);
-    if (to === field.type && !scaleChanged) {
-      void run(() => api.updateNotebookField(notebookId, field.id, { currency: currency ?? null }));
+    if (to === field.type && !scaleChanged && !(styleChanged && style)) {
+      void run(() =>
+        api.updateNotebookField(notebookId, field.id, {
+          ...(currency !== undefined ? { currency } : {}),
+          ...(style !== undefined ? { style } : {}),
+        }),
+      );
       return;
     }
     try {
-      const preview = await api.previewFieldConversion(notebookId, field.id, to, scaleAsked);
+      const preview = await api.previewFieldConversion(notebookId, field.id, to, scaleAsked, style);
       if (fitted) scale = preview.scale;
       if (preview.incompatible > 0 || (fitted && preview.values > 0)) {
-        setPendingType({ field, to, currency, ...preview, scale, fitted });
+        setPendingType({ field, to, currency, style, ...preview, scale, fitted });
         return;
       }
     } catch (err) {
@@ -380,6 +399,7 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
         type: to,
         ...(scale !== undefined ? { scale } : {}),
         ...(currency !== undefined ? { currency } : {}),
+        ...(style !== undefined ? { style } : {}),
       }),
     );
   }
@@ -417,7 +437,7 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
   function confirmType() {
     if (!pendingType) return;
     const pending = pendingType;
-    const { field, to, scale, currency } = pending;
+    const { field, to, scale, currency, style } = pending;
     void run(async () => {
       await api.updateNotebookField(notebookId, field.id, {
         // A scale tighten is not a type change, and `changeScale` writes it without a
@@ -426,6 +446,7 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
         ...(scaleOnlyConfirm(pending) ? {} : { type: to }),
         ...(scale !== undefined ? { scale } : {}),
         ...(currency !== undefined ? { currency } : {}),
+        ...(style !== undefined ? { style } : {}),
       });
       setPendingType(null);
     });
@@ -748,7 +769,12 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
                   data-tip="Rename"
                   onClick={() => setEditing({ id: field.id, value: field.name })}
                 >
-                  <FieldTypeIcon type={field.type} rating={isRatingField(field)} currency={isCurrencyField(field)} />
+                  <FieldTypeIcon
+                    type={field.type}
+                    rating={isRatingField(field)}
+                    currency={isCurrencyField(field)}
+                    year={isYearField(field)}
+                  />
                   {field.name}
                   {field.valueCount !== undefined && field.valueCount > 0 && (
                     <span className="tag-count" data-tip={`${plural(field.valueCount, 'note')} with a value`}>
@@ -762,7 +788,15 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
                 <select
                   className="notebook-scope"
                   aria-label={`Type of ${field.name}`}
-                  value={isRatingField(field) ? 'rating' : isCurrencyField(field) ? 'currency' : field.type}
+                  value={
+                    isRatingField(field)
+                      ? 'rating'
+                      : isCurrencyField(field)
+                        ? 'currency'
+                        : isYearField(field)
+                          ? 'year'
+                          : field.type
+                  }
                   disabled={busy}
                   onChange={(e) => {
                     const picked = e.target.value;
@@ -771,14 +805,17 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
                     // one on the field.
                     const dropScale = field.scale ? null : undefined;
                     const dropCurrency = field.currency ? null : undefined;
+                    const dropStyle = field.style ? null : undefined;
                     if (picked === 'rating') {
                       // Turning a field into a rating: the scale it starts on is read from
                       // the values it holds, and is the create form's when it holds none.
-                      void changeType(field, 'number', 'fit', dropCurrency);
+                      void changeType(field, 'number', 'fit', dropCurrency, dropStyle);
                     } else if (picked === 'currency') {
-                      void changeType(field, 'number', dropScale, DEFAULT_CURRENCY);
+                      void changeType(field, 'number', dropScale, DEFAULT_CURRENCY, dropStyle);
+                    } else if (picked === 'year') {
+                      void changeType(field, 'number', dropScale, dropCurrency, 'year');
                     } else {
-                      void changeType(field, picked as FieldType, dropScale, dropCurrency);
+                      void changeType(field, picked as FieldType, dropScale, dropCurrency, dropStyle);
                     }
                   }}
                 >
@@ -789,6 +826,7 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
                   ))}
                   <option value="rating">Rating</option>
                   <option value="currency">Currency</option>
+                  <option value="year">Year</option>
                 </select>
               </span>
 
@@ -993,7 +1031,9 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
                       ? 'Rating'
                       : pendingType.currency
                         ? 'Currency'
-                        : FIELD_TYPE_LABELS[pendingType.to]}
+                        : pendingType.style === 'year'
+                          ? 'Year'
+                          : FIELD_TYPE_LABELS[pendingType.to]}
                     ?
                   </>
                   )
@@ -1032,13 +1072,16 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
             <select
               className="notebook-scope"
               aria-label="New field type"
-              value={newIsRating ? 'rating' : newIsCurrency ? 'currency' : newType}
+              value={newIsRating ? 'rating' : newIsCurrency ? 'currency' : newIsYear ? 'year' : newType}
               disabled={busy}
               onChange={(e) => {
                 const picked = e.target.value;
                 setNewIsRating(picked === 'rating');
                 setNewIsCurrency(picked === 'currency');
-                setNewType(picked === 'rating' || picked === 'currency' ? 'number' : (picked as FieldType));
+                setNewIsYear(picked === 'year');
+                setNewType(
+                  picked === 'rating' || picked === 'currency' || picked === 'year' ? 'number' : (picked as FieldType),
+                );
               }}
             >
               {FIELD_TYPES.map((t) => (
@@ -1049,6 +1092,7 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
               {/* Last, and named for what they are rather than for what they store. */}
               <option value="rating">Rating</option>
               <option value="currency">Currency</option>
+              <option value="year">Year</option>
             </select>
           </span>
           <span className="field-admin-add">
@@ -1280,6 +1324,16 @@ function conversionDetail(pending: PendingType): string {
     return head + (values === 1
       ? `It can't be a rating from 1 to ${MAX_RATING_MAX} and will be cleared.`
       : `None of them can be a rating from 1 to ${MAX_RATING_MAX}, so all will be cleared.`);
+  }
+  if (pending.style === 'year') {
+    return (
+      head +
+      (incompatible === values
+        ? incompatible === 1
+          ? "It isn't a whole number, so it can't be a year and will be cleared."
+          : "None of them is a whole number, so all will be cleared."
+        : `${incompatible} of them ${incompatible === 1 ? "isn't a whole number" : "aren't whole numbers"} and will be cleared.`)
+    );
   }
   return (
     head +

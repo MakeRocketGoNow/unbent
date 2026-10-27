@@ -10,6 +10,7 @@ import {
   BookSearch,
   Bot,
   Calendar,
+  CalendarFold,
   Check,
   ChevronDown,
   ChevronLeft,
@@ -501,13 +502,19 @@ export function FieldTypeIcon({
   type,
   rating,
   currency,
+  year,
 }: {
   type: FieldType;
   rating?: boolean;
   /** An amount takes the coins for the same reason a rating takes the star: it says what the row is. */
   currency?: boolean;
+  /**
+   * A year takes a calendar, folded so it is not mistaken for a date's: a person reads
+   * "a year", not "a number", and a date's own glyph would promise a day picker.
+   */
+  year?: boolean;
 }) {
-  return <RowIcon icon={rating ? Star : currency ? Coins : FIELD_TYPE_ICONS[type]} />;
+  return <RowIcon icon={rating ? Star : currency ? Coins : year ? CalendarFold : FIELD_TYPE_ICONS[type]} />;
 }
 
 /**

@@ -19,7 +19,7 @@ import { formatFieldValue } from './format-field.js';
 export function NoteFieldsLine({ fields }: { fields: NoteFieldValue[] | undefined }) {
   if (!fields || fields.length === 0) return null;
   const line = fields
-    .map((f) => `${f.name}: ${formatFieldValue(f.type, f.value, f.scale, f.currency)}`)
+    .map((f) => `${f.name}: ${formatFieldValue(f.type, f.value, f.scale, f.currency, f.style)}`)
     .join(' · ');
   return (
     <span className="note-fields-line" title={line}>

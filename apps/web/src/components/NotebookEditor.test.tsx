@@ -553,6 +553,46 @@ describe('NotebookEditor', () => {
     );
   });
 
+  it('sends the year style with a new field picked as a year', async () => {
+    vi.spyOn(api, 'createNotebookField').mockResolvedValue({ ...fields[2]!, id: 'f9', name: 'Tax year', style: 'year' });
+    mount();
+    await screen.findByText('Amount');
+    fireEvent.change(screen.getByLabelText('New field name'), { target: { value: 'Tax year' } });
+    fireEvent.change(screen.getByLabelText('New field type'), { target: { value: 'year' } });
+    fireEvent.click(screen.getByText('Add field'));
+    await waitFor(() =>
+      expect(api.createNotebookField).toHaveBeenCalledWith('nb1', { name: 'Tax year', type: 'number', options: [], style: 'year' }),
+    );
+  });
+
+  /*
+     Gaining the style can clear (a 12.5 is no year), so it is previewed like a scale
+     arriving; losing it cannot, so it writes at once like a currency.
+  */
+  it('asks before a number becomes a year, naming the values that are not whole', async () => {
+    vi.mocked(api.previewFieldConversion).mockResolvedValue({ values: 4, incompatible: 1, scale: null });
+    vi.mocked(api.updateNotebookField).mockResolvedValue({ field: { ...fields[2]!, style: 'year' }, cleared: 1 });
+    mount();
+    await screen.findByText('Amount');
+    fireEvent.change(screen.getByLabelText('Type of Amount'), { target: { value: 'year' } });
+
+    await screen.findByText((_, node) => node?.textContent === 'Change Amount to Year?');
+    expect(api.previewFieldConversion).toHaveBeenCalledWith('nb1', 'f3', 'number', undefined, 'year');
+    expect(screen.getByText("4 notes have a value. 1 of them isn't a whole number and will be cleared.")).toBeTruthy();
+    fireEvent.click(screen.getByText('Change and clear 1 value'));
+    await waitFor(() => expect(api.updateNotebookField).toHaveBeenCalledWith('nb1', 'f3', { type: 'number', style: 'year' }));
+  });
+
+  it('turns a year back into a plain number without asking', async () => {
+    vi.mocked(api.updateNotebookField).mockResolvedValue({ field: { ...fields[2]!, style: null }, cleared: 0 });
+    mount([{ ...fields[2]!, style: 'year' }]);
+    await screen.findByText('Amount');
+    expect(selectValue('Type of Amount')).toBe('year');
+    fireEvent.change(screen.getByLabelText('Type of Amount'), { target: { value: 'number' } });
+    await waitFor(() => expect(api.updateNotebookField).toHaveBeenCalledWith('nb1', 'f3', { style: null }));
+    expect(api.previewFieldConversion).not.toHaveBeenCalled();
+  });
+
   it('asks before narrowing a rating, naming how many values will be cleared', async () => {
     vi.mocked(api.previewFieldConversion).mockResolvedValue({ values: 5, incompatible: 2, scale: { max: 5, step: 0.5 } });
     vi.mocked(api.updateNotebookField).mockResolvedValue({
@@ -645,7 +685,7 @@ describe('NotebookEditor', () => {
     fireEvent.change(screen.getByLabelText('Type of Stars'), { target: { value: 'rating' } });
 
     await screen.findByText((_, node) => node?.textContent === 'Change Stars to a rating out of 10?');
-    expect(api.previewFieldConversion).toHaveBeenCalledWith('nb1', 'f4', 'number', 'fit');
+    expect(api.previewFieldConversion).toHaveBeenCalledWith('nb1', 'f4', 'number', 'fit', undefined);
     expect(screen.getByText('8 notes have a value. Every one fits a rating out of 10, so each keeps its number.')).toBeTruthy();
     expect(api.updateNotebookField).not.toHaveBeenCalled();
 

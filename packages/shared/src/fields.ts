@@ -142,6 +142,28 @@ export const currencySchema = z
   .string()
   .regex(/^[A-Z]{3}$/, 'expected an ISO 4217 currency code such as USD');
 
+/**
+ * How a plain `number` is drawn when it is not a quantity. One style so far: `year`.
+ *
+ * Not a type, for the reason a rating and a currency are not: a year is a number, and is
+ * stored, sorted, ranged ("2024 to 2026") and exported as one, so a type of its own would
+ * have taught every switch on `FieldType` a case that behaves exactly like `number`. What
+ * the style changes is what a quantity's formatting gets wrong: no thousands separator
+ * (`2026`, not `2,026`), no total under a table's column (the sum of a column of years is
+ * a number nobody can read), and whole numbers only. A string rather than a flag, so a
+ * second kind of number that is not a quantity is a new value here rather than a second
+ * column; exclusive with a scale and a currency, since a year is neither a rating nor an
+ * amount of money.
+ */
+export const FIELD_STYLES = ['year'] as const;
+export const fieldStyleSchema = z.enum(FIELD_STYLES);
+export type FieldStyle = z.infer<typeof fieldStyleSchema>;
+
+/** Whether a field holds years: a `number` with the `year` style. */
+export function isYearField(def: { type: FieldType; style?: FieldStyle | null }): boolean {
+  return def.type === 'number' && def.style === 'year';
+}
+
 /** The codes the picker offers first. Any well-formed code is accepted; these are the common ones. */
 export const CURRENCY_CODES = [
   'USD',
@@ -257,6 +279,9 @@ export const fieldOptionsSchema = z
   .transform((opts) => [...new Set(opts)]);
 
 const NOT_BOTH = { message: 'A rating cannot also be a currency', path: ['currency'] };
+const STYLE_ALONE = { message: 'A year cannot also be a rating or a currency', path: ['style'] };
+const styleAlone = (f: { scale?: unknown; currency?: unknown; style?: unknown }) =>
+  !(f.style && (f.scale || f.currency));
 
 /** Colours by option name; see `assignOptionColors` for how they are applied to a list. */
 export const optionColorsSchema = z.record(z.string().min(1).max(MAX_FIELD_NAME_LENGTH), tagColorSchema);
@@ -270,13 +295,16 @@ export const createFieldSchema = z
     optionColors: optionColorsSchema.optional(),
     scale: fieldScaleSchema.nullish(),
     currency: currencySchema.nullish(),
+    style: fieldStyleSchema.nullish(),
   })
-  .refine((f) => !(f.scale && f.currency), NOT_BOTH);
+  .refine((f) => !(f.scale && f.currency), NOT_BOTH)
+  .refine(styleAlone, STYLE_ALONE);
 
 /**
  * `scale: null` clears one, which is how a rating becomes a plain number again; `currency:
- * null` likewise. Absent leaves either alone, matching how `name`, `type` and `options`
- * patch. A patch may not set both, and the repo drops a currency when a scale stands.
+ * null` and `style: null` likewise. Absent leaves each alone, matching how `name`, `type`
+ * and `options` patch. A patch may not set two of them, and the repo keeps at most one:
+ * a scale drops a currency, and either drops a style.
  */
 export const updateFieldSchema = z
   .object({
@@ -292,8 +320,10 @@ export const updateFieldSchema = z
     optionColors: optionColorsSchema.optional(),
     scale: fieldScaleSchema.nullish(),
     currency: currencySchema.nullish(),
+    style: fieldStyleSchema.nullish(),
   })
-  .refine((f) => !(f.scale && f.currency), NOT_BOTH);
+  .refine((f) => !(f.scale && f.currency), NOT_BOTH)
+  .refine(styleAlone, STYLE_ALONE);
 
 export const reorderFieldsSchema = z.object({
   ids: z.array(z.string().uuid()).min(1).max(MAX_FIELDS_PER_NOTEBOOK),
@@ -344,6 +374,11 @@ export interface FieldDef {
   scale: FieldScale | null;
   /** Set only on a `number` drawn as money; null on every other field. See `isCurrencyField`. */
   currency: string | null;
+  /**
+   * Set only on a `number` that is not a quantity; see `FieldStyle`. Optional because a
+   * server from before the style sends none, which reads as a plain number.
+   */
+  style?: FieldStyle | null;
   position: number;
   /** How many notes hold a value. Present only on the management listing. */
   valueCount?: number;
@@ -367,6 +402,8 @@ export interface NoteFieldValue {
   scale?: FieldScale | null;
   /** The currency, when the field has one, for the same reason `scale` rides here: a row draws `$12.50`, not `12.5`. */
   currency?: string | null;
+  /** The style, when the field has one, for the same reason again: a row draws `2026`, not `2,026`. */
+  style?: FieldStyle | null;
   notebookId: string;
   notebook: string;
 }
@@ -386,7 +423,7 @@ const NUMBER_RE = /^-?\d+(\.\d+)?$/;
  * `expectedFieldValue`.
  */
 export function encodeFieldValue(
-  def: Pick<FieldDef, 'type' | 'options'> & Partial<Pick<FieldDef, 'scale'>>,
+  def: Pick<FieldDef, 'type' | 'options'> & Partial<Pick<FieldDef, 'scale' | 'style'>>,
   value: FieldValue,
 ): EncodedFieldValue | 'clear' | null {
   if (typeof value === 'string' && value.trim() === '') return 'clear';
@@ -423,6 +460,8 @@ export function encodeFieldValue(
         // Scaled to integers before the remainder: `3.3 % 0.5` is not 0 in floating point.
         if ((n * 2) % (def.scale.step * 2) !== 0) return null;
       }
+      // A year is a whole number, held here for the same reason: 2025.5 is no year.
+      if (def.style === 'year' && !Number.isInteger(n)) return null;
       return { text: String(n), num: n };
     }
     case 'date': {
@@ -615,10 +654,11 @@ export function withHeldOptions<D extends Pick<FieldDef, 'type' | 'options'>>(
 
 /** What a rejected value should have looked like, for an error message. */
 export function expectedFieldValue(
-  def: Pick<FieldDef, 'type' | 'options'> & Partial<Pick<FieldDef, 'scale'>>,
+  def: Pick<FieldDef, 'type' | 'options'> & Partial<Pick<FieldDef, 'scale' | 'style'>>,
 ): string {
   switch (def.type) {
     case 'number':
+      if (def.style === 'year') return 'must be a year, as a whole number such as 2026';
       if (def.scale) {
         return def.scale.step === 0.5
           ? `must be a rating from 1 to ${def.scale.max}, in halves`
@@ -702,6 +742,8 @@ export interface ConversionPlan<R> {
  * and by the write, so the two cannot disagree. Converting *to* select never clears:
  * the values a field already holds are the obvious option list, so they become it.
  *
+ * `toStyle` is the same for a year: a plain number becoming one cannot keep a 12.5.
+ *
  * `toScale` is why a scale is an edit rather than a type change. Widening 5 to 10 keeps
  * every value, because a rating legal on the old scale is legal on the wider one. Narrowing
  * 10 to 5, or dropping half steps, cannot keep a 7 or a 3.5: those land in `drop` and are
@@ -713,6 +755,7 @@ export function planConversion<R extends { text: string }>(
   to: FieldType,
   rows: R[],
   toScale?: FieldScale | null,
+  toStyle?: FieldStyle | null,
 ): ConversionPlan<R> {
   const plan: ConversionPlan<R> = { keep: [], drop: [] };
   const decoded = rows.map((row) => ({ row, value: decodeFieldValue(from, row.text) }));
@@ -751,7 +794,10 @@ export function planConversion<R extends { text: string }>(
             ? value[0]!
             : value
         : value;
-    const encoded = encodeFieldValue({ type: to, options, scale: toScale ?? null }, candidate);
+    const encoded = encodeFieldValue(
+      { type: to, options, scale: toScale ?? null, style: toStyle ?? null },
+      candidate,
+    );
     if (encoded === null || encoded === 'clear') plan.drop.push(row);
     else plan.keep.push({ row, text: encoded.text, num: encoded.num });
   }

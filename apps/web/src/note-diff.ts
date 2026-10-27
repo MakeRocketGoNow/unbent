@@ -222,7 +222,7 @@ function changeRows(removed: string[], added: string[]): DiffRow[] {
  * A field value with enough of its definition to draw it: what a version holds for each
  * field, and what the workspace can say of each value on screen.
  */
-export type PropValue = Pick<NoteFieldValue, 'fieldId' | 'name' | 'type' | 'value' | 'scale' | 'currency'> &
+export type PropValue = Pick<NoteFieldValue, 'fieldId' | 'name' | 'type' | 'value' | 'scale' | 'currency' | 'style'> &
   // The notebook the field belongs to, when known; see the last rule of `diffProps`.
   Partial<Pick<NoteFieldValue, 'notebookId'>>;
 

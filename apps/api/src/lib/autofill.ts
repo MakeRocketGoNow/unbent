@@ -1,5 +1,6 @@
 import {
   encodeFieldValue,
+  isYearField,
   findDates,
   foldNoCase,
   findNumbers,
@@ -530,7 +531,7 @@ function fieldAsks(fields: FieldDef[], corpus: Corpus): Ask[] {
           {
             question: `Which of these numbers is the ${label} of this note?`,
             guidance: `These are every number the text writes, each shown as written. ${
-              def.currency ? 'The field is an amount of money.' : ''
+              def.currency ? 'The field is an amount of money.' : isYearField(def) ? 'The field is a year.' : ''
             }`.trim(),
           },
           numberCandidates(corpus.text),
