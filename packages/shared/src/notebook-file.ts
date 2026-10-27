@@ -40,6 +40,8 @@ import {
   fieldOptionsSchema,
   fieldScaleSchema,
   fieldStyleSchema,
+  STYLE_ALONE,
+  styleAlone,
   fieldTypeSchema,
   type FieldDef,
   type FieldScale,
@@ -124,10 +126,7 @@ export const notebookDefinitionSchema = z.object({
       })
       // Refused by name, as `createFieldSchema` refuses it: the store keeps one, and a
       // file that asked for a year beside a currency would apply as something else.
-      .refine((f) => !(f.style && (f.scale || f.currency)), {
-        message: 'A year cannot also be a rating or a currency',
-        path: ['style'],
-      }),
+      .refine(styleAlone, STYLE_ALONE),
     )
     .max(MAX_FIELDS_PER_NOTEBOOK)
     .default([]),

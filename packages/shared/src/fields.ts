@@ -279,8 +279,9 @@ export const fieldOptionsSchema = z
   .transform((opts) => [...new Set(opts)]);
 
 const NOT_BOTH = { message: 'A rating cannot also be a currency', path: ['currency'] };
-const STYLE_ALONE = { message: 'A year cannot also be a rating or a currency', path: ['style'] };
-const styleAlone = (f: { scale?: unknown; currency?: unknown; style?: unknown }) =>
+/** A style is exclusive with a scale and a currency; shared with the notebook file's schema. */
+export const STYLE_ALONE = { message: 'A year cannot also be a rating or a currency', path: ['style'] };
+export const styleAlone = (f: { scale?: unknown; currency?: unknown; style?: unknown }) =>
   !(f.style && (f.scale || f.currency));
 
 /** Colours by option name; see `assignOptionColors` for how they are applied to a list. */
