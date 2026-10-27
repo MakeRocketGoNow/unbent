@@ -970,6 +970,11 @@ describe('custom fields', () => {
     expect(await stub.updateField(nb.id, paid.id, { style: 'year' })).toMatchObject({ cleared: 1, field: { currency: null, style: 'year' } });
     expect(((await stub.get(d.id))!.fields ?? []).some((v) => v.name === 'Paid')).toBe(false);
 
+    // A notebook file naming a year for a number already here leaves it, and says so.
+    const applied = await stub.importNotebook({ name: 'Taxes', fields: [{ name: 'Count', type: 'number', style: 'year' }, { name: 'Filed', type: 'number', style: 'year' }] } as Parameters<typeof stub.importNotebook>[0]);
+    if (applied === 'conflict') throw new Error('expected the notebook to be applied');
+    expect(applied.skipped).toEqual([{ name: 'Count', reason: 'Already here as a number, not a year; left as it is' }]);
+    expect((await stub.listFields(nb.id))!.find((f) => f.name === 'Filed')).toMatchObject({ style: 'year' });
     // And a type that is not a number takes it too, so it does not lie in wait.
     expect(await stub.updateField(nb.id, count.id, { style: 'year' })).toMatchObject({ field: { style: 'year' } });
     expect(await stub.updateField(nb.id, count.id, { type: 'text' })).toMatchObject({ field: { style: null } });

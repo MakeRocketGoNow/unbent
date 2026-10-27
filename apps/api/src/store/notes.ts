@@ -3869,6 +3869,15 @@ export class NotesStore {
           }
         }
 
+        /*
+           A year is not applied to a number already here, unlike a currency: becoming one
+           clears any value with a fraction, which a file applied in bulk must not do
+           unasked. Said, like a type, so the report does not claim the field matched.
+        */
+        if (field.style === 'year' && current.type === 'number' && !isYearField(current)) {
+          skipped.push({ name: field.name, reason: 'Already here as a number, not a year; left as it is' });
+        }
+
         if (fieldHasOptions(field.type)) {
           const have = new Set(current.options.map((o) => o.toLowerCase()));
           const added = (field.options ?? []).filter((o) => !have.has(o.toLowerCase()));
