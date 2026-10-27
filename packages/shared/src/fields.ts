@@ -460,7 +460,16 @@ export function encodeFieldValue(
         // Scaled to integers before the remainder: `3.3 % 0.5` is not 0 in floating point.
         if ((n * 2) % (def.scale.step * 2) !== 0) return null;
       }
-      // A year is a whole number, held here for the same reason: 2025.5 is no year.
+      /*
+         A year is a whole number, held here for the same reason: 2025.5 is no year.
+
+         A page from the build before years does not know this rule, so a fraction typed
+         there into a year field is a save the server refuses, which ends its outbox
+         entry and the rest of that draft with it. Judged to fit without a compat bump
+         all the same: it takes a page left open across the deploy, a year field another
+         device made, and a fraction typed into it, and it is the refusal an old page
+         already meets when another device narrows a rating under it.
+      */
       if (def.style === 'year' && !Number.isInteger(n)) return null;
       return { text: String(n), num: n };
     }
