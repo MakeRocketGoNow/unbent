@@ -1,5 +1,14 @@
 import { useNavigate } from '@tanstack/react-router';
-import { fieldHasOptions, parseFieldFilter, formatFieldFilter, type FieldDef, type FieldFilter } from '@unbent/shared';
+import {
+  fieldHasOptions,
+  isCurrencyField,
+  isRatingField,
+  isYearField,
+  parseFieldFilter,
+  formatFieldFilter,
+  type FieldDef,
+  type FieldFilter,
+} from '@unbent/shared';
 import { fieldFilterLabel } from './field-filter.js';
 import { FieldTypeIcon } from './icons.js';
 import { writeFieldFilter } from '../routes/notes.js';
@@ -55,7 +64,13 @@ export function FieldsPicker({ defs, selected }: FieldsPickerProps) {
         return (
           <div className="fields-picker-row" key={def.id}>
             <span className="fields-picker-name">
-              <FieldTypeIcon type={def.type} />
+              {/* The kind, as the sort menu and the notebook's page draw it, not the storage. */}
+              <FieldTypeIcon
+                type={def.type}
+                rating={isRatingField(def)}
+                currency={isCurrencyField(def)}
+                year={isYearField(def)}
+              />
               {def.name}
             </span>
             {ranged ? (
