@@ -402,6 +402,8 @@ export const RECORDS = [
       URL: `https://example.com/watch/${slug(title)}`,
       ...(rating === null ? {} : { Rating: rating }),
       'Runtime (min)': runtime,
+      // Invented, and spread over four decades so the column has something to sort.
+      Year: 1986 + ((runtime * 7) % 40),
     },
     age,
   })),
