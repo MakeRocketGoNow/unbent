@@ -392,6 +392,28 @@ describe('the batch tools', () => {
  * A rating is a number with a scale. The repo drops a scale it cannot keep, so the tool
  * refuses those instead: a model told "created" must have made the rating it asked for.
  */
+describe('update_notebook_field with a style', () => {
+  it('refuses a year beside a currency, and passes a year alone through', async () => {
+    const patches: unknown[] = [];
+    const repo = {
+      updateField: async (_nb: string, _id: string, patch: Record<string, unknown>) => {
+        patches.push(patch);
+        return { field: { id: 'f1', ...patch }, cleared: 0 };
+      },
+    } as unknown as NotesRepo;
+    const update = collect(repo).get('update_notebook_field')!;
+    const fieldId = '22222222-2222-4222-8222-222222222222';
+
+    const both = await update({ notebookId: 'nb', fieldId, style: 'year', currency: 'USD' });
+    expect(both.isError).toBe(true);
+    expect(both.content[0]!.text).toContain('cannot also be a currency');
+    expect(patches).toHaveLength(0);
+
+    await update({ notebookId: 'nb', fieldId, style: 'year' });
+    expect(patches).toEqual([{ name: undefined, type: undefined, options: undefined, currency: undefined, style: 'year' }]);
+  });
+});
+
 describe('create_notebook_field with a scale', () => {
   function fieldRepo() {
     const created: unknown[] = [];

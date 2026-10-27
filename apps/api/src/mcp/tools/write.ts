@@ -1030,7 +1030,8 @@ export function registerWriteTools(server: Pick<McpServer, 'registerTool'>, note
         'combined with options or the edits. A currency on a number is display only: ' +
         'setting or clearing one changes no value. Style "year" on a number keeps whole ' +
         'numbers only, so setting it clears any value with a fraction, and the result ' +
-        'says how many; null makes it a plain number again and clears nothing.',
+        'says how many; it takes a currency or a rating scale off the field, so tell the ' +
+        'person before setting it on one. null makes it a plain number again and clears nothing.',
       inputSchema: z.object({
         notebookId: z.string().min(1),
         fieldId: z.string().uuid(),
@@ -1070,6 +1071,9 @@ export function registerWriteTools(server: Pick<McpServer, 'registerTool'>, note
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
     },
     async ({ notebookId, fieldId, name, type, options, currency, style, ...edits }) => {
+      // Refused for create_notebook_field's reason: the store keeps one of the two, and the
+      // model would be told it made something it did not.
+      if (style && currency) return toolError('A year cannot also be a currency.');
       const edit = {
         rename: edits.renameOptions,
         remove: edits.removeOptions,
