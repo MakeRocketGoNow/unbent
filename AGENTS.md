@@ -543,6 +543,15 @@ The publish needs `PLAY_SERVICE_ACCOUNT_JSON` alongside the keystore secrets, an
 cleanly without it. Play also requires **one bundle uploaded by hand** before the API will
 accept any: a brand new app or a renamed `applicationId` has to be primed that way once.
 
+**A change someone would notice on their phone updates the release note in the same pull
+request**: `apps/android/store/whatsnew/whatsnew-en-US`. CI uploads that file as the build's
+"What's new", so a change without it ships under the previous note, and nothing is typed
+into Play Console by hand. Write it for the person holding the phone, not as a commit
+subject, and keep it under Play's 500 characters. The note covers everything since
+`versionName` last changed: add to it, and start it over when the version is bumped. A
+refactor, a test, or a fix nobody saw changes nothing there. The rest is in
+[the store README](apps/android/store/README.md#release-notes).
+
 ## Verifying
 
 Verify UI changes in the browser and show the result: don't ask the user to check
