@@ -303,8 +303,9 @@ export const createFieldSchema = z
 /**
  * `scale: null` clears one, which is how a rating becomes a plain number again; `currency:
  * null` and `style: null` likewise. Absent leaves each alone, matching how `name`, `type`
- * and `options` patch. A patch may not set two of them, and the repo keeps at most one:
- * a scale drops a currency, and either drops a style.
+ * and `options` patch, with one exception: a style asked for takes a standing scale and
+ * currency off, since a year is neither. A patch may not set two of them, and the repo
+ * keeps at most one: a scale drops a currency, and either drops a style.
  */
 export const updateFieldSchema = z
   .object({
