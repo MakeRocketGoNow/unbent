@@ -388,10 +388,6 @@ describe('the batch tools', () => {
   });
 });
 
-/*
- * A rating is a number with a scale. The repo drops a scale it cannot keep, so the tool
- * refuses those instead: a model told "created" must have made the rating it asked for.
- */
 describe('update_notebook_field with a style', () => {
   it('refuses a year beside a currency, and passes a year alone through', async () => {
     const patches: unknown[] = [];
@@ -414,6 +410,10 @@ describe('update_notebook_field with a style', () => {
   });
 });
 
+/*
+ * A rating is a number with a scale. The repo drops a scale it cannot keep, so the tool
+ * refuses those instead: a model told "created" must have made the rating it asked for.
+ */
 describe('create_notebook_field with a scale', () => {
   function fieldRepo() {
     const created: unknown[] = [];
