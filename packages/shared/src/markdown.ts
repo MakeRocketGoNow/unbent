@@ -18,20 +18,32 @@ import { visit } from 'unist-util-visit';
 export const ATTACHMENT_PREFIX = 'files/';
 
 /**
- * Build a markdown link or image for an attachment path.
+ * A path as a markdown link destination.
  *
  * CommonMark destinations cannot contain whitespace unless wrapped in angle brackets.
  * Dropped files keep their original names, so a PDF like `Treatment Plan.pdf` must become
  * `[Treatment Plan.pdf](<files/Treatment Plan.pdf>)`: without the brackets the preview
  * shows the raw markdown instead of a link, and PDFs never get an inline viewer.
+ *
+ * A parenthesis or a backslash takes the brackets too. Bare, a `(` or `)` is legal only
+ * in a balanced pair and a `\` escapes what follows, so the name has two spellings
+ * (`files/Report(R).pdf` and `files/Report\(R\).pdf`, which is what a markdown
+ * serialiser writes) and every reader of the body has to know both. Bracketed, the name
+ * is written as it is and ends at the `>`, the one form every reader already handled.
+ */
+function attachmentDestination(path: string): string {
+  return /[\s()\\]/.test(path) ? `<${path}>` : path;
+}
+
+/**
+ * Build a markdown link or image for an attachment path; see `attachmentDestination`.
  */
 export function formatAttachmentMarkdown(
   label: string,
   path: string,
   opts: { image?: boolean } = {},
 ): string {
-  const dest = /\s/.test(path) ? `<${path}>` : path;
-  return `${opts.image ? '!' : ''}[${label}](${dest})`;
+  return `${opts.image ? '!' : ''}[${label}](${attachmentDestination(path)})`;
 }
 
 /**
@@ -47,6 +59,31 @@ function decodePathSegment(segment: string): string {
 }
 
 /**
+ * Takes the backslash escapes off a destination as written in the body.
+ *
+ * CommonMark lets a backslash escape any ASCII punctuation, in a bracketed destination as
+ * in a bare one, and the Evernote importer's serialiser escapes every parenthesis it
+ * writes bare. Until 2026-10-28 nothing here unescaped, so an imported `Report(R).pdf`
+ * was looked up as `Report\(R\` and flagged "Not linked" beside a body that rendered it.
+ * Percent-decoding is separate (`decodePathSegment`): the editor keeps the encoded
+ * spelling for the address it builds, and only the shared readers want the plain name.
+ */
+export function unescapeDestination(raw: string): string {
+  return raw.replace(/\\([!-/:-@[-`{-~])/g, '$1');
+}
+
+/**
+ * The two spellings of a `files/…` destination, as regex source: bracketed, where the
+ * name runs to the closing `>`, and bare, where it ends at whitespace or the `)` that
+ * closes the link. A bare name may still hold a backslash-escaped character (`\(`, and
+ * the escaped character is never the end) or one balanced pair of parentheses, both of
+ * which CommonMark allows and a serialiser or a person writes; see `unescapeDestination`.
+ * Two capture groups, bracketed then bare; whichever matched holds the raw name.
+ */
+const RELATIVE_DESTINATION_SRC =
+  '(?:<files\\/([^>\\n]+)>|files\\/((?:\\\\[!-/:-@[-`{-~]|\\([^()\\s<>]*\\)|[^()\\s<>\\\\])+))';
+
+/**
  * Filenames pointed at by relative `files/…` image or link destinations in markdown.
  *
  * Used to mark attachments that are still stored but no longer referenced in the body:
@@ -54,39 +91,49 @@ function decodePathSegment(segment: string): string {
  */
 export function attachmentFilenamesInMarkdown(markdown: string): Set<string> {
   const names = new Set<string>();
-  // Two destination forms, and the delimiter that ends the filename differs between them.
-  // Angle-bracket `[…](<files/x (y).pdf>)`: the name runs to the closing `>`, so a `)` in
-  // the name (a real thing in imported filenames) is content, not the end. Bare
-  // `[…](files/x)`: CommonMark forbids whitespace, so the name ends at the `)`. Both cover
-  // image forms via the leading `!?`.
-  const re =
-    /!?\[[^\]]*]\(\s*<files\/([^>\n]+)>\s*\)|!?\[[^\]]*]\(\s*files\/([^)\s<>]+)\s*\)/g;
-  for (const match of markdown.matchAll(re)) {
-    const raw = (match[1] ?? match[2] ?? '').trim();
-    if (!raw) continue;
-    names.add(decodePathSegment(raw));
-  }
+  for (const link of relativeAttachmentLinks(markdown)) names.add(link.filename);
   return names;
 }
 
-/** Escape a string for use inside a RegExp character class / pattern. */
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+/**
+ * Every same-note `files/…` link or image in some markdown, in order, with positions:
+ * the one walk `attachmentFilenamesInMarkdown`, `removeAttachmentLinks` and
+ * `absolutizeAttachmentLinks` are built on, so a spelling one of them understands is a
+ * spelling all of them do. The filename is as the attachment row has it, with the
+ * destination's escapes and encoding taken off.
+ */
+function relativeAttachmentLinks(
+  markdown: string,
+): Array<{ from: number; to: number; label: string; filename: string }> {
+  const links: Array<{ from: number; to: number; label: string; filename: string }> = [];
+  for (const match of markdown.matchAll(RELATIVE_ATTACHMENT_LINK_RE)) {
+    const raw = ((match[2] ?? match[3] ?? '') as string).trim();
+    if (!raw) continue;
+    links.push({
+      from: match.index,
+      to: match.index + match[0].length,
+      label: match[1] as string,
+      filename: decodePathSegment(unescapeDestination(raw)),
+    });
+  }
+  return links;
 }
 
 /**
  * Removes markdown image/link nodes whose destination is `files/<filename>`.
  *
- * Handles both raw and percent-encoded destinations, and angle-bracket destinations
- * used when the path contains spaces. Leaves surrounding text intact.
+ * Matched by what the destination names, not by its spelling, so the percent-encoded,
+ * bracketed and backslash-escaped forms all go. Leaves surrounding text intact.
  */
 export function removeAttachmentLinks(markdown: string, filename: string): string {
-  const variants = new Set([filename, encodeURIComponent(filename)]);
-  let out = markdown;
-  for (const name of variants) {
-    const dest = escapeRegExp(`${ATTACHMENT_PREFIX}${name}`);
-    out = out.replace(new RegExp(`!?\\[[^\\]]*\\]\\(\\s*<?${dest}>?\\s*\\)`, 'g'), '');
+  let out = '';
+  let last = 0;
+  for (const link of relativeAttachmentLinks(markdown)) {
+    if (link.filename !== filename) continue;
+    out += markdown.slice(last, link.from);
+    last = link.to;
   }
+  out += markdown.slice(last);
   // Collapse runs of blank lines left behind by a removed-only paragraph.
   return out.replace(/\n{3,}/g, '\n\n');
 }
@@ -106,11 +153,13 @@ export function attachmentUrl(noteId: string, filename: string, origin = ''): st
 }
 
 /**
- * A `files/…` destination in either of its two spellings; see `attachmentFilenamesInMarkdown`
- * for why the delimiter that ends the name differs between them.
+ * A link or image whose destination is `files/…` in either spelling: the label, then the
+ * bracketed name or the bare one. See `RELATIVE_DESTINATION_SRC`.
  */
-const RELATIVE_ATTACHMENT_LINK_RE =
-  /(!?\[[^\]]*\])\(\s*(?:<files\/([^>\n]+)>|files\/([^)\s<>]+))\s*\)/g;
+const RELATIVE_ATTACHMENT_LINK_RE = new RegExp(
+  `(!?\\[[^\\]]*\\])\\(\\s*${RELATIVE_DESTINATION_SRC}\\s*\\)`,
+  'g',
+);
 
 /**
  * Rewrites every same-note `files/…` link to the absolute form `attachmentUrl` produces.
@@ -124,10 +173,14 @@ export function absolutizeAttachmentLinks(
   markdown: string,
   opts: { noteId: string; origin?: string },
 ): string {
-  return markdown.replace(RELATIVE_ATTACHMENT_LINK_RE, (_match, label: string, bracketed, bare) => {
-    const filename = decodePathSegment(((bracketed ?? bare ?? '') as string).trim());
-    return `${label}(${attachmentUrl(opts.noteId, filename, opts.origin)})`;
-  });
+  let out = '';
+  let last = 0;
+  for (const link of relativeAttachmentLinks(markdown)) {
+    out += markdown.slice(last, link.from);
+    out += `${link.label}(${attachmentUrl(opts.noteId, link.filename, opts.origin)})`;
+    last = link.to;
+  }
+  return out + markdown.slice(last);
 }
 
 /** A link in pasted text that names another note's file, with where it sits in the text. */
@@ -189,9 +242,7 @@ export function absoluteAttachmentRefs(markdown: string): Array<{ noteId: string
 
 /** The markdown a link should become once its file is stored in the note as `filename`. */
 export function relativeAttachmentLink(link: Pick<AbsoluteAttachmentLink, 'label'>, filename: string): string {
-  const path = `${ATTACHMENT_PREFIX}${filename}`;
-  // Same rule as `formatAttachmentMarkdown`: a name with whitespace needs the brackets.
-  return `${link.label}(${/\s/.test(path) ? `<${path}>` : path})`;
+  return `${link.label}(${attachmentDestination(`${ATTACHMENT_PREFIX}${filename}`)})`;
 }
 
 /**

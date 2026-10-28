@@ -486,6 +486,21 @@ describe('inline PDF', () => {
     expect(acquirePdf).toHaveBeenCalledWith('/api/notes/n1/files/my%20scan.pdf');
   });
 
+  /**
+   * The Evernote importer writes a parenthesis in a bare destination as `\(`. The parser
+   * reads it as the plain character, and so must the address the viewer fetches, or the
+   * page under the link never arrives.
+   */
+  it('unescapes a backslash-escaped destination before resolving it', () => {
+    mountWithAttachments('[r](files/Report\\(R\\).pdf)');
+    expect(acquirePdf).toHaveBeenCalledWith('/api/notes/n1/files/Report(R).pdf');
+  });
+
+  it('resolves a bracketed destination holding parentheses', () => {
+    mountWithAttachments('[r](<files/Report (R).pdf>)');
+    expect(acquirePdf).toHaveBeenCalledWith('/api/notes/n1/files/Report (R).pdf');
+  });
+
   /** The link text is the caption, so it must survive alongside the rendered page. */
   it('leaves the markdown link visible', () => {
     const v = mountWithAttachments('[report](files/report.pdf)');

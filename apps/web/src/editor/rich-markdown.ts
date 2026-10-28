@@ -22,7 +22,7 @@ import {
   type ViewUpdate,
   WidgetType,
 } from '@codemirror/view';
-import { ATTACHMENT_PREFIX, formatAttachmentMarkdown } from '@unbent/shared';
+import { ATTACHMENT_PREFIX, formatAttachmentMarkdown, unescapeDestination } from '@unbent/shared';
 import { acquirePdf, type LoadedPdf, releasePdf } from '../pdf/render.js';
 import { downloadUrl, openAttachmentViewer, type ViewerTarget } from '../attachment-viewer.js';
 import { NOT_AVAILABLE_OFFLINE, standInForImage, unavailableOffline, whenBackOnline } from '../offline-file.js';
@@ -1225,9 +1225,18 @@ function decodePath(value: string): string {
   }
 }
 
-/** Strips the angle brackets CommonMark uses around URLs containing spaces. */
+/**
+ * Strips the angle brackets CommonMark uses around URLs containing spaces, and the
+ * backslashes it uses to escape punctuation.
+ *
+ * The escapes matter for a stored file's name: the Evernote importer writes a `(` in a
+ * filename as `\(`, which the markdown parser reads as the plain character, and the
+ * file's address has to be built from the same name or the viewer under the link asks
+ * the server for a file with backslashes in it and draws "Rendering…" for good.
+ */
 function unwrapUrl(raw: string): string {
-  return raw.startsWith('<') && raw.endsWith('>') ? raw.slice(1, -1) : raw;
+  const inner = raw.startsWith('<') && raw.endsWith('>') ? raw.slice(1, -1) : raw;
+  return unescapeDestination(inner);
 }
 
 /**
@@ -1242,9 +1251,9 @@ function linkDestination(raw: string): string {
   const inner = raw.trim();
   if (inner.startsWith('<')) {
     const close = inner.indexOf('>');
-    return close === -1 ? inner : inner.slice(1, close);
+    return unescapeDestination(close === -1 ? inner : inner.slice(1, close));
   }
-  return inner.split(/\s/, 1)[0] ?? '';
+  return unescapeDestination(inner.split(/\s/, 1)[0] ?? '');
 }
 
 /**

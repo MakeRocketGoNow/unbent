@@ -83,6 +83,28 @@ describe('attachmentFilenamesInMarkdown', () => {
     const image = formatAttachmentMarkdown(name, `files/${name}`, { image: true });
     expect(attachmentFilenamesInMarkdown(`${link}\n\n${image}`)).toEqual(new Set([name]));
   });
+
+  /**
+   * The Evernote importer serialises with mdast-util-to-markdown, which backslash-escapes
+   * a parenthesis in a bare destination. Valid CommonMark, rendered fine, and until
+   * 2026-10-28 read here as `Report\(R\`, so every such file was "Not linked".
+   */
+  it('reads a backslash-escaped bare destination', () => {
+    const md = '[Report(R).pdf](files/Report\\(R\\).pdf)';
+    expect(attachmentFilenamesInMarkdown(md)).toEqual(new Set(['Report(R).pdf']));
+  });
+
+  /** CommonMark allows a balanced pair bare, and a person may well write one. */
+  it('reads balanced parentheses in a bare destination', () => {
+    const md = '[r](files/Report(R).pdf) and ![p](files/Scan(2).png)';
+    expect(attachmentFilenamesInMarkdown(md)).toEqual(new Set(['Report(R).pdf', 'Scan(2).png']));
+  });
+
+  it('reads an escape inside an angle-bracket destination', () => {
+    expect(attachmentFilenamesInMarkdown('[x](<files/My Report\\(R\\).pdf>)')).toEqual(
+      new Set(['My Report(R).pdf']),
+    );
+  });
 });
 
 describe('removeAttachmentLinks', () => {
@@ -95,6 +117,16 @@ describe('removeAttachmentLinks', () => {
 
   it('removes angle-bracket and image forms', () => {
     expect(removeAttachmentLinks('![x](<files/my photo.png>)', 'my photo.png')).toBe('');
+  });
+
+  it('removes the percent-encoded form', () => {
+    expect(removeAttachmentLinks('a ![x](files/caf%C3%A9.png) b', 'café.png')).toBe('a  b');
+  });
+
+  /** Deleting an imported file has to take its escaped link with it. */
+  it('removes a backslash-escaped and a balanced-parenthesis form', () => {
+    const md = '[r](files/Report\\(R\\).pdf)\n\n[r](files/Report(R).pdf)\n\n[keep](files/Report.pdf)';
+    expect(removeAttachmentLinks(md, 'Report(R).pdf')).toBe('\n\n[keep](files/Report.pdf)');
   });
 });
 
@@ -109,6 +141,25 @@ describe('absolutizeAttachmentLinks', () => {
     expect(absolutizeAttachmentLinks(md, { noteId: NOTE })).toBe(
       `See [a](/api/notes/${NOTE}/files/a.pdf) and ![b](/api/notes/${NOTE}/files/b.png).`,
     );
+  });
+
+  /**
+   * A bare `(` would be read as a balanced pair by one parser and an unfinished
+   * destination by another; a backslash would be an escape. The brackets make the name
+   * one spelling every reader of the body handles, as they already did for a space.
+   */
+  it('brackets a name with a parenthesis or a backslash', () => {
+    expect(formatAttachmentMarkdown('Report(R).pdf', 'files/Report(R).pdf')).toBe(
+      '[Report(R).pdf](<files/Report(R).pdf>)',
+    );
+    expect(formatAttachmentMarkdown('a\\b.pdf', 'files/a\\b.pdf')).toBe('[a\\b.pdf](<files/a\\b.pdf>)');
+    expect(formatAttachmentMarkdown('plain.pdf', 'files/plain.pdf')).toBe('[plain.pdf](files/plain.pdf)');
+  });
+
+  it('absolutizes a backslash-escaped destination by the name it means', () => {
+    expect(
+      absolutizeAttachmentLinks('[r](files/Report\\(R\\).pdf)', { noteId: NOTE, origin: 'https://app.example' }),
+    ).toBe(`[r](https://app.example/api/notes/${NOTE}/files/Report(R).pdf)`);
   });
 
   it('encodes a bracketed name and drops the brackets it no longer needs', () => {
