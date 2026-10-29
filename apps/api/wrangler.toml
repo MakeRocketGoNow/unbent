@@ -138,8 +138,8 @@ run_worker_first = [
   # the real one, and passed through untouched on production. See src/lib/manifest.ts.
   "/manifest.webmanifest",
   # The static copies of the story, the features page and the comparisons, which the build
-  # writes as why.html, features.html and compare*.html and the Worker hands over with their addresses completed, only on an
-  # instance with a front page; and what a crawler may read here, which an instance with
+  # writes as why.html, features.html and compare*.html and the Worker hands over with
+  # their addresses completed, only on an instance with a front page; and what a crawler may read here, which an instance with
   # no front page answers with nothing. Each comparison by name rather than `/compare/*`:
   # a path the Worker is handed first and does not know is Hono's JSON 404, where the
   # asset layer would give the app's own not-found.
