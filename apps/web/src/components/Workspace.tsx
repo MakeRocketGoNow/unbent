@@ -68,6 +68,7 @@ import type { HistoryCurrent } from './HistoryChanges.js';
 import type { PropValue } from '../note-diff.js';
 import { caretBelowEnd } from '../editor/rich-markdown.js';
 import { noteDropZone } from '../editor/drop-zone.js';
+import { PendingUploads } from '../editor/attach.js';
 import { formatRevisionWhen } from './format-when.js';
 import { Button } from './Button';
 import { BackArrow } from './BackArrow.js';
@@ -858,13 +859,31 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
   /*
      Typing the autosave has not sent, a save in flight or one that failed and waits to
      be retried, and files still uploading all live in this page and nowhere else. While
-     any of them is true, a waiting deploy does not reload the app on the next navigation
-     (see `busy.ts`).
+     any of them is true, the update notice's Reload waits (`pageBusy` in `busy.ts`).
   */
-  const [uploadsPending, setUploadsPending] = useState(0);
   const unsent =
     saveState === 'dirty' || saveState === 'saving' || saveState === 'error' || saveState === 'conflict';
-  useEffect(() => (unsent || uploadsPending > 0 ? holdPage() : undefined), [unsent, uploadsPending]);
+  useEffect(() => (unsent ? holdPage() : undefined), [unsent]);
+  /*
+     The uploads' hold is taken by the count itself, not by an effect on it, and the
+     count is made once for the workspace, not per editor. The editor is rebuilt on a
+     rich/source switch and remounted on a revision bump, and the uploads run on through
+     both; a count kept by the editor went to zero at each, and the hold went with it
+     (`PendingUploads` in attach.ts). They run on past this workspace too: back to the
+     list mid-upload unmounts it, and an effect's cleanup would have let go of the page
+     with the file still half-way to the server. So the hold lives with the count and is
+     released only when the last upload lands, whatever is mounted by then.
+  */
+  const [pendingUploads] = useState(() => {
+    let release: (() => void) | undefined;
+    return new PendingUploads((count) => {
+      if (count > 0) release ??= holdPage();
+      else {
+        release?.();
+        release = undefined;
+      }
+    });
+  });
 
   /*
      A field value the type cannot read yet (a number at "12.", a URL at "http://") is
@@ -2078,7 +2097,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
                     return new Map(files.map((f) => [f.from, f.filename]));
                   }
             }
-            onUploadsPending={setUploadsPending}
+            pendingUploads={pendingUploads}
             onSaveRemoteImage={readOnly ? undefined : saveRemoteImage}
             onDeleteAttachment={
               readOnly

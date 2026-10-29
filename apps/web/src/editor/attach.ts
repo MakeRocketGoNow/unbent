@@ -1,5 +1,5 @@
 import { Facet, type Extension, type Text } from '@codemirror/state';
-import { EditorView, ViewPlugin, type PluginValue } from '@codemirror/view';
+import { EditorView } from '@codemirror/view';
 import { formatAttachmentMarkdown, mayHoldAbsoluteAttachmentLink } from '@unbent/shared';
 
 /**
@@ -27,13 +27,17 @@ import { formatAttachmentMarkdown, mayHoldAbsoluteAttachmentLink } from '@unbent
  * document, placeholder and all, is carried into the new view. The replacement goes
  * into the view that is open when the upload lands (`liveView`), not the one the files
  * were dropped into: a dispatch to a destroyed view is taken silently, and the
- * placeholder stayed in the note while the file sat in the panel.
+ * placeholder stayed in the note while the file sat in the panel. The count of uploads
+ * in flight outlives the view the same way, in a `PendingUploads` the owner hands in.
  */
 export interface AttachConfig {
   /** Uploads one file; resolves to its relative markdown path. Absent: uploads unsupported. */
   upload?: (file: File) => Promise<string>;
-  /** Uploads in flight for this view, whenever the number changes. */
-  onPending?: (count: number) => void;
+  /**
+   * Where the uploads in flight are counted. The owner's, so the count survives the
+   * view (see `PendingUploads`). Absent, `attachments()` keeps one per view.
+   */
+  pending?: PendingUploads;
   /**
    * The editor to write into once an upload answers: the one open then, which may not
    * be the one the files went into, or null for none, when the note the files went
@@ -48,44 +52,47 @@ export const attachConfig = Facet.define<AttachConfig, AttachConfig>({
 });
 
 /**
- * The uploads a view has in flight, so they can be counted.
+ * The uploads in flight, counted for whoever holds the page open while they run.
  *
- * A view plugin rather than a module-level map because this state belongs to one view
- * and should go when the view goes. `destroy` reports zero and lets the uploads finish: a
- * file half-way to the server is worth having even if the view that sent it has gone.
+ * Owned by the editor's owner and handed in through the config, not kept by a view
+ * plugin. This was a plugin, because the state seemed to belong to one view and should
+ * go when the view goes; but the view goes long before the uploads do. The editor is
+ * rebuilt on a rich/source switch and remounted on a revision bump, and the plugin's
+ * `destroy` reported zero and let the uploads finish, so the page stopped counting as
+ * busy (`holdPage`, read by `pageBusy` in `busy.ts`) mid-upload: a Reload pressed on
+ * the update notice in that window went ahead and cut the file off half-way to the
+ * server. Nothing guards closing the tab, before or since. The jobs are the note's,
+ * not the view's, and the one thing that outlives every view is the owner that also
+ * answers `liveView`.
+ *
+ * The owner hears each change of the number and nothing else: a replacement is still
+ * the view's business (`replaceToken`), and the count is one number for the hold.
  */
-class PendingUploads implements PluginValue {
-  readonly jobs = new Set<string>();
+export class PendingUploads {
+  private readonly jobs = new Set<string>();
 
-  constructor(private readonly view: EditorView) {}
+  constructor(private readonly onChange?: (count: number) => void) {}
+
+  get size(): number {
+    return this.jobs.size;
+  }
 
   add(token: string) {
     this.jobs.add(token);
-    this.notify();
+    this.onChange?.(this.jobs.size);
   }
 
   remove(token: string) {
-    if (this.jobs.delete(token)) this.notify();
-  }
-
-  destroy() {
-    if (this.jobs.size === 0) return;
-    this.jobs.clear();
-    this.notify();
-  }
-
-  private notify() {
-    this.view.state.facet(attachConfig).onPending?.(this.jobs.size);
+    if (this.jobs.delete(token)) this.onChange?.(this.jobs.size);
   }
 }
 
-const pendingPlugin = ViewPlugin.fromClass(PendingUploads);
-
-/** The facet, the drop and paste handlers, and the per-view bookkeeping. */
+/** The facet and the drop and paste handlers. */
 export function attachments(config: AttachConfig): Extension {
   return [
-    attachConfig.of(config),
-    pendingPlugin,
+    // A caller with no owner to count for (a test, a bare view) still gets a count,
+    // with the view's lifetime, which is what the plugin this replaced had.
+    attachConfig.of({ ...config, pending: config.pending ?? new PendingUploads() }),
     EditorView.domEventHandlers({
       drop(event, view) {
         const files = [...(event.dataTransfer?.files ?? [])];
@@ -121,8 +128,9 @@ export function attachments(config: AttachConfig): Extension {
   ];
 }
 
+/** How many uploads are in flight for the view's owner. */
 export function pendingUploads(view: EditorView): number {
-  return view.plugin(pendingPlugin)?.jobs.size ?? 0;
+  return view.state.facet(attachConfig).pending?.size ?? 0;
 }
 
 /**
@@ -156,8 +164,7 @@ export async function insertUploads(
   // The one routine every way in shares (drop, paste, the toolbar's Attach), so the
   // read-only check here covers any caller that forgot its own.
   if (view.state.readOnly) return;
-  const { upload, liveView } = view.state.facet(attachConfig);
-  const pending = view.plugin(pendingPlugin);
+  const { upload, liveView, pending } = view.state.facet(attachConfig);
   if (!upload || !pending || files.length === 0) return;
 
   const jobs = files.map((file) => ({
@@ -180,10 +187,10 @@ export async function insertUploads(
   });
   for (const job of jobs) pending.add(job.token);
 
-  // The count stays the view the files went into: its plugin reports zero on destroy
-  // and lets the uploads finish. Only the replacement moves to the live view, and a
-  // `liveView` that answers null (the note is no longer open) means nowhere: the view
-  // the files went into is gone then, and a dispatch to it would be taken silently.
+  // The replacement goes to the live view, and a `liveView` that answers null (the
+  // note is no longer open) means nowhere: the view the files went into is gone then,
+  // and a dispatch to it would be taken silently. The count is the owner's and needs
+  // no moving, since the same `pending` is in every view the owner builds.
   for (const { file, token } of jobs) {
     let replacement: string;
     try {
