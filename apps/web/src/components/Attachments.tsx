@@ -1,14 +1,13 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link } from '@tanstack/react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Transaction } from '@codemirror/state';
 import type { EditorView } from '@codemirror/view';
 import type { AttachmentInfo } from '@unbent/shared';
 import {
   attachmentFilenamesInMarkdown,
   formatAttachmentMarkdown,
 } from '@unbent/shared';
-import { removeAttachmentLinkChanges, rewriteDocument } from '../editor/links.js';
+import { dropAttachmentLinks } from '../editor/links.js';
 import { useSettledBody } from '../useSettledBody.js';
 import * as api from '../notes-api.js';
 import { copyAttachmentToClipboard } from '../attachment-clipboard.js';
@@ -171,23 +170,12 @@ export function Attachments({
   const linkedNow = () => attachmentFilenamesInMarkdown(bodyRef.current);
   /**
    * Takes a deleted file's links out of the note, through the editor's own syntax tree
-   * (`editor/links.ts`, the one place a body is rewritten): a change dispatched to the
-   * open editor, or applied to the draft when no editor is mounted yet.
-   *
-   * Kept out of the editor's undo history. The file is gone from the server by the time
-   * this runs, so undoing the removal would bring back a link to nothing, and the panel
-   * would list no file for it. Before the rewrite went through the editor it remounted
-   * the editor and could not be undone either, at the cost of the whole history; this
-   * keeps the rest.
+   * (`dropAttachmentLinks` in `editor/links.ts`, which says why undo cannot bring them
+   * back): a change dispatched to the open editor, or applied to the draft when no
+   * editor is mounted yet.
    */
   function dropLinks(filename: string) {
-    rewriteDocument(
-      editorViewNow(),
-      bodyRef.current,
-      (state) => removeAttachmentLinkChanges(state, filename),
-      onBodyRewrite,
-      { annotations: Transaction.addToHistory.of(false) },
-    );
+    dropAttachmentLinks(editorViewNow(), bodyRef.current, filename, onBodyRewrite);
   }
   useEffect(() => {
     setPending(null);

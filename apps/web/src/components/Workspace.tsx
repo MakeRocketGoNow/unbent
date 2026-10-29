@@ -6,7 +6,13 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { EditorView } from '@codemirror/view';
 import type { FieldDef, FieldType, FieldValue, Note, NoteRevisionSummary } from '@unbent/shared';
 import { remoteImageUrls, unreadFiles } from '@unbent/shared';
-import { markdownState, relinkWebImageChanges, rewriteDocument, webImageUrls } from '../editor/links.js';
+import {
+  dropAttachmentLinks,
+  markdownState,
+  relinkWebImageChanges,
+  rewriteDocument,
+  webImageUrls,
+} from '../editor/links.js';
 import { useSettledBody } from '../useSettledBody.js';
 import * as api from '../notes-api.js';
 import { isOfflineError, isStatus } from '../notes-api.js';
@@ -2078,10 +2084,23 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
               readOnly
                 ? undefined
                 : async (filename) => {
+                    const startedFor = note.id;
                     // The same rule as the panel's Delete: a picture added offline has not
                     // reached the server, so deleting it there would fail.
-                    await actions.deleteOrCancelAttachment(note.id, filename);
-                    void queryClient.invalidateQueries({ queryKey: keys.attachments(note.id) });
+                    await actions.deleteOrCancelAttachment(startedFor, filename);
+                    void queryClient.invalidateQueries({ queryKey: keys.attachments(startedFor) });
+                    /*
+                       The file is gone, so every link to it goes, as the panel's Delete
+                       does: not only the widget's own, which the widget used to remove
+                       itself. Into the editor that is open when the delete lands, which
+                       the widget cannot reach (`deleteStored` in `rich-markdown.ts` says
+                       why), or into the draft when none is mounted; and into neither
+                       once the open note has changed, since the draft is then the next
+                       note's. The same step as the panel's Delete, out of the undo
+                       history for the reason given on it.
+                    */
+                    if (noteIdRef.current !== startedFor) return;
+                    dropAttachmentLinks(editorViewNow(), draftBodyRef.current, filename, rewriteBody);
                   }
             }
             pathOpener={pathOpener}
@@ -2102,6 +2121,16 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
             // The way out of the editor, and the counterpart to the list's Enter.
             onEscape={focusActiveListItem}
             onViewReady={announceView}
+            /*
+               The view open when an extension's round trip lands: this ref outlives the
+               remount a revision bump is, which the editor's own cannot (`liveViewNow`
+               in `Editor.tsx`). Guarded by note, as `saveWebImages` is: after a switch
+               the ref holds the next note's view, and a web image relinked by its
+               address or a paste's links from the same source would be written into
+               the wrong note. An old instance's getter answers null then, which the
+               extensions take as nowhere to write, and the write is dropped.
+            */
+            liveView={() => (noteIdRef.current === note.id ? editorViewNow() : null)}
           />
         </div>
         {showSplit && (

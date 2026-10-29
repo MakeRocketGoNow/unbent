@@ -110,6 +110,12 @@ describe('attachmentFilenamesInMarkdown', () => {
     expect(attachmentFilenamesInMarkdown(md)).toEqual(new Set(['Report(R).pdf']));
   });
 
+  /** A query is not part of the name, and an encoded `?` is; the editor reads it the same way. */
+  it('reads a query on the destination as not part of the name, and an encoded ? as part of it', () => {
+    expect(attachmentFilenamesInMarkdown('[r](files/scan.jpg?x=1)')).toEqual(new Set(['scan.jpg']));
+    expect(attachmentFilenamesInMarkdown('[r](files/a%3Fb.jpg)')).toEqual(new Set(['a?b.jpg']));
+  });
+
   /** CommonMark allows a balanced pair bare, and a person may well write one. */
   it('reads balanced parentheses in a bare destination', () => {
     const md = '[r](files/Report(R).pdf) and ![p](files/Scan(2).png)';

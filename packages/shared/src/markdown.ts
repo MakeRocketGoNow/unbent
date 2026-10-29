@@ -236,7 +236,10 @@ function relativeAttachmentLinks(markdown: string): Array<InlineLink & { filenam
  */
 export function attachmentFilenameFromUrl(url: string): string | null {
   if (!url.startsWith(ATTACHMENT_PREFIX)) return null;
-  const filename = decodePathSegment(url.slice(ATTACHMENT_PREFIX.length));
+  // A query is not part of the name (`files/scan.jpg?x=1`, which nothing here writes
+  // but a hand-written link may carry, and the rich editor draws). Cut before decoding,
+  // so a name with an encoded `?` of its own keeps it.
+  const filename = decodePathSegment(url.slice(ATTACHMENT_PREFIX.length).split('?')[0] ?? '');
   return filename === '' ? null : filename;
 }
 

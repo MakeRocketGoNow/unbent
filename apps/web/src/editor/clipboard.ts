@@ -49,6 +49,13 @@ export interface ClipboardConfig {
    * absolute, which still open for the owner.
    */
   copyFrom?: (from: string, filenames: string[], move: boolean) => Promise<Map<string, string>>;
+  /**
+   * The editor to write into once `copyFrom` answers: the one open then, which may not
+   * be the one the text was pasted into, or null for none, when that note is no longer
+   * open. `liveViewNow` in `Editor.tsx` says why an extension needs this at all. Absent,
+   * the view the text was pasted into.
+   */
+  liveView?: () => EditorView | null;
 }
 
 /**
@@ -207,12 +214,16 @@ async function pasteWithAttachments(
     } catch {
       continue; // left absolute, see above
     }
-    // Searched in the current document rather than remembered from the paste: the user
-    // has been typing meanwhile, and an undo may have removed the links entirely, in
-    // which case there is nothing to do.
+    // Searched in the current document of the editor open now (`liveView`) rather than
+    // remembered from the paste: the user has been typing meanwhile, the editor may have
+    // been rebuilt with the document carried across, and an undo may have removed the
+    // links entirely, in which case there is nothing to do. No editor open for the note
+    // (null) is nothing to do as well: the pasted-into view is gone then.
+    const live = config.liveView ? config.liveView() : view;
+    if (!live) continue;
     relink(
-      view,
-      absoluteLinksWithin(view, [{ from: 0, to: view.state.doc.length }]).filter((link) => link.noteId === source),
+      live,
+      absoluteLinksWithin(live, [{ from: 0, to: live.state.doc.length }]).filter((link) => link.noteId === source),
       (link) => names.get(link.filename) ?? null,
     );
   }

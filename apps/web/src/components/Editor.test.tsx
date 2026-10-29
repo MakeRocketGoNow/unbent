@@ -2,7 +2,9 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import { render, cleanup, act } from '@testing-library/react';
 import type { EditorView } from '@codemirror/view';
 import { undoDepth } from '@codemirror/commands';
+import { useRef, useState } from 'react';
 import { caretRoom } from '../editor/rich-markdown.js';
+import { insertUploads } from '../editor/attach.js';
 import { Editor } from './Editor.js';
 
 /**
@@ -233,5 +235,59 @@ describe('Editor and the line below a closing picture', () => {
       view!.dispatch(view!.state.replaceSelection('below'));
     });
     expect(onChange).toHaveBeenLastCalledWith('saved body\nbelow');
+  });
+});
+
+/**
+ * A write that lands after a round trip goes into the editor open then. The workspace
+ * keys `Editor` on a revision it bumps for a conflict, a restore or a body rewrite, so
+ * that is a remount, not a rebuild: the old instance's own ref is cleared and the new
+ * view lands in a new instance's. The getter the extensions read has to come from the
+ * owner, whose ref is set from `onViewReady` across remounts. This host is wired as
+ * `Workspace` is, and the upload is the round trip.
+ */
+describe('Editor across a remount', () => {
+  afterEach(cleanup);
+
+  it('puts an upload into the editor mounted when it lands, through the owner\'s getter', async () => {
+    let finish: (path: string) => void = () => {};
+    const onUpload = vi.fn(() => new Promise<string>((resolve) => { finish = resolve; }));
+    let bump: () => void = () => {};
+    let current: () => EditorView | null = () => null;
+
+    function Host() {
+      const [revision, setRevision] = useState(0);
+      const viewRef = useRef<EditorView | null>(null);
+      const bodyRef = useRef('saved body');
+      bump = () => setRevision((n) => n + 1);
+      current = () => viewRef.current;
+      return (
+        <Editor
+          key={`n1-${revision}`}
+          noteId="n1"
+          initialValue={bodyRef.current}
+          onChange={(body) => {
+            bodyRef.current = body;
+          }}
+          onUpload={onUpload}
+          onViewReady={(v) => {
+            viewRef.current = v;
+          }}
+          liveView={() => viewRef.current}
+        />
+      );
+    }
+    render(<Host />);
+
+    const pressed = current()!;
+    const done = insertUploads(pressed, [new File(['x'], 'a.png', { type: 'image/png' })], 0);
+    expect(pressed.state.doc.toString()).toMatch(/^!\[uploading a\.png…]\(#upload-[0-9a-f]{8}\)\nsaved body$/);
+
+    act(() => bump());
+    const live = current()!;
+    expect(live).not.toBe(pressed);
+    finish('files/a.png');
+    await done;
+    expect(live.state.doc.toString()).toBe('![a.png](files/a.png)\nsaved body');
   });
 });

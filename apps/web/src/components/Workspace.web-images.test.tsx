@@ -9,6 +9,7 @@ import {
   createMemoryHistory,
   RouterProvider,
 } from '@tanstack/react-router';
+import { EditorView } from '@codemirror/view';
 import type { Note } from '@unbent/shared';
 import * as api from '../notes-api.js';
 import { keys } from '../queries.js';
@@ -96,6 +97,18 @@ const withImage: Note = {
   fields: [],
 };
 
+/** A second note drawing the same address, where a relink by address would show. */
+const alsoWithImage: Note = {
+  id: 'n2',
+  title: 'Weekly review',
+  body: `![Diagram](${IMAGE_URL})`,
+  tags: [],
+  notebook: null,
+  createdAt: 0,
+  updatedAt: 0,
+  fields: [],
+};
+
 /** A second note already written, so a rewrite for `withImage` landing here is visible. */
 const other: Note = {
   id: 'n2',
@@ -128,6 +141,8 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   vi.clearAllMocks();
+  // The view switcher's choice is remembered, and the next test wants the picture drawn.
+  localStorage.clear();
 });
 
 async function startSaving() {
@@ -193,5 +208,37 @@ describe('Save web images', () => {
     // rewriteBody and the "Saved …" status share one note-guarded block; neither lands on n2.
     expect(screen.queryByText('Saved 1 image')).toBeNull();
     expect((screen.getByPlaceholderText('Untitled') as HTMLInputElement).value).toBe('Weekly review');
+  });
+});
+
+/**
+ * The picture's own Save to note control takes the same round trip for one image, and
+ * the getter `Workspace` hands `Editor` for its write is guarded by note: after a switch
+ * the workspace's ref holds the next note's view, and a web image relinked by its
+ * address would be written into that note. The second note draws the same address
+ * here, so a relink landing on it would show.
+ */
+describe('Save to note on a picture', () => {
+  it('leaves the next note alone when the fetch lands after a switch', async () => {
+    let finish: (filename: string) => void = () => {};
+    vi.mocked(api.fetchWebImage).mockImplementation(
+      () => new Promise((resolve) => { finish = (filename) => resolve({ filename } as Awaited<ReturnType<typeof api.fetchWebImage>>); }),
+    );
+    const { container } = mount(withImage, [alsoWithImage]);
+    await waitFor(() => expect(container.querySelector('.cm-md-image .zoom-save')).not.toBeNull());
+    container.querySelector<HTMLButtonElement>('.cm-md-image .zoom-save')!.click();
+    await waitFor(() => expect(api.fetchWebImage).toHaveBeenCalledWith('n1', IMAGE_URL));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open n2' }));
+    await waitFor(() =>
+      expect((screen.getByPlaceholderText('Untitled') as HTMLInputElement).value).toBe('Weekly review'),
+    );
+
+    finish('pic.png');
+    await act(async () => {
+      await Promise.resolve();
+    });
+    const view = EditorView.findFromDOM(container.querySelector<HTMLElement>('.cm-content')!)!;
+    expect(view.state.doc.toString()).toBe(alsoWithImage.body);
   });
 });
