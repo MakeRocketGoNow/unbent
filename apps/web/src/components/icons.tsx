@@ -42,8 +42,10 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Paperclip,
+  Pause,
   Pencil,
   Phone,
+  Play,
   Plus,
   ScanLine,
   ScanText,
@@ -802,4 +804,15 @@ export function PhoneAppsFeatureIcon() {
 
 export function SourceFeatureIcon() {
   return <FeatureIcon icon={Code} />;
+}
+
+/**
+ * The features page's pause and play, on the small quiet button in a clip's corner: the
+ * header's size, since the button is alone in its target and the glyph is all it says.
+ */
+export function PauseIcon() {
+  return <HeaderIcon icon={Pause} />;
+}
+export function PlayIcon() {
+  return <HeaderIcon icon={Play} />;
 }

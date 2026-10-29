@@ -122,15 +122,16 @@ describe('FeaturesPage', () => {
     const clip = container.querySelector('video')!;
     const pause = vi.spyOn(clip, 'pause').mockImplementation(() => {});
     const play = vi.spyOn(clip, 'play').mockImplementation(() => Promise.resolve());
-    expect(clip.getAttribute('data-tip')).toBe('Pause');
-    expect(clip.tabIndex).toBe(0);
-    fireEvent.click(clip);
+    // The control is a button beside the video, not the video itself.
+    expect(clip.tabIndex).toBe(-1);
+    const toggle = clip.parentElement!.querySelector<HTMLButtonElement>('button.feature-clip-toggle')!;
+    expect(toggle.getAttribute('aria-label')).toBe('Pause');
+    fireEvent.click(toggle);
     expect(pause).toHaveBeenCalledTimes(1);
-    expect(clip.getAttribute('data-tip')).toBe('Play');
-    expect(clip.getAttribute('aria-description')).toMatch(/^Paused/);
-    fireEvent.keyDown(clip, { key: ' ' });
+    expect(toggle.getAttribute('aria-label')).toBe('Play');
+    fireEvent.click(toggle);
     expect(play).toHaveBeenCalledTimes(1);
-    expect(clip.getAttribute('data-tip')).toBe('Pause');
+    expect(toggle.getAttribute('aria-label')).toBe('Pause');
   });
 
   /**

@@ -5,7 +5,9 @@ import { useSession } from '../auth-client.js';
 import { HOME, LOGIN } from '../auth-gate.js';
 import { CARD_IMAGE, usePageMeta, type PageMeta } from '../page-meta.js';
 import { useMediaQuery } from '../useMediaQuery.js';
+import { Button } from './Button.js';
 import { FrontShell } from './FrontPage.js';
+import { PauseIcon, PlayIcon } from './icons.js';
 
 /**
  * What the tab, a search result and a link's card say this page is. Exported for the
@@ -314,11 +316,12 @@ function Still({ name, phone = false, alt }: { name: string; phone?: boolean; al
  * error in Chromium), and plays only while on screen. A reader who has asked for less
  * motion keeps the picture.
  *
- * A clip loops for longer than five seconds beside the text, so it can be paused: a
- * press on it, with the pointer or Enter or Space, pauses it and the next press plays
- * it, and a clip the reader paused is not started again by scrolling it into view. The
- * tip and the description say which press is next, since a paused frame and a poster
- * look the same.
+ * A clip loops for longer than five seconds beside the text, so it can be paused, with
+ * a `Button` in the frame's corner (an action is a button, and a video that answered a
+ * press would be a control nothing marks as one, least of all on a phone, where no tip
+ * is drawn). The button says which press is next, since a paused frame and a poster
+ * look the same, and a clip the reader paused is not started again by scrolling it into
+ * view.
  *
  * The theme is read with `useMediaQuery` rather than `<source media>`, which `<video>`
  * does not honour. `label` says what the clip shows, since a video has no alt text.
@@ -399,19 +402,20 @@ function Clip({ name, label }: { name: string; label: string }) {
         preload="metadata"
         poster={`${file}-poster.webp`}
         aria-label={label}
-        aria-description={paused ? 'Paused. Press to play.' : 'Playing. Press to pause.'}
-        data-tip={paused ? 'Play' : 'Pause'}
-        tabIndex={0}
-        onClick={toggle}
-        onKeyDown={(e) => {
-          if (e.key !== 'Enter' && e.key !== ' ') return;
-          e.preventDefault();
-          toggle();
-        }}
       >
         <source src={`${file}.webm`} type="video/webm" />
         <source src={`${file}.mp4`} type="video/mp4" />
       </video>
+      <Button
+        variant="quiet"
+        size="small"
+        className="feature-clip-toggle"
+        aria-label={paused ? 'Play' : 'Pause'}
+        tip={paused ? 'Play the clip' : 'Pause the clip'}
+        onClick={toggle}
+      >
+        {paused ? <PlayIcon /> : <PauseIcon />}
+      </Button>
     </div>
   );
 }
