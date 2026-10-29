@@ -123,6 +123,30 @@ function relativeAttachmentLinks(
 }
 
 /**
+ * Repoints same-note `files/…` links at other names, keeping each label as written.
+ *
+ * `rename` answers the name a link should point at instead, or null to leave that link
+ * alone. Matched by the name a destination means, in any of its spellings, and written
+ * back by `attachmentDestination`'s rule; the importer uses it when the server stored a
+ * resource under a suffixed name because the note already held one by that name.
+ */
+export function rewriteAttachmentLinks(
+  markdown: string,
+  rename: (filename: string) => string | null,
+): string {
+  let out = '';
+  let last = 0;
+  for (const link of relativeAttachmentLinks(markdown)) {
+    const renamed = rename(link.filename);
+    if (renamed === null) continue;
+    out += markdown.slice(last, link.from);
+    out += `${link.label}(${attachmentDestination(`${ATTACHMENT_PREFIX}${renamed}`)})`;
+    last = link.to;
+  }
+  return out + markdown.slice(last);
+}
+
+/**
  * Removes markdown image/link nodes whose destination is `files/<filename>`.
  *
  * Matched by what the destination names, not by its spelling, so the percent-encoded,

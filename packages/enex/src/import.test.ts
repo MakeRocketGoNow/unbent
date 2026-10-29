@@ -274,6 +274,18 @@ describe('applyRenames', () => {
     );
   });
 
+  /**
+   * What `enmlToMarkdown` writes for a parenthesised name: its serialiser escapes the
+   * parentheses in a bare destination. The rename has to find that spelling, or the
+   * suffixed second resource keeps pointing at the first.
+   */
+  it('rewrites the backslash-escaped spelling the serialiser writes', () => {
+    const body = '[r](files/Report\\(R\\).pdf)\n';
+    expect(applyRenames(body, new Map([['Report(R).pdf', 'Report(R)-2.pdf']]))).toBe(
+      '[r](<files/Report(R)-2.pdf>)\n',
+    );
+  });
+
   it('does not let a shorter name eat the start of a spaced neighbour', () => {
     const body = '[a](<files/Menu Card.pdf>)\n';
     expect(applyRenames(body, new Map([['Menu', 'Menu-2']]))).toBe(body);

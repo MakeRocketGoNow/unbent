@@ -1,4 +1,4 @@
-import { FREE_NOTES_FULL_CODE, PLAN_INACTIVE_CODE, type ReadBy } from '@unbent/shared';
+import { FREE_NOTES_FULL_CODE, PLAN_INACTIVE_CODE, rewriteAttachmentLinks, type ReadBy } from '@unbent/shared';
 import type { FieldValue, NotebookDefinition } from '@unbent/shared';
 import { isExtractable } from './ocr-text.js';
 import { extractPdfText } from './pdf-text.js';
@@ -559,25 +559,17 @@ export function storedName(renames: Map<string, string>, requested: string): str
 /**
  * Repoints every `files/<from>` link in a body at the names the server actually stored.
  *
- * Exact paths, not substrings. Replacing `files/IMG_1.jpg` with a split/join also rewrote
- * `files/IMG_10.jpg` (camera-roll notes are full of those neighbours) so a collision
- * suffix on the shorter file silently retargeted the longer one's link, and sometimes
- * produced a name that is not a file at all (`files/IMG_1-2.jpg0.jpg`). Longest first is
- * not enough on its own: the longer neighbour is often *not* in the rename map.
- *
- * The boundary is the characters that end a destination in the markdown this importer
- * writes (`](files/…)`, `<files/…>`). A space is not one of them, because a real export
- * has names like `Menu Card.pdf` and `files/Menu` must not eat `files/Menu Card.pdf`.
+ * By the name a link means, never by its text. A substring replace of `files/IMG_1.jpg`
+ * also rewrote `files/IMG_10.jpg` (camera-roll notes are full of those neighbours), so a
+ * collision suffix on the shorter file silently retargeted the longer one's link, and
+ * sometimes produced a name that is not a file at all (`files/IMG_1-2.jpg0.jpg`). The
+ * exact-path regex that replaced it missed the spelling this importer's own serialiser
+ * writes: `mdast-util-to-markdown` backslash-escapes a parenthesis in a bare destination,
+ * so `files/Report\(R\).pdf` never matched `files/Report(R).pdf` and a suffixed second
+ * resource of that name kept pointing at the first. The shared walker reads every
+ * spelling and writes the renamed one back in the form every reader handles.
  */
 export function applyRenames(body: string, renames: Map<string, string>): string {
   if (renames.size === 0) return body;
-  let out = body;
-  // Longest first so a name that is a prefix of another is not rewritten out from under
-  // it; entries rather than keys so the value does not need a second lookup.
-  const entries = [...renames.entries()].sort(([a], [b]) => b.length - a.length);
-  for (const [from, to] of entries) {
-    const escaped = `files/${from}`.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    out = out.replace(new RegExp(`${escaped}(?=$|[)\\n\\r>\\]])`, 'g'), `files/${to}`);
-  }
-  return out;
+  return rewriteAttachmentLinks(body, (filename) => renames.get(filename) ?? null);
 }
