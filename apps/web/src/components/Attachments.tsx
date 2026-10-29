@@ -126,7 +126,9 @@ export function Attachments({
   // draft, which is why the actions below read the draft itself (`linkedNow`) and never
   // this set: a link pasted just before Delete was pressed would otherwise be left
   // pointing at a file that is gone.
-  const settledBody = useSettledBody(noteId, body);
+  // The file list is what the set is read against: a new row is read against the body
+  // as it is now, not as it was when typing last paused (`flushKey` says why).
+  const settledBody = useSettledBody(noteId, body, files.map((f) => f.filename).join('\n'));
   const linked = useMemo(() => attachmentFilenamesInMarkdown(settledBody), [settledBody]);
   // Not a file still waiting to upload: the cleanup deletes on the server, which has no such file yet.
   const unlinked = files.filter((f) => !linked.has(f.filename) && !f.pending);

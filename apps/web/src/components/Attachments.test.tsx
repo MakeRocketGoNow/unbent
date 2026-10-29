@@ -220,6 +220,33 @@ describe('Attachments', () => {
     live.destroy();
   });
 
+  it('does not call a file dropped into the note "not linked" while the body settles', async () => {
+    // A drop writes the link first; the file's row arrives a moment later. The linked
+    // set waits for typing to pause, but a new row must be read against the body now,
+    // or the panel latches open on a file that is linked (the MAK-149 symptom).
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+    seed(client, 'n1', [scan]);
+    const photo: AttachmentInfo = { filename: 'photo.jpg', contentType: 'image/jpeg', size: 1 };
+    let setBody: (body: string) => void = () => {};
+    function Harness() {
+      const [body, set] = useState(n1Body);
+      setBody = set;
+      return <Attachments noteId="n1" body={body} editorViewNow={() => null} onBodyRewrite={set} />;
+    }
+    render(
+      <QueryClientProvider client={client}>
+        <Harness />
+      </QueryClientProvider>,
+    );
+    act(() => setBody(`${n1Body}\n\n![photo](files/photo.jpg)`));
+    act(() => seed(client, 'n1', [scan, photo]));
+    await waitFor(() => expect(screen.getByText(/Attachments \(2\)/)).toBeTruthy());
+    expect(screen.queryByText(/not linked/)).toBeNull();
+    await new Promise((r) => setTimeout(r, 300));
+    expect(screen.queryByText(/not linked/)).toBeNull();
+    expect(document.querySelector('details')?.open).toBe(false);
+  });
+
   it('drops a delete confirm when the open note changes', async () => {
     mount();
     openPanel();

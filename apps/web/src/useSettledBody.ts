@@ -19,14 +19,20 @@ export const SETTLE_MS = 250;
  * unlinked for a render, which latched the panel open on every note with files (the
  * bug MAK-149 fixed, back by another route). A settled body from another note is not
  * answered: the live one is, once, on the switch, and settles from there.
+ *
+ * `flushKey` names what the body is read against, and a change to it is answered the
+ * same way: the live body at once, and the pause only for what is typed after. A file
+ * dropped into the note writes its link first and its row arrives a moment later, from
+ * the feed; read against that row with the body still settling, the file was "not
+ * linked" for a render, and the panel latched open on it (2026-10-29).
  */
-export function useSettledBody(noteId: string, body: string, pauseMs = SETTLE_MS): string {
-  const [settled, setSettled] = useState({ noteId, body });
-  const stale = settled.noteId !== noteId;
+export function useSettledBody(noteId: string, body: string, flushKey = '', pauseMs = SETTLE_MS): string {
+  const [settled, setSettled] = useState({ noteId, body, flushKey });
+  const stale = settled.noteId !== noteId || settled.flushKey !== flushKey;
   useEffect(() => {
     if (!stale && settled.body === body) return;
-    const timer = setTimeout(() => setSettled({ noteId, body }), stale ? 0 : pauseMs);
+    const timer = setTimeout(() => setSettled({ noteId, body, flushKey }), stale ? 0 : pauseMs);
     return () => clearTimeout(timer);
-  }, [noteId, body, pauseMs, stale, settled.body]);
+  }, [noteId, body, flushKey, pauseMs, stale, settled.body]);
   return stale ? body : settled.body;
 }
