@@ -162,13 +162,13 @@ describe('absolutizeAttachmentLinks', () => {
   it('absolutizes a backslash-escaped destination by the name it means', () => {
     expect(
       absolutizeAttachmentLinks('[r](files/Report\\(R\\).pdf)', { noteId: NOTE, origin: 'https://app.example' }),
-    ).toBe(`[r](https://app.example/api/notes/${NOTE}/files/Report(R).pdf)`);
+    ).toBe(`[r](https://app.example/api/notes/${NOTE}/files/Report%28R%29.pdf)`);
   });
 
   it('encodes a bracketed name and drops the brackets it no longer needs', () => {
     const md = formatAttachmentMarkdown('Report (final) v2.pdf', 'files/Report (final) v2.pdf');
     expect(absolutizeAttachmentLinks(md, { noteId: NOTE, origin: 'https://app.example' })).toBe(
-      `[Report (final) v2.pdf](https://app.example/api/notes/${NOTE}/files/Report%20(final)%20v2.pdf)`,
+      `[Report (final) v2.pdf](https://app.example/api/notes/${NOTE}/files/Report%20%28final%29%20v2.pdf)`,
     );
   });
 
@@ -200,6 +200,19 @@ describe('findAbsoluteAttachmentLinks', () => {
     const [link] = findAbsoluteAttachmentLinks(md);
     expect(link?.filename).toBe('Report(R).pdf');
     expect(md.slice(link!.to)).toBe(' tail');
+  });
+
+  /**
+   * A lone parenthesis cannot be read back bare, balanced or not, so the address never
+   * carries one: `attachmentUrl` encodes it, and the file is found by the decoded name.
+   */
+  it('round-trips a name with an unbalanced parenthesis', () => {
+    for (const name of ['a(b.pdf', 'a)b.pdf', 'x((y)).pdf']) {
+      const md = absolutizeAttachmentLinks(`[l](<files/${name}>) tail`, { noteId: 'n1' });
+      const [link] = findAbsoluteAttachmentLinks(md);
+      expect(link?.filename).toBe(name);
+      expect(md.slice(link!.to)).toBe(' tail');
+    }
   });
 
   it('ignores the download query the panel link carries', () => {

@@ -176,7 +176,17 @@ export function removeAttachmentLinks(markdown: string, filename: string): strin
  * prepended when the text may be pasted outside the app, where a path alone is not a URL.
  */
 export function attachmentUrl(noteId: string, filename: string, origin = ''): string {
-  return `${origin}/api/notes/${encodeURIComponent(noteId)}/files/${encodeURIComponent(filename)}`;
+  return `${origin}/api/notes/${segment(noteId)}/files/${segment(filename)}`;
+}
+
+/**
+ * A path segment for a markdown destination. `encodeURIComponent` leaves `(` and `)` as
+ * they are, and a bare one in a destination either has to balance or ends the link, so
+ * `a(b.pdf` made a link no reader could take back. The server and the worker decode the
+ * segment, so `%28` reaches the same file.
+ */
+function segment(value: string): string {
+  return encodeURIComponent(value).replace(/\(/g, '%28').replace(/\)/g, '%29');
 }
 
 /**
@@ -225,10 +235,11 @@ export interface AbsoluteAttachmentLink {
  * brackets. The note id and filename groups stop at anything that could end a URL or a
  * markdown destination; the filename is unescaped and percent-decoded by the caller.
  *
- * The filename takes the bare grammar of `RELATIVE_DESTINATION_SRC`: `attachmentUrl`
- * leaves a parenthesis as it is, so a copied `Report(R).pdf` link has a balanced pair
- * in its address, and a group that stopped at the first `)` cut the name to `Report(R`
- * and pasted it back as a link to a file that does not exist.
+ * The filename takes the bare grammar of `RELATIVE_DESTINATION_SRC`. `attachmentUrl`
+ * encodes a parenthesis now, but until 2026-10-28 it left one as it was, so a copied
+ * `Report(R).pdf` link had a balanced pair in its address, and a group that stopped at
+ * the first `)` cut the name to `Report(R` and pasted it back as a link to a file that
+ * does not exist. Such links are still on clipboards and in other apps' notes.
  */
 const ABSOLUTE_ATTACHMENT_LINK_RE =
   /(!?\[[^\]]*\])\(\s*<?(?:https?:\/\/[^/\s<>]+)?\/api\/notes\/([^/\s<>)]+)\/files\/((?:\\[!-/:-@[-`{-~]|\([^()\s<>]*\)|[^()\s<>\\])+?)>?\s*\)/g;
