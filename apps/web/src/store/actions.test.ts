@@ -792,6 +792,76 @@ describe('a replayed write', () => {
     expect([...MemoryAdapter.databases.values()].some((rows) => [...rows.keys()].some((k) => k.startsWith('unmade:')))).toBe(false);
   });
 
+  /**
+   * A delete-forever pressed before the create has been sent: waiting for the 402
+   * before unmaking left that create to be kept at the head, and every later save
+   * sat behind it.
+   */
+  it('ends a create the person has already purged even if no refusal has landed yet', async () => {
+    const { fake, engine, lib } = library([row('n2')]);
+    engine.pull.mockResolvedValue(undefined);
+    const made = await actions.createNote({ title: 'One too many', body: '', tags: [], notebook: null });
+    await tick();
+    await actions.trashNote(made.id);
+    await actions.purgeNote(made.id);
+    await tick();
+    expect(await fake.replayOne()).toBe('done');
+    expect(api.createNote).not.toHaveBeenCalled();
+    vi.mocked(api.deleteNote).mockRejectedValueOnce(new ApiError(404, '404: Note not found'));
+    expect(await fake.replayOne()).toBe('done');
+    vi.mocked(api.deleteNotePermanently).mockRejectedValueOnce(new ApiError(404, '404: Note not found'));
+    expect(await fake.replayOne()).toBe('done');
+    expect(fake.queue).toHaveLength(0);
+    expect(lib.notes.get(made.id)).toBeUndefined();
+  });
+
+  it('ends a create refused after its note was purged, rather than keeping it at the head of the queue', async () => {
+    const { fake, engine, lib, note } = library([row('n2')]);
+    engine.pull.mockResolvedValue(undefined);
+    const made = await actions.createNote({ title: 'One too many', body: '', tags: [], notebook: null });
+    await tick();
+    let refuse: (err: unknown) => void = () => {};
+    vi.mocked(api.createNote).mockImplementationOnce(
+      () =>
+        new Promise((_, reject) => {
+          refuse = reject;
+        }),
+    );
+    const replay = fake.replayOne();
+    await tick();
+    await actions.trashNote(made.id);
+    await actions.purgeNote(made.id);
+    refuse(new ApiError(402, '402: The free plan holds up to 100 notes, counting the trash.', 'FREE_NOTES_FULL'));
+    expect(await replay).toBe('done');
+    expect(storeFull()).toBe(false);
+    expect(planLapsed()).toBe(false);
+    vi.mocked(api.deleteNote).mockRejectedValueOnce(new ApiError(404, '404: Note not found'));
+    expect(await fake.replayOne()).toBe('done');
+    vi.mocked(api.deleteNotePermanently).mockRejectedValueOnce(new ApiError(404, '404: Note not found'));
+    expect(await fake.replayOne()).toBe('done');
+    const base = note('n2');
+    await actions.saveNote({ noteId: 'n2', value: { ...seedFrom(base), title: 'after' }, base });
+    await tick();
+    vi.mocked(api.updateNote).mockResolvedValueOnce({ ...base, title: 'after', updatedAt: 101 });
+    expect(await fake.replayOne()).toBe('done');
+    expect(lib.notes.get(made.id)).toBeUndefined();
+  });
+
+  it('ends a create emptied from the trash before the server has taken it', async () => {
+    const { fake, engine } = library([row('n2')]);
+    engine.pull.mockResolvedValue(undefined);
+    const made = await actions.createNote({ title: 'One too many', body: '', tags: [], notebook: null });
+    await tick();
+    await actions.trashNote(made.id);
+    vi.mocked(api.purgeNotes).mockResolvedValueOnce({ scope: 'trashed', notesDeleted: 0, filesDeleted: 0 });
+    await actions.emptyTrash([made.id]);
+    expect(await fake.replayOne()).toBe('done');
+    expect(api.createNote).not.toHaveBeenCalled();
+    vi.mocked(api.deleteNote).mockRejectedValueOnce(new ApiError(404, '404: Note not found'));
+    expect(await fake.replayOne()).toBe('done');
+    expect(fake.queue).toHaveLength(0);
+  });
+
   it('keeps which refusal it was across a reload, and reads a bare sentence from before the free plan as the store\u2019s room', async () => {
     const { lib, fake } = library([row('n2')]);
     await actions.createNote({ title: 'One too many', body: '', tags: [], notebook: null });

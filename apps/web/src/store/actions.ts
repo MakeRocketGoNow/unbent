@@ -312,6 +312,25 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
     void storage.delete(unmadeKey(noteId)).catch(() => {});
     return true;
   };
+  /**
+   * A 402 that would be kept, for a create or copy the person has already purged.
+   * `unmadeNow` runs at the start of the attempt, so a purge that lands while the
+   * request is on the wire would otherwise keep the entry at the head forever.
+   */
+  const dropAbandonedCreate = (noteId: string | undefined, err: unknown): boolean => {
+    if (!noteId) return false;
+    if (
+      !(err instanceof ApiError) ||
+      (err.code !== PLAN_INACTIVE_CODE &&
+        err.code !== FREE_NOTES_FULL_CODE &&
+        !(err.code === STORAGE_FULL_CODE && err.of === 'notes'))
+    ) {
+      return false;
+    }
+    if (!unmade.has(noteId) && lib.notes.get(noteId)) return false;
+    if (unmade.delete(noteId)) void storage.delete(unmadeKey(noteId)).catch(() => {});
+    return true;
+  };
 
   /**
    * The server refused the request for good, or for now: which, is the queue's whole question.
@@ -551,7 +570,14 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
             ended(transaction.id);
             return;
           }
-          const created = await api.createNote(input).catch(refusal);
+          const created = await api.createNote(input).catch((err: unknown) => {
+            if (dropAbandonedCreate(input.id, err)) return null;
+            return refusal(err);
+          });
+          if (!created) {
+            ended(transaction.id);
+            return;
+          }
           if (!took(created)) await settled();
           ended(transaction.id);
         } catch (err) {
@@ -568,7 +594,14 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
             ended(transaction.id);
             return;
           }
-          const answer = await api.duplicateNote(sourceId, copyId).catch(refusal);
+          const answer = await api.duplicateNote(sourceId, copyId).catch((err: unknown) => {
+            if (dropAbandonedCreate(copyId, err)) return null;
+            return refusal(err);
+          });
+          if (!answer) {
+            ended(transaction.id);
+            return;
+          }
           // The copy's row goes in now; its files are the server's to make, and the
           // pull brings their rows. A copy whose files had no room (`filesSkipped`,
           // MAK-108) is still the copy, said so under its files rather than kept on the
@@ -1883,14 +1916,21 @@ function serverHolds(lib: WritableLibrary, noteId: string): boolean {
 }
 
 /**
- * A purge of notes made here that the server has never taken, while a refusal is kept:
- * their create (or copy) is told to end unsent (`Outbox.unmake`), and the kept entry is
- * sent again at once, so a queue held by that very create moves. The free plan's count
- * is how this happens: a note the device could not count (one made on another device a
- * moment ago) is refused by the server and kept at the head of the queue, and the
- * person's first answer to "the free plan holds 100 notes" is to delete the note they
- * just made. Queued behind its own create, that purge could never be sent, and every
- * save waited until some other note was deleted for good.
+ * A purge of notes made here that the server has never taken: their create (or copy)
+ * is told to end unsent (`Outbox.unmake`), and a kept entry is sent again at once, so
+ * a queue held by that very create moves. The free plan's count is how this happens:
+ * a note the device could not count (one made on another device a moment ago) is
+ * refused by the server and kept at the head of the queue, and the person's first
+ * answer to "the free plan holds 100 notes" is to delete the note they just made.
+ * Queued behind its own create, that purge could never be sent, and every save waited
+ * until some other note was deleted for good.
+ *
+ * Marked whether or not a 402 has landed. Waiting for the refusal (the first version
+ * of this) missed a purge pressed before the create had been sent, or while it was
+ * on the wire: the 402 then kept the create at the head, and the purge sat behind
+ * it. A create already on its way still goes, because `unmadeNow` runs at the start
+ * of the attempt; if the server takes it, the queued purge follows, and if the
+ * server refuses, `dropAbandonedCreate` ends the entry instead of keeping it.
  *
  * The purge itself still queues behind, and goes once the create has ended: against a
  * note the server never made, it is a 404, which is done, as are the note's saves and
@@ -1905,7 +1945,6 @@ function serverHolds(lib: WritableLibrary, noteId: string): boolean {
  * trashed note on screen; a purge of one has just queued its own entry and always passes.
  */
 function unmake(lib: WritableLibrary, ids: readonly string[]): void {
-  if (!storeFull() && !planLapsed()) return;
   const never = ids.filter((id) => lib.outbox.status().waiting.has(id) && !serverHolds(lib, id));
   if (never.length === 0) return;
   lib.outbox.unmake(never);
