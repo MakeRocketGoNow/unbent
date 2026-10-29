@@ -1,6 +1,8 @@
+import { markdown } from '@codemirror/lang-markdown';
 import { ensureSyntaxTree, syntaxTree } from '@codemirror/language';
-import type { EditorState } from '@codemirror/state';
-import { unescapeMarkdown } from '@unbent/shared';
+import { EditorState, type ChangeSpec } from '@codemirror/state';
+import { GFM } from '@lezer/markdown';
+import { ATTACHMENT_PREFIX, relativeAttachmentPath, unescapeMarkdown } from '@unbent/shared';
 
 /**
  * Links and images read from the editor's own syntax tree.
@@ -11,6 +13,14 @@ import { unescapeMarkdown } from '@unbent/shared';
  * text to the shared markdown parser, and a copied third-level bullet carried its
  * attachment link out unrewritten, since the parser saw code (2026-10-29). Everything
  * in the editor that needs a link's parts reads them from here.
+ *
+ * This is also the one place a note's body is rewritten by position. `@unbent/shared`
+ * reads links (the panel's "linked" set, the import's checks, the store's move check)
+ * and never rewrites them: until 2026-10-29 it held a second set of rewriters over the
+ * remark tree, one per caller, and two parsers that had to agree about nesting, escapes
+ * and context disagreed often enough to fill three review rounds. A rewrite here is a
+ * `ChangeSpec` on an `EditorState`, dispatched to the open editor or applied to a
+ * headless one (`rewriteText`) when no editor is mounted.
  */
 
 /** A node of the syntax tree, as `@codemirror/language` hands it out; `@lezer/common` is not a dependency here. */
@@ -125,4 +135,86 @@ export function decodePath(value: string): string {
   } catch {
     return value;
   }
+}
+
+/**
+ * A state parsed with the editor's grammar, for a caller that holds a body and no view
+ * (the attachments panel before the editor has mounted, say). Code languages are left
+ * out: nothing here reads inside a fence.
+ */
+export function markdownState(text: string): EditorState {
+  return EditorState.create({ doc: text, extensions: [markdown({ extensions: [GFM] })] });
+}
+
+/** `text` with `changesFor`'s changes applied, through a headless state; see `markdownState`. */
+export function rewriteText(text: string, changesFor: (state: EditorState) => ChangeSpec[]): string {
+  const state = markdownState(text);
+  const changes = changesFor(state);
+  return changes.length === 0 ? text : state.update({ changes }).state.doc.toString();
+}
+
+/** Every link and image in the document. */
+function allLinks(state: EditorState): DocumentLink[] {
+  return linksWithin(state, [{ from: 0, to: state.doc.length }]);
+}
+
+/** The note's own file a link points at, by the name the attachment row has, or null. */
+export function attachmentFilenameOf(link: Pick<DocumentLink, 'url'>): string | null {
+  if (!link.url.startsWith(ATTACHMENT_PREFIX)) return null;
+  const filename = decodePath(link.url.slice(ATTACHMENT_PREFIX.length));
+  return filename === '' ? null : filename;
+}
+
+/**
+ * The changes that take every link and image to the note's own `filename` out of the
+ * document. Matched by what the destination names, not its spelling, so the
+ * percent-encoded, bracketed and backslash-escaped forms all go.
+ *
+ * A link standing alone on its line goes with the line and one blank line beside it,
+ * so a removed-only paragraph does not leave a double gap. A
+ * picture inside a removed link's label goes with its container, and is not a second
+ * change over the same span, which CodeMirror refuses.
+ */
+export function removeAttachmentLinkChanges(state: EditorState, filename: string): ChangeSpec[] {
+  const changes: Array<{ from: number; to: number }> = [];
+  let last = -1;
+  for (const link of allLinks(state).sort((a, b) => a.from - b.from)) {
+    if (link.from < last || attachmentFilenameOf(link) !== filename) continue;
+    const line = state.doc.lineAt(link.from);
+    const alone =
+      state.doc.lineAt(link.to).number === line.number &&
+      state.doc.sliceString(line.from, link.from).trim() === '' &&
+      state.doc.sliceString(link.to, line.to).trim() === '';
+    if (!alone) {
+      changes.push({ from: link.from, to: link.to });
+    } else {
+      // The line and one blank line beside it: the one before, else the one after.
+      const previous = line.number > 1 ? state.doc.line(line.number - 1) : null;
+      const next = line.number < state.doc.lines ? state.doc.line(line.number + 1) : null;
+      let from = line.from;
+      let to = Math.min(line.to + 1, state.doc.length);
+      if (previous && previous.text.trim() === '' && previous.from >= last) from = previous.from;
+      else if (next && next.text.trim() === '') to = Math.min(next.to + 1, state.doc.length);
+      changes.push({ from, to });
+    }
+    last = link.to;
+  }
+  return changes.map(({ from, to }) => ({ from, to, insert: '' }));
+}
+
+/**
+ * The changes that point each web image (`![alt](http…)`) at the file it was saved as,
+ * for the images `stored` answers a name for. The destination only: alt and title stay
+ * as written, and an image `stored` has no name for keeps its web link, since a fetch
+ * that failed is better left a working web link than made a broken local one.
+ */
+export function relinkWebImageChanges(state: EditorState, stored: (url: string) => string | null): ChangeSpec[] {
+  const changes: ChangeSpec[] = [];
+  for (const link of allLinks(state)) {
+    if (!link.image || !/^https?:\/\//i.test(link.url)) continue;
+    const filename = stored(link.url);
+    if (filename === null) continue;
+    changes.push({ from: link.urlFrom, to: link.urlTo, insert: relativeAttachmentPath(filename) });
+  }
+  return changes;
 }

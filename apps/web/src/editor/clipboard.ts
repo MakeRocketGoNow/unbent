@@ -7,7 +7,7 @@ import {
   parseAbsoluteAttachmentUrl,
   relativeAttachmentPath,
 } from '@unbent/shared';
-import { decodePath, linksWithin, type DocumentLink } from './links.js';
+import { attachmentFilenameOf, linksWithin, type DocumentLink } from './links.js';
 
 /**
  * Attachment links across the clipboard.
@@ -134,7 +134,7 @@ function exportSelection(
   // which the tree reads as the plain one).
   if (!ranges.some((range) => state.sliceDoc(range.from, range.to).includes(ATTACHMENT_PREFIX.slice(0, -1)))) return false;
 
-  const links = linksWithin(state, ranges).filter((link) => link.url.startsWith(ATTACHMENT_PREFIX));
+  const links = linksWithin(state, ranges).filter((link) => attachmentFilenameOf(link) !== null);
   if (links.length === 0) return false;
 
   const text = ranges
@@ -143,8 +143,7 @@ function exportSelection(
       let last = range.from;
       for (const link of links) {
         if (link.from < range.from || link.to > range.to) continue; // another range's
-        const filename = decodePath(link.url.slice(ATTACHMENT_PREFIX.length));
-        out += state.sliceDoc(last, link.urlFrom) + attachmentUrl(config.noteId, filename, config.origin);
+        out += state.sliceDoc(last, link.urlFrom) + attachmentUrl(config.noteId, attachmentFilenameOf(link)!, config.origin);
         last = link.urlTo;
       }
       return out + state.sliceDoc(last, range.to);

@@ -2,11 +2,11 @@ import { useDeferredValue, useEffect, useMemo, useRef, useState, type ReactNode 
 import { Link } from '@tanstack/react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { EditorView } from '@codemirror/view';
+import { removeAttachmentLinkChanges, rewriteText } from '../editor/links.js';
 import type { AttachmentInfo } from '@unbent/shared';
 import {
   attachmentFilenamesInMarkdown,
   formatAttachmentMarkdown,
-  removeAttachmentLinks,
 } from '@unbent/shared';
 import * as api from '../notes-api.js';
 import { copyAttachmentToClipboard } from '../attachment-clipboard.js';
@@ -161,6 +161,19 @@ export function Attachments({
   bodyRef.current = body;
   /** What the draft links at this moment: one parse, at a press, never per keystroke. */
   const linkedNow = () => attachmentFilenamesInMarkdown(bodyRef.current);
+  /**
+   * Takes a deleted file's links out of the note, through the editor's own syntax tree
+   * (`editor/links.ts`, the one place a body is rewritten): a change dispatched to the
+   * open editor, or applied to the draft when no editor is mounted yet.
+   */
+  function dropLinks(filename: string) {
+    if (editorView) {
+      const changes = removeAttachmentLinkChanges(editorView.state, filename);
+      if (changes.length > 0) editorView.dispatch({ changes });
+      return;
+    }
+    onBodyRewrite(rewriteText(bodyRef.current, (state) => removeAttachmentLinkChanges(state, filename)));
+  }
   useEffect(() => {
     setPending(null);
     setSending(null);
@@ -258,7 +271,7 @@ export function Attachments({
       if (mode === 'move') {
         await api.deleteAttachment(startedFor, file.filename);
         if (stillLinked && noteIdRef.current === startedFor) {
-          onBodyRewrite(removeAttachmentLinks(bodyRef.current, file.filename));
+          dropLinks(file.filename);
         }
         await queryClient.invalidateQueries({ queryKey: keys.attachments(startedFor) });
       }
@@ -321,7 +334,7 @@ export function Attachments({
       // so a rewrite would show the link gone until the note was reopened and then bring
       // it back, pointing at nothing. The link stays, and the confirm said it would.
       if (stillLinked && !lapsed && noteIdRef.current === startedFor) {
-        onBodyRewrite(removeAttachmentLinks(bodyRef.current, filename));
+        dropLinks(filename);
       }
       await queryClient.invalidateQueries({ queryKey: keys.attachments(startedFor) });
     } catch (err) {
