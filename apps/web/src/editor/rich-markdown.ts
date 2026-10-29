@@ -1380,7 +1380,11 @@ function linkOpener(
     }
     return () => followUrl(downloadUrl(src), false);
   }
-  if (WEB_SCHEME.test(url)) return () => followUrl(url, true);
+  // The preview's href is micromark's normalizeUri of the text, which encodes a
+  // backslash. Handed to the URL parser raw, `\` reads as `/` in an http address, so
+  // `[a](https://x/a\b)` or `<https://x/a\_b>` would land on `a/b` here and `a%5Cb` in
+  // the preview. Only here: an attachment's name above wants the character itself.
+  if (WEB_SCHEME.test(url)) return () => followUrl(url.replace(/\\/g, '%5C'), true);
   if (HANDOFF_SCHEME.test(url)) return () => followUrl(url, false);
   if (SITE_PATH.test(url)) return options.pathOpener?.(url);
   return undefined;
@@ -1404,12 +1408,8 @@ function linkUrlAt(state: EditorState, pos: number): string | undefined {
       }
       if (node.name === 'Autolink') {
         // Only the brackets: CommonMark applies no backslash escapes inside an autolink.
-        // The preview's href is micromark's normalizeUri of the text, which encodes the
-        // backslash; handed to the URL parser raw, `\` reads as `/` in an http address
-        // and `<https://x/a\_b>` would land on `a/_b` here and `a%5C_b` in the preview.
         const raw = state.doc.sliceString(node.from, node.to);
-        const inner = raw.startsWith('<') && raw.endsWith('>') ? raw.slice(1, -1) : raw;
-        return inner.replace(/\\/g, '%5C');
+        return raw.startsWith('<') && raw.endsWith('>') ? raw.slice(1, -1) : raw;
       }
       if (node.name === 'URL' && bareUrl === undefined) {
         bareUrl = bareLinkTarget(state.doc.sliceString(node.from, node.to));

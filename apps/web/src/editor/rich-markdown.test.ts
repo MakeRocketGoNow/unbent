@@ -1928,6 +1928,14 @@ describe('following links', () => {
     expect(followed.map((f) => f.href)).toEqual(['https://example.com/a%5C_b']);
   });
 
+  /** A backslash before a letter is no escape, so it stays, and is encoded the same way. */
+  it('follows an inline link with a literal backslash where the preview does', () => {
+    const doc = '[a](https://example.com/a\\b)\n\nplain';
+    const v = mount(doc, doc.length);
+    clickLabel(v);
+    expect(followed.map((f) => f.href)).toEqual(['https://example.com/a%5Cb']);
+  });
+
   it('keeps a middle-click from opening it', () => {
     const doc = '[Example](https://example.com)\n\nplain';
     const v = mount(doc, doc.length);
