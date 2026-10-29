@@ -126,9 +126,16 @@ export function Attachments({
   // draft, which is why the actions below read the draft itself (`linkedNow`) and never
   // this set: a link pasted just before Delete was pressed would otherwise be left
   // pointing at a file that is gone.
-  // The file list is what the set is read against: a new row is read against the body
-  // as it is now, not as it was when typing last paused (`flushKey` says why).
-  const settledBody = useSettledBody(noteId, body, files.map((f) => f.filename).join('\n'));
+  // The file list, and which of it is still waiting to upload, is what the set is read
+  // against: a new row, or one that has landed, is read against the body as it is now,
+  // not as it was when typing last paused (`flushKey` says why). A waiting row is left
+  // out of the count below, so the moment it stops waiting is a moment it can first be
+  // counted, and has to be read against the body with its link in it.
+  const settledBody = useSettledBody(
+    noteId,
+    body,
+    files.map((f) => (f.pending ? `${f.filename}\0pending` : f.filename)).join('\n'),
+  );
   const linked = useMemo(() => attachmentFilenamesInMarkdown(settledBody), [settledBody]);
   // Not a file still waiting to upload: the cleanup deletes on the server, which has no such file yet.
   const unlinked = files.filter((f) => !linked.has(f.filename) && !f.pending);
