@@ -186,7 +186,7 @@ export function FeaturesPage() {
           </Feature>
           <Feature
             title="Works with no connection"
-            media={<Still name="offline" alt="The Offline settings page: how much of the device the library uses, which notebooks are kept offline, and the files kept from opening them." />}
+            media={<Still name="offline" alt="The Offline settings page: how much of the device the library uses, and the Receipts notebook kept offline with all nine of its files on the device." />}
           >
             Your library lives on each device as well as on the server. The app opens on a
             plane, what you write waits its turn, and whole notebooks can be kept offline,

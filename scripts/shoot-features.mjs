@@ -229,7 +229,20 @@ const SCENES = [
   { name: 'notebook', device: 'desktop', url: (data) => `/settings/notebooks/${data.receiptsId}` },
   { name: 'import', device: 'desktop', url: '/settings/import' },
   { name: 'export', device: 'desktop', url: '/settings/export' },
-  { name: 'offline', device: 'desktop', url: '/settings/offline' },
+  {
+    name: 'offline',
+    device: 'desktop',
+    url: (data) => `/settings/notebooks/${data.receiptsId}`,
+    // Keeping a notebook offline is a choice of this device, so the picture shows one
+    // made rather than the page's empty state: Receipts is kept, and the profile is
+    // thrown away with the run, so there is nothing to put back.
+    run: async (p) => {
+      await p.click('button', 'Keep offline');
+      await p.click('[aria-label="Confirm keep offline"] button', 'Keep offline');
+      await p.waitFor(`document.body.innerText.includes('are on this device')`, 30000);
+      await p.open('/settings/offline');
+    },
+  },
   {
     name: 'assistants',
     device: 'desktop',
@@ -516,6 +529,7 @@ async function run(BASE, scenes, themes, work, keepSocket, onInterrupt) {
   const p = {
     ev,
     waitFor,
+    open,
     /** Moves the drawn pointer and the real one to (x, y) over `ms`. */
     cursor: async (x, y, ms = 300) => {
       const steps = Math.max(1, Math.round(ms / 40));
