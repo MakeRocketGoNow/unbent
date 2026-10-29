@@ -316,6 +316,10 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
    * A 402 that would be kept, for a create or copy the person has already purged.
    * `unmadeNow` runs at the start of the attempt, so a purge that lands while the
    * request is on the wire would otherwise keep the entry at the head forever.
+   *
+   * Only a note marked by `unmake`, never one whose row is merely missing: ending a
+   * create is the note gone for good, and the entry may be the only copy left (a feed
+   * `reset` empties the rows while the queue keeps its bodies).
    */
   const dropAbandonedCreate = (noteId: string | undefined, err: unknown): boolean => {
     if (!noteId) return false;
@@ -327,8 +331,8 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
     ) {
       return false;
     }
-    if (!unmade.has(noteId) && lib.notes.get(noteId)) return false;
-    if (unmade.delete(noteId)) void storage.delete(unmadeKey(noteId)).catch(() => {});
+    if (!unmade.delete(noteId)) return false;
+    void storage.delete(unmadeKey(noteId)).catch(() => {});
     return true;
   };
 
