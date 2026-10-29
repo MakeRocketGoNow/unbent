@@ -1,3 +1,6 @@
+import { existsSync, readdirSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { render, cleanup, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -128,6 +131,52 @@ describe('FeaturesPage', () => {
     fireEvent.keyDown(clip, { key: ' ' });
     expect(play).toHaveBeenCalledTimes(1);
     expect(clip.getAttribute('data-tip')).toBe('Pause');
+  });
+
+  /**
+   * The page promises pictures of the app as it is; a scene renamed in the script, or a
+   * name mistyped here, would ship a broken picture with every other test green. Every
+   * address the page names, in either theme and with motion or without, must be a file
+   * under `public/`, and every file under `public/features/` must be named by the page,
+   * or it is weight in the repository for nothing.
+   */
+  it('names only media files that exist, and every one that is committed', async () => {
+    const named = new Set<string>();
+    const collect = (root: HTMLElement) => {
+      for (const el of root.querySelectorAll('img[src], source[src], source[srcset], video[poster]')) {
+        for (const attr of ['src', 'srcset', 'poster']) {
+          const value = el.getAttribute(attr);
+          if (value?.startsWith('/features/')) named.add(value);
+        }
+      }
+    };
+    for (const prefs of [{}, { '(prefers-color-scheme: dark)': true }, { '(prefers-reduced-motion: reduce)': true }]) {
+      media = prefs;
+      const { findByRole, container } = harness(null);
+      await findByRole('heading', { name: 'What Unbent does' });
+      await waitFor(() => expect(container.querySelectorAll('video, .feature-clip img').length).toBeGreaterThanOrEqual(4));
+      collect(container);
+      cleanup();
+    }
+    const publicDir = resolve(dirname(fileURLToPath(import.meta.url)), '../../public');
+    for (const file of named) expect(existsSync(resolve(publicDir, `.${file}`)), file).toBe(true);
+    const committed = readdirSync(resolve(publicDir, 'features')).map((f) => `/features/${f}`);
+    expect(committed.filter((f) => !named.has(f))).toEqual([]);
+  });
+
+  /** The nav is on every public page, and `aria-current` is what says where the reader is. */
+  it('carries the public pages’ nav, with this page marked as the current one', async () => {
+    const { findByRole, container } = harness(null);
+    await findByRole('heading', { name: 'What Unbent does' });
+    const links = [...container.querySelectorAll<HTMLAnchorElement>('nav.front-nav a')];
+    expect(links.map((a) => [a.textContent, a.getAttribute('href')])).toEqual([
+      ['Features', '/features'],
+      ['Pricing', '/pricing'],
+      ['Why', '/why'],
+    ]);
+    expect(links.map((a) => a.getAttribute('aria-current'))).toEqual(['page', null, null]);
+    // The brand is the way home from here, and text only on the front page itself.
+    expect(container.querySelector('a.front-brand')?.getAttribute('href')).toBe('/');
   });
 
   it('gives someone signed in their notes as the way out, and no trial', async () => {
