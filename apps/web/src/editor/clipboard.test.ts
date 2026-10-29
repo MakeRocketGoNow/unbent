@@ -219,6 +219,33 @@ describe('paste', () => {
     view.destroy();
   });
 
+  /**
+   * The editor is rebuilt on a rich/source switch, with the document carried across,
+   * and CodeMirror takes a dispatch to a destroyed view silently. The copy lands after a
+   * switch here, and the links must be rewritten in the editor that is live then.
+   */
+  it('relinks in the editor open when the copy lands, not the one pasted into', async () => {
+    let finish: (names: Map<string, string>) => void = () => {};
+    const copyFrom = vi.fn(() => new Promise<Map<string, string>>((resolve) => { finish = resolve; }));
+    const views = { current: null as EditorView | null };
+    const config: ClipboardConfig = { noteId: HERE, copyFrom, liveView: () => views.current };
+    const pressed = mount('', config);
+    views.current = pressed;
+    const text = `[a](${attachmentUrl(THERE, 'a.pdf')})`;
+    fire(pressed, 'paste', clipboard({ 'text/plain': text }));
+    await settle();
+    expect(copyFrom).toHaveBeenCalledWith(THERE, ['a.pdf'], false);
+    const carried = pressed.state.doc.toString();
+
+    pressed.destroy();
+    const live = mount(carried, config);
+    views.current = live;
+    finish(new Map([['a.pdf', 'a.pdf']]));
+    await settle();
+    expect(live.state.doc.toString()).toBe('[a](files/a.pdf)');
+    live.destroy();
+  });
+
   it('still finds the links after typing ahead of them', async () => {
     const copyFrom = vi.fn(async (_from: string, filenames: string[]) =>
       new Map(filenames.map((name) => [name, name])),

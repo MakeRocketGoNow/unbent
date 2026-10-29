@@ -326,6 +326,7 @@ export function Editor({
                   return copy(from, filenames, move);
                 }
               : undefined,
+            liveView,
           }),
           /*
              The two modes are two different kinds of text, and the font is what says which.
