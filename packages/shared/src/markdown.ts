@@ -34,15 +34,21 @@ export const ATTACHMENT_PREFIX = 'files/';
  * would be read back as `a(b.pdf` and flagged "Not linked" by the readers this exists
  * to satisfy.
  *
- * An ampersand is escaped too, bracketed or not, because a destination is read with its
- * character references decoded (`readDestination`): bare, a file named `a&copy;b.pdf`
- * would be read back as `a©b.pdf`. Escaped, `\&` is the literal character to every
- * reader, and the name round-trips whatever follows it.
+ * An ampersand that begins a character reference is escaped too, bracketed or not,
+ * because a destination is read with its references decoded (`readDestination`): bare, a
+ * file named `a&copy;b.pdf` would be read back as `a©b.pdf`. Escaped, `\&` is the
+ * literal character to every reader. Only that ampersand: a plain one (`Tom & Jerry.pdf`,
+ * a common name) is read as itself by every reader already, and the editor draws a
+ * label's text as written, so escaping every `&` put a backslash in every such name on
+ * screen (2026-10-29).
  */
 function attachmentDestination(path: string): string {
-  const escaped = path.replace(/\\/g, '\\\\').replace(/&/g, '\\&');
+  const escaped = path.replace(/\\/g, '\\\\').replace(REFERENCE_AMPERSAND_RE, '\\&');
   return /[\s()\\]/.test(path) ? `<${escaped}>` : escaped;
 }
+
+/** An ampersand that would begin a character reference, the only kind a reader decodes. */
+const REFERENCE_AMPERSAND_RE = /&(?=#\d+;|#x[0-9a-f]+;|[a-z][a-z0-9]*;)/gi;
 
 /**
  * Build a markdown link or image for an attachment path; see `attachmentDestination`.
@@ -57,7 +63,8 @@ export function formatAttachmentMarkdown(
   path: string,
   opts: { image?: boolean } = {},
 ): string {
-  return `${opts.image ? '!' : ''}[${label.replace(/[[\]\\&]/g, '\\$&')}](${attachmentDestination(path)})`;
+  const escapedLabel = label.replace(/[[\]\\]/g, '\\$&').replace(REFERENCE_AMPERSAND_RE, '\\&');
+  return `${opts.image ? '!' : ''}[${escapedLabel}](${attachmentDestination(path)})`;
 }
 
 /**
@@ -107,10 +114,19 @@ const CHARACTER_REFERENCE_RE = /&(?:#\d+|#x[0-9a-f]+|[a-z][a-z0-9]*);/i;
  */
 export function readDestination(raw: string): string | null {
   if (!CHARACTER_REFERENCE_RE.test(raw)) return null;
-  const links = parseInlineLinks(`[](${raw})`);
-  const link = links[0];
-  return link && link.from === 0 && link.to === raw.length + 4 ? link.url : null;
+  const hit = destinations.get(raw);
+  if (hit !== undefined) return hit;
+  const link = parseInlineLinks(`[](${raw})`)[0];
+  const read = link && link.from === 0 && link.to === raw.length + 4 ? link.url : null;
+  // The editor asks on every decoration rebuild (each keystroke, scroll and selection)
+  // for every such link on screen, and a clipped page's image addresses often carry
+  // `&amp;`; the answer for a spelling never changes. Bounded, since spellings are few.
+  if (destinations.size >= 500) destinations.clear();
+  destinations.set(raw, read);
+  return read;
 }
+
+const destinations = new Map<string, string | null>();
 
 /** An inline link or image in some markdown, with where it sits in the text. */
 interface InlineLink {

@@ -43,12 +43,14 @@ describe('formatAttachmentMarkdown', () => {
     expect(formatAttachmentMarkdown('a]b.pdf', 'files/a]b.pdf')).toBe('[a\\]b.pdf](files/a]b.pdf)');
   });
 
-  it('escapes an ampersand, so a name that spells a character reference reads back', () => {
-    for (const name of ['a&copy;b.pdf', 'A&amp;B.pdf', 'Tom & Jerry.pdf']) {
+  it('escapes only an ampersand that spells a character reference, and that name reads back', () => {
+    for (const name of ['a&copy;b.pdf', 'A&amp;B.pdf', 'x&#40;1&#41;.pdf', 'Tom & Jerry.pdf', 'a&b.pdf']) {
       const md = formatAttachmentMarkdown(name, `files/${name}`);
       expect(attachmentFilenamesInMarkdown(md)).toEqual(new Set([name]));
     }
-    expect(formatAttachmentMarkdown('a&b.pdf', 'files/a&b.pdf')).toBe('[a\\&b.pdf](files/a\\&b.pdf)');
+    expect(formatAttachmentMarkdown('a&copy;b.pdf', 'files/a&copy;b.pdf')).toBe('[a\\&copy;b.pdf](files/a\\&copy;b.pdf)');
+    // A plain ampersand is drawn as written in the editor, so it is left alone.
+    expect(formatAttachmentMarkdown('a&b.pdf', 'files/a&b.pdf')).toBe('[a&b.pdf](files/a&b.pdf)');
   });
 
   /** Without brackets the whole line is literal text: no link, no PDF viewer. */
