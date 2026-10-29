@@ -770,6 +770,11 @@ describe('inline images', () => {
     expect(image(v)?.alt).toBe('scan');
   });
 
+  it('draws the alt with its escapes off, as a reader should see it', () => {
+    const v = mountWithAttachments('![Scan \\[1\\]](<files/Scan [1].jpg>)\n\nplain', 0);
+    expect(image(v)?.alt).toBe('Scan [1]');
+  });
+
   /**
    * The bug this fixes: an image at the very start of an unfocused note showed its raw
    * `![alt](url)` instead of rendering.

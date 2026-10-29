@@ -1,6 +1,6 @@
 import { ensureSyntaxTree, syntaxTree } from '@codemirror/language';
 import type { EditorState } from '@codemirror/state';
-import { unescapeDestination } from '@unbent/shared';
+import { unescapeMarkdown } from '@unbent/shared';
 
 /**
  * Links and images read from the editor's own syntax tree.
@@ -69,7 +69,7 @@ export function linkParts(state: EditorState, node: SyntaxNode): LinkParts | und
     labelTo,
     urlFrom: url.from,
     urlTo: url.to,
-    url: unescapeDestination(inner),
+    url: unescapeMarkdown(inner),
   };
 }
 

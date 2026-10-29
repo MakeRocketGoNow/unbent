@@ -22,7 +22,7 @@ import {
   type ViewUpdate,
   WidgetType,
 } from '@codemirror/view';
-import { ATTACHMENT_PREFIX, formatAttachmentMarkdown } from '@unbent/shared';
+import { ATTACHMENT_PREFIX, formatAttachmentMarkdown, unescapeMarkdown } from '@unbent/shared';
 import { decodePath, linkParts } from './links.js';
 import { acquirePdf, type LoadedPdf, releasePdf } from '../pdf/render.js';
 import { downloadUrl, openAttachmentViewer, type ViewerTarget } from '../attachment-viewer.js';
@@ -1506,7 +1506,7 @@ export function collectAttachmentTargets(
         if (!parts) return;
         const src = resolveImageSrc(parts.url, options.resolveAttachment);
         if (src === undefined || failedImages.has(src)) return;
-        targets.push({ kind: 'image', src, alt: parts.label });
+        targets.push({ kind: 'image', src, alt: unescapeMarkdown(parts.label) });
         return;
       }
 
@@ -1776,9 +1776,12 @@ function buildDecorations(
           const stored = url.startsWith(ATTACHMENT_PREFIX)
             ? (decodePath(url.slice(ATTACHMENT_PREFIX.length)).split('?')[0] ?? '')
             : null;
+          // The alt as a reader should see it: the label is the raw text, and a serialiser
+          // writes a bracket in it as `\[`. The caption drawn over the text below keeps the
+          // raw spelling, since it is the text itself, and `saveButton` writes it back.
           const widget = new ImageWidget(
             src,
-            parts.label,
+            unescapeMarkdown(parts.label),
             siblings,
             stored,
             options.copyAttachment,

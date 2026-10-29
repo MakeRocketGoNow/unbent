@@ -67,17 +67,19 @@ function decodePathSegment(segment: string): string {
 }
 
 /**
- * Takes the backslash escapes off a destination as written in the body.
+ * Takes the backslash escapes off a run of markdown as written in the body: a
+ * destination, or a label.
  *
  * CommonMark lets a backslash escape any ASCII punctuation, in a bracketed destination as
  * in a bare one, and the Evernote importer's serialiser escapes every parenthesis it
- * writes bare. The parser below does this itself; this is for the editor, which reads a
- * destination's raw text out of its own syntax tree and has to take the escapes off the
- * same way. Percent-decoding is separate (`decodePathSegment`): the editor keeps the
+ * writes bare and every bracket in a label. The parser below does this itself; this is
+ * for the editor, which reads a link's raw text out of its own syntax tree and has to
+ * take the escapes off the same way, for the address it builds and for the alt it
+ * draws. Percent-decoding is separate (`decodePathSegment`): the editor keeps the
  * encoded spelling for the address it builds, and only the readers here want the plain
  * name.
  */
-export function unescapeDestination(raw: string): string {
+export function unescapeMarkdown(raw: string): string {
   return raw.replace(/\\([!-/:-@[-`{-~])/g, '$1');
 }
 
