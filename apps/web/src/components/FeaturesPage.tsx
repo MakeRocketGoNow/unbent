@@ -33,9 +33,8 @@ export const FEATURES_META: PageMeta = {
  * clip is a short silent loop (WebM and MP4, with its first frame as a poster) rather
  * than a GIF, which would be ten times the bytes and dithered on the screens that show
  * it, and plays only while it is on screen; a reader who has asked for less motion gets
- * the poster alone. Nothing on the page is a mock-up, which is the one promise it makes
- * about itself, in its lead. When the app changes, the script is run again; a page of
- * stale pictures is worse than one with none.
+ * the poster alone. When the app changes, the script is run again; a page of stale
+ * pictures is worse than one with none.
  *
  * The groups are the order the front page tells the story in (paper comes in, is found,
  * is structured, is kept, is shared with an assistant, is on the phone), and every row is
@@ -54,11 +53,10 @@ export function FeaturesPage() {
   return (
     <FrontShell>
       <section className="front-hero front-width">
+        {/* The heading alone: a lead that explained the pictures ("the app as it is, in
+            your theme, not a mock-up") was taken out on 2026-10-29, since the pictures
+            say it and a reader who scrolled past it lost nothing. */}
         <h1>What Unbent does</h1>
-        <p className="front-lead front-story-lead">
-          Every picture on this page is the app as it is, with a demo library in it, in the
-          theme you are reading in. Nothing here is a mock-up.
-        </p>
       </section>
 
       <div className="features front-width">
