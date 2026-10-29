@@ -146,6 +146,27 @@ describe('Save web images', () => {
     expect(await screen.findByText('Saved 1 image')).toBeTruthy();
   });
 
+  it('writes into the editor open when the pass finishes, after a view switch rebuilt it', async () => {
+    // A rich/source switch rebuilds the editor's view, and CodeMirror takes a dispatch
+    // to the destroyed one silently. The relink has to go to the view that is live.
+    type Fetched = Awaited<ReturnType<typeof api.fetchWebImage>>;
+    let finish: (value: Fetched) => void = () => {};
+    vi.mocked(api.fetchWebImage).mockImplementation(
+      () => new Promise<Fetched>((resolve) => { finish = resolve; }),
+    );
+    mount(withImage);
+    await startSaving();
+
+    fireEvent.mouseDown(screen.getByRole('radio', { name: 'Source' }));
+    await waitFor(() => expect(screen.getByRole('radio', { name: 'Source' }).getAttribute('aria-checked')).toBe('true'));
+
+    finish({ filename: 'pic.png' } as Fetched);
+    expect(await screen.findByText('Saved 1 image')).toBeTruthy();
+    await waitFor(() =>
+      expect(document.querySelector('.cm-content')?.textContent).toContain('![Diagram](files/pic.png)'),
+    );
+  });
+
   it('does not rewrite the next note when the pass finishes after a switch', async () => {
     type Fetched = Awaited<ReturnType<typeof api.fetchWebImage>>;
     let finish: (value: Fetched) => void = () => {};
