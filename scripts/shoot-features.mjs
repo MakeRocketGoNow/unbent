@@ -64,10 +64,10 @@ const here = path.dirname(fileURLToPath(import.meta.url));
  * The ids of the notes the drop clip made, written as soon as they are known and removed
  * once they are purged: a run that dies in between leaves the file, and the next run
  * purges them from it. Finding them again by their file names would mean reading every
- * note's files, since Auto-fill can refile the one it names into any notebook.
+ * note's files, since Auto-fill can refile the one it names into any notebook. Named
+ * for the checkout, since each worktree's instance is its own.
  */
-const DROPPED_FILE = path.join(os.tmpdir(), 'unbent-shoot-features-dropped.json');
-const root = path.dirname(here);
+const DROPPED_FILE = path.join(os.tmpdir(), `unbent-shoot-features-dropped-${path.basename(root)}.json`);
 const OUT = path.join(root, 'apps/web/public/features');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -375,7 +375,9 @@ async function main() {
       '--disable-gpu-vsync',
       'about:blank',
     ],
-    { stdio: 'ignore' },
+    // Its own process group: a Ctrl-C in the terminal would otherwise reach Chrome too,
+    // and the teardown, which runs through the page, would have nothing to run in.
+    { stdio: 'ignore', detached: true },
   );
   let ws;
   let interrupt = null;
@@ -425,6 +427,14 @@ async function run(BASE, scenes, themes, work, keepSocket, onInterrupt) {
   };
   // The timer is cleared by the reply, or the last calls of a run hold Node open for
   // thirty seconds after everything is done.
+  // A closed socket drops what is sent on it without a word; every call still waiting
+  // is answered as timed out at once, rather than thirty seconds each after Chrome went.
+  ws.onclose = () => {
+    for (const [i, answer] of [...waiting]) {
+      waiting.delete(i);
+      answer({ timeout: true });
+    }
+  };
   const send = (method, params = {}, sessionId) =>
     new Promise((res) => {
       const i = ++id;
@@ -656,6 +666,9 @@ async function run(BASE, scenes, themes, work, keepSocket, onInterrupt) {
    * only, whether the run ended, failed or was interrupted.
    */
   let torn = false;
+    // Only once the purge has gone through: the file is what keeps the ids past a failure.
+    data.dropped = [];
+    fs.rmSync(DROPPED_FILE, { force: true });
   const teardown = async () => {
     if (torn) return;
     torn = true;
