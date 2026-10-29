@@ -58,13 +58,15 @@ export const attachConfig = Facet.define<AttachConfig, AttachConfig>({
  * plugin. This was a plugin, because the state seemed to belong to one view and should
  * go when the view goes; but the view goes long before the uploads do. The editor is
  * rebuilt on a rich/source switch and remounted on a revision bump, and the plugin's
- * `destroy` reported zero and let the uploads finish, so the leave-page guard
- * (`holdPage` in `Workspace.tsx`) was released mid-upload: closing the tab in that
- * window lost the file without a word. The jobs are the note's, not the view's, and
- * the one thing that outlives every view is the owner that also answers `liveView`.
+ * `destroy` reported zero and let the uploads finish, so the page stopped counting as
+ * busy (`holdPage`, read by `pageBusy` in `busy.ts`) mid-upload: a Reload pressed on
+ * the update notice in that window went ahead and cut the file off half-way to the
+ * server. Nothing guards closing the tab, before or since. The jobs are the note's,
+ * not the view's, and the one thing that outlives every view is the owner that also
+ * answers `liveView`.
  *
  * The owner hears each change of the number and nothing else: a replacement is still
- * the view's business (`replaceToken`), and the count is one number for the guard.
+ * the view's business (`replaceToken`), and the count is one number for the hold.
  */
 export class PendingUploads {
   private readonly jobs = new Set<string>();

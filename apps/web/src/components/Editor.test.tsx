@@ -292,10 +292,11 @@ describe('Editor across a remount', () => {
   });
 
   /*
-     The count that holds the page open (`holdPage` in `Workspace.tsx`) is the owner's
-     too: made once beside the getter and handed to every instance, so the remount
-     changes nothing about it. It used to be the view's, and went to zero at the remount
-     with the upload still running, so a tab closed then lost the file without a warning.
+     The count that keeps the update notice's Reload waiting (`holdPage` in
+     `Workspace.tsx`, read by `pageBusy`) is the owner's too: made once beside the getter
+     and handed to every instance, so the remount changes nothing about it. It used to be
+     the view's, and went to zero at the remount with the upload still running, so a
+     Reload pressed then cut the file off half-way to the server.
   */
   it('keeps the owner\'s count of uploads in flight across the remount', async () => {
     let finish: (path: string) => void = () => {};

@@ -27,9 +27,10 @@ interface EditorProps {
   onUpload?: (file: File) => Promise<string>;
   /**
    * Where the uploads in flight are counted, from the owner that outlives this
-   * component: the count holds the page open (`holdPage`) until the last one lands, and
-   * a rich/source rebuild or a revision remount mid-upload must not let go of it. See
-   * `PendingUploads` in `editor/attach.ts`. Absent, each view counts its own.
+   * component: the count keeps the update notice's Reload waiting (`holdPage`, read by
+   * `pageBusy` in `busy.ts`) until the last one lands, and a rich/source rebuild or a
+   * revision remount mid-upload must not let go of it. See `PendingUploads` in
+   * `editor/attach.ts`. Absent, each view counts its own.
    */
   pendingUploads?: PendingUploads;
   /**
@@ -335,8 +336,9 @@ export function Editor({
                   return upload(file);
                 }
               : undefined,
-            // The owner's object itself, not a reader of a ref: it is the one the owner
-            // made once, and the view is built with it as every earlier view was.
+            // Read when the view is built, never a dependency: the owner makes it once
+            // and every view it builds shares it, so a new object on a later render would
+            // be ignored until the next rebuild, and must not be passed.
             pending: pendingUploads,
             liveView: liveViewNow,
           }),
