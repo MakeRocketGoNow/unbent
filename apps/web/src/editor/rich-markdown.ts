@@ -1403,7 +1403,10 @@ function linkUrlAt(state: EditorState, pos: number): string | undefined {
         return match ? linkDestination(match[2]!) : undefined;
       }
       if (node.name === 'Autolink') {
-        return unwrapUrl(state.doc.sliceString(node.from, node.to));
+        // Only the brackets: CommonMark applies no backslash escapes inside an autolink,
+        // so `<https://x/a\_b>` goes to `a\_b`, as the preview's href does.
+        const raw = state.doc.sliceString(node.from, node.to);
+        return raw.startsWith('<') && raw.endsWith('>') ? raw.slice(1, -1) : raw;
       }
       if (node.name === 'URL' && bareUrl === undefined) {
         bareUrl = bareLinkTarget(state.doc.sliceString(node.from, node.to));

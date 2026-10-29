@@ -1917,6 +1917,14 @@ describe('following links', () => {
     expect(followed.map((f) => f.href)).toEqual(['https://example.com/x']);
   });
 
+  /** CommonMark applies no backslash escapes inside an autolink, and neither does the preview. */
+  it('follows an autolink with a backslash in it as written', () => {
+    const doc = '<https://example.com/a\\_b>\n\nplain';
+    const v = mount(doc, doc.length);
+    clickLabel(v);
+    expect(followed.map((f) => f.href)).toEqual(['https://example.com/a\\_b']);
+  });
+
   it('keeps a middle-click from opening it', () => {
     const doc = '[Example](https://example.com)\n\nplain';
     const v = mount(doc, doc.length);
