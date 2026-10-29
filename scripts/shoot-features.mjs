@@ -76,9 +76,16 @@ const DEVICES = {
 };
 const THEMES = ['light', 'dark'];
 
+/**
+ * Loopback only, as `seed:demo` is: this signs in with the password written in the seed
+ * script, edits a note and purges notes, and aimed at a shared instance where that
+ * account exists it would do all of that there.
+ */
 function baseUrl() {
-  if (process.env.BASE) return process.env.BASE.replace(/\/$/, '');
-  return `http://localhost:${portsFor(root).web}`;
+  const base = (process.env.BASE ?? `http://localhost:${portsFor(root).web}`).replace(/\/$/, '');
+  const host = new URL(base).hostname;
+  if (!['localhost', '127.0.0.1', '[::1]'].includes(host)) throw new Error(`BASE must be loopback, not ${host}`);
+  return base;
 }
 
 /**
