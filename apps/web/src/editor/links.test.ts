@@ -37,6 +37,10 @@ describe('removing a file\'s links', () => {
     expect(remove('- a\n\n  ![x](files/x.png)\n  tail', 'x.png')).toBe('- a\n\n  tail');
     // Two pictures of one file on adjacent lines: each takes its line, neither the gap.
     expect(remove('a\n\n![x](files/x.png)\n![y](files/x.png)\n\nb', 'x.png')).toBe('a\n\n\nb');
+    // Two paragraphs of one file ending the note: the second cannot take the break the
+    // first's range ends at, so one newline is left. Invisible in the editor, and pinned
+    // rather than merged across changes.
+    expect(remove('a\n\n![x](files/x.png)\n\n![x](files/x.png)', 'x.png')).toBe('a\n');
   });
 
   /** The Joplin import wraps a picture in a link; the file goes, the link around it stays. */
