@@ -1933,8 +1933,12 @@ function serverHolds(lib: WritableLibrary, noteId: string): boolean {
  * of this) missed a purge pressed before the create had been sent, or while it was
  * on the wire: the 402 then kept the create at the head, and the purge sat behind
  * it. A create already on its way still goes, because `unmadeNow` runs at the start
- * of the attempt; if the server takes it, the queued purge follows, and if the
- * server refuses, `dropAbandonedCreate` ends the entry instead of keeping it.
+ * of the attempt; if the server takes it, a purge of one or of several follows, since
+ * it queued behind, and if the server refuses, `dropAbandonedCreate` ends the entry
+ * instead of keeping it. `emptyTrash` queues nothing behind (its purge is a request,
+ * sent now), so a create the server takes while the trash is emptied is a note the
+ * server holds, and its queued trash puts it back in the trash. That gap predates
+ * this, and is narrow: the create has to be on the wire as the trash is emptied.
  *
  * The purge itself still queues behind, and goes once the create has ended: against a
  * note the server never made, it is a 404, which is done, as are the note's saves and
