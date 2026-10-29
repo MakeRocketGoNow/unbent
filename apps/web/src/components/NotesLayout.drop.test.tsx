@@ -15,8 +15,9 @@ import { FreeNotesFullError } from '../free-notes.js';
 
 /**
  * Files let go on the list column become one note each, filed where the list is, and are
- * selected once they are in it (or, for one file, opened), against the real layout and the in-memory library. The
- * zone's own rules are `list-drop-zone.test.ts`; the writes are `file-notes.test.ts`.
+ * selected once they are in it (or, for one file, opened), against the real layout and
+ * the in-memory library. The zone's own rules are `list-drop-zone.test.ts`; the writes
+ * are `file-notes.test.ts`.
  *
  * jsdom has neither DragEvent nor DataTransfer, so the transfer is a plain object on a
  * plain event, as the note's drop test builds it.
