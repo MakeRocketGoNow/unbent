@@ -25,8 +25,13 @@ interface AttachmentsProps {
   noteId: string;
   /** Current draft body, used to mark files that are no longer linked. */
   body: string;
-  /** Live editor view; used to insert a link at the cursor. */
-  editorView: EditorView | null;
+  /**
+   * The editor's view as it is at the call, or null while none is mounted. A function
+   * rather than the view, because a delete's round trip can outlive the view that was
+   * mounted at the press (a rich/source switch rebuilds it), and a dispatch to a destroyed
+   * view is taken silently and changes nothing.
+   */
+  editorViewNow: () => EditorView | null;
   /**
    * Called after a linked file is deleted so the editor can drop the markdown
    * destination and remount with the rewritten body.
@@ -66,7 +71,7 @@ function fileUrl(noteId: string, filename: string): string {
 export function Attachments({
   noteId,
   body,
-  editorView,
+  editorViewNow,
   onBodyRewrite,
   readOnly = false,
   lapsed = false,
@@ -167,9 +172,10 @@ export function Attachments({
    * open editor, or applied to the draft when no editor is mounted yet.
    */
   function dropLinks(filename: string) {
-    if (editorView) {
-      const changes = removeAttachmentLinkChanges(editorView.state, filename);
-      if (changes.length > 0) editorView.dispatch({ changes });
+    const view = editorViewNow();
+    if (view) {
+      const changes = removeAttachmentLinkChanges(view.state, filename);
+      if (changes.length > 0) view.dispatch({ changes });
       return;
     }
     onBodyRewrite(rewriteText(bodyRef.current, (state) => removeAttachmentLinkChanges(state, filename)));
@@ -208,13 +214,14 @@ export function Attachments({
       image: file.contentType.startsWith('image/'),
     });
 
-    if (editorView) {
-      const { from, to } = editorView.state.selection.main;
-      editorView.dispatch({
+    const view = editorViewNow();
+    if (view) {
+      const { from, to } = view.state.selection.main;
+      view.dispatch({
         changes: { from, to, insert: markdown },
         selection: { anchor: from + markdown.length },
       });
-      editorView.focus();
+      view.focus();
       return;
     }
 

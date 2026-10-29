@@ -249,6 +249,22 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
    */
   const [splitPreview, setSplitPreview] = usePersistentState('splitPreview', false);
   const [editorView, setEditorView] = useState<EditorView | null>(null);
+  /*
+     The view as it is now, for a rewrite that lands after a round trip. `editorView` is
+     the render's: a closure from the press holds the view that was mounted then, and
+     `Editor` rebuilds its view when rich/source is switched and on every
+     `editorRevision`. CodeMirror takes a dispatch to a destroyed view without a word (it
+     stores the state and returns), so a "Save web images" or a Delete that finished after
+     a switch stored the files and left the body unchanged, with the head saying "Saved".
+     Set from `onViewReady` itself rather than mirrored from the state, so it is null from
+     the moment the old view is destroyed, before React has re-rendered.
+  */
+  const editorViewRef = useRef<EditorView | null>(null);
+  const announceView = (view: EditorView | null) => {
+    editorViewRef.current = view;
+    setEditorView(view);
+  };
+  const editorViewNow = () => editorViewRef.current;
 
   // Which files are PDFs regardless of what they are named; both panes render from it.
   const pdfFilenames = usePdfAttachments(noteId);
@@ -1241,9 +1257,10 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
       // Through the editor's syntax tree (`editor/links.ts`): a change to the open editor,
       // or to the draft when none is mounted.
       const relink = (state: EditorState) => relinkWebImageChanges(state, (url) => stored.get(url) ?? null);
-      if (editorView) {
-        const changes = relink(editorView.state);
-        if (changes.length > 0) editorView.dispatch({ changes });
+      const view = editorViewNow();
+      if (view) {
+        const changes = relink(view.state);
+        if (changes.length > 0) view.dispatch({ changes });
       } else {
         rewriteBody(rewriteText(draftBodyRef.current, relink));
       }
@@ -1958,7 +1975,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
              every note with files opening expanded (MAK-149).
           */
           body={draftFor === note.id ? draft.body : note.body}
-          editorView={editorView}
+          editorViewNow={editorViewNow}
           onBodyRewrite={rewriteBody}
           readOnly={frozen}
           lapsed={planInactive}
@@ -2087,7 +2104,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
             autoFocus={!cameFromList && !isNewNote && !touch}
             // The way out of the editor, and the counterpart to the list's Enter.
             onEscape={focusActiveListItem}
-            onViewReady={setEditorView}
+            onViewReady={announceView}
           />
         </div>
         {showSplit && (
