@@ -15,7 +15,7 @@ import { FreeNotesFullError } from '../free-notes.js';
 
 /**
  * Files let go on the list column become one note each, filed where the list is, and are
- * selected once they are in it, against the real layout and the in-memory library. The
+ * selected once they are in it (or, for one file, opened), against the real layout and the in-memory library. The
  * zone's own rules are `list-drop-zone.test.ts`; the writes are `file-notes.test.ts`.
  *
  * jsdom has neither DragEvent nor DataTransfer, so the transfer is a plain object on a
@@ -75,9 +75,10 @@ function mount(initial: string) {
     ),
   });
   const indexRoute = createRoute({ getParentRoute: () => notesRoute, path: '/', component: () => <p>nothing open</p> });
+  const noteRoute = createRoute({ getParentRoute: () => notesRoute, path: '$noteId', component: () => <p>note open</p> });
   const importRoute = createRoute({ getParentRoute: () => rootRoute, path: '/settings/import' });
   const router = createRouter({
-    routeTree: rootRoute.addChildren([notesRoute.addChildren([indexRoute]), importRoute]),
+    routeTree: rootRoute.addChildren([notesRoute.addChildren([indexRoute, noteRoute]), importRoute]),
     history: createMemoryHistory({ initialEntries: [initial] }),
   });
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -193,8 +194,21 @@ describe('files dropped on the note list', () => {
     expect(screen.getByRole('button', { name: 'Undo' })).toBeTruthy();
   });
 
+  /* A selection of one is a checkbox beside the note just made; New opens what it made. */
+  it('opens the note for a single file, keeping the list, and selects nothing', async () => {
+    lib = installTestLibrary({ notes: [note('a', { title: 'Alpha' })], notebooks: [{ id: 'nb1', name: 'Receipts', purpose: null, emoji: null, fieldDefs: [] }] });
+    const { router } = mount('/notes?notebook=Receipts');
+    await screen.findByRole('heading', { name: 'Receipts' });
+    drag('drop', column(), [pdf('Water bill.pdf')]);
+    await waitFor(() => expect(router.state.location.pathname).toBe('/notes/new1'));
+    expect(router.state.location.href).toContain('notebook=Receipts');
+    await screen.findByText('note open');
+    expect(screen.queryByRole('toolbar', { name: 'Selected notes' })).toBeNull();
+    expect((await screen.findByRole('status')).textContent).toContain('1 note added to Receipts.');
+  });
+
   /* Twelve uploads take a while; a selection put over another notebook's rows would be wrong. */
-  it('does not select the notes when the list has moved to another scope meanwhile', async () => {
+  it('does not select or open the notes when the list has moved to another scope meanwhile', async () => {
     lib = installTestLibrary({ notes: [note('a', { title: 'Alpha' })], notebooks: [{ id: 'nb1', name: 'Receipts', purpose: null, emoji: null, fieldDefs: [] }] });
     const { router } = mount('/notes?notebook=Receipts');
     await screen.findByRole('heading', { name: 'Receipts' });
@@ -208,6 +222,8 @@ describe('files dropped on the note list', () => {
     await screen.findByRole('status');
     await screen.findByText('a');
     expect(screen.queryByRole('toolbar', { name: 'Selected notes' })).toBeNull();
+    // Nor open the note: one file opens its note only on the list it was dropped on.
+    expect(router.state.location.pathname).toBe('/notes');
   });
 
   it('files the notes with the list’s tag, and nowhere, on a tag', async () => {

@@ -1259,6 +1259,13 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    * still the one dropped on: twelve uploads take a while, and a selection put over
    * whatever the person has picked or opened meanwhile, in some other notebook, would
    * be the bar offering actions on rows they cannot see.
+   *
+   * One file is the exception: its note opens instead, as New opens the note it made.
+   * The bar's actions are what a batch needs, since there is no other way to file twelve
+   * notes at once; a single note is filed from its own head, and a selection of one
+   * left the person looking at a checkbox and "Select a note" beside the very note they
+   * had just made. Under the same rule, and the search kept, so the list stays the one
+   * dropped on.
    */
   const asideRef = useRef<HTMLElement>(null);
   const [dropHint, setDropHint] = useState<string | null>(null);
@@ -1270,7 +1277,10 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
     onFiles: (files) => {
       const droppedIn = scopeRef.current;
       void notesFromFiles(files, filing, dropPlace, 'list', queryClient).then((ids) => {
-        if (ids.length > 0 && scopeRef.current === droppedIn) selection.select(ids);
+        const [first] = ids;
+        if (!first || scopeRef.current !== droppedIn) return;
+        if (files.length === 1) void navigate({ to: '/notes/$noteId', params: { noteId: first }, search: (p) => p });
+        else selection.select(ids);
       });
     },
   };
