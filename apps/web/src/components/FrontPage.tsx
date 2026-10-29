@@ -3,7 +3,7 @@ import { Link } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { configQuery } from '../queries.js';
 import { useSession } from '../auth-client.js';
-import { HOME, LOGIN, SUPPORT, WHY } from '../auth-gate.js';
+import { FEATURES, FRONT, HOME, LOGIN, PRICING, SUPPORT, WHY } from '../auth-gate.js';
 import { EnexHelp, JoplinHelp, NotionHelp } from './ImportHelp.js';
 import { LegalLink } from './LegalLink.js';
 import { ProviderIcon } from './provider-icons.js';
@@ -107,6 +107,11 @@ export function FrontPage() {
           alt="Unbent on a phone: the list of notes."
         />
       </figure>
+      {/* Under the two pictures, where someone who wants more of them is looking; the
+          features page is the rest of this page's claims, shown. */}
+      <p className="front-more front-width">
+        <Link to={FEATURES}>See every feature, in pictures</Link>
+      </p>
 
       {/* The lead section is the paperless office, named as such, because it is the use
           the app was built for and the one its buyer is searching for. Its four cards are
@@ -269,12 +274,19 @@ export function FrontPage() {
  * pricing page (`PricingPage`), the story (`WhyPage`) and support (`SupportPage`). One component so they cannot
  * drift apart, and so each is recognisably the same site.
  *
- * The header's one link is the way back for people who already have an account, drawn as
- * the link it is. On the front page that is always Sign in, since `/` sends anyone signed
- * in to their notes before this renders; the pricing page is shown to signed-in people
- * too, and offering them a sign-in they do not need would be the kind of control that
- * teaches people the page does not know who they are. The route has asked for the session
- * before rendering, so the link does not flip after the page has drawn.
+ * The header's nav is the three pages a visitor deciding whether to try the app goes
+ * looking for (Features, Pricing, Why), as links, with the one they are on marked
+ * `aria-current`; the comparisons and support stay in the footer, since the first are
+ * for a search to land on and the second is for after. A site with the features
+ * somewhere a visitor could not find them was the frustration the features page
+ * answers, so the nav is on every public page, the front page included.
+ *
+ * The header's other link is the way back for people who already have an account, drawn
+ * as the link it is. On the front page that is always Sign in, since `/` sends anyone
+ * signed in to their notes before this renders; the pricing page is shown to signed-in
+ * people too, and offering them a sign-in they do not need would be the kind of control
+ * that teaches people the page does not know who they are. The route has asked for the
+ * session before rendering, so the link does not flip after the page has drawn.
  */
 export function FrontShell({ children }: { children: ReactNode }) {
   const config = useQuery(configQuery());
@@ -285,10 +297,24 @@ export function FrontShell({ children }: { children: ReactNode }) {
   return (
     <div className="front">
       <header className="front-header front-width">
-        <span className="front-brand">
+        {/* The brand is a link home on every page but the front page itself, where it
+            is already there; a link to the page it is on would be a control that does
+            nothing, so it is text there. */}
+        <Link to={FRONT} className="front-brand" activeOptions={{ exact: true }} activeProps={{ 'aria-current': 'page' }}>
           <img src="/icons/icon-192.png" alt="" width={28} height={28} />
           Unbent
-        </span>
+        </Link>
+        <nav className="front-nav" aria-label="Unbent">
+          <Link to={FEATURES} activeProps={{ 'aria-current': 'page' }}>
+            Features
+          </Link>
+          <Link to={PRICING} activeProps={{ 'aria-current': 'page' }}>
+            Pricing
+          </Link>
+          <Link to={WHY} activeProps={{ 'aria-current': 'page' }}>
+            Why
+          </Link>
+        </nav>
         {session ? (
           <Link to={HOME} className="front-signin">
             Your notes

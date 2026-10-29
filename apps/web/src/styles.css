@@ -10968,6 +10968,47 @@ button.settings-nav-item {
 
 .front-signin { font-weight: 500; }
 
+/*
+   The public pages' nav: Features, Pricing, Why. Quieter than the page's prose links
+   (no underline until hover, the muted ink) because it repeats on every public page and
+   is navigation, not a claim; the page it is on is drawn in the full ink and not
+   underlined on hover either, since it goes nowhere. The brand is a link home on the
+   other pages and plain text on the front page itself, for the same reason.
+*/
+.front-nav {
+  display: flex;
+  gap: 1.25rem;
+  margin-right: auto;
+  margin-left: 1rem;
+}
+
+.front .front-nav a,
+.front a.front-brand {
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.front .front-nav a:hover,
+.front a.front-brand:hover { color: var(--fg); text-decoration: underline; }
+
+.front .front-nav a[aria-current='page'],
+.front a.front-brand[aria-current='page'] { color: var(--fg); text-decoration: none; }
+
+.front a.front-brand { color: var(--fg); }
+
+/* On a phone the three links take the row under the brand and the sign-in, whole,
+   rather than squeezing beside them. */
+@media (width < 480px) {
+  .front-header { flex-wrap: wrap; }
+  .front-nav { order: 3; width: 100%; margin: 0; }
+}
+
+/* The link under the front page's two pictures to the page that has the rest. */
+.front-more {
+  margin: 2rem 0 0;
+  text-align: center;
+}
+
 .front-hero {
   padding-top: 3.5rem;
   text-align: center;
