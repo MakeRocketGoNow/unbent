@@ -26,6 +26,7 @@ vi.mock('../store/actions.js', async (importOriginal) => ({
 vi.mock('../notes-api.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../notes-api.js')>()),
   deleteAttachment: vi.fn(),
+  fetchWebImage: vi.fn(),
   updateNote: vi.fn(),
 }));
 
@@ -55,6 +56,32 @@ const other: Note = {
   id: 'n2',
   title: 'Weekly review',
   body: 'already written',
+  tags: [],
+  notebook: null,
+  createdAt: 0,
+  updatedAt: 0,
+  fields: [],
+};
+
+const WEB_IMAGE = 'https://example.com/pic.png';
+
+/** A note drawing a web image, so the picture's save control is offered. */
+const withWebImage: Note = {
+  id: 'n1',
+  title: 'Trip notes',
+  body: `![Diagram](${WEB_IMAGE})`,
+  tags: [],
+  notebook: null,
+  createdAt: 0,
+  updatedAt: 0,
+  fields: [],
+};
+
+/** A second note drawing the same address, where a relink by address would show. */
+const alsoWebImage: Note = {
+  id: 'n2',
+  title: 'Weekly review',
+  body: `![Diagram](${WEB_IMAGE})`,
   tags: [],
   notebook: null,
   createdAt: 0,
@@ -194,5 +221,35 @@ describe('Delete file on a picture', () => {
     });
     expect(view().state.doc.toString()).toBe('already written');
     expect((screen.getByPlaceholderText('Untitled') as HTMLInputElement).value).toBe('Weekly review');
+  });
+});
+
+/**
+ * The getter `Workspace` hands `Editor` for a write that lands after a round trip is
+ * guarded by note: after a switch its ref holds the next note's view, and a web image
+ * relinked by its address would be written into that note. The second note draws the
+ * same address here, so a relink landing on it would show.
+ */
+describe('Save to note on a picture', () => {
+  it('leaves the next note alone when the fetch lands after a switch', async () => {
+    let finish: (filename: string) => void = () => {};
+    vi.mocked(api.fetchWebImage).mockImplementation(
+      () => new Promise((resolve) => { finish = (filename) => resolve({ filename } as Awaited<ReturnType<typeof api.fetchWebImage>>); }),
+    );
+    const { container, view } = mount(withWebImage, [alsoWebImage]);
+    await waitFor(() => expect(container.querySelector('.cm-md-image .zoom-save')).not.toBeNull());
+    container.querySelector<HTMLButtonElement>('.cm-md-image .zoom-save')!.click();
+    await waitFor(() => expect(api.fetchWebImage).toHaveBeenCalledWith('n1', WEB_IMAGE));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open n2' }));
+    await waitFor(() =>
+      expect((screen.getByPlaceholderText('Untitled') as HTMLInputElement).value).toBe('Weekly review'),
+    );
+
+    finish('pic.png');
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(view().state.doc.toString()).toBe(alsoWebImage.body);
   });
 });
