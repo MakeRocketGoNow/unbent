@@ -61,7 +61,7 @@ describe('FeaturesPage', () => {
 
     // Every still offers its dark copy to a dark reader and its light one otherwise.
     const stills = [...container.querySelectorAll<HTMLPictureElement>('picture.feature-shot')];
-    expect(stills.length).toBeGreaterThanOrEqual(10);
+    expect(stills).toHaveLength(13);
     for (const still of stills) {
       const source = still.querySelector('source');
       const img = still.querySelector('img');

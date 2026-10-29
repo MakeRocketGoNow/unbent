@@ -6,7 +6,7 @@
  *
  * Why a script: the front page's two screenshots were taken by hand (2026-10-17), and two
  * was about the most anyone would take by hand twice over, once a theme. The features
- * page shows fourteen pictures and four clips, and a page of stale pictures is worse than
+ * page shows thirteen pictures and four clips, and a page of stale pictures is worse than
  * one with none: it shows a control that has moved and a layout that has changed, and
  * the person who notices is the one deciding whether to trust the rest of the page. So
  * every picture is a scene here, and the whole set is one command to take again.
@@ -195,8 +195,6 @@ const SCENES = [
       await sleep(2500);
     },
   },
-  // With a note open beside it: the list alone is a column and a blank pane.
-  { name: 'list', device: 'desktop', url: (data) => `/notes/${data.sourdough.id}?view=list` },
   { name: 'list', device: 'phone', url: '/notes?view=list' },
   { name: 'note', device: 'desktop', url: (data) => `/notes/${data.receipt.id}?notebook=Receipts` },
   { name: 'note', device: 'phone', url: (data) => `/notes/${data.receipt.id}?notebook=Receipts` },
