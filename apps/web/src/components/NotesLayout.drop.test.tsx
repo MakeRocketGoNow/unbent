@@ -287,6 +287,19 @@ describe('files dropped on the note list', () => {
     expect(hint()).toBeUndefined();
   });
 
+  /* The note a one-file drop opened is the one Undo trashes; staying on it shows it trashed. */
+  it('Undo after one file goes back to the list it was dropped on', async () => {
+    lib = installTestLibrary({ notes: [], notebooks: [{ id: 'nb1', name: 'Receipts', purpose: null, emoji: null, fieldDefs: [] }] });
+    const { router } = mount('/notes?notebook=Receipts');
+    await screen.findByRole('heading', { name: 'Receipts' });
+    drag('drop', column(), [pdf('a.pdf')]);
+    await waitFor(() => expect(router.state.location.pathname).toBe('/notes/new1'));
+    (await screen.findByRole('button', { name: 'Undo' })).click();
+    await waitFor(() => expect(actions.trashNotes).toHaveBeenCalledWith(['new1']));
+    await waitFor(() => expect(router.state.location.pathname).toBe('/notes'));
+    expect(router.state.location.href).toContain('notebook=Receipts');
+  });
+
   it('Undo trashes the batch', async () => {
     lib = installTestLibrary({ notes: [] });
     mount('/notes');

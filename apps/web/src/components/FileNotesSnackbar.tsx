@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { useRouterState } from '@tanstack/react-router';
-import { undoFileNotes, useFileNotes, type FileNotesState } from '../file-notes.js';
+import { useRouter, useRouterState } from '@tanstack/react-router';
+import { getFileNotes, undoFileNotes, useFileNotes, type FileNotesState } from '../file-notes.js';
 import { Snackbar } from './Snackbar.js';
 
 const IMPORT_PAGE = '/settings/import';
@@ -14,7 +14,9 @@ const IMPORT_PAGE = '/settings/import';
  * while they land, then "12 notes added" with Undo: the afterthought path, beside the
  * selection the list makes of the same notes. Undo trashes the batch, where it can still
  * be restored, and the card goes with the press, as `Snackbar`'s action does; the rows
- * leaving the list are the word that it worked.
+ * leaving the list are the word that it worked. A drop of one file opens its note, so
+ * Undo then goes back to the list, as the note's own delete does: staying would show the
+ * note just taken back, read-only from the trash, where the person was looking.
  *
  * Not on the Import page for a batch started there, which that page draws inline; one
  * started from the list is reported here on every page, since nothing else does. A
@@ -25,6 +27,7 @@ const IMPORT_PAGE = '/settings/import';
 export function FileNotesSnackbar() {
   const state = useFileNotes();
   const queryClient = useQueryClient();
+  const router = useRouter();
   const onImportPage = useRouterState({ select: (s) => s.location.pathname === IMPORT_PAGE });
   // Dismissed per run and status: hiding a run's progress still lets its outcome through.
   const [dismissed, setDismissed] = useState<string | null>(null);
@@ -32,7 +35,18 @@ export function FileNotesSnackbar() {
 
   if (state.status === 'idle' || (onImportPage && state.source === 'import') || dismissed === key) return null;
   const onDismiss = () => setDismissed(key);
-  const undo = { label: 'Undo', onClick: () => void undoFileNotes(queryClient) };
+  const undo = {
+    label: 'Undo',
+    onClick: async () => {
+      const { ids } = state;
+      await undoFileNotes(queryClient);
+      // Read after the trash, not at the press: only a note still open then, and only
+      // when the trash went through, which an error report in its place says it did not.
+      const open = router.state.matches.find((m) => m.routeId === '/notes/$noteId')?.params as { noteId?: string } | undefined;
+      if (getFileNotes().status === 'error' || !open?.noteId || !ids.includes(open.noteId)) return;
+      void router.navigate({ to: '/notes', search: (p) => p });
+    },
+  };
 
   switch (state.status) {
     case 'running':
