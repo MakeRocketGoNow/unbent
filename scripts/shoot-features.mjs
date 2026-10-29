@@ -400,11 +400,24 @@ async function main() {
     else console.log(`frames kept in ${work}`);
   };
   // Ctrl-C would otherwise end the process with the demo note edited and the dropped
-  // notes in the library, and Chrome still running.
-  process.once('SIGINT', async () => {
-    console.log('\ninterrupted: putting the demo library back');
+  // notes in the library. Chrome is in its own process group, so it is ours to end on
+  // every way out: a second Ctrl-C during the teardown, a SIGTERM, a closed terminal.
+  let interrupted = false;
+  process.on('SIGINT', async () => {
+    if (interrupted) {
+      chrome.kill('SIGKILL');
+      process.exit(130);
+    }
+    interrupted = true;
+    console.log('\ninterrupted: putting the demo library back (Ctrl-C again to quit now)');
     try { await interrupt?.(); } finally { await cleanup(); process.exit(130); }
   });
+  for (const signal of ['SIGTERM', 'SIGHUP']) {
+    process.once(signal, () => {
+      chrome.kill();
+      process.exit(1);
+    });
+  }
   try {
     return await run(BASE, scenes, themes, work, (w) => (ws = w), (fn) => (interrupt = fn));
   } finally {
