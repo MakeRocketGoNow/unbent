@@ -152,7 +152,10 @@ describe('absolutizeAttachmentLinks', () => {
     expect(formatAttachmentMarkdown('Report(R).pdf', 'files/Report(R).pdf')).toBe(
       '[Report(R).pdf](<files/Report(R).pdf>)',
     );
-    expect(formatAttachmentMarkdown('a\\b.pdf', 'files/a\\b.pdf')).toBe('[a\\b.pdf](<files/a\\b.pdf>)');
+    expect(formatAttachmentMarkdown('a\\(b.pdf', 'files/a\\(b.pdf')).toBe('[a\\(b.pdf](<files/a\\\\(b.pdf>)');
+    expect(attachmentFilenamesInMarkdown(formatAttachmentMarkdown('a\\(b.pdf', 'files/a\\(b.pdf'))).toEqual(
+      new Set(['a\\(b.pdf']),
+    );
     expect(formatAttachmentMarkdown('plain.pdf', 'files/plain.pdf')).toBe('[plain.pdf](files/plain.pdf)');
   });
 

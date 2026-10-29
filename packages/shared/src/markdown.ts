@@ -29,10 +29,13 @@ export const ATTACHMENT_PREFIX = 'files/';
  * in a balanced pair and a `\` escapes what follows, so the name has two spellings
  * (`files/Report(R).pdf` and `files/Report\(R\).pdf`, which is what a markdown
  * serialiser writes) and every reader of the body has to know both. Bracketed, the name
- * is written as it is and ends at the `>`, the one form every reader already handled.
+ * ends at the `>`, the one form every reader already handled. A backslash is still an
+ * escape inside the brackets, so one in the name is doubled: written single, `a\(b.pdf`
+ * would be read back as `a(b.pdf` and flagged "Not linked" by the readers this exists
+ * to satisfy.
  */
 function attachmentDestination(path: string): string {
-  return /[\s()\\]/.test(path) ? `<${path}>` : path;
+  return /[\s()\\]/.test(path) ? `<${path.replace(/\\/g, '\\\\')}>` : path;
 }
 
 /**
