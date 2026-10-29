@@ -664,9 +664,11 @@ async function run(BASE, scenes, themes, work, keepSocket, onInterrupt) {
       fs.rmSync(DROPPED_FILE, { force: true });
       return;
     }
-    await ev(`fetch('/api/notes/trash', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: ${JSON.stringify(ids)} }) }).then(r => r.status)`);
-    await ev(`fetch('/api/notes/purge', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: ${JSON.stringify(ids)} }) }).then(r => r.status)`);
-    // Only once the purge has gone through: the file is what keeps the ids past a failure.
+    const trashed = await ev(`fetch('/api/notes/trash', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: ${JSON.stringify(ids)} }) }).then(r => r.status)`);
+    const purged = await ev(`fetch('/api/notes/purge', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: ${JSON.stringify(ids)} }) }).then(r => r.status)`);
+    // A refusal (a lapsed session, a store that could not answer) is a failure here, not
+    // a status to look at: the file is what keeps the ids past one.
+    if (trashed !== 200 || purged !== 200) throw new Error(`purge answered ${trashed} and ${purged}; the ids are kept in ${DROPPED_FILE}`);
     data.dropped = [];
     fs.rmSync(DROPPED_FILE, { force: true });
   };
