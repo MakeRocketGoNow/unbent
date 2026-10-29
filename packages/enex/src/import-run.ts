@@ -1,4 +1,4 @@
-import { FREE_NOTES_FULL_CODE, PLAN_INACTIVE_CODE, rewriteAttachmentLinks, type ReadBy } from '@unbent/shared';
+import { FREE_NOTES_FULL_CODE, PLAN_INACTIVE_CODE, type ReadBy } from '@unbent/shared';
 import type { FieldValue, NotebookDefinition } from '@unbent/shared';
 import { isExtractable } from './ocr-text.js';
 import { extractPdfText } from './pdf-text.js';
@@ -482,11 +482,18 @@ export interface ImportFile {
 }
 
 /**
- * Uploads a note's files, in order, and says which ones the server renamed.
+ * Uploads a note's files, in order, and says which ones the server stored under another
+ * name.
  *
- * The server suffixes a name that is already taken on the note, so the stored name can
- * differ from the requested one; the map is `requested → stored` for every file that
- * happened to, so the caller can repoint the body's links.
+ * It should be none. The server suffixes a name the note already holds, and every
+ * importer gives a note's files distinct names before it writes the body that links
+ * them (`uniqueResourceFilenames`, `nextAvailableFilename`), so on a note this run
+ * created the names are free. The map is `requested → stored` for any file that was
+ * renamed all the same, for the driver to report: the body is not rewritten to follow
+ * it. A rewrite pass over the stored body was how a substring replace retargeted a
+ * neighbour's link (`files/IMG_1.jpg` inside `files/IMG_10.jpg`) and how an escaped
+ * spelling (`files/Report\(R\).pdf`) was missed, and the import is the one writer
+ * that can choose its names up front instead.
  *
  * Takes an async iterable as readily as an array so a driver that can read its files
  * lazily (an archive, where each is a byte range) holds one attachment in memory at a
@@ -551,25 +558,17 @@ export async function uploadFiles(
   return renames;
 }
 
-/** The name a body's link uses for a file, after any rename the server made. */
-export function storedName(renames: Map<string, string>, requested: string): string {
-  return renames.get(requested) ?? requested;
-}
-
 /**
- * Repoints every `files/<from>` link in a body at the names the server actually stored.
- *
- * By the name a link means, never by its text. A substring replace of `files/IMG_1.jpg`
- * also rewrote `files/IMG_10.jpg` (camera-roll notes are full of those neighbours), so a
- * collision suffix on the shorter file silently retargeted the longer one's link, and
- * sometimes produced a name that is not a file at all (`files/IMG_1-2.jpg0.jpg`). The
- * exact-path regex that replaced it missed the spelling this importer's own serialiser
- * writes: `mdast-util-to-markdown` backslash-escapes a parenthesis in a bare destination,
- * so `files/Report\(R\).pdf` never matched `files/Report(R).pdf` and a suffixed second
- * resource of that name kept pointing at the first. The shared walker reads every
- * spelling and writes the renamed one back in the form every reader handles.
+ * What to tell the person when the server stored a file under another name than the
+ * note links; see `uploadFiles`. The link is left pointing at the name the export had,
+ * so the panel shows the file as not linked and the body's link as broken, which is the
+ * truth of it and is what the message says.
  */
-export function applyRenames(body: string, renames: Map<string, string>): string {
-  if (renames.size === 0) return body;
-  return rewriteAttachmentLinks(body, (filename) => renames.get(filename) ?? null);
+export function renamedFilesProblem(renames: Map<string, string>): string {
+  const first = [...renames.entries()][0]!;
+  const rest = renames.size - 1;
+  return (
+    `The server stored "${first[0]}" as "${first[1]}"${rest > 0 ? ` and ${rest} more file${rest === 1 ? '' : 's'} under another name` : ''}; ` +
+    'the note still links the name the export had.'
+  );
 }

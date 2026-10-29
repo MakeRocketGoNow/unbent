@@ -218,17 +218,26 @@ describe('the library archive', () => {
     expect(files[0]).toMatchObject({ filename: 'Menu Card', mime: 'application/pdf' });
   });
 
-  it('repoints links when the server stores a file under another name', async () => {
+  /**
+   * An archive's files have distinct names by construction, so the server has no reason
+   * to rename one on a note this run created. If it does, the body is left as exported
+   * (the import writes, it does not rewrite) and the person is told which file.
+   */
+  it('reports a file the server stores under another name, and leaves the body as exported', async () => {
     const { client, notes } = fakeClient({
       uploadFile: vi.fn(async () => ({ filename: 'agenda-2.pdf' })),
     });
+    const failures: Array<{ title: string; reason: string }> = [];
     const zip = await zipFile('lib.zip', {
       'n-1/n-1.md': noteMarkdown({ body: '[a](files/agenda.pdf)\n' }),
       'n-1/files/agenda.pdf': bytes('%PDF'),
     });
 
-    await importArchive(zip, client);
-    expect(notes[0]!.body).toBe('[a](files/agenda-2.pdf)\n');
+    await importArchive(zip, client, { onFailure: (f) => failures.push(f) });
+    expect(notes[0]!.body).toBe('[a](files/agenda.pdf)\n');
+    expect(failures.map((f) => f.reason)).toEqual([
+      'The server stored "agenda.pdf" as "agenda-2.pdf"; the note still links the name the export had.',
+    ]);
   });
 
   it('reads an archive someone unpacked and zipped again', async () => {
@@ -322,7 +331,9 @@ describe('text carried beside the files', () => {
 
     const progress = await importArchive(zip, client, { extractText: true });
 
-    expect(progress).toMatchObject({ created: 1, failed: 0, filesUploaded: 4, filesIndexed: 3 });
+    // The one rename the stand-in server makes is reported as the note's problem, and
+    // counts as a failure; the text still follows the name the server stored.
+    expect(progress).toMatchObject({ created: 1, failed: 1, filesUploaded: 4, filesIndexed: 3 });
     expect(uploads.sort((a, b) => a.filename.localeCompare(b.filename))).toEqual([
       { filename: 'card.jpg', textSupplied: true },
       { filename: 'plain.jpg', textSupplied: false },

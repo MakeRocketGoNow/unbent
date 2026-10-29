@@ -4,7 +4,7 @@ import { guessContentType } from './content-type-guess.js';
 import type { ArchiveSource } from './import-archive.js';
 import {
   ImportRun,
-  applyRenames,
+  renamedFilesProblem,
   uploadFiles,
   type ImportClient,
   type ImportFile,
@@ -610,9 +610,7 @@ async function importPage(
   run.created(result.id);
   if (files.length === 0) return;
   const renames = await uploadFiles(loadFiles(files, progress), result.id, client, progress, options);
-  if (renames.size > 0) {
-    await client.updateBody?.(result.id, applyRenames(body, renames));
-  }
+  if (renames.size > 0) run.problem(title, renamedFilesProblem(renames));
 }
 
 /** Reads each attachment's bytes only when the upload reaches it. */

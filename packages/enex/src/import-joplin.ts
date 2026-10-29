@@ -4,7 +4,7 @@ import { enmlToMarkdown } from './enml-to-markdown.js';
 import type { ArchiveSource } from './import-archive.js';
 import {
   ImportRun,
-  applyRenames,
+  renamedFilesProblem,
   uploadFiles,
   type ImportClient,
   type ImportFile,
@@ -459,9 +459,7 @@ async function importNote(ref: NoteRef, model: Model, ctx: NoteContext): Promise
   run.created(result.id);
   if (files.length === 0) return problems;
   const renames = await uploadFiles(loadFiles(files, window, progress), result.id, client, progress, options);
-  if (renames.size > 0) {
-    await client.updateBody?.(result.id, applyRenames(body, renames));
-  }
+  if (renames.size > 0) problems.push(renamedFilesProblem(renames));
   return problems;
 }
 
