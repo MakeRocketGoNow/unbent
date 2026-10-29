@@ -101,21 +101,25 @@ export interface DocumentLink extends LinkParts {
 }
 
 /**
- * How long a walk may wait for the parse to reach the end of what it walks. The tree
- * is usually there already (the parser keeps ahead of the viewport), and a note too
- * long to finish in this time is walked as far as it got, which is the editor's own
- * rule for its decorations.
+ * The parse is run in slices of this length until it reaches the end of what is walked.
+ * Every walk here is one press or one clipboard event, and a partial one is worse than
+ * a slow one: a delete that stopped where the parse did would leave the links past that
+ * point, silently, and a copy would carry `files/…` links out unrewritten. The editor's
+ * own rule, draw what the parse reached and the rest next frame, fits decorations and
+ * not a one-shot operation, and a mounted editor parses only so far past the viewport
+ * on its own; a headless state starts with no tree at all. A body at `MAX_BODY_BYTES`
+ * on a phone takes seconds, once, on that press (a desktop under vitest reached the end
+ * of 1.5 MB in about 270 ms).
  */
-const PARSE_WAIT_MS = 200;
+const PARSE_SLICE_MS = 200;
 
-/**
- * The wait for a walk of the whole document before a rewrite. A rewrite is one press,
- * not a keystroke, and a partial one is worse than a slow one: a delete that stopped
- * where the parse did would leave the links past that point, silently. A headless state
- * starts with no tree at all, and a body at `MAX_BODY_BYTES` on a phone takes seconds
- * to parse (a desktop under vitest reached the end of 1.5 MB in about 270 ms).
- */
-const REWRITE_PARSE_WAIT_MS = 5000;
+/** The tree parsed through `end`, however long that takes; see `PARSE_SLICE_MS`. */
+function treeThrough(state: EditorState, end: number) {
+  for (;;) {
+    const tree = ensureSyntaxTree(state, end, PARSE_SLICE_MS);
+    if (tree) return tree;
+  }
+}
 
 /**
  * Every link and image lying whole within one of `ranges`, in document order, by the
@@ -127,12 +131,10 @@ const REWRITE_PARSE_WAIT_MS = 5000;
 export function linksWithin(
   state: EditorState,
   ranges: readonly { from: number; to: number }[],
-  wait = PARSE_WAIT_MS,
 ): DocumentLink[] {
   const links: DocumentLink[] = [];
   if (ranges.length === 0) return links;
-  const end = Math.max(...ranges.map((range) => range.to));
-  const tree = ensureSyntaxTree(state, end, wait) ?? syntaxTree(state);
+  const tree = treeThrough(state, Math.max(...ranges.map((range) => range.to)));
   for (const range of ranges) {
     tree.iterate({
       from: range.from,
@@ -180,7 +182,7 @@ export function rewriteText(text: string, changesFor: (state: EditorState) => Ch
 
 /** Every link and image in the document, for a rewrite of the whole of it. */
 function allLinks(state: EditorState): DocumentLink[] {
-  return linksWithin(state, [{ from: 0, to: state.doc.length }], REWRITE_PARSE_WAIT_MS);
+  return linksWithin(state, [{ from: 0, to: state.doc.length }]);
 }
 
 /**
