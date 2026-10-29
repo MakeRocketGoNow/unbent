@@ -38,7 +38,7 @@ function setup({ linked = false, room = false }: { linked?: boolean; room?: bool
     remove,
   } as unknown as AttachmentsRepo;
   const notes = {
-    get: async () => ({ body: linked ? '[scan.pdf](files/scan.pdf)' : 'nothing links it' }),
+    linkedFilenames: async () => (linked ? ['scan.pdf'] : []),
     appendFileLink: vi.fn(async () => true),
   } as unknown as NotesRepo;
   return { blobs, attachments, notes, texts, copyText, remove };

@@ -252,6 +252,10 @@ function rewriteLinks<L extends InlineLink>(
  */
 function relativeAttachmentLinks(markdown: string): Array<InlineLink & { filename: string }> {
   const links: Array<InlineLink & { filename: string }> = [];
+  // Every same-note link spells `files/` somewhere in its destination, in any of the
+  // forms; a body without it (most notes, and a note a move just cut a link out of) is
+  // answered without the parse.
+  if (!markdown.includes(ATTACHMENT_PREFIX)) return links;
   for (const link of inlineLinks(markdown)) {
     if (!link.url.startsWith(ATTACHMENT_PREFIX)) continue;
     const filename = decodePathSegment(link.url.slice(ATTACHMENT_PREFIX.length));

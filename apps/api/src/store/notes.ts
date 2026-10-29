@@ -1,5 +1,6 @@
 import {
   encodeFieldValue,
+  attachmentFilenamesInMarkdown,
   excerptMarkdown,
   expectedFieldValue,
   fieldHasOptions,
@@ -691,6 +692,22 @@ export class NotesStore {
       const wrongTotals = (['live', 'unfiled', 'trashed'] as const).filter((k) => was[k] !== is[k]).length;
       return notebooks.length + tags.length + wrongTotals + (bytesWere !== is.attachment_bytes ? 1 : 0);
     });
+  }
+
+  /**
+   * The files a live note's body still links, by filename, or null when there is no such
+   * note. For a move of files between notes: the Worker deletes the source's row only
+   * when the body no longer links it, and asking is a parse of the whole body, which is
+   * about 1.5 ms a kilobyte and more than Workers Free gives one invocation. So the
+   * parse runs here, under the object's thirty seconds, and one row's body crosses to
+   * nothing: the Worker is handed the names.
+   */
+  linkedFilenames(id: string): string[] | null {
+    const row = this.sql.first<{ body: string }>(
+      'SELECT body FROM notes WHERE id = ?1 AND deleted_at IS NULL',
+      id,
+    );
+    return row ? [...attachmentFilenamesInMarkdown(row.body)] : null;
   }
 
   /**
