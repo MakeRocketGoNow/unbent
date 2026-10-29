@@ -304,18 +304,12 @@ describe('applyRenames', () => {
     expect(applyRenames(body, new Map([['Menu', 'Menu-2']]))).toBe(body);
   });
 
-  /*
-   * A guard on an assumption, not on behaviour anyone wants.
-   *
-   * The shared walker the rename runs on knows no link title: its destination runs to
-   * the `)` that closes the link, so a destination followed by `"caption"` is not read
-   * as a link at all. That is harmless while `enmlToMarkdown` emits a bare `href`/`src`
-   * and never a title. If it ever emits one, this test fails and the walker has to grow
-   * a title, rather than the rename silently not happening.
-   */
-  it('leaves a destination followed by a title alone, a shape this importer never writes', () => {
+  /** The rename runs on the markdown parser, so a title after the destination is kept. */
+  it('keeps a title after the destination', () => {
     const body = '![a](files/image.png "caption")\n';
-    expect(applyRenames(body, new Map([['image.png', 'image-2.png']]))).toBe(body);
+    expect(applyRenames(body, new Map([['image.png', 'image-2.png']]))).toBe(
+      '![a](files/image-2.png "caption")\n',
+    );
   });
 });
 

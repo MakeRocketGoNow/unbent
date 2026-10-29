@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { noteOpened } from '../store/library.js';
 import { openSitePath, sitePathOpener } from '../useHostApp.js';
 import { Link, useNavigate, useRouter } from '@tanstack/react-router';
@@ -1177,8 +1177,13 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
     }
   }
 
-  /** The addresses the draft's images are drawn from; what "Save web images" counts. */
-  const remoteImages = useMemo(() => remoteImageUrls(draft.body), [draft.body]);
+  /**
+   * The addresses the draft's images are drawn from; what "Save web images" counts.
+   * Deferred, as the attachments panel's "linked" set is: the count comes from a parse
+   * of the whole body, and a keystroke is painted before it runs.
+   */
+  const settledBody = useDeferredValue(draft.body);
+  const remoteImages = useMemo(() => remoteImageUrls(settledBody), [settledBody]);
   const draftBodyRef = useRef(draft.body);
   draftBodyRef.current = draft.body;
   /** What the last "Save web images" is doing or did, in the head where "Saved" goes. */

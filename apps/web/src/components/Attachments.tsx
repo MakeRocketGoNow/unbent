@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useDeferredValue, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link } from '@tanstack/react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { EditorView } from '@codemirror/view';
@@ -113,7 +113,12 @@ export function Attachments({
   /** What the last copy-to or move-to did, with a link to where the file went. */
   const [sent, setSent] = useState<ReactNode>(null);
 
-  const linked = useMemo(() => attachmentFilenamesInMarkdown(body), [body]);
+  // Deferred: the set is read from a parse of the whole body, which costs about a
+  // millisecond and a half per kilobyte, and a keystroke is painted before it runs.
+  // Fast typing coalesces into one parse of the latest draft; see `inlineLinks` in
+  // `@unbent/shared`.
+  const settledBody = useDeferredValue(body);
+  const linked = useMemo(() => attachmentFilenamesInMarkdown(settledBody), [settledBody]);
   // Not a file still waiting to upload: the cleanup deletes on the server, which has no such file yet.
   const unlinked = files.filter((f) => !linked.has(f.filename) && !f.pending);
   const unlinkedCount = unlinked.length;

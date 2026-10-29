@@ -66,43 +66,160 @@ function decodePathSegment(segment: string): string {
  *
  * CommonMark lets a backslash escape any ASCII punctuation, in a bracketed destination as
  * in a bare one, and the Evernote importer's serialiser escapes every parenthesis it
- * writes bare. Until 2026-10-28 nothing here unescaped, so an imported `Report(R).pdf`
- * was looked up as `Report\(R\` and flagged "Not linked" beside a body that rendered it.
- * Percent-decoding is separate (`decodePathSegment`): the editor keeps the encoded
- * spelling for the address it builds, and only the shared readers want the plain name.
+ * writes bare. The parser below does this itself; this is for the editor, which reads a
+ * destination's raw text out of its own syntax tree and has to take the escapes off the
+ * same way. Percent-decoding is separate (`decodePathSegment`): the editor keeps the
+ * encoded spelling for the address it builds, and only the readers here want the plain
+ * name.
  */
 export function unescapeDestination(raw: string): string {
   return raw.replace(/\\([!-/:-@[-`{-~])/g, '$1');
 }
 
-/**
- * A bare destination's name, as regex source: a backslash-escaped punctuation mark, one
- * balanced pair of parentheses, or any character that could not end the destination.
- * Single-quoted, since it holds a backtick, so the regexes that use it are built with
- * `new RegExp` rather than written as literals.
- */
-const BARE_NAME_SRC = '(?:\\\\[!-/:-@[-`{-~]|\\([^()\\s<>]*\\)|[^()\\s<>\\\\])+';
+/** An inline link or image in some markdown, with where it sits in the text. */
+interface InlineLink {
+  image: boolean;
+  from: number;
+  to: number;
+  /** The `![alt]` or `[text]` part, verbatim, so a rewrite keeps it as written. */
+  label: string;
+  /** The destination as the parser reads it: brackets and backslash escapes off. */
+  url: string;
+  /** The link's title, if it had one, so a rewrite keeps it. */
+  title: string | null;
+}
+
+/** Parses markdown the way the preview does, minus the plugins that only shape output. */
+const linkParser = unified().use(remarkParse).use(remarkGfm).freeze();
 
 /**
- * A link's label, between its brackets, as regex source: a backslash and whatever it
- * escapes, or anything but a bracket. A serialiser writes a bracket in a filename as
- * `\[`, so an imported `Scan [1].pdf` has the label `Scan \[1\].pdf`, and a label that
- * stopped at its first `]` saw no link there at all: the file was "Not linked" and its
- * rename on import never happened. A bare `[` is not taken, so an image inside a link,
- * `[![x](files/a.png)](/notes/n)` (which the Joplin import writes), is matched as the
- * image alone and not from the outer bracket, which removing the file would have eaten.
+ * Every inline link and image in some markdown, in order, with positions: the one walk
+ * every reader and rewriter of link destinations here is built on.
+ *
+ * It is the markdown parser, not a regex. Until 2026-10-28 six hand-written regexes read
+ * link syntax, one per reader, and each had its own idea of where a label or a destination
+ * ended. None of them knew a backslash escape (which a serialiser writes for a parenthesis
+ * or a bracket in a filename) or a balanced pair of parentheses; one stopped at the first
+ * `)`, another at the first `]`, and a third took an image inside a link from the outer
+ * bracket. Each was found and fixed one at a time, and each fix turned up the next. The
+ * parser already answers what a link means, with the escapes and the title handled, and
+ * with the positions a rewrite by slice needs, so that is what every reader asks now.
+ *
+ * Reference links, autolinks and the bare URLs GFM recognises are left out: they have no
+ * `[label](destination)` to rewrite, and none of the readers wants them.
  */
-const LABEL_SRC = '(?:\\\\.|[^\\[\\]\\\\])*';
+function inlineLinks(markdown: string): InlineLink[] {
+  if (markdown === lastParsed.markdown) return lastParsed.links;
+  const links = parseInlineLinks(markdown);
+  lastParsed = { markdown, links };
+  return links;
+}
 
 /**
- * The two spellings of a `files/…` destination, as regex source: bracketed, where the
- * name runs to the closing `>`, and bare, where it ends at whitespace or the `)` that
- * closes the link. A bare name may still hold a backslash-escaped character (`\(`, and
- * the escaped character is never the end) or one balanced pair of parentheses, both of
- * which CommonMark allows and a serialiser or a person writes; see `unescapeDestination`.
- * Two capture groups, bracketed then bare; whichever matched holds the raw name.
+ * The last body parsed and what was found in it. Two readers run on every keystroke of
+ * the body (the attachments panel's "linked" set and the count of web images in the
+ * head), and a parse is about 1.5 ms per kilobyte of body, measured in Node on
+ * 2026-10-28, against nothing for the regexes it replaced: a 100 KB clipped page is
+ * 150 ms. One entry is enough, since both ask about the same draft in the same render,
+ * and a string compare of two equal bodies is a memcmp. The callers defer the value they
+ * pass in as well, so the keystroke is painted before the parse runs. If a long note
+ * still types slowly, the next step is to read the links out of the editor's own
+ * incremental syntax tree instead of parsing the body again here.
  */
-const RELATIVE_DESTINATION_SRC = `(?:<files\\/([^>\\n]+)>|files\\/(${BARE_NAME_SRC}))`;
+let lastParsed: { markdown: string; links: InlineLink[] } = { markdown: '', links: [] };
+
+function parseInlineLinks(markdown: string): InlineLink[] {
+  // Nothing to find is the common case for a note of a few lines, and `[` is in every
+  // inline link and image; the parse is the cost worth skipping, not the walk.
+  if (!markdown.includes('[')) return [];
+  const links: InlineLink[] = [];
+  visit(linkParser.parse(markdown) as never, (node: MdLinkNode) => {
+    if (node.type !== 'link' && node.type !== 'image') return;
+    const from = node.position?.start.offset;
+    const to = node.position?.end.offset;
+    if (from === undefined || to === undefined) return;
+    const image = node.type === 'image';
+    if (markdown.slice(from, from + (image ? 2 : 1)) !== (image ? '![' : '[')) return;
+    const labelEnd = node.children?.length
+      ? (node.children[node.children.length - 1]!.position?.end.offset ?? -1)
+      : closingBracket(markdown, from + (image ? 2 : 1));
+    // `[x][ref]` has no inline destination; the parser answers it with the definition's.
+    if (labelEnd < 0 || markdown[labelEnd] !== ']' || markdown[labelEnd + 1] !== '(') return;
+    links.push({
+      image,
+      from,
+      to,
+      label: markdown.slice(from, labelEnd + 1),
+      url: node.url ?? '',
+      title: node.title ?? null,
+    });
+  });
+  return links;
+}
+
+interface MdLinkNode {
+  type: string;
+  url?: string;
+  title?: string | null;
+  position?: { start: { offset?: number }; end: { offset?: number } };
+  children?: MdLinkNode[];
+}
+
+/**
+ * Where the `]` closing a label that opened at `from` is, or -1. An image's alt has no
+ * children in the tree to take the position from, so it is found the way the parser found
+ * it: a backslash hides what follows, and a bracket pair inside the label nests.
+ */
+function closingBracket(markdown: string, from: number): number {
+  let depth = 0;
+  for (let i = from; i < markdown.length; i++) {
+    const c = markdown[i];
+    if (c === '\\') i++;
+    else if (c === '[') depth++;
+    else if (c === ']') {
+      if (depth === 0) return i;
+      depth--;
+    }
+  }
+  return -1;
+}
+
+/** The link `link` would be with `dest` as its destination: label and title as they were. */
+function withDestination(link: InlineLink, dest: string): string {
+  const title = link.title === null ? '' : ` "${link.title.replace(/["\\]/g, '\\$&')}"`;
+  return `${link.label}(${dest}${title})`;
+}
+
+/** The pieces of `markdown` that are not in `rewrite`'s answer stay as they were. */
+function rewriteLinks<L extends InlineLink>(
+  markdown: string,
+  links: L[],
+  rewrite: (link: L) => string | null,
+): string {
+  let out = '';
+  let last = 0;
+  for (const link of links) {
+    const replaced = rewrite(link);
+    if (replaced === null) continue;
+    out += markdown.slice(last, link.from) + replaced;
+    last = link.to;
+  }
+  return out + markdown.slice(last);
+}
+
+/**
+ * Every same-note `files/…` link or image in some markdown. The filename is as the
+ * attachment row has it, with the destination's escapes and encoding taken off.
+ */
+function relativeAttachmentLinks(markdown: string): Array<InlineLink & { filename: string }> {
+  const links: Array<InlineLink & { filename: string }> = [];
+  for (const link of inlineLinks(markdown)) {
+    if (!link.url.startsWith(ATTACHMENT_PREFIX)) continue;
+    const filename = decodePathSegment(link.url.slice(ATTACHMENT_PREFIX.length));
+    if (filename) links.push({ ...link, filename });
+  }
+  return links;
+}
 
 /**
  * Filenames pointed at by relative `files/…` image or link destinations in markdown.
@@ -111,33 +228,7 @@ const RELATIVE_DESTINATION_SRC = `(?:<files\\/([^>\\n]+)>|files\\/(${BARE_NAME_S
  * removing a link does not delete the file.
  */
 export function attachmentFilenamesInMarkdown(markdown: string): Set<string> {
-  const names = new Set<string>();
-  for (const link of relativeAttachmentLinks(markdown)) names.add(link.filename);
-  return names;
-}
-
-/**
- * Every same-note `files/…` link or image in some markdown, in order, with positions:
- * the one walk `attachmentFilenamesInMarkdown`, `removeAttachmentLinks`,
- * `rewriteAttachmentLinks` and `absolutizeAttachmentLinks` are built on, so a spelling
- * one of them understands is a spelling all of them do. The filename is as the attachment row has it, with the
- * destination's escapes and encoding taken off.
- */
-function relativeAttachmentLinks(
-  markdown: string,
-): Array<{ from: number; to: number; label: string; filename: string }> {
-  const links: Array<{ from: number; to: number; label: string; filename: string }> = [];
-  for (const match of markdown.matchAll(RELATIVE_ATTACHMENT_LINK_RE)) {
-    const raw = ((match[2] ?? match[3] ?? '') as string).trim();
-    if (!raw) continue;
-    links.push({
-      from: match.index,
-      to: match.index + match[0].length,
-      label: match[1] as string,
-      filename: decodePathSegment(unescapeDestination(raw)),
-    });
-  }
-  return links;
+  return new Set(relativeAttachmentLinks(markdown).map((link) => link.filename));
 }
 
 /**
@@ -152,16 +243,12 @@ export function rewriteAttachmentLinks(
   markdown: string,
   rename: (filename: string) => string | null,
 ): string {
-  let out = '';
-  let last = 0;
-  for (const link of relativeAttachmentLinks(markdown)) {
+  return rewriteLinks(markdown, relativeAttachmentLinks(markdown), (link) => {
     const renamed = rename(link.filename);
-    if (renamed === null) continue;
-    out += markdown.slice(last, link.from);
-    out += `${link.label}(${attachmentDestination(`${ATTACHMENT_PREFIX}${renamed}`)})`;
-    last = link.to;
-  }
-  return out + markdown.slice(last);
+    return renamed === null
+      ? null
+      : withDestination(link, attachmentDestination(`${ATTACHMENT_PREFIX}${renamed}`));
+  });
 }
 
 /**
@@ -171,14 +258,9 @@ export function rewriteAttachmentLinks(
  * bracketed and backslash-escaped forms all go. Leaves surrounding text intact.
  */
 export function removeAttachmentLinks(markdown: string, filename: string): string {
-  let out = '';
-  let last = 0;
-  for (const link of relativeAttachmentLinks(markdown)) {
-    if (link.filename !== filename) continue;
-    out += markdown.slice(last, link.from);
-    last = link.to;
-  }
-  out += markdown.slice(last);
+  const out = rewriteLinks(markdown, relativeAttachmentLinks(markdown), (link) =>
+    link.filename === filename ? '' : null,
+  );
   // Collapse runs of blank lines left behind by a removed-only paragraph.
   return out.replace(/\n{3,}/g, '\n\n');
 }
@@ -200,21 +282,12 @@ export function attachmentUrl(noteId: string, filename: string, origin = ''): st
 /**
  * A path segment for a markdown destination. `encodeURIComponent` leaves `(` and `)` as
  * they are, and a bare one in a destination either has to balance or ends the link, so
- * `a(b.pdf` made a link no reader could take back. The server and the worker decode the
- * segment, so `%28` reaches the same file.
+ * `a(b.pdf` made a link other apps' parsers cannot read to the end. The server and the
+ * worker decode the segment, so `%28` reaches the same file.
  */
 function segment(value: string): string {
   return encodeURIComponent(value).replace(/\(/g, '%28').replace(/\)/g, '%29');
 }
-
-/**
- * A link or image whose destination is `files/…` in either spelling: the label, then the
- * bracketed name or the bare one. See `RELATIVE_DESTINATION_SRC`.
- */
-const RELATIVE_ATTACHMENT_LINK_RE = new RegExp(
-  `(!?\\[${LABEL_SRC}\\])\\(\\s*${RELATIVE_DESTINATION_SRC}\\s*\\)`,
-  'g',
-);
 
 /**
  * Rewrites every same-note `files/…` link to the absolute form `attachmentUrl` produces.
@@ -228,14 +301,9 @@ export function absolutizeAttachmentLinks(
   markdown: string,
   opts: { noteId: string; origin?: string },
 ): string {
-  let out = '';
-  let last = 0;
-  for (const link of relativeAttachmentLinks(markdown)) {
-    out += markdown.slice(last, link.from);
-    out += `${link.label}(${attachmentUrl(opts.noteId, link.filename, opts.origin)})`;
-    last = link.to;
-  }
-  return out + markdown.slice(last);
+  return rewriteLinks(markdown, relativeAttachmentLinks(markdown), (link) =>
+    withDestination(link, attachmentUrl(opts.noteId, link.filename, opts.origin)),
+  );
 }
 
 /** A link in pasted text that names another note's file, with where it sits in the text. */
@@ -249,20 +317,11 @@ export interface AbsoluteAttachmentLink {
 }
 
 /**
- * An absolute attachment destination, with or without an origin, with or without angle
- * brackets. The note id and filename groups stop at anything that could end a URL or a
- * markdown destination; the filename is unescaped and percent-decoded by the caller.
- *
- * The filename takes the bare grammar of `RELATIVE_DESTINATION_SRC`. `attachmentUrl`
- * encodes a parenthesis now, but until 2026-10-28 it left one as it was, so a copied
- * `Report(R).pdf` link had a balanced pair in its address, and a group that stopped at
- * the first `)` cut the name to `Report(R` and pasted it back as a link to a file that
- * does not exist. Such links are still on clipboards and in other apps' notes.
+ * An absolute attachment address, with or without an origin, as the parser hands it
+ * back: a URL, not markdown, so the one regex left here is on the shape of a path. The
+ * note id and the filename are percent-decoded by the caller.
  */
-const ABSOLUTE_ATTACHMENT_LINK_RE = new RegExp(
-  `(!?\\[${LABEL_SRC}\\])\\(\\s*<?(?:https?:\\/\\/[^/\\s<>]+)?\\/api\\/notes\\/([^/\\s<>)]+)\\/files\\/(${BARE_NAME_SRC}?)>?\\s*\\)`,
-  'g',
-);
+const ABSOLUTE_ATTACHMENT_URL_RE = /^(?:https?:\/\/[^/]+)?\/api\/notes\/([^/?#]+)\/files\/([^?#]+)/;
 
 /**
  * Every absolute attachment link in some markdown, in order, with positions.
@@ -274,18 +333,23 @@ const ABSOLUTE_ATTACHMENT_LINK_RE = new RegExp(
  * than a document.
  */
 export function findAbsoluteAttachmentLinks(markdown: string): AbsoluteAttachmentLink[] {
-  const links: AbsoluteAttachmentLink[] = [];
-  for (const match of markdown.matchAll(ABSOLUTE_ATTACHMENT_LINK_RE)) {
-    const [whole, label, noteId, filename] = match;
-    if (!label || !noteId || !filename) continue;
-    links.push({
-      from: match.index,
-      to: match.index + whole.length,
-      label,
-      noteId: decodePathSegment(noteId),
-      // A query the panel's download link carries (`?download=1`) is not part of the name.
-      filename: decodePathSegment(unescapeDestination(filename).split('?')[0] ?? ''),
-    });
+  return absoluteLinks(markdown).map(({ from, to, label, noteId, filename }) => ({
+    from,
+    to,
+    label,
+    noteId,
+    filename,
+  }));
+}
+
+function absoluteLinks(markdown: string): Array<InlineLink & { noteId: string; filename: string }> {
+  const links: Array<InlineLink & { noteId: string; filename: string }> = [];
+  for (const link of inlineLinks(markdown)) {
+    const match = ABSOLUTE_ATTACHMENT_URL_RE.exec(link.url);
+    if (!match) continue;
+    // A query the panel's download link carries (`?download=1`) is not part of the name,
+    // and the pattern above already stops at it.
+    links.push({ ...link, noteId: decodePathSegment(match[1]!), filename: decodePathSegment(match[2]!) });
   }
   return links;
 }
@@ -295,7 +359,7 @@ export function absoluteAttachmentRefs(markdown: string): Array<{ noteId: string
   const seen = new Set<string>();
   const refs: Array<{ noteId: string; filename: string }> = [];
   for (const { noteId, filename } of findAbsoluteAttachmentLinks(markdown)) {
-    const key = `${noteId}${filename}`;
+    const key = `${noteId}${filename}`;
     if (seen.has(key)) continue;
     seen.add(key);
     refs.push({ noteId, filename });
@@ -320,23 +384,18 @@ export function relativizeAttachmentLinks(
   markdown: string,
   rename: (ref: { noteId: string; filename: string }) => string | null,
 ): string {
-  let out = '';
-  let last = 0;
-  for (const link of findAbsoluteAttachmentLinks(markdown)) {
+  return rewriteLinks(markdown, absoluteLinks(markdown), (link) => {
     const renamed = rename(link);
-    if (renamed === null) continue;
-    out += markdown.slice(last, link.from) + relativeAttachmentLink(link, renamed);
-    last = link.to;
-  }
-  return out + markdown.slice(last);
+    return renamed === null
+      ? null
+      : withDestination(link, attachmentDestination(`${ATTACHMENT_PREFIX}${renamed}`));
+  });
 }
 
-/**
- * A remote image: `![alt](http…)`, in either destination spelling. As with the relative
- * form, a bracketed address runs to the `>` and may hold spaces; a bare one ends at the `)`.
- */
-const REMOTE_IMAGE_LINK_RE =
-  /(!\[[^\]]*\])\(\s*(?:<(https?:\/\/[^>\n]+)>|(https?:\/\/[^\s<>)]+))\s*\)/gi;
+/** Every image drawn from the web: `![alt](http…)`, whichever way the address is spelled. */
+function remoteImages(markdown: string): InlineLink[] {
+  return inlineLinks(markdown).filter((link) => link.image && /^https?:\/\//i.test(link.url));
+}
 
 /**
  * The distinct web addresses a note's images are drawn from.
@@ -348,12 +407,7 @@ const REMOTE_IMAGE_LINK_RE =
  * the links are rewritten once the files are stored.
  */
 export function remoteImageUrls(markdown: string): string[] {
-  const seen = new Set<string>();
-  for (const match of markdown.matchAll(REMOTE_IMAGE_LINK_RE)) {
-    const url = (match[2] ?? match[3] ?? '').trim();
-    if (url) seen.add(url);
-  }
-  return [...seen];
+  return [...new Set(remoteImages(markdown).map((image) => image.url))];
 }
 
 /**
@@ -368,12 +422,11 @@ export function localizeImageLinks(
   markdown: string,
   stored: (url: string) => string | null,
 ): string {
-  return markdown.replace(REMOTE_IMAGE_LINK_RE, (whole, label: string, bracketed, bare) => {
-    const filename = stored(((bracketed ?? bare ?? '') as string).trim());
-    if (filename === null) return whole;
-    return formatAttachmentMarkdown(label.slice(2, -1), `${ATTACHMENT_PREFIX}${filename}`, {
-      image: true,
-    });
+  return rewriteLinks(markdown, remoteImages(markdown), (image) => {
+    const filename = stored(image.url);
+    return filename === null
+      ? null
+      : withDestination(image, attachmentDestination(`${ATTACHMENT_PREFIX}${filename}`));
   });
 }
 

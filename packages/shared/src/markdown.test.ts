@@ -12,6 +12,7 @@ import {
   remoteImageUrls,
   removeAttachmentLinks,
   renderMarkdown,
+  rewriteAttachmentLinks,
   snippetParts,
 } from './markdown.js';
 
@@ -107,6 +108,17 @@ describe('attachmentFilenamesInMarkdown', () => {
     );
   });
 
+  /** A code span may hold a `]`; the parser knows where the label ends, a regex did not. */
+  it('reads a label holding a code span with a bracket, and an alt with nested brackets', () => {
+    const md = '[see `a]b`](files/a.pdf) ![x [y] z](files/b.png)';
+    expect(attachmentFilenamesInMarkdown(md)).toEqual(new Set(['a.pdf', 'b.png']));
+  });
+
+  it('leaves reference links, autolinks and bare URLs alone', () => {
+    const md = '[x][ref] <https://e.com/files/a.pdf> https://e.com/files/b.pdf\n\n[ref]: files/c.pdf';
+    expect(attachmentFilenamesInMarkdown(md)).toEqual(new Set());
+  });
+
   it('reads an escape inside an angle-bracket destination', () => {
     expect(attachmentFilenamesInMarkdown('[x](<files/My Report\\(R\\).pdf>)')).toEqual(
       new Set(['My Report(R).pdf']),
@@ -130,6 +142,13 @@ describe('removeAttachmentLinks', () => {
   it('removes an image inside a link without eating the outer bracket', () => {
     expect(removeAttachmentLinks('a [![x](files/a.png)](https://e.com) b', 'a.png')).toBe(
       'a [](https://e.com) b',
+    );
+  });
+
+  it('keeps a link title through a rewrite', () => {
+    const md = '![a](files/old.png "A \\"quoted\\" caption") tail';
+    expect(rewriteAttachmentLinks(md, () => 'new (1).png')).toBe(
+      '![a](<files/new (1).png> "A \\"quoted\\" caption") tail',
     );
   });
 
