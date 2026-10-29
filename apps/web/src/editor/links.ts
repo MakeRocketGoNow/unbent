@@ -1,5 +1,5 @@
 import { markdown } from '@codemirror/lang-markdown';
-import { ensureSyntaxTree, syntaxTree } from '@codemirror/language';
+import { ensureSyntaxTree, syntaxTree, type LanguageDescription } from '@codemirror/language';
 import { EditorState, type ChangeSpec, type Text } from '@codemirror/state';
 import { GFM } from '@lezer/markdown';
 import { ATTACHMENT_PREFIX, relativeAttachmentPath, unescapeMarkdown } from '@unbent/shared';
@@ -148,12 +148,23 @@ export function decodePath(value: string): string {
 }
 
 /**
+ * The editor's markdown grammar, the one definition `Editor` mounts and a headless state
+ * parses with. GFM parses task lists, tables, and strikethrough, which plain CommonMark
+ * would leave as literal text: `[x]` otherwise reads as a link. Defined once so a
+ * rewrite applied without a view reads the document as the mounted editor does; an
+ * extension added to one and not the other is the drift `links.ts` exists to remove.
+ */
+export function editorMarkdown(codeLanguages?: readonly LanguageDescription[]) {
+  return markdown({ codeLanguages, extensions: [GFM] });
+}
+
+/**
  * A state parsed with the editor's grammar, for a caller that holds a body and no view
  * (the attachments panel before the editor has mounted, say). Code languages are left
  * out: nothing here reads inside a fence.
  */
 export function markdownState(text: string): EditorState {
-  return EditorState.create({ doc: text, extensions: [markdown({ extensions: [GFM] })] });
+  return EditorState.create({ doc: text, extensions: [editorMarkdown()] });
 }
 
 /** `text` with `changesFor`'s changes applied, through a headless state; see `markdownState`. */
