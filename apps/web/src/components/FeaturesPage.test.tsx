@@ -155,7 +155,7 @@ describe('FeaturesPage', () => {
       media = prefs;
       const { findByRole, container } = harness(null);
       await findByRole('heading', { name: 'What Unbent does' });
-      await waitFor(() => expect(container.querySelectorAll('video, .feature-clip img').length).toBeGreaterThanOrEqual(4));
+      await waitFor(() => expect(container.querySelectorAll(prefs['(prefers-reduced-motion: reduce)'] ? '.feature-clip img' : 'video')).toHaveLength(4));
       collect(container);
       cleanup();
     }
