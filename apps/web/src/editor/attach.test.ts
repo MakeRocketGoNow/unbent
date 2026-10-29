@@ -107,6 +107,29 @@ describe('insertUploads', () => {
     view.destroy();
   });
 
+  /**
+   * The editor is rebuilt on a rich/source switch, with the document carried across,
+   * and CodeMirror takes a dispatch to a destroyed view silently. The upload lands after
+   * a switch here, and the link must go into the editor that is live then.
+   */
+  it('puts the link into the editor open when the upload lands, not the one at the drop', async () => {
+    const { upload, call } = deferredUpload();
+    const views = { current: null as EditorView | null };
+    const config: AttachConfig = { upload, liveView: () => views.current };
+    const pressed = mount('one\ntwo', config);
+    views.current = pressed;
+    const done = insertUploads(pressed, [png()], 4);
+    const carried = pressed.state.doc.toString();
+
+    pressed.destroy();
+    const live = mount(carried, config);
+    views.current = live;
+    call(0).resolve('files/a.png');
+    await done;
+    expect(live.state.doc.toString()).toBe('one\n![a.png](files/a.png)\ntwo');
+    live.destroy();
+  });
+
   it('leaves a comment where an upload failed', async () => {
     const { upload, calls, call } = deferredUpload();
     const view = mount('', { upload });

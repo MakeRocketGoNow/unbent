@@ -309,6 +309,7 @@ export function Editor({
                 }
               : undefined,
             onPending: (count) => onUploadsPendingRef.current?.(count),
+            liveView,
           }),
           /*
              Attachment links across the clipboard: copied ones name this note, pasted

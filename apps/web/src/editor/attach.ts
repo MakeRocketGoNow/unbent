@@ -23,16 +23,23 @@ import { formatAttachmentMarkdown, mayHoldAbsoluteAttachmentLink } from '@unbent
  * mid-upload is simply not replaced; the file is still on the server, and the
  * Attachments panel lists it as not linked.
  *
- * Known gap, not fixed here: remounting the editor mid-upload (switching rich/source, or
- * deleting an attachment, which rewrites the body) leaves a placeholder the old view can
- * no longer replace. The upload is allowed to finish so the file at least reaches the
- * panel.
+ * The editor is rebuilt on a rich/source switch and on a rewrite of the body, and the
+ * document, placeholder and all, is carried into the new view. The replacement goes
+ * into the view that is open when the upload lands (`liveView`), not the one the files
+ * were dropped into: a dispatch to a destroyed view is taken silently, and the
+ * placeholder stayed in the note while the file sat in the panel.
  */
 export interface AttachConfig {
   /** Uploads one file; resolves to its relative markdown path. Absent: uploads unsupported. */
   upload?: (file: File) => Promise<string>;
   /** Uploads in flight for this view, whenever the number changes. */
   onPending?: (count: number) => void;
+  /**
+   * The editor to write into once an upload answers: the one open then, which may not
+   * be the one the files went into. `liveView` in `Editor.tsx` says why an extension
+   * needs this at all. Absent, the view the files went into.
+   */
+  liveView?: () => EditorView | null;
 }
 
 export const attachConfig = Facet.define<AttachConfig, AttachConfig>({
@@ -148,7 +155,7 @@ export async function insertUploads(
   // The one routine every way in shares (drop, paste, the toolbar's Attach), so the
   // read-only check here covers any caller that forgot its own.
   if (view.state.readOnly) return;
-  const { upload } = view.state.facet(attachConfig);
+  const { upload, liveView } = view.state.facet(attachConfig);
   const pending = view.plugin(pendingPlugin);
   if (!upload || !pending || files.length === 0) return;
 
@@ -172,15 +179,17 @@ export async function insertUploads(
   });
   for (const job of jobs) pending.add(job.token);
 
+  // The count stays the view the files went into: its plugin reports zero on destroy
+  // and lets the uploads finish. Only the replacement moves to the live view.
   for (const { file, token } of jobs) {
     try {
       const path = await upload(file);
       const link = formatAttachmentMarkdown(file.name, path, {
         image: file.type.startsWith('image/'),
       });
-      replaceToken(view, token, link);
+      replaceToken(liveView?.() ?? view, token, link);
     } catch (err) {
-      replaceToken(view, token, `<!-- upload failed: ${(err as Error).message} -->`);
+      replaceToken(liveView?.() ?? view, token, `<!-- upload failed: ${(err as Error).message} -->`);
     } finally {
       pending.remove(token);
     }
