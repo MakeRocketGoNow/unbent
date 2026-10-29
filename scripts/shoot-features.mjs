@@ -45,7 +45,6 @@ import { execFileSync, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { portsFor } from './ports.mjs';
 
@@ -60,7 +59,7 @@ const FPS = 30;
 /** The WebP's quality; 80 keeps the text of a screenshot crisp at a quarter of the PNG. */
 const WEBP_QUALITY = 80;
 
-const here = dirname(fileURLToPath(import.meta.url));
+const here = path.dirname(fileURLToPath(import.meta.url));
 /**
  * The ids of the notes the drop clip made, written as soon as they are known and removed
  * once they are purged: a run that dies in between leaves the file, and the next run
@@ -475,15 +474,15 @@ async function run(BASE, scenes, themes, work, keepSocket, onInterrupt) {
     const notebooks = (await (await fetch('/api/notebooks')).json()).notebooks;
     const receipts = notebooks.find((n) => n.name === 'Receipts');
     const notes = await window.__notes('notebook=Receipts&limit=50');
-    const files = async (id) => { const r = await (await fetch('/api/notes/' + id + '/files')).json(); return Array.isArray(r) ? r : (r.files ?? r.attachments ?? []); };
+    // A note's files: `{ files: [{ filename, contentType, size }] }` (`routes/attachments.ts`).
+    const files = async (id) => (await (await fetch('/api/notes/' + id + '/files')).json()).files;
     let receipt = null, pdfs = [];
     for (const n of notes) {
       const fs = await files(n.id);
-      const type = (f) => f.mimeType ?? f.contentType ?? f.type ?? '';
-      const pdf = fs.filter((f) => type(f) === 'application/pdf');
-      const image = fs.some((f) => type(f).startsWith('image/'));
+      const pdf = fs.filter((f) => f.contentType === 'application/pdf');
+      const image = fs.some((f) => f.contentType.startsWith('image/'));
       if (!receipt && pdf.length && image) receipt = { id: n.id, title: n.title };
-      for (const f of pdf) if (pdfs.length < 3 && !fs.some((g) => g.filename?.length > 60)) pdfs.push({ url: '/api/notes/' + n.id + '/files/' + encodeURIComponent(f.filename ?? f.name), type: 'application/pdf' });
+      for (const f of pdf) if (pdfs.length < 3 && !fs.some((g) => g.filename.length > 60)) pdfs.push({ url: '/api/notes/' + n.id + '/files/' + encodeURIComponent(f.filename), type: 'application/pdf' });
     }
     const rnotes = await window.__notes('notebook=Recipes&limit=50');
     const sourdough = rnotes.find((n) => /Sourdough/.test(n.title)) ?? rnotes[0];
