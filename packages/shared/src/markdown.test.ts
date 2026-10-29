@@ -133,6 +133,12 @@ describe('attachmentFilenamesInMarkdown', () => {
   });
 });
 
+describe('an escaped slash in a destination', () => {
+  it('still names the file', () => {
+    expect(attachmentFilenamesInMarkdown('[a](files\\/a.pdf)')).toEqual(new Set(['a.pdf']));
+  });
+});
+
 describe('a code span in an alt', () => {
   it('may hold a bracket, as it does for the parser', () => {
     expect(attachmentFilenamesInMarkdown('![a `]` b](files/c.png)')).toEqual(new Set(['c.png']));
