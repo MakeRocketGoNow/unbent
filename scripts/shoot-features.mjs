@@ -122,7 +122,7 @@ const SCENES = [
       await p.ev('window.__drop()');
       await p.cursor(760, 360, 400);
       // The three notes land in the list as their uploads go; give them the time.
-      await p.waitFor(`document.querySelectorAll('[data-note-title]').length >= 0 && document.body.innerText.includes(${JSON.stringify(data.dropTitles[2])})`, 15000);
+      await p.waitFor(`document.body.innerText.includes(${JSON.stringify(data.dropTitles[2])})`, 15000);
       await sleep(2500);
       data.dropped = await p.ev(`window.__notes('notebook=Receipts&limit=50').then((notes) => notes.filter((n) => !${JSON.stringify(data.before)}.includes(n.id)).map((n) => n.id))`);
       console.log(`  dropped ${data.dropped.length} of ${data.before.length} before`);
