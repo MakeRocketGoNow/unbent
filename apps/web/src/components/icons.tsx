@@ -807,8 +807,8 @@ export function SourceFeatureIcon() {
 }
 
 /**
- * The features page's pause and play, on the small quiet button in a clip's corner: the
- * header's size, since the button is alone in its target and the glyph is all it says.
+ * The features page's pause and play, on the quiet button in a clip's corner: the header
+ * icons' size, since like them the glyph is alone in a 44px target and is all it says.
  */
 export function PauseIcon() {
   return <HeaderIcon icon={Pause} />;

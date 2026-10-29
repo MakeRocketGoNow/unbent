@@ -11443,18 +11443,20 @@ button.settings-nav-item {
   position: absolute;
   right: 0.75rem;
   bottom: 0.75rem;
+  min-width: 2.75rem;
+  min-height: 2.75rem;
   background: var(--bg);
   border-color: var(--border);
 }
 
-.feature-shot {
-  display: block;
 /* The quiet variant's hover is a wash of ink over nothing, which over a moving clip is
    the glyph on the picture; here the wash goes over the frame's own background. */
 .feature-clip-toggle:hover:not(:disabled) {
   background: color-mix(in srgb, var(--fg) 8%, var(--bg));
 }
 
+.feature-shot {
+  display: block;
   width: 100%;
 }
 

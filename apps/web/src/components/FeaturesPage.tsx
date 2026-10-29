@@ -406,12 +406,14 @@ function Clip({ name, label }: { name: string; label: string }) {
         <source src={`${file}.webm`} type="video/webm" />
         <source src={`${file}.mp4`} type="video/mp4" />
       </video>
+      {/* The name and the drawn tip are the same word, as on the app's other icon-only
+          controls, so the tip goes as `data-tip` rather than `tip`, which would also
+          read it out as a description after the name. */}
       <Button
         variant="quiet"
-        size="small"
         className="feature-clip-toggle"
         aria-label={paused ? 'Play' : 'Pause'}
-        tip={paused ? 'Play the clip' : 'Pause the clip'}
+        data-tip={paused ? 'Play' : 'Pause'}
         onClick={toggle}
       >
         {paused ? <PlayIcon /> : <PauseIcon />}
