@@ -286,7 +286,7 @@ function args() {
   const argv = process.argv.slice(2);
   const themeAt = argv.indexOf('--theme');
   const theme = themeAt === -1 ? null : argv[themeAt + 1];
-  const names = argv.filter((a, i) => !a.startsWith('--') && i !== themeAt + 1);
+  const names = argv.filter((a, i) => !a.startsWith('--') && (themeAt === -1 || i !== themeAt + 1));
   return { names, theme, list: argv.includes('--list') };
 }
 
