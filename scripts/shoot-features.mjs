@@ -394,11 +394,13 @@ async function run(BASE, scenes, themes, work, keepSocket) {
     const l = listeners.get(d.method);
     if (l) l(d.params, d.sessionId);
   };
+  // The timer is cleared by the reply, or the last calls of a run hold Node open for
+  // thirty seconds after everything is done.
   const send = (method, params = {}, sessionId) =>
     new Promise((res) => {
       const i = ++id;
-      waiting.set(i, res);
-      setTimeout(() => { if (waiting.delete(i)) res({ timeout: true }); }, 30000);
+      const timer = setTimeout(() => { if (waiting.delete(i)) res({ timeout: true }); }, 30000);
+      waiting.set(i, (d) => { clearTimeout(timer); res(d); });
       ws.send(JSON.stringify({ id: i, method, params, ...(sessionId ? { sessionId } : {}) }));
     });
 
