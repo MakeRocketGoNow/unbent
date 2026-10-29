@@ -1,4 +1,4 @@
-import { useDeferredValue, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link } from '@tanstack/react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Transaction } from '@codemirror/state';
@@ -9,6 +9,7 @@ import {
   formatAttachmentMarkdown,
 } from '@unbent/shared';
 import { removeAttachmentLinkChanges, rewriteDocument } from '../editor/links.js';
+import { useSettledBody } from '../useSettledBody.js';
 import * as api from '../notes-api.js';
 import { copyAttachmentToClipboard } from '../attachment-clipboard.js';
 import { attachmentsQuery, keys } from '../queries.js';
@@ -120,22 +121,12 @@ export function Attachments({
   /** What the last copy-to or move-to did, with a link to where the file went. */
   const [sent, setSent] = useState<ReactNode>(null);
 
-  // Deferred: the set is read from a parse of the whole body, which costs about a
-  // millisecond and a half per kilobyte, and a keystroke is painted before it runs.
-  // Fast typing coalesces into one parse of the latest draft; see `inlineLinks` in
-  // `@unbent/shared`. What is drawn may therefore trail the draft by one parse, which
-  // is why the actions below read the draft itself (`linkedNow`) and never this set: a
-  // link pasted just before Delete was pressed would otherwise be left pointing at a
-  // file that is gone.
-  //
-  // Deferred with the note it belongs to. On a switch the deferred value is still the
-  // previous note's body for one render, against the new note's files, so every file
-  // read as unlinked for that render and the panel latched open on every note with
-  // files (the bug MAK-149 fixed, back again by another route). A deferred body from
-  // another note is not used: the live one is parsed instead, once, on the switch.
-  const draft = useMemo(() => ({ noteId, body }), [noteId, body]);
-  const settled = useDeferredValue(draft);
-  const settledBody = settled.noteId === noteId ? settled.body : body;
+  // Read from a parse of the whole body once typing has paused (`useSettledBody` says
+  // why, and why a switch is answered at once). What is drawn may therefore trail the
+  // draft, which is why the actions below read the draft itself (`linkedNow`) and never
+  // this set: a link pasted just before Delete was pressed would otherwise be left
+  // pointing at a file that is gone.
+  const settledBody = useSettledBody(noteId, body);
   const linked = useMemo(() => attachmentFilenamesInMarkdown(settledBody), [settledBody]);
   // Not a file still waiting to upload: the cleanup deletes on the server, which has no such file yet.
   const unlinked = files.filter((f) => !linked.has(f.filename) && !f.pending);

@@ -1,4 +1,4 @@
-import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { noteOpened } from '../store/library.js';
 import { openSitePath, sitePathOpener } from '../useHostApp.js';
 import { Link, useNavigate, useRouter } from '@tanstack/react-router';
@@ -7,6 +7,7 @@ import type { EditorView } from '@codemirror/view';
 import type { FieldDef, FieldType, FieldValue, Note, NoteRevisionSummary } from '@unbent/shared';
 import { remoteImageUrls, unreadFiles } from '@unbent/shared';
 import { markdownState, relinkWebImageChanges, rewriteDocument, webImageUrls } from '../editor/links.js';
+import { useSettledBody } from '../useSettledBody.js';
 import * as api from '../notes-api.js';
 import { isOfflineError, isStatus } from '../notes-api.js';
 import * as actions from '../store/actions.js';
@@ -1196,16 +1197,14 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
 
   /**
    * The addresses the draft's images are drawn from; what "Save web images" counts.
-   * Deferred, as the attachments panel's "linked" set is: the count comes from a parse
-   * of the whole body, and a keystroke is painted before it runs. Deferred with the
-   * note, for the panel's reason: on a switch the deferred body is the previous note's
-   * for one render, and the count would be that note's. The draft itself is the previous
-   * note's for that render too, until the seeding effect runs (`draftFor` says whose it
-   * is, as the panel's `body` prop reads it), so the note's own body stands in meanwhile.
+   * Read once typing has paused, as the attachments panel's "linked" set is, and
+   * answered at once on a switch (`useSettledBody` says why). The draft itself is the
+   * previous note's for the switch's first render, until the seeding effect runs
+   * (`draftFor` says whose it is, as the panel's `body` prop reads it), so the note's
+   * own body stands in meanwhile.
    */
   const liveBody = draftFor === noteId ? draft.body : (note?.body ?? '');
-  const deferredDraft = useDeferredValue(useMemo(() => ({ noteId, body: liveBody }), [noteId, liveBody]));
-  const settledBody = deferredDraft.noteId === noteId ? deferredDraft.body : liveBody;
+  const settledBody = useSettledBody(noteId, liveBody);
   const remoteImages = useMemo(() => remoteImageUrls(settledBody), [settledBody]);
   const draftBodyRef = useRef(draft.body);
   draftBodyRef.current = draft.body;
