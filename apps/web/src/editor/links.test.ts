@@ -64,6 +64,12 @@ describe('removing a file\'s links', () => {
     expect(remove(code, 'x.png')).toBe(code);
   });
 
+  it('reads a query on the destination as not part of the name, and an encoded ? as part of it', () => {
+    expect(remove('a [r](files/scan.jpg?x=1) b', 'scan.jpg')).toBe('a  b');
+    expect(remove('a [r](files/a%3Fb.jpg) b', 'a?b.jpg')).toBe('a  b');
+    expect(remove('a [r](files/a%3Fb.jpg) b', 'a')).toBe('a [r](files/a%3Fb.jpg) b');
+  });
+
   it('changes nothing when the file is not linked', () => {
     const text = '[a](files/a.pdf) and prose';
     expect(remove(text, 'b.pdf')).toBe(text);

@@ -261,9 +261,15 @@ export function webImageUrls(state: EditorState): string[] {
   return urls;
 }
 
-/** The note's own file a link points at, by the name the attachment row has, or null. */
+/**
+ * The note's own file a link points at, by the name the attachment row has, or null.
+ * A query on the destination (`files/scan.jpg?x=1`, which nothing here writes but a
+ * hand-written link may carry) is not part of the name, as the rich editor's widgets
+ * read it, so a widget's Delete finds the link it was pressed on; cut before decoding,
+ * so a name with an encoded `?` of its own keeps it.
+ */
 export function attachmentFilenameOf(link: Pick<DocumentLink, 'url'>): string | null {
-  return attachmentFilenameFromUrl(link.url);
+  return attachmentFilenameFromUrl(link.url.split('?')[0] ?? '');
 }
 
 /**

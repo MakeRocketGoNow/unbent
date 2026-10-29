@@ -1783,8 +1783,11 @@ function buildDecorations(
           // the note still says what belongs there. See `failedImages`.
           if (failedImages.has(src)) return;
 
+          // The query, if any, is cut before decoding, as `attachmentFilenameOf` in
+          // `links.ts` cuts it, so the name this deletes is the one the link removal
+          // matches, and a name with an encoded `?` of its own keeps it.
           const stored = url.startsWith(ATTACHMENT_PREFIX)
-            ? (decodePath(url.slice(ATTACHMENT_PREFIX.length)).split('?')[0] ?? '')
+            ? decodePath(url.slice(ATTACHMENT_PREFIX.length).split('?')[0] ?? '')
             : null;
           // The alt as a reader should see it: the label is the raw text, and a serialiser
           // writes a bracket in it as `\[`. The caption drawn over the text below keeps the
