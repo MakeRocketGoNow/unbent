@@ -1,5 +1,5 @@
 import { useEffect, useReducer, useRef, useState, type KeyboardEvent } from 'react';
-import { Link, useNavigate, useSearch } from '@tanstack/react-router';
+import { Link, useNavigate, useRouter, useSearch } from '@tanstack/react-router';
 import { useQuery, useInfiniteQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import {
   DEFAULT_NOTE_SORT,
@@ -124,6 +124,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   /** Likewise the field filters, as the wire strings the URL carries. */
   const fieldFilters = field ?? [];
   const navigate = useNavigate();
+  const router = useRouter();
   const queryClient = useQueryClient();
   useNewNoteRequest(asked);
   /*
@@ -1259,6 +1260,19 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    * still the one dropped on: twelve uploads take a while, and a selection put over
    * whatever the person has picked or opened meanwhile, in some other notebook, would
    * be the bar offering actions on rows they cannot see.
+   *
+   * One file is the exception: its note opens instead, as New opens the note it made.
+   * The bar's actions are what a batch needs, since there is no other way to file twelve
+   * notes at once; a single note is filed from its own head, and a selection of one
+   * left the person looking at a checkbox and "Select a note" beside the very note they
+   * had just made. Under the same rule, and the search kept, so the list stays the one
+   * dropped on; and only while the person is still at the address they dropped from,
+   * search and all. A selection landing late is harmless, but a navigation landing late
+   * takes the editor from a note opened or begun with New while the upload ran, or the
+   * page from someone who went to Settings or the trash. The router's own location, read
+   * when the upload lands: refs of this component's stop moving once leaving `/notes`
+   * unmounts it, so `scopeRef` alone would pass for a list left and come back to under
+   * another filter.
    */
   const asideRef = useRef<HTMLElement>(null);
   const [dropHint, setDropHint] = useState<string | null>(null);
@@ -1269,8 +1283,12 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
     accept: (count) => (planInactive ? null : dropSentence(count, dropPlace)),
     onFiles: (files) => {
       const droppedIn = scopeRef.current;
+      const droppedAt = router.state.location.href;
       void notesFromFiles(files, filing, dropPlace, 'list', queryClient).then((ids) => {
-        if (ids.length > 0 && scopeRef.current === droppedIn) selection.select(ids);
+        const [first] = ids;
+        if (!first || scopeRef.current !== droppedIn) return;
+        if (files.length > 1) selection.select(ids);
+        else if (router.state.location.href === droppedAt) void navigate({ to: '/notes/$noteId', params: { noteId: first }, search: (p) => p });
       });
     },
   };

@@ -15,8 +15,9 @@ import { FreeNotesFullError } from '../free-notes.js';
 
 /**
  * Files let go on the list column become one note each, filed where the list is, and are
- * selected once they are in it, against the real layout and the in-memory library. The
- * zone's own rules are `list-drop-zone.test.ts`; the writes are `file-notes.test.ts`.
+ * selected once they are in it (or, for one file, opened), against the real layout and
+ * the in-memory library. The zone's own rules are `list-drop-zone.test.ts`; the writes
+ * are `file-notes.test.ts`.
  *
  * jsdom has neither DragEvent nor DataTransfer, so the transfer is a plain object on a
  * plain event, as the note's drop test builds it.
@@ -75,9 +76,10 @@ function mount(initial: string) {
     ),
   });
   const indexRoute = createRoute({ getParentRoute: () => notesRoute, path: '/', component: () => <p>nothing open</p> });
+  const noteRoute = createRoute({ getParentRoute: () => notesRoute, path: '$noteId', component: () => <p>note open</p> });
   const importRoute = createRoute({ getParentRoute: () => rootRoute, path: '/settings/import' });
   const router = createRouter({
-    routeTree: rootRoute.addChildren([notesRoute.addChildren([indexRoute]), importRoute]),
+    routeTree: rootRoute.addChildren([notesRoute.addChildren([indexRoute, noteRoute]), importRoute]),
     history: createMemoryHistory({ initialEntries: [initial] }),
   });
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -193,8 +195,73 @@ describe('files dropped on the note list', () => {
     expect(screen.getByRole('button', { name: 'Undo' })).toBeTruthy();
   });
 
+  /* A selection of one is a checkbox beside the note just made; New opens what it made. */
+  it('opens the note for a single file, keeping the list, and selects nothing', async () => {
+    lib = installTestLibrary({ notes: [note('a', { title: 'Alpha' })], notebooks: [{ id: 'nb1', name: 'Receipts', purpose: null, emoji: null, fieldDefs: [] }] });
+    const { router } = mount('/notes?notebook=Receipts');
+    await screen.findByRole('heading', { name: 'Receipts' });
+    drag('drop', column(), [pdf('Water bill.pdf')]);
+    await waitFor(() => expect(router.state.location.pathname).toBe('/notes/new1'));
+    expect(router.state.location.href).toContain('notebook=Receipts');
+    await screen.findByText('note open');
+    expect(screen.queryByRole('toolbar', { name: 'Selected notes' })).toBeNull();
+    expect((await screen.findByRole('status')).textContent).toContain('1 note added to Receipts.');
+  });
+
+  /* An upload landing late must not take the editor from a note opened meanwhile. */
+  it('does not open the note when another note was opened meanwhile', async () => {
+    lib = installTestLibrary({ notes: [note('a', { title: 'Alpha' })], notebooks: [{ id: 'nb1', name: 'Receipts', purpose: null, emoji: null, fieldDefs: [] }] });
+    const { router } = mount('/notes?notebook=Receipts');
+    await screen.findByRole('heading', { name: 'Receipts' });
+    let release!: () => void;
+    vi.mocked(actions.uploadFile).mockReturnValueOnce(new Promise((r) => (release = () => r({ filename: 'b.pdf', contentType: 'application/pdf', size: 1, path: 'files/b.pdf', indexing: 'server' as const }))));
+    drag('drop', column(), [pdf('b.pdf')]);
+    await waitFor(() => expect(actions.uploadFile).toHaveBeenCalled());
+    await router.navigate({ to: '/notes/$noteId', params: { noteId: 'a' }, search: { notebook: 'Receipts' } });
+    await screen.findByText('note open');
+    release();
+    await screen.findByRole('status');
+    expect(router.state.location.pathname).toBe('/notes/a');
+  });
+
+  /* Leaving the list unmounts it; a late upload must not bring the person back to it. */
+  it('does not open the note when the person has left the notes meanwhile', async () => {
+    lib = installTestLibrary({ notes: [note('a', { title: 'Alpha' })], notebooks: [{ id: 'nb1', name: 'Receipts', purpose: null, emoji: null, fieldDefs: [] }] });
+    const { router } = mount('/notes?notebook=Receipts');
+    await screen.findByRole('heading', { name: 'Receipts' });
+    let release!: () => void;
+    vi.mocked(actions.uploadFile).mockReturnValueOnce(new Promise((r) => (release = () => r({ filename: 'b.pdf', contentType: 'application/pdf', size: 1, path: 'files/b.pdf', indexing: 'server' as const }))));
+    drag('drop', column(), [pdf('b.pdf')]);
+    await waitFor(() => expect(actions.uploadFile).toHaveBeenCalled());
+    await router.navigate({ to: '/settings/import' });
+    await waitFor(() => expect(router.state.location.pathname).toBe('/settings/import'));
+    release();
+    await screen.findByRole('status');
+    await new Promise((r) => setTimeout(r, 20));
+    expect(router.state.location.pathname).toBe('/settings/import');
+  });
+
+  /* Left and come back to under another filter: not the list the file was dropped on. */
+  it('does not open the note in a list returned to under another filter', async () => {
+    lib = installTestLibrary({ notes: [note('a', { title: 'Alpha' })], notebooks: [{ id: 'nb1', name: 'Receipts', purpose: null, emoji: null, fieldDefs: [] }] });
+    const { router } = mount('/notes?notebook=Receipts');
+    await screen.findByRole('heading', { name: 'Receipts' });
+    let release!: () => void;
+    vi.mocked(actions.uploadFile).mockReturnValueOnce(new Promise((r) => (release = () => r({ filename: 'b.pdf', contentType: 'application/pdf', size: 1, path: 'files/b.pdf', indexing: 'server' as const }))));
+    drag('drop', column(), [pdf('b.pdf')]);
+    await waitFor(() => expect(actions.uploadFile).toHaveBeenCalled());
+    await router.navigate({ to: '/settings/import' });
+    await waitFor(() => expect(router.state.location.pathname).toBe('/settings/import'));
+    await router.navigate({ to: '/notes', search: {} });
+    await screen.findByRole('heading', { name: 'All notes' });
+    release();
+    await screen.findByRole('status');
+    await new Promise((r) => setTimeout(r, 20));
+    expect(router.state.location.pathname).toBe('/notes');
+  });
+
   /* Twelve uploads take a while; a selection put over another notebook's rows would be wrong. */
-  it('does not select the notes when the list has moved to another scope meanwhile', async () => {
+  it('does not select or open the notes when the list has moved to another scope meanwhile', async () => {
     lib = installTestLibrary({ notes: [note('a', { title: 'Alpha' })], notebooks: [{ id: 'nb1', name: 'Receipts', purpose: null, emoji: null, fieldDefs: [] }] });
     const { router } = mount('/notes?notebook=Receipts');
     await screen.findByRole('heading', { name: 'Receipts' });
@@ -208,6 +275,8 @@ describe('files dropped on the note list', () => {
     await screen.findByRole('status');
     await screen.findByText('a');
     expect(screen.queryByRole('toolbar', { name: 'Selected notes' })).toBeNull();
+    // Nor open the note: one file opens its note only on the list it was dropped on.
+    expect(router.state.location.pathname).toBe('/notes');
   });
 
   it('files the notes with the list’s tag, and nowhere, on a tag', async () => {
@@ -253,6 +322,19 @@ describe('files dropped on the note list', () => {
     expect((event as unknown as { dataTransfer: { dropEffect: string } }).dataTransfer.dropEffect).toBe('none');
     await new Promise((r) => setTimeout(r, 20));
     expect(hint()).toBeUndefined();
+  });
+
+  /* The note a one-file drop opened is the one Undo trashes; staying on it shows it trashed. */
+  it('Undo after one file goes back to the list it was dropped on', async () => {
+    lib = installTestLibrary({ notes: [], notebooks: [{ id: 'nb1', name: 'Receipts', purpose: null, emoji: null, fieldDefs: [] }] });
+    const { router } = mount('/notes?notebook=Receipts');
+    await screen.findByRole('heading', { name: 'Receipts' });
+    drag('drop', column(), [pdf('a.pdf')]);
+    await waitFor(() => expect(router.state.location.pathname).toBe('/notes/new1'));
+    (await screen.findByRole('button', { name: 'Undo' })).click();
+    await waitFor(() => expect(actions.trashNotes).toHaveBeenCalledWith(['new1']));
+    await waitFor(() => expect(router.state.location.pathname).toBe('/notes'));
+    expect(router.state.location.href).toContain('notebook=Receipts');
   });
 
   it('Undo trashes the batch', async () => {

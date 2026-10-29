@@ -343,11 +343,12 @@ async function runBatch(
  * Takes the batch back: every note it made goes to the trash, where it can be restored,
  * and the report is over. A trash the server refused (a device with no local copy, a
  * 4xx) is said in the report's place rather than lost, since the card that offered Undo
- * has already gone with the press and the notes are still there.
+ * has already gone with the press and the notes are still there. Resolves whether the
+ * notes went to the trash, which the report cannot say once another batch has begun.
  */
-export async function undoFileNotes(queryClient?: QueryClient): Promise<void> {
+export async function undoFileNotes(queryClient?: QueryClient): Promise<boolean> {
   const { ids, run } = state;
-  if (ids.length === 0) return;
+  if (ids.length === 0) return false;
   // Only the report of the batch Undo was pressed for is written, and only for the person
   // who pressed it: a drop made while the trash was on its way has a batch of its own
   // running by now, and a sign-out meanwhile has wiped the report for whoever is next.
@@ -357,7 +358,7 @@ export async function undoFileNotes(queryClient?: QueryClient): Promise<void> {
     await actions.trashNotes(ids);
   } catch (err) {
     if (current()) set({ status: 'error', error: `Could not undo: ${(err as Error).message}`, run: state.run + 1 });
-    return;
+    return false;
   }
   if (current()) set({ ...initial, run: state.run });
   if (queryClient) {
@@ -365,6 +366,7 @@ export async function undoFileNotes(queryClient?: QueryClient): Promise<void> {
     void queryClient.invalidateQueries({ queryKey: ['trash'] });
     invalidateNoteMembership(queryClient);
   }
+  return true;
 }
 
 /** For tests: back to nothing, whatever was running; a batch still waiting is not. */
