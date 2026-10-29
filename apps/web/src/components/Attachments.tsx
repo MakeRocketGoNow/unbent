@@ -120,7 +120,15 @@ export function Attachments({
   // is why the actions below read the draft itself (`linkedNow`) and never this set: a
   // link pasted just before Delete was pressed would otherwise be left pointing at a
   // file that is gone.
-  const settledBody = useDeferredValue(body);
+  //
+  // Deferred with the note it belongs to. On a switch the deferred value is still the
+  // previous note's body for one render, against the new note's files, so every file
+  // read as unlinked for that render and the panel latched open on every note with
+  // files (the bug MAK-149 fixed, back again by another route). A deferred body from
+  // another note is not used: the live one is parsed instead, once, on the switch.
+  const draft = useMemo(() => ({ noteId, body }), [noteId, body]);
+  const settled = useDeferredValue(draft);
+  const settledBody = settled.noteId === noteId ? settled.body : body;
   const linked = useMemo(() => attachmentFilenamesInMarkdown(settledBody), [settledBody]);
   // Not a file still waiting to upload: the cleanup deletes on the server, which has no such file yet.
   const unlinked = files.filter((f) => !linked.has(f.filename) && !f.pending);

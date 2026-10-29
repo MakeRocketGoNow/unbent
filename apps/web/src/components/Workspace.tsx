@@ -1180,9 +1180,12 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
   /**
    * The addresses the draft's images are drawn from; what "Save web images" counts.
    * Deferred, as the attachments panel's "linked" set is: the count comes from a parse
-   * of the whole body, and a keystroke is painted before it runs.
+   * of the whole body, and a keystroke is painted before it runs. Deferred with the
+   * note, for the panel's reason: on a switch the deferred body is the previous note's
+   * for one render, and the count would be that note's.
    */
-  const settledBody = useDeferredValue(draft.body);
+  const deferredDraft = useDeferredValue(useMemo(() => ({ noteId, body: draft.body }), [noteId, draft.body]));
+  const settledBody = deferredDraft.noteId === noteId ? deferredDraft.body : draft.body;
   const remoteImages = useMemo(() => remoteImageUrls(settledBody), [settledBody]);
   const draftBodyRef = useRef(draft.body);
   draftBodyRef.current = draft.body;
