@@ -126,6 +126,13 @@ describe('removeAttachmentLinks', () => {
     expect(removeAttachmentLinks('![x](<files/my photo.png>)', 'my photo.png')).toBe('');
   });
 
+  /** The Joplin import wraps a picture in a link; the file goes, the link around it stays. */
+  it('removes an image inside a link without eating the outer bracket', () => {
+    expect(removeAttachmentLinks('a [![x](files/a.png)](https://e.com) b', 'a.png')).toBe(
+      'a [](https://e.com) b',
+    );
+  });
+
   it('removes the percent-encoded form', () => {
     expect(removeAttachmentLinks('a ![x](files/caf%C3%A9.png) b', 'café.png')).toBe('a  b');
   });

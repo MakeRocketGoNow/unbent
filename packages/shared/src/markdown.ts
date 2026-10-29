@@ -84,14 +84,15 @@ export function unescapeDestination(raw: string): string {
 const BARE_NAME_SRC = '(?:\\\\[!-/:-@[-`{-~]|\\([^()\\s<>]*\\)|[^()\\s<>\\\\])+';
 
 /**
- * A link's label, between its brackets, as regex source: anything but a `]`, or a
- * backslash and whatever it escapes. A serialiser writes a bracket in a filename as
+ * A link's label, between its brackets, as regex source: a backslash and whatever it
+ * escapes, or anything but a bracket. A serialiser writes a bracket in a filename as
  * `\[`, so an imported `Scan [1].pdf` has the label `Scan \[1\].pdf`, and a label that
  * stopped at its first `]` saw no link there at all: the file was "Not linked" and its
- * rename on import never happened. A label holding a whole image, `[![x](files/a.png)]`,
- * is still read for the inner image only; nothing here writes that shape.
+ * rename on import never happened. A bare `[` is not taken, so an image inside a link,
+ * `[![x](files/a.png)](/notes/n)` (which the Joplin import writes), is matched as the
+ * image alone and not from the outer bracket, which removing the file would have eaten.
  */
-const LABEL_SRC = '(?:\\\\.|[^\\]\\\\])*';
+const LABEL_SRC = '(?:\\\\.|[^\\[\\]\\\\])*';
 
 /**
  * The two spellings of a `files/…` destination, as regex source: bracketed, where the
