@@ -11444,7 +11444,8 @@ button.settings-nav-item {
 }
 
 .feature-shot img,
-.feature-shot video {
+.feature-shot video,
+.features-pair img {
   display: block;
   width: 100%;
   height: auto;
@@ -11471,7 +11472,8 @@ button.settings-nav-item {
 }
 
 /* The two themes side by side, forced, since this is the one row where the reader's own
-   theme must not choose. */
+   theme must not choose. Each is the shot's frame at half the width, so a smaller radius
+   and a shorter shadow. */
 .features-pair {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -11479,10 +11481,6 @@ button.settings-nav-item {
 }
 
 .features-pair img {
-  display: block;
-  width: 100%;
-  height: auto;
-  border: 1px solid var(--border);
   border-radius: 0.5rem;
   box-shadow: 0 1rem 2rem -1rem var(--front-shadow);
 }
