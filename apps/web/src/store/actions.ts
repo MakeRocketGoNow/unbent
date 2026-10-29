@@ -1946,11 +1946,12 @@ function serverHolds(lib: WritableLibrary, noteId: string): boolean {
  * which the server may yet take, is purged after it rather than left. A trash does not
  * do this: it promises the note back on a restore, and the create is what would make it.
  *
- * Under the plan's refusal as well as the store's: a create kept as `PLAN_INACTIVE`
- * replays once deleting takes the account under, and at the count it is the free
- * plan's refusal then, so the purge that takes the account under is the one that must
- * end it. The check that the note is waiting is for `emptyTrash`, whose ids are every
- * trashed note on screen; a purge of one has just queued its own entry and always passes.
+ * Every refusal that keeps a create is covered alike, the plan's as well as the
+ * store's: a create kept as `PLAN_INACTIVE` replays once deleting takes the account
+ * under, and at the count it is the free plan's refusal then, so the purge that takes
+ * the account under is the one that must end it. The check that the note is waiting
+ * is for `emptyTrash`, whose ids are every trashed note on screen; a purge of one has
+ * just queued its own entry and always passes.
  */
 function unmake(lib: WritableLibrary, ids: readonly string[]): void {
   const never = ids.filter((id) => lib.outbox.status().waiting.has(id) && !serverHolds(lib, id));
