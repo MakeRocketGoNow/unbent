@@ -22,7 +22,8 @@ import {
   type ViewUpdate,
   WidgetType,
 } from '@codemirror/view';
-import { ATTACHMENT_PREFIX, formatAttachmentMarkdown } from '@unbent/shared';
+import { ATTACHMENT_PREFIX, relativeAttachmentPath, unescapeMarkdown } from '@unbent/shared';
+import { decodePath, linkParts, removalRange } from './links.js';
 import { acquirePdf, type LoadedPdf, releasePdf } from '../pdf/render.js';
 import { downloadUrl, openAttachmentViewer, type ViewerTarget } from '../attachment-viewer.js';
 import { NOT_AVAILABLE_OFFLINE, standInForImage, unavailableOffline, whenBackOnline } from '../offline-file.js';
@@ -685,14 +686,13 @@ function saveButton(
       (filename) => {
         const node = findWidgetNode(view, host, 'Image');
         if (!node) return;
-        const text = view.state.doc.sliceString(node.from, node.to);
-        const alt = /^!\[([^\]]*)\]/.exec(text)?.[1] ?? '';
+        const parts = linkParts(view.state, node);
+        if (!parts) return;
+        // The destination only. Rebuilding the whole image from its raw alt put the alt
+        // through the formatter's escaping a second time, and `Scan \[1\]` came back as
+        // `Scan \\\[1\\\]` on every save; the alt and a title are left as written.
         view.dispatch({
-          changes: {
-            from: node.from,
-            to: node.to,
-            insert: formatAttachmentMarkdown(alt, `${ATTACHMENT_PREFIX}${filename}`, { image: true }),
-          },
+          changes: { from: parts.urlFrom, to: parts.urlTo, insert: relativeAttachmentPath(filename) },
         });
       },
       () => {
@@ -732,35 +732,17 @@ function findWidgetNode(view: EditorView, host: HTMLElement, source: 'Image' | '
  * Deletes the markdown a widget stands for: the `![alt](url)` an image replaces, or the
  * `[label](files/x.pdf)` a PDF page hangs under.
  *
- * A line left holding only whitespace goes too, and one of the blank lines around it,
- * or every removed picture would leave a double gap in the paragraph rhythm.
+ * What goes with it is `removalRange`'s decision, the same one the attachments panel's
+ * Delete makes, so a picture deleted from its widget and one deleted from the panel
+ * leave the paragraphs around them the same way. This had its own rule, which took the
+ * gap on different sides, and the two disagreed at the end of a note (2026-10-29).
  */
 function removeWidgetSource(view: EditorView, host: HTMLElement, source: 'Image' | 'Link'): void {
   // The one place every widget's delete arrives; a read-only note keeps what it shows.
   if (view.state.readOnly) return;
   const node = findWidgetNode(view, host, source);
   if (!node) return;
-
-  const doc = view.state.doc;
-  const line = doc.lineAt(node.from);
-  const rest = line.text.slice(0, node.from - line.from) + line.text.slice(node.to - line.from);
-  if (rest.trim() !== '') {
-    view.dispatch({ changes: { from: node.from, to: node.to }, userEvent: 'delete' });
-    return;
-  }
-
-  let from = line.from;
-  let to = line.to;
-  if (to < doc.length) {
-    to += 1; // the line's own break
-    // Blank on both sides (or at the top): keep one blank line, not two.
-    const blankBefore = from === 0 || doc.sliceString(from - 2, from) === '\n\n';
-    if (blankBefore && doc.sliceString(to, to + 1) === '\n') to += 1;
-  } else if (from > 0) {
-    from -= 1; // the break before the last line
-    if (from > 0 && doc.sliceString(from - 1, from) === '\n') from -= 1;
-  }
-  view.dispatch({ changes: { from, to }, userEvent: 'delete' });
+  view.dispatch({ changes: removalRange(view.state.doc, node.from, node.to), userEvent: 'delete' });
 }
 
 /**
@@ -1216,37 +1198,6 @@ function revealScope(
 /** Attachment links pointing at a PDF, by extension (mirrors the shared pipeline). */
 const PDF_PATH = /\.pdf$/i;
 
-/** Percent-decodes when valid, leaving a literal `%` alone rather than throwing. */
-function decodePath(value: string): string {
-  try {
-    return decodeURIComponent(value);
-  } catch {
-    return value;
-  }
-}
-
-/** Strips the angle brackets CommonMark uses around URLs containing spaces. */
-function unwrapUrl(raw: string): string {
-  return raw.startsWith('<') && raw.endsWith('>') ? raw.slice(1, -1) : raw;
-}
-
-/**
- * A link's destination without its optional title: `url "Title"` → `url`.
- *
- * The `Link` branch matches `(…)` whole, which is the destination plus whatever title
- * followed it. A title is display text for a tooltip, never part of where the link goes,
- * and a URL cannot contain a bare space, so the first whitespace ends it, unless the
- * destination is angle-bracketed, where spaces are allowed and `>` ends it instead.
- */
-function linkDestination(raw: string): string {
-  const inner = raw.trim();
-  if (inner.startsWith('<')) {
-    const close = inner.indexOf('>');
-    return close === -1 ? inner : inner.slice(1, close);
-  }
-  return inner.split(/\s/, 1)[0] ?? '';
-}
-
 /**
  * Schemes a click may follow, and whether each leaves the note open behind it.
  *
@@ -1371,7 +1322,11 @@ function linkOpener(
     }
     return () => followUrl(downloadUrl(src), false);
   }
-  if (WEB_SCHEME.test(url)) return () => followUrl(url, true);
+  // The preview's href is micromark's normalizeUri of the text, which encodes a
+  // backslash. Handed to the URL parser raw, `\` reads as `/` in an http address, so
+  // `[a](https://x/a\b)` or `<https://x/a\_b>` would land on `a/b` here and `a%5Cb` in
+  // the preview. Only here: an attachment's name above wants the character itself.
+  if (WEB_SCHEME.test(url)) return () => followUrl(url.replace(/\\/g, '%5C'), true);
   if (HANDOFF_SCHEME.test(url)) return () => followUrl(url, false);
   if (SITE_PATH.test(url)) return options.pathOpener?.(url);
   return undefined;
@@ -1390,11 +1345,12 @@ function linkUrlAt(state: EditorState, pos: number): string | undefined {
     for (let node: Node | null = tree.resolveInner(pos, side); node; node = node.parent) {
       if (node.name === 'Image') return undefined;
       if (node.name === 'Link') {
-        const match = /^\[([^\]]*)\]\((.+)\)$/.exec(state.doc.sliceString(node.from, node.to));
-        return match ? linkDestination(match[2]!) : undefined;
+        return linkParts(state, node)?.url;
       }
       if (node.name === 'Autolink') {
-        return unwrapUrl(state.doc.sliceString(node.from, node.to));
+        // Only the brackets: CommonMark applies no backslash escapes inside an autolink.
+        const raw = state.doc.sliceString(node.from, node.to);
+        return raw.startsWith('<') && raw.endsWith('>') ? raw.slice(1, -1) : raw;
       }
       if (node.name === 'URL' && bareUrl === undefined) {
         bareUrl = bareLinkTarget(state.doc.sliceString(node.from, node.to));
@@ -1528,27 +1484,23 @@ export function collectAttachmentTargets(
   tree.iterate({
     enter(node) {
       if (node.name === 'Image') {
-        const text = state.doc.sliceString(node.from, node.to);
-        const match = /^!\[([^\]]*)\]\((.+)\)$/.exec(text);
-        if (!match) return;
-        const src = resolveImageSrc(unwrapUrl(match[2]!.trim()), options.resolveAttachment);
+        const parts = linkParts(state, node.node);
+        if (!parts) return;
+        const src = resolveImageSrc(parts.url, options.resolveAttachment);
         if (src === undefined || failedImages.has(src)) return;
-        targets.push({ kind: 'image', src, alt: match[1] ?? '' });
+        targets.push({ kind: 'image', src, alt: unescapeMarkdown(parts.label) });
         return;
       }
 
       if (node.name === 'Link') {
         const resolve = options.resolveAttachment;
         if (!resolve) return;
-        const text = state.doc.sliceString(node.from, node.to);
-        const match = /^\[([^\]]*)\]\((.+)\)$/.exec(text);
-        if (!match) return;
-        const url = unwrapUrl(match[2]!.trim());
-        if (!url.startsWith(ATTACHMENT_PREFIX)) return;
-        const filename = url.slice(ATTACHMENT_PREFIX.length);
+        const parts = linkParts(state, node.node);
+        if (!parts || !parts.url.startsWith(ATTACHMENT_PREFIX)) return;
+        const filename = parts.url.slice(ATTACHMENT_PREFIX.length);
         const decoded = decodePath(filename).split('?')[0] ?? '';
         if (!PDF_PATH.test(decoded) && !options.isPdfAttachment?.(decoded)) return;
-        targets.push({ kind: 'pdf', src: resolve(filename), label: match[1] ?? '' });
+        targets.push({ kind: 'pdf', src: resolve(filename), label: parts.label });
       }
     },
   });
@@ -1788,11 +1740,10 @@ function buildDecorations(
         }
 
         if (node.name === 'Image') {
-          const text = state.doc.sliceString(node.from, node.to);
-          const match = /^!\[([^\]]*)\]\((.+)\)$/.exec(text);
-          if (!match) return;
+          const parts = linkParts(state, node.node);
+          if (!parts) return;
 
-          const url = unwrapUrl(match[2]!.trim());
+          const url = parts.url;
           const src = resolveImageSrc(url, options.resolveAttachment);
           // No source we are willing to load: a stored file with no resolver, or a
           // destination outside the http(s)/attachment set the preview pane renders.
@@ -1807,9 +1758,12 @@ function buildDecorations(
           const stored = url.startsWith(ATTACHMENT_PREFIX)
             ? (decodePath(url.slice(ATTACHMENT_PREFIX.length)).split('?')[0] ?? '')
             : null;
+          // The alt as a reader should see it: the label is the raw text, and a serialiser
+          // writes a bracket in it as `\[`. The caption drawn over the text below keeps the
+          // raw spelling, since it is the text itself, and `saveButton` leaves it as written.
           const widget = new ImageWidget(
             src,
-            match[1] ?? '',
+            unescapeMarkdown(parts.label),
             siblings,
             stored,
             options.copyAttachment,
@@ -1838,12 +1792,12 @@ function buildDecorations(
            */
           const scope = revealScope(state, node.node);
           if (!reveals(scope.from, scope.to)) {
-            const alt = match[1] ?? '';
+            const alt = parts.label;
             if (alt) {
               // `![` before the alt, `](url)` after it: hidden, with the alt itself drawn
               // as a caption and the picture appended after the whole node.
-              const altStart = node.from + 2;
-              const altEnd = altStart + alt.length;
+              const altStart = parts.labelFrom;
+              const altEnd = parts.labelTo;
               marks.push(hiddenMark.range(node.from, altStart));
               marks.push(imageAlt.range(altStart, altEnd));
               marks.push(hiddenMark.range(altEnd, node.to));
@@ -1879,7 +1833,9 @@ function buildDecorations(
              */
             marks.push(Decoration.replace({ widget }).range(node.from, node.to));
             const line = state.doc.lineAt(node.from);
-            if (line.text.trim() === text) marks.push(imageOnlyLine.range(line.from));
+            if (line.text.trim() === state.doc.sliceString(node.from, node.to)) {
+              marks.push(imageOnlyLine.range(line.from));
+            }
             return;
           }
 
@@ -2005,13 +1961,12 @@ function buildDecorations(
         }
 
         if (node.name === 'Link') {
-          const text = state.doc.sliceString(node.from, node.to);
-          // A `[…](…)` that does not match is a reference link or footnote: it has no
-          // inline destination to hide and no attachment to render.
-          const match = /^\[([^\]]*)\]\((.+)\)$/.exec(text);
-          if (!match) return;
+          // A reference link or footnote has no parts: no inline destination to hide
+          // and no attachment to render.
+          const parts = linkParts(state, node.node);
+          if (!parts) return;
 
-          const label = match[1] ?? '';
+          const label = parts.label;
 
           /**
            * Read as a link: style the label, hide the brackets and destination.
@@ -2023,15 +1978,15 @@ function buildDecorations(
            */
           const scope = revealScope(state, node.node);
           if (label && !reveals(scope.from, scope.to)) {
-            const labelStart = node.from + 1;
-            const labelEnd = labelStart + label.length;
+            const labelStart = parts.labelFrom;
+            const labelEnd = parts.labelTo;
             marks.push(hiddenMark.range(node.from, labelStart));
             marks.push(
               Decoration.mark({
                 class: 'cm-md-link',
                 // The destination is hidden with the rest of the syntax; the tooltip is
                 // where a reader can see where a click will take them before making it.
-                attributes: { title: linkDestination(match[2]!) },
+                attributes: { title: parts.url },
               }).range(labelStart, labelEnd),
             );
             marks.push(hiddenMark.range(labelEnd, node.to));
@@ -2040,7 +1995,7 @@ function buildDecorations(
           const resolve = options.resolveAttachment;
           if (!resolve) return;
 
-          const url = unwrapUrl(match[2]!.trim());
+          const url = parts.url;
           if (!url.startsWith(ATTACHMENT_PREFIX)) return;
 
           const filename = url.slice(ATTACHMENT_PREFIX.length);

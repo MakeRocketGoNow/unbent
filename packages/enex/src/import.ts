@@ -1,10 +1,10 @@
+import { formatAttachmentMarkdown } from '@unbent/shared';
 import { enmlToMarkdown } from './enml-to-markdown.js';
 import { parseEnexStream } from './parse.js';
 import { enexNoteHash, withSourceLink } from './note-body.js';
 import {
   ImportRun,
-  applyRenames,
-  storedName,
+  renamedFilesProblem,
   uploadFiles,
   type ImportClient,
   type ImportOptions,
@@ -123,17 +123,10 @@ async function importOne(
    * ones are appended as links so they remain reachable.
    */
   const renames = await uploadFiles(note.resources, result.id, client, progress, options);
-  const unreferenced = note.resources
-    .filter((r) => !usedMd5.has(r.md5))
-    .map((r) => storedName(renames, r.filename));
+  if (renames.size > 0) run.problem(note.title || 'Untitled', renamedFilesProblem(renames));
 
-  if (renames.size === 0 && unreferenced.length === 0) return;
-
-  let finalBody = applyRenames(body, renames);
-  if (unreferenced.length > 0) {
-    const links = unreferenced.map((f) => `- [${f}](files/${f})`).join('\n');
-    finalBody = `${finalBody}\n\n## Attachments\n\n${links}\n`.trim();
-  }
-
-  await client.updateBody?.(result.id, finalBody);
+  const unreferenced = note.resources.filter((r) => !usedMd5.has(r.md5)).map((r) => r.filename);
+  if (unreferenced.length === 0) return;
+  const links = unreferenced.map((f) => `- ${formatAttachmentMarkdown(f, `files/${f}`)}`).join('\n');
+  await client.updateBody?.(result.id, `${body}\n\n## Attachments\n\n${links}\n`.trim());
 }

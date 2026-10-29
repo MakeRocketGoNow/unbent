@@ -5,7 +5,9 @@ import { Link, useNavigate, useRouter } from '@tanstack/react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { EditorView } from '@codemirror/view';
 import type { FieldDef, FieldType, FieldValue, Note, NoteRevisionSummary } from '@unbent/shared';
-import { localizeImageLinks, remoteImageUrls, unreadFiles } from '@unbent/shared';
+import { remoteImageUrls, unreadFiles } from '@unbent/shared';
+import { markdownState, relinkWebImageChanges, rewriteDocument, webImageUrls } from '../editor/links.js';
+import { useSettledBody } from '../useSettledBody.js';
 import * as api from '../notes-api.js';
 import { isOfflineError, isStatus } from '../notes-api.js';
 import * as actions from '../store/actions.js';
@@ -247,6 +249,22 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
    */
   const [splitPreview, setSplitPreview] = usePersistentState('splitPreview', false);
   const [editorView, setEditorView] = useState<EditorView | null>(null);
+  /*
+     The view as it is now, for a rewrite that lands after a round trip. `editorView` is
+     the render's: a closure from the press holds the view that was mounted then, and
+     `Editor` rebuilds its view when rich/source is switched and on every
+     `editorRevision`. CodeMirror takes a dispatch to a destroyed view without a word (it
+     stores the state and returns), so a "Save web images" or a Delete that finished after
+     a switch stored the files and left the body unchanged, with the head saying "Saved".
+     Set from `onViewReady` itself rather than mirrored from the state, so it is null from
+     the moment the old view is destroyed, before React has re-rendered.
+  */
+  const editorViewRef = useRef<EditorView | null>(null);
+  const announceView = (view: EditorView | null) => {
+    editorViewRef.current = view;
+    setEditorView(view);
+  };
+  const editorViewNow = () => editorViewRef.current;
 
   // Which files are PDFs regardless of what they are named; both panes render from it.
   const pdfFilenames = usePdfAttachments(noteId);
@@ -1177,8 +1195,17 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
     }
   }
 
-  /** The addresses the draft's images are drawn from; what "Save web images" counts. */
-  const remoteImages = useMemo(() => remoteImageUrls(draft.body), [draft.body]);
+  /**
+   * The addresses the draft's images are drawn from; what "Save web images" counts.
+   * Read once typing has paused, as the attachments panel's "linked" set is, and
+   * answered at once on a switch (`useSettledBody` says why). The draft itself is the
+   * previous note's for the switch's first render, until the seeding effect runs
+   * (`draftFor` says whose it is, as the panel's `body` prop reads it), so the note's
+   * own body stands in meanwhile.
+   */
+  const liveBody = draftFor === noteId ? draft.body : (note?.body ?? '');
+  const settledBody = useSettledBody(noteId, liveBody);
+  const remoteImages = useMemo(() => remoteImageUrls(settledBody), [settledBody]);
   const draftBodyRef = useRef(draft.body);
   draftBodyRef.current = draft.body;
   /** What the last "Save web images" is doing or did, in the head where "Saved" goes. */
@@ -1211,7 +1238,8 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
     const startedFor = noteId;
     await flush();
     if (noteIdRef.current !== startedFor) return;
-    const urls = remoteImageUrls(draftBodyRef.current);
+    // From the same tree the relink below reads, so each address fetched is one it finds.
+    const urls = webImageUrls(editorViewNow()?.state ?? markdownState(draftBodyRef.current));
     const stored = new Map<string, string>();
     let failed = 0;
     for (const [i, url] of urls.entries()) {
@@ -1225,7 +1253,14 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
     }
     if (noteIdRef.current !== startedFor) return;
     if (stored.size > 0) {
-      rewriteBody(localizeImageLinks(draftBodyRef.current, (url) => stored.get(url) ?? null));
+      // Through the editor's syntax tree (`editor/links.ts`): a change to the open editor,
+      // or to the draft when none is mounted.
+      rewriteDocument(
+        editorViewNow(),
+        draftBodyRef.current,
+        (state) => relinkWebImageChanges(state, (url) => stored.get(url) ?? null),
+        rewriteBody,
+      );
       void queryClient.invalidateQueries({ queryKey: keys.attachments(startedFor) });
     }
     // Short, because it sits beside the title, which a phone gives little room. A count
@@ -1937,7 +1972,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
              every note with files opening expanded (MAK-149).
           */
           body={draftFor === note.id ? draft.body : note.body}
-          editorView={editorView}
+          editorViewNow={editorViewNow}
           onBodyRewrite={rewriteBody}
           readOnly={frozen}
           lapsed={planInactive}
@@ -2066,7 +2101,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
             autoFocus={!cameFromList && !isNewNote && !touch}
             // The way out of the editor, and the counterpart to the list's Enter.
             onEscape={focusActiveListItem}
-            onViewReady={setEditorView}
+            onViewReady={announceView}
           />
         </div>
         {showSplit && (

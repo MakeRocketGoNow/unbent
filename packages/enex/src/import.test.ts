@@ -8,7 +8,6 @@ import {
   type ImportClient,
   type ImportSkip,
 } from './import.js';
-import { applyRenames } from './import-run.js';
 
 /** Builds an in-memory ENEX file with the given notes. */
 function enexFile(name: string, notes: string[]): {
@@ -202,21 +201,33 @@ describe('attachments', () => {
       note({
         title: 'Orphan file',
         content: '<div>no media element here</div>',
-        resources: [{ base64: HELLO_B64, mime: 'text/plain', filename: 'stray.txt' }],
+        resources: [
+          { base64: HELLO_B64, mime: 'text/plain', filename: 'stray.txt' },
+          { base64: HELLO_B64, mime: 'text/plain', filename: 'stray (2).txt' },
+        ],
       }),
     ]);
 
     await importEnex(file, client);
 
-    expect(files).toHaveLength(1);
+    expect(files).toHaveLength(2);
     expect(notes[0]!.body).toContain('## Attachments');
-    expect(notes[0]!.body).toContain('files/stray.txt');
+    expect(notes[0]!.body).toContain('- [stray.txt](files/stray.txt)');
+    // A name with a space or a parenthesis is bracketed, as everywhere else a link is
+    // written; bare, the space ended the destination and the link was raw text.
+    expect(notes[0]!.body).toContain('- [stray (2).txt](<files/stray (2).txt>)');
   });
 
-  it('rewrites links when the server renames a colliding file', async () => {
+  /**
+   * Names are chosen before the body is written, so the server has no reason to rename
+   * a file on a note this run created. If it does anyway, the body is not rewritten to
+   * follow it (the import is a writer, not a rewriter); the person is told which file.
+   */
+  it('reports a file the server stored under another name, and leaves the body alone', async () => {
     const { client, notes } = fakeClient({
       uploadFile: vi.fn(async () => ({ filename: 'hello-2.txt' })),
     });
+    const failures: Array<{ title: string; reason: string }> = [];
     const file = enexFile('N.enex', [
       note({
         title: 'Renamed',
@@ -225,9 +236,12 @@ describe('attachments', () => {
       }),
     ]);
 
-    await importEnex(file, client);
-    expect(notes[0]!.body).toContain('files/hello-2.txt');
-    expect(notes[0]!.body).not.toContain('files/hello.txt');
+    const progress = await importEnex(file, client, { onFailure: (f) => failures.push(f) });
+    expect(notes[0]!.body).toContain('files/hello.txt');
+    expect(progress.created).toBe(1);
+    expect(failures).toEqual([
+      { title: 'Renamed', reason: 'The server stored "hello.txt" as "hello-2.txt"; the note still links the name the export had.' },
+    ]);
   });
 
   it('keeps two attachments that share a filename as two files', async () => {
@@ -253,45 +267,6 @@ describe('attachments', () => {
     expect(files.map((f) => f.filename)).toEqual(['image.png', 'image-2.png']);
     expect(notes[0]!.body).toContain('files/image.png');
     expect(notes[0]!.body).toContain('files/image-2.png');
-  });
-});
-
-describe('applyRenames', () => {
-  it('rewrites a colliding name without touching a neighbour it is a prefix of', () => {
-    // Camera-roll notes: IMG_1.jpg collides and is stored as IMG_1-2.jpg, while IMG_10.jpg
-    // is a different file. A substring replace of `files/IMG_1.jpg` used to produce
-    // `files/IMG_1-2.jpg0.jpg` and drop the tenth frame's link.
-    const body = '![a](files/IMG_1.jpg)\n![b](files/IMG_10.jpg)\n';
-    expect(applyRenames(body, new Map([['IMG_1.jpg', 'IMG_1-2.jpg']]))).toBe(
-      '![a](files/IMG_1-2.jpg)\n![b](files/IMG_10.jpg)\n',
-    );
-  });
-
-  it('rewrites a name that contains spaces, wrapped in angle brackets', () => {
-    const body = '[Menu Card](<files/Menu Card.pdf>)\n';
-    expect(applyRenames(body, new Map([['Menu Card.pdf', 'Menu Card-2.pdf']]))).toBe(
-      '[Menu Card](<files/Menu Card-2.pdf>)\n',
-    );
-  });
-
-  it('does not let a shorter name eat the start of a spaced neighbour', () => {
-    const body = '[a](<files/Menu Card.pdf>)\n';
-    expect(applyRenames(body, new Map([['Menu', 'Menu-2']]))).toBe(body);
-  });
-
-  /*
-   * A guard on an assumption, not on behaviour anyone wants.
-   *
-   * The boundary above stops at the characters that end a destination in the markdown
-   * this importer writes, and a space is deliberately not one of them, so that
-   * `files/Menu` cannot eat `files/Menu Card.pdf`. That is only safe while a space
-   * cannot follow a destination, which holds because `enmlToMarkdown` emits a bare
-   * `href`/`src` and never a link title. If it ever emits one, this test fails and the
-   * boundary has to grow a case for it, rather than the rename silently not happening.
-   */
-  it('leaves a destination followed by a title alone, a shape this importer never writes', () => {
-    const body = '![a](files/image.png "caption")\n';
-    expect(applyRenames(body, new Map([['image.png', 'image-2.png']]))).toBe(body);
   });
 });
 

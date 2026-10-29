@@ -1,9 +1,8 @@
 import { EditorState, EditorSelection, StateEffect } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
-import { markdown } from '@codemirror/lang-markdown';
-import { GFM } from '@lezer/markdown';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { resetConnectivity, setReachableForTests } from '../connectivity.js';
+import { editorMarkdown } from './links.js';
 import {
   bulletGlyph,
   caretBelowEnd,
@@ -57,7 +56,7 @@ function mount(doc: string, cursor = doc.length): EditorView {
     state: EditorState.create({
       doc,
       selection: EditorSelection.cursor(cursor),
-      extensions: [markdown({ extensions: [GFM] }), richMarkdown()],
+      extensions: [editorMarkdown(), richMarkdown()],
     }),
     parent,
   });
@@ -103,7 +102,7 @@ function mountWithAttachments(
       doc,
       selection: EditorSelection.cursor(cursor),
       extensions: [
-        markdown({ extensions: [GFM] }),
+        editorMarkdown(),
         richMarkdown({
           resolveAttachment: (name) => `/api/notes/n1/files/${name}`,
           isPdfAttachment: (name) => names.has(name),
@@ -486,6 +485,27 @@ describe('inline PDF', () => {
     expect(acquirePdf).toHaveBeenCalledWith('/api/notes/n1/files/my%20scan.pdf');
   });
 
+  /**
+   * The Evernote importer writes a parenthesis in a bare destination as `\(`. The parser
+   * reads it as the plain character, and so must the address the viewer fetches, or the
+   * page under the link never arrives.
+   */
+  it('unescapes a backslash-escaped destination before resolving it', () => {
+    mountWithAttachments('[r](files/Report\\(R\\).pdf)');
+    expect(acquirePdf).toHaveBeenCalledWith('/api/notes/n1/files/Report(R).pdf');
+  });
+
+  /** A serialiser escapes a bracket in the label too; the tree still sees one link. */
+  it('renders a link whose label holds an escaped bracket', () => {
+    mountWithAttachments('[Scan \\[1\\].pdf](<files/Scan [1].pdf>)');
+    expect(acquirePdf).toHaveBeenCalledWith('/api/notes/n1/files/Scan [1].pdf');
+  });
+
+  it('resolves a bracketed destination holding parentheses', () => {
+    mountWithAttachments('[r](<files/Report (R).pdf>)');
+    expect(acquirePdf).toHaveBeenCalledWith('/api/notes/n1/files/Report (R).pdf');
+  });
+
   /** The link text is the caption, so it must survive alongside the rendered page. */
   it('leaves the markdown link visible', () => {
     const v = mountWithAttachments('[report](files/report.pdf)');
@@ -615,7 +635,7 @@ describe('inline PDF', () => {
         doc: '[Menu Card](<files/Menu Card>)',
         selection: EditorSelection.cursor(0),
         extensions: [
-          markdown({ extensions: [GFM] }),
+          editorMarkdown(),
           richMarkdown({
             resolveAttachment: (name) => `/api/notes/n1/files/${name}`,
             isPdfAttachment: (name) => names.has(name),
@@ -749,6 +769,11 @@ describe('inline images', () => {
     expect(image(v)?.alt).toBe('scan');
   });
 
+  it('draws the alt with its escapes off, as a reader should see it', () => {
+    const v = mountWithAttachments('![Scan \\[1\\]](<files/Scan [1].jpg>)\n\nplain', 0);
+    expect(image(v)?.alt).toBe('Scan [1]');
+  });
+
   /**
    * The bug this fixes: an image at the very start of an unfocused note showed its raw
    * `![alt](url)` instead of rendering.
@@ -846,6 +871,15 @@ describe('inline images', () => {
     expect(saveRemoteImage).toHaveBeenCalledWith('https://example.com/a.png');
     await new Promise((r) => setTimeout(r, 0));
     expect(v.state.doc.toString()).toBe('intro\n\n![web pic](files/saved.png)\n\nplain');
+  });
+
+  it('leaves an escaped alt and a title as written when it saves', async () => {
+    saveRemoteImage.mockClear();
+    const doc = '![Scan \\[1\\] my\\_pic](https://example.com/a.png "shot")';
+    const v = mountWithAttachments(doc, 0);
+    v.dom.querySelector<HTMLButtonElement>('.cm-md-image .zoom-save')?.click();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(v.state.doc.toString()).toBe('![Scan \\[1\\] my\\_pic](files/saved.png "shot")');
   });
 
   it('keeps the web link when the save fails', async () => {
@@ -1774,7 +1808,7 @@ describe('following links', () => {
       state: EditorState.create({
         doc,
         selection: EditorSelection.cursor(doc.length),
-        extensions: [markdown({ extensions: [GFM] }), richMarkdown({ pathOpener })],
+        extensions: [editorMarkdown(), richMarkdown({ pathOpener })],
       }),
       parent,
     });
@@ -1900,6 +1934,25 @@ describe('following links', () => {
     expect(visibleText(v, 1)).toBe('https://example.com/x');
     clickLabel(v);
     expect(followed.map((f) => f.href)).toEqual(['https://example.com/x']);
+  });
+
+  /**
+   * CommonMark applies no backslash escapes inside an autolink, and the preview encodes
+   * the backslash in its href; the URL parser would otherwise read it as a slash.
+   */
+  it('follows an autolink with a backslash where the preview does', () => {
+    const doc = '<https://example.com/a\\_b>\n\nplain';
+    const v = mount(doc, doc.length);
+    clickLabel(v);
+    expect(followed.map((f) => f.href)).toEqual(['https://example.com/a%5C_b']);
+  });
+
+  /** A backslash before a letter is no escape, so it stays, and is encoded the same way. */
+  it('follows an inline link with a literal backslash where the preview does', () => {
+    const doc = '[a](https://example.com/a\\b)\n\nplain';
+    const v = mount(doc, doc.length);
+    clickLabel(v);
+    expect(followed.map((f) => f.href)).toEqual(['https://example.com/a%5Cb']);
   });
 
   it('keeps a middle-click from opening it', () => {

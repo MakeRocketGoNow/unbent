@@ -2,8 +2,6 @@ import { useEffect, useRef } from 'react';
 import { EditorView, keymap, placeholder as cmPlaceholder } from '@codemirror/view';
 import { Compartment, EditorState } from '@codemirror/state';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
-import { markdown } from '@codemirror/lang-markdown';
-import { GFM } from '@lezer/markdown';
 import { languages } from '@codemirror/language-data';
 import { caretRoom, pdfNamesChanged, richMarkdown } from '../editor/rich-markdown.js';
 import { markdownKeymap } from '../editor/markdown-commands.js';
@@ -12,6 +10,7 @@ import { fileDropCursor } from '../editor/drop-cursor.js';
 import { proseSpellcheck } from '../editor/spellcheck.js';
 import { attachments } from '../editor/attach.js';
 import { attachmentClipboard } from '../editor/clipboard.js';
+import { attachmentSrc, editorMarkdown } from '../editor/links.js';
 import { copyAttachmentToClipboard } from '../attachment-clipboard.js';
 
 interface EditorProps {
@@ -224,17 +223,14 @@ export function Editor({
             },
           ]),
           keymap.of([...markdownKeymap, ...defaultKeymap, ...historyKeymap]),
-          // GFM parses task lists, tables, and strikethrough, which plain CommonMark
-          // would leave as literal text: `[x]` otherwise reads as a link.
-          markdown({ codeLanguages: languages, extensions: [GFM] }),
+          editorMarkdown(languages),
           // Structural table editing, which is what markdown tables are worst at by hand.
           // Only in rich mode: in plain source the point is to see the pipes.
           ...(rich ? [tableTools()] : []),
           ...(rich
             ? [
                 richMarkdown({
-                  resolveAttachment: (filename) =>
-                    `/api/notes/${encodeURIComponent(noteId)}/files/${encodeURIComponent(filename)}`,
+                  resolveAttachment: (filename) => attachmentSrc(noteId, filename),
                   isPdfAttachment: (filename) => pdfFilenamesRef.current?.has(filename) ?? false,
                   // The same clipboard payload the Attachments panel's Copy writes. The
                   // type only decides whether a PNG goes along; the size is not used.

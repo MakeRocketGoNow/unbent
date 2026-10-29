@@ -124,6 +124,11 @@ export class NotesRepo extends StoreRepo {
     return this.call((s) => s.get(id, opts));
   }
 
+  /** The filenames a live note's body links, parsed in the object; see `NotesStore.linkedFilenames`. */
+  linkedFilenames(id: string): Promise<string[] | null> {
+    return this.call((s) => s.linkedFilenames(id));
+  }
+
   create(input: {
     id: string;
     title: string;

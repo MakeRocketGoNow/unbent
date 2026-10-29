@@ -1093,6 +1093,10 @@ describe('composites', () => {
 
     const got = await stub.getWithFiles(a.id);
     expect(got!.note.id).toBe(a.id);
+    expect(await stub.linkedFilenames(a.id)).toEqual([]);
+    await stub.appendToBody(a.id, '[scan](<files/scan.pdf>) and [again](files/scan.pdf)');
+    expect(await stub.linkedFilenames(a.id)).toEqual(['scan.pdf']);
+    expect(await stub.linkedFilenames('ghost')).toBeNull();
     expect(got!.files).toEqual([{ filename: 'scan.pdf', contentType: 'application/pdf', size: 1, read: 'pending', summary: null }]);
     expect(await stub.getWithFiles('ghost')).toBeNull();
 
@@ -1296,6 +1300,7 @@ describe('rows read on an archive-sized store', () => {
       await measure('notebook by name', () => stub.notebookByName('notebook 0')),
       await measure('field targets for 500 notes', () => stub.fieldTargets(Array.from({ length: 500 }, (_, k) => `n${String(k * 5).padStart(5, '0')}`))),
       await measure('get', () => stub.get('n01500')),
+      await measure('linked filenames', () => stub.linkedFilenames('n01500')),
       // MCP's get_note and list_notes with a line per file (MAK-172): every third note has
       // a scan with text, so a hundred-note page carries thirty-four.
       await measure('get with files', () => stub.getWithFiles('n01500')),
@@ -1503,6 +1508,8 @@ describe('rows read on an archive-sized store', () => {
       // Joined to its notebook per note it was 1,502.
       'field targets for 500 notes': 1200,
       get: 10,
+      // The one row, by key: the body is parsed in the object and never crosses.
+      'linked filenames': 3,
       // The note, its files by the note's index and each one's text by key (17, measured
       // 2026-10-05).
       'get with files': 30,

@@ -13,7 +13,7 @@ import { guessContentType } from './content-type-guess.js';
 import { importFormat } from './import-format.js';
 import {
   ImportRun,
-  applyRenames,
+  renamedFilesProblem,
   uploadFiles,
   type ImportClient,
   type ImportFile,
@@ -178,9 +178,7 @@ async function importOne(
     progress,
     options,
   );
-  if (renames.size > 0) {
-    await client.updateBody?.(result.id, applyRenames(note.body, renames));
-  }
+  if (renames.size > 0) run.problem(note.title, renamedFilesProblem(renames));
 }
 
 /**

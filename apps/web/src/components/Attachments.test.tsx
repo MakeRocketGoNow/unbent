@@ -2,9 +2,11 @@ import { useState } from 'react';
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { render, screen, cleanup, fireEvent, waitFor, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { EditorView } from '@codemirror/view';
 import type { AttachmentInfo } from '@unbent/shared';
 import * as api from '../notes-api.js';
 import { keys } from '../queries.js';
+import { markdownState } from '../editor/links.js';
 import { Attachments } from './Attachments.js';
 
 vi.mock('../store/actions.js', async (importOriginal) => ({
@@ -74,7 +76,7 @@ function mount(secondBody: string = n2Body) {
           Open n2
         </button>
         <div data-testid="draft-body">{body}</div>
-        <Attachments noteId={id} body={body} editorView={null} onBodyRewrite={setBody} />
+        <Attachments noteId={id} body={body} editorViewNow={() => null} onBodyRewrite={setBody} />
       </>
     );
   }
@@ -185,6 +187,66 @@ describe('Attachments', () => {
     expect(api.deleteAttachment).toHaveBeenCalledWith('n1', 'scan.pdf');
   });
 
+  it('writes to the editor mounted when the delete lands, not the one at the press', async () => {
+    // Editor rebuilds its view on a rich/source switch, and CodeMirror takes a dispatch
+    // to a destroyed view silently. The harness swaps the view while the delete is in
+    // flight, as a switch would, and the link must come out of the view that is live.
+    let finish: () => void = () => {};
+    vi.mocked(api.deleteAttachment).mockImplementation(
+      () => new Promise((resolve) => { finish = () => resolve(); }),
+    );
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+    seed(client, 'n1', [scan]);
+    const pressed = new EditorView({ state: markdownState(n1Body) });
+    const live = new EditorView({ state: markdownState(n1Body) });
+    const views = { current: pressed };
+    render(
+      <QueryClientProvider client={client}>
+        <Attachments noteId="n1" body={n1Body} editorViewNow={() => views.current} onBodyRewrite={vi.fn()} />
+      </QueryClientProvider>,
+    );
+    openPanel();
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete file' }));
+    await waitFor(() => expect(api.deleteAttachment).toHaveBeenCalledWith('n1', 'scan.pdf'));
+
+    pressed.destroy();
+    views.current = live;
+    finish();
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(live.state.doc.toString()).toBe('Keep this text.');
+    live.destroy();
+  });
+
+  it('does not call a file dropped into the note "not linked" while the body settles', async () => {
+    // A drop writes the link first; the file's row arrives a moment later. The linked
+    // set waits for typing to pause, but a new row must be read against the body now,
+    // or the panel latches open on a file that is linked (the MAK-149 symptom).
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+    seed(client, 'n1', [scan]);
+    const photo: AttachmentInfo = { filename: 'photo.jpg', contentType: 'image/jpeg', size: 1 };
+    let setBody: (body: string) => void = () => {};
+    function Harness() {
+      const [body, set] = useState(n1Body);
+      setBody = set;
+      return <Attachments noteId="n1" body={body} editorViewNow={() => null} onBodyRewrite={set} />;
+    }
+    render(
+      <QueryClientProvider client={client}>
+        <Harness />
+      </QueryClientProvider>,
+    );
+    act(() => setBody(`${n1Body}\n\n![photo](files/photo.jpg)`));
+    act(() => seed(client, 'n1', [scan, photo]));
+    await waitFor(() => expect(screen.getByText(/Attachments \(2\)/)).toBeTruthy());
+    expect(screen.queryByText(/not linked/)).toBeNull();
+    await new Promise((r) => setTimeout(r, 300));
+    expect(screen.queryByText(/not linked/)).toBeNull();
+    expect(document.querySelector('details')?.open).toBe(false);
+  });
+
   it('drops a delete confirm when the open note changes', async () => {
     mount();
     openPanel();
@@ -210,7 +272,7 @@ describe('Attachments on a locked note', () => {
     const onBodyRewrite = vi.fn();
     render(
       <QueryClientProvider client={client}>
-        <Attachments noteId="n1" body="no link here" editorView={null} onBodyRewrite={onBodyRewrite} readOnly />
+        <Attachments noteId="n1" body="no link here" editorViewNow={() => null} onBodyRewrite={onBodyRewrite} readOnly />
       </QueryClientProvider>,
     );
     openPanel();
@@ -239,7 +301,7 @@ describe('Attachments on a locked note', () => {
     seed(client, 'n1', [scan]);
     render(
       <QueryClientProvider client={client}>
-        <Attachments noteId="n1" body="no link here" editorView={null} onBodyRewrite={vi.fn()} lapsed />
+        <Attachments noteId="n1" body="no link here" editorViewNow={() => null} onBodyRewrite={vi.fn()} lapsed />
       </QueryClientProvider>,
     );
     openPanel();
@@ -257,7 +319,7 @@ describe('Attachments on a locked note', () => {
     client.setQueryData(keys.attachments('n1'), [scan, { filename: 'photo.jpg', contentType: 'image/jpeg', size: 2_000, pending: true }]);
     render(
       <QueryClientProvider client={client}>
-        <Attachments noteId="n1" body={'[scan](files/scan.pdf)\n\n![photo](files/photo.jpg)'} editorView={null} onBodyRewrite={() => {}} />
+        <Attachments noteId="n1" body={'[scan](files/scan.pdf)\n\n![photo](files/photo.jpg)'} editorViewNow={() => null} onBodyRewrite={() => {}} />
       </QueryClientProvider>,
     );
     fireEvent.click(screen.getByText(/Attachments \(2\)/));

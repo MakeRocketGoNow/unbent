@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link } from '@tanstack/react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Transaction } from '@codemirror/state';
 import type { EditorView } from '@codemirror/view';
 import type { AttachmentInfo } from '@unbent/shared';
 import {
   attachmentFilenamesInMarkdown,
   formatAttachmentMarkdown,
-  removeAttachmentLinks,
 } from '@unbent/shared';
+import { removeAttachmentLinkChanges, rewriteDocument } from '../editor/links.js';
+import { useSettledBody } from '../useSettledBody.js';
 import * as api from '../notes-api.js';
 import { copyAttachmentToClipboard } from '../attachment-clipboard.js';
 import { attachmentsQuery, keys } from '../queries.js';
@@ -25,11 +27,17 @@ interface AttachmentsProps {
   noteId: string;
   /** Current draft body, used to mark files that are no longer linked. */
   body: string;
-  /** Live editor view; used to insert a link at the cursor. */
-  editorView: EditorView | null;
   /**
-   * Called after a linked file is deleted so the editor can drop the markdown
-   * destination and remount with the rewritten body.
+   * The editor's view as it is at the call, or null while none is mounted. A function
+   * rather than the view, because a delete's round trip can outlive the view that was
+   * mounted at the press (a rich/source switch rebuilds it), and a dispatch to a destroyed
+   * view is taken silently and changes nothing.
+   */
+  editorViewNow: () => EditorView | null;
+  /**
+   * Writes a rewritten body when no editor is mounted to take the change itself
+   * (`dropLinks`, and the fallback of `insertLink`); with one mounted the change is
+   * dispatched to it instead.
    */
   onBodyRewrite: (nextBody: string) => void;
   /**
@@ -66,7 +74,7 @@ function fileUrl(noteId: string, filename: string): string {
 export function Attachments({
   noteId,
   body,
-  editorView,
+  editorViewNow,
   onBodyRewrite,
   readOnly = false,
   lapsed = false,
@@ -113,7 +121,22 @@ export function Attachments({
   /** What the last copy-to or move-to did, with a link to where the file went. */
   const [sent, setSent] = useState<ReactNode>(null);
 
-  const linked = useMemo(() => attachmentFilenamesInMarkdown(body), [body]);
+  // Read from a parse of the whole body once typing has paused (`useSettledBody` says
+  // why, and why a switch is answered at once). What is drawn may therefore trail the
+  // draft, which is why the actions below read the draft itself (`linkedNow`) and never
+  // this set: a link pasted just before Delete was pressed would otherwise be left
+  // pointing at a file that is gone.
+  // The file list, and which of it is still waiting to upload, is what the set is read
+  // against: a new row, or one that has landed, is read against the body as it is now,
+  // not as it was when typing last paused (`flushKey` says why). A waiting row is left
+  // out of the count below, so the moment it stops waiting is a moment it can first be
+  // counted, and has to be read against the body with its link in it.
+  const settledBody = useSettledBody(
+    noteId,
+    body,
+    files.map((f) => (f.pending ? `${f.filename}\0pending` : f.filename)).join('\n'),
+  );
+  const linked = useMemo(() => attachmentFilenamesInMarkdown(settledBody), [settledBody]);
   // Not a file still waiting to upload: the cleanup deletes on the server, which has no such file yet.
   const unlinked = files.filter((f) => !linked.has(f.filename) && !f.pending);
   const unlinkedCount = unlinked.length;
@@ -132,17 +155,40 @@ export function Attachments({
 
   /*
      Workspace is reused across notes, and so is this panel. A delete or move's round trip
-     outlives a switch the same way Auto-fill's does: `onBodyRewrite` writes the *current*
-     draft, so finishing after the user has moved on would replace the incoming note's body
-     with the previous one's. Drop the in-flight UI here so a Delete, Move, or "delete not
-     linked" confirm started on the last note cannot sit on this one, especially when both
-     happen to have a `scan.pdf`. The request itself is left to finish against the note it
-     started on; wasting it is cheaper than landing the rewrite on the wrong one.
+     outlives a switch the same way Auto-fill's does: `dropLinks` writes to the editor, or
+     the draft, that is *current*, so finishing after the user has moved on would take the
+     previous note's links out of the incoming note's body. Drop the in-flight UI here so
+     a Delete, Move, or "delete not linked" confirm started on the last note cannot sit on
+     this one, especially when both happen to have a `scan.pdf`. The request itself is
+     left to finish against the note it started on; wasting it is cheaper than landing
+     the rewrite on the wrong one.
   */
   const noteIdRef = useRef(noteId);
   noteIdRef.current = noteId;
   const bodyRef = useRef(body);
   bodyRef.current = body;
+  /** What the draft links at this moment: one parse, at a press, never per keystroke. */
+  const linkedNow = () => attachmentFilenamesInMarkdown(bodyRef.current);
+  /**
+   * Takes a deleted file's links out of the note, through the editor's own syntax tree
+   * (`editor/links.ts`, the one place a body is rewritten): a change dispatched to the
+   * open editor, or applied to the draft when no editor is mounted yet.
+   *
+   * Kept out of the editor's undo history. The file is gone from the server by the time
+   * this runs, so undoing the removal would bring back a link to nothing, and the panel
+   * would list no file for it. Before the rewrite went through the editor it remounted
+   * the editor and could not be undone either, at the cost of the whole history; this
+   * keeps the rest.
+   */
+  function dropLinks(filename: string) {
+    rewriteDocument(
+      editorViewNow(),
+      bodyRef.current,
+      (state) => removeAttachmentLinkChanges(state, filename),
+      onBodyRewrite,
+      { annotations: Transaction.addToHistory.of(false) },
+    );
+  }
   useEffect(() => {
     setPending(null);
     setSending(null);
@@ -177,13 +223,14 @@ export function Attachments({
       image: file.contentType.startsWith('image/'),
     });
 
-    if (editorView) {
-      const { from, to } = editorView.state.selection.main;
-      editorView.dispatch({
+    const view = editorViewNow();
+    if (view) {
+      const { from, to } = view.state.selection.main;
+      view.dispatch({
         changes: { from, to, insert: markdown },
         selection: { anchor: from + markdown.length },
       });
-      editorView.focus();
+      view.focus();
       return;
     }
 
@@ -225,7 +272,7 @@ export function Attachments({
    */
   async function sendTo(file: AttachmentInfo, target: PickedNote, mode: 'copy' | 'move') {
     const startedFor = noteId;
-    const stillLinked = linked.has(file.filename);
+    const stillLinked = linkedNow().has(file.filename);
     setBusy(file.filename);
     setDeleteError(null);
     setSent(null);
@@ -240,7 +287,7 @@ export function Attachments({
       if (mode === 'move') {
         await api.deleteAttachment(startedFor, file.filename);
         if (stillLinked && noteIdRef.current === startedFor) {
-          onBodyRewrite(removeAttachmentLinks(bodyRef.current, file.filename));
+          dropLinks(file.filename);
         }
         await queryClient.invalidateQueries({ queryKey: keys.attachments(startedFor) });
       }
@@ -274,7 +321,8 @@ export function Attachments({
    */
   async function removeUnlinked() {
     const startedFor = noteId;
-    const toDelete = unlinked;
+    const now = linkedNow();
+    const toDelete = files.filter((f) => !now.has(f.filename) && !f.pending);
     setCleaning(false);
     setBusy('*');
     setDeleteError(null);
@@ -290,7 +338,7 @@ export function Attachments({
 
   async function remove(filename: string) {
     const startedFor = noteId;
-    const stillLinked = linked.has(filename);
+    const stillLinked = linkedNow().has(filename);
     setPending(null);
     setBusy(filename);
     setDeleteError(null);
@@ -302,7 +350,7 @@ export function Attachments({
       // so a rewrite would show the link gone until the note was reopened and then bring
       // it back, pointing at nothing. The link stays, and the confirm said it would.
       if (stillLinked && !lapsed && noteIdRef.current === startedFor) {
-        onBodyRewrite(removeAttachmentLinks(bodyRef.current, filename));
+        dropLinks(filename);
       }
       await queryClient.invalidateQueries({ queryKey: keys.attachments(startedFor) });
     } catch (err) {

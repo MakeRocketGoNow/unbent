@@ -421,11 +421,13 @@ export class ImportRun {
   }
 
   /**
-   * Records something that went wrong that was not a note: a notebook's definitions the
-   * server would not take, or one field of them it could not apply. Counted with the
+   * Records something that went wrong that was not a note failing: a notebook's
+   * definitions the server would not take, or one field of them it could not apply, or
+   * a note that landed with a file under a name the body does not link. Counted with the
    * failures and reported through the same log, since that is the list a person reads
-   * to find out what did not land, but outside `attempt`, so it never counts toward the
-   * notes processed and the bar still measures notes.
+   * to find out what needs a look, but outside `attempt`, so it never counts toward the
+   * notes processed and the bar still measures notes. A note reported here was also
+   * `created`, and the summary says both: it is there, and it wants looking at.
    */
   problem(title: string, reason: string): void {
     this.progress.failed += 1;
@@ -482,11 +484,18 @@ export interface ImportFile {
 }
 
 /**
- * Uploads a note's files, in order, and says which ones the server renamed.
+ * Uploads a note's files, in order, and says which ones the server stored under another
+ * name.
  *
- * The server suffixes a name that is already taken on the note, so the stored name can
- * differ from the requested one; the map is `requested → stored` for every file that
- * happened to, so the caller can repoint the body's links.
+ * It should be none. The server suffixes a name the note already holds, and every
+ * importer gives a note's files distinct names before it writes the body that links
+ * them (`uniqueResourceFilenames`, `nextAvailableFilename`), so on a note this run
+ * created the names are free. The map is `requested → stored` for any file that was
+ * renamed all the same, for the driver to report: the body is not rewritten to follow
+ * it. A rewrite pass over the stored body was how a substring replace retargeted a
+ * neighbour's link (`files/IMG_1.jpg` inside `files/IMG_10.jpg`) and how an escaped
+ * spelling (`files/Report\(R\).pdf`) was missed, and the import is the one writer
+ * that can choose its names up front instead.
  *
  * Takes an async iterable as readily as an array so a driver that can read its files
  * lazily (an archive, where each is a byte range) holds one attachment in memory at a
@@ -551,33 +560,17 @@ export async function uploadFiles(
   return renames;
 }
 
-/** The name a body's link uses for a file, after any rename the server made. */
-export function storedName(renames: Map<string, string>, requested: string): string {
-  return renames.get(requested) ?? requested;
-}
-
 /**
- * Repoints every `files/<from>` link in a body at the names the server actually stored.
- *
- * Exact paths, not substrings. Replacing `files/IMG_1.jpg` with a split/join also rewrote
- * `files/IMG_10.jpg` (camera-roll notes are full of those neighbours) so a collision
- * suffix on the shorter file silently retargeted the longer one's link, and sometimes
- * produced a name that is not a file at all (`files/IMG_1-2.jpg0.jpg`). Longest first is
- * not enough on its own: the longer neighbour is often *not* in the rename map.
- *
- * The boundary is the characters that end a destination in the markdown this importer
- * writes (`](files/…)`, `<files/…>`). A space is not one of them, because a real export
- * has names like `Menu Card.pdf` and `files/Menu` must not eat `files/Menu Card.pdf`.
+ * What to tell the person when the server stored a file under another name than the
+ * note links; see `uploadFiles`. The link is left pointing at the name the export had,
+ * so the panel shows the file as not linked and the body's link as broken, which is the
+ * truth of it and is what the message says.
  */
-export function applyRenames(body: string, renames: Map<string, string>): string {
-  if (renames.size === 0) return body;
-  let out = body;
-  // Longest first so a name that is a prefix of another is not rewritten out from under
-  // it; entries rather than keys so the value does not need a second lookup.
-  const entries = [...renames.entries()].sort(([a], [b]) => b.length - a.length);
-  for (const [from, to] of entries) {
-    const escaped = `files/${from}`.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    out = out.replace(new RegExp(`${escaped}(?=$|[)\\n\\r>\\]])`, 'g'), `files/${to}`);
-  }
-  return out;
+export function renamedFilesProblem(renames: Map<string, string>): string {
+  const first = [...renames.entries()][0]!;
+  const rest = renames.size - 1;
+  return (
+    `The server stored "${first[0]}" as "${first[1]}"${rest > 0 ? ` and ${rest} more file${rest === 1 ? '' : 's'} under another name` : ''}; ` +
+    'the note still links the name the export had.'
+  );
 }

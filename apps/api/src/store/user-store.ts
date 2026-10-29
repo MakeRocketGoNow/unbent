@@ -1128,6 +1128,7 @@ export class UserStore extends DurableObject<StoreEnv> {
   count(opts: CountOptions = {}) { this.ready(); return this.notes.count(opts); }
   recountNotes() { return this.writing(() => this.notes.recountNotes()); }
   get(id: string, opts?: { includeTrashed?: boolean | undefined }) { this.ready(); return this.notes.get(id, opts); }
+  linkedFilenames(id: string) { this.ready(); return this.notes.linkedFilenames(id); }
   create(input: Parameters<NotesStore['create']>[0], limit?: StoreLimit) { return this.writing(() => this.notes.create(input), limit, 1); }
   duplicate(id: string, newId: string, limit?: StoreLimit) { return this.writing(() => this.notes.duplicate(id, newId), limit, 1); }
   /**

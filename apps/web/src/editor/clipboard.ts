@@ -2,12 +2,12 @@ import type { Extension } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import {
   ATTACHMENT_PREFIX,
-  absoluteAttachmentRefs,
-  absolutizeAttachmentLinks,
-  findAbsoluteAttachmentLinks,
-  relativeAttachmentLink,
-  relativizeAttachmentLinks,
+  attachmentUrl,
+  mayHoldAbsoluteAttachmentLink,
+  parseAbsoluteAttachmentUrl,
+  relativeAttachmentPath,
 } from '@unbent/shared';
+import { attachmentFilenameOf, linksWithin, type DocumentLink } from './links.js';
 
 /**
  * Attachment links across the clipboard.
@@ -29,6 +29,10 @@ import {
  * Why the clipboard carries text and not the bytes: a page can write only a handful of
  * types to the system clipboard (plain text, HTML, PNG), and a PDF is not one of them in
  * any browser. A self-describing link works for every kind of file and is faster besides.
+ *
+ * The links are found in the document's syntax tree, never by parsing the copied or
+ * pasted text on its own (`links.ts` says why): a selection is rewritten where it lies
+ * in the note, and pasted text is inserted first and read back from where it landed.
  *
  * Only the text form is touched. CodeMirror's own copy handler is left in charge of the
  * cases with nothing to rewrite: an empty selection copies the whole line, and the
@@ -76,13 +80,35 @@ export function attachmentClipboard(config: ClipboardConfig): Extension {
       if (!data) return false;
       // Files alongside the text are the upload handler's, unless the text links a note's
       // file: the panel's copy of a picture carries both, and the link is the one to use.
+      // Whether the text does is known for sure only once it is in the document (an
+      // address in a code block is not a link), so this claims on the address's shape and
+      // a paste that turns out to hold no link is a plain paste that cost a tree walk.
       const text = data.getData('text/plain');
-      if (!text || findAbsoluteAttachmentLinks(text).length === 0) return false;
+      if (!text || !mayHoldAbsoluteAttachmentLink(text)) return false;
       event.preventDefault();
       void pasteWithAttachments(view, text, data.getData(CUT_FLAVOUR) === '1', config);
       return true;
     },
   });
+}
+
+/** A link in the document that names a note's file by its absolute address. */
+interface AbsoluteLink extends DocumentLink {
+  noteId: string;
+  filename: string;
+}
+
+/** The absolute attachment links lying whole within `ranges`. */
+function absoluteLinksWithin(
+  view: EditorView,
+  ranges: readonly { from: number; to: number }[],
+): AbsoluteLink[] {
+  const links: AbsoluteLink[] = [];
+  for (const link of linksWithin(view.state, ranges)) {
+    const ref = parseAbsoluteAttachmentUrl(link.url);
+    if (ref) links.push({ ...link, ...ref });
+  }
+  return links;
 }
 
 /**
@@ -103,14 +129,29 @@ function exportSelection(
   const { state } = view;
   const ranges = state.selection.ranges.filter((range) => !range.empty);
   if (ranges.length === 0) return false;
+  // The walk is spared for the common copy of prose: every same-note link spells
+  // `files` in its destination (the slash after it may be escaped, `files\/a.pdf`,
+  // which the tree reads as the plain one).
+  if (!ranges.some((range) => state.sliceDoc(range.from, range.to).includes(ATTACHMENT_PREFIX.slice(0, -1)))) return false;
 
-  const text = ranges.map((range) => state.sliceDoc(range.from, range.to)).join(state.lineBreak);
-  if (!text.includes(ATTACHMENT_PREFIX)) return false;
-  const absolute = absolutizeAttachmentLinks(text, { noteId: config.noteId, origin: config.origin });
-  if (absolute === text) return false;
+  const links = linksWithin(state, ranges).filter((link) => attachmentFilenameOf(link) !== null);
+  if (links.length === 0) return false;
+
+  const text = ranges
+    .map((range) => {
+      let out = '';
+      let last = range.from;
+      for (const link of links) {
+        if (link.from < range.from || link.to > range.to) continue; // another range's
+        out += state.sliceDoc(last, link.urlFrom) + attachmentUrl(config.noteId, attachmentFilenameOf(link)!, config.origin);
+        last = link.urlTo;
+      }
+      return out + state.sliceDoc(last, range.to);
+    })
+    .join(state.lineBreak);
 
   event.preventDefault();
-  data.setData('text/plain', absolute);
+  data.setData('text/plain', text);
   if (cut) data.setData(CUT_FLAVOUR, '1');
   return true;
 }
@@ -133,21 +174,30 @@ async function pasteWithAttachments(
   cut: boolean,
   config: ClipboardConfig,
 ): Promise<void> {
-  const own = relativizeAttachmentLinks(text, (ref) =>
-    ref.noteId === config.noteId ? ref.filename : null,
-  );
-  view.dispatch(view.state.replaceSelection(own), {
+  const insertion = view.state.update(view.state.replaceSelection(text), {
     scrollIntoView: true,
     userEvent: 'input.paste',
   });
+  const inserted: Array<{ from: number; to: number }> = [];
+  insertion.changes.iterChangedRanges((_fromA, _toA, fromB, toB) => inserted.push({ from: fromB, to: toB }));
+  view.dispatch(insertion);
+
+  // Read back from the document, where the text has its context, before anything moves.
+  const links = absoluteLinksWithin(view, inserted);
+  relink(
+    view,
+    links.filter((link) => link.noteId === config.noteId),
+    (link) => link.filename,
+  );
 
   const { copyFrom } = config;
   if (!copyFrom) return;
 
   const bySource = new Map<string, string[]>();
-  for (const { noteId, filename } of absoluteAttachmentRefs(own)) {
+  for (const { noteId, filename } of links) {
     if (noteId === config.noteId) continue;
-    bySource.set(noteId, [...(bySource.get(noteId) ?? []), filename]);
+    const names = bySource.get(noteId) ?? [];
+    if (!names.includes(filename)) bySource.set(noteId, [...names, filename]);
   }
 
   for (const [source, filenames] of bySource) {
@@ -157,21 +207,28 @@ async function pasteWithAttachments(
     } catch {
       continue; // left absolute, see above
     }
-    relinkCopied(view, source, names);
+    // Searched in the current document rather than remembered from the paste: the user
+    // has been typing meanwhile, and an undo may have removed the links entirely, in
+    // which case there is nothing to do.
+    relink(
+      view,
+      absoluteLinksWithin(view, [{ from: 0, to: view.state.doc.length }]).filter((link) => link.noteId === source),
+      (link) => names.get(link.filename) ?? null,
+    );
   }
 }
 
 /**
- * Rewrites every link to `source`'s files that now exist here, by position, in one
- * transaction. Searched in the current document rather than remembered from the paste:
- * the user has been typing meanwhile, and an undo may have removed the links entirely,
- * in which case there is nothing to do.
+ * Rewrites each link's destination to `files/<name>`, by position, in one transaction,
+ * for the links `rename` answers a name for. The destination only: a picture inside the
+ * label is its own link, with its own change here, and two changes over one span is a
+ * transaction CodeMirror refuses.
  */
-function relinkCopied(view: EditorView, source: string, names: Map<string, string>) {
-  const changes = findAbsoluteAttachmentLinks(view.state.doc.toString()).flatMap((link) => {
-    const renamed = link.noteId === source ? names.get(link.filename) : undefined;
-    if (renamed === undefined) return [];
-    return [{ from: link.from, to: link.to, insert: relativeAttachmentLink(link, renamed) }];
+function relink(view: EditorView, links: AbsoluteLink[], rename: (link: AbsoluteLink) => string | null): void {
+  const changes = links.flatMap((link) => {
+    const renamed = rename(link);
+    if (renamed === null) return [];
+    return [{ from: link.urlFrom, to: link.urlTo, insert: relativeAttachmentPath(renamed) }];
   });
   if (changes.length > 0) view.dispatch({ changes });
 }

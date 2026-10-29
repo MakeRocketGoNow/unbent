@@ -1,6 +1,6 @@
 import { Facet, type Extension, type Text } from '@codemirror/state';
 import { EditorView, ViewPlugin, type PluginValue } from '@codemirror/view';
-import { findAbsoluteAttachmentLinks, formatAttachmentMarkdown } from '@unbent/shared';
+import { formatAttachmentMarkdown, mayHoldAbsoluteAttachmentLink } from '@unbent/shared';
 
 /**
  * Every way a file gets into the editor: a drop, a paste, and the toolbar's Attach button.
@@ -101,7 +101,7 @@ export function attachments(config: AttachConfig): Extension {
            here (copied key to key on the server, original bytes, no upload), so the
            clipboard handler (editor/clipboard.ts) takes that paste, and this one declines.
         */
-        if (findAbsoluteAttachmentLinks(event.clipboardData?.getData('text/plain') ?? '').length > 0) {
+        if (mayHoldAbsoluteAttachmentLink(event.clipboardData?.getData('text/plain') ?? '')) {
           return false;
         }
         event.preventDefault();

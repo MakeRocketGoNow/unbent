@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { EditorState } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
+import { markdown } from '@codemirror/lang-markdown';
+import { GFM } from '@lezer/markdown';
 import { attachmentUrl } from '@unbent/shared';
 import { attachmentClipboard, CUT_FLAVOUR, type ClipboardConfig } from './clipboard.js';
 
@@ -14,7 +16,7 @@ const THERE = 'note-there';
 
 function mount(doc: string, config: ClipboardConfig, selection?: { anchor: number; head: number }) {
   return new EditorView({
-    state: EditorState.create({ doc, selection, extensions: [attachmentClipboard(config)] }),
+    state: EditorState.create({ doc, selection, extensions: [markdown({ extensions: [GFM] }), attachmentClipboard(config)] }),
     parent: document.body,
   });
 }
@@ -70,6 +72,53 @@ describe('copy', () => {
   });
 });
 
+describe('copy in context', () => {
+  /**
+   * A third-level bullet is indented four spaces, which is a code block to a parser
+   * handed the selected line alone and a list item to the editor's tree. The links are
+   * read where they lie in the document, so the copy carries the file either way.
+   */
+  it('rewrites a link in a deeply nested bullet', () => {
+    const doc = '- a\n  - b\n    - [x](files/a.pdf)';
+    const view = mount(doc, { noteId: HERE }, { anchor: doc.indexOf('    -'), head: doc.length });
+    const data = clipboard();
+    fire(view, 'copy', data);
+    expect(data.store.get('text/plain')).toBe(`    - [x](${attachmentUrl(HERE, 'a.pdf')})`);
+    view.destroy();
+  });
+
+  it('leaves a link cut across the selection edge, and one in a code block, as written', () => {
+    const doc = '![a](files/a.png)\n\n    [b](files/b.pdf)';
+    const view = mount(doc, { noteId: HERE }, { anchor: 3, head: doc.length });
+    const data = clipboard();
+    const event = fire(view, 'copy', data);
+    expect(event.defaultPrevented).toBe(false);
+    view.destroy();
+  });
+
+  it('keeps a title and rewrites a picture inside a link with the link', () => {
+    const doc = `[![a](<files/a b.png> "pic")](files/c.pdf "doc")`;
+    const view = mount(doc, { noteId: HERE }, { anchor: 0, head: doc.length });
+    const data = clipboard();
+    fire(view, 'copy', data);
+    expect(data.store.get('text/plain')).toBe(
+      `[![a](${attachmentUrl(HERE, 'a b.png')} "pic")](${attachmentUrl(HERE, 'c.pdf')} "doc")`,
+    );
+    view.destroy();
+  });
+});
+
+describe('an escaped slash in a destination', () => {
+  it('is still a same-note link to copy', () => {
+    const doc = '[a](files\\/a.pdf)';
+    const view = mount(doc, { noteId: HERE }, { anchor: 0, head: doc.length });
+    const data = clipboard();
+    fire(view, 'copy', data);
+    expect(data.store.get('text/plain')).toBe(`[a](${attachmentUrl(HERE, 'a.pdf')})`);
+    view.destroy();
+  });
+});
+
 describe('cut', () => {
   it('marks the text as cut and removes it from the document', () => {
     const doc = 'keep ![a](files/a.png)';
@@ -85,6 +134,18 @@ describe('cut', () => {
 });
 
 describe('paste', () => {
+  it('relinks a picture inside a link and the link around it in one transaction', async () => {
+    const copyFrom = vi.fn(async (_from: string, filenames: string[]) => new Map(filenames.map((n) => [n, n])));
+    const view = mount('', { noteId: HERE, copyFrom });
+    const text = `[![a](${attachmentUrl(THERE, 'a.png')})](${attachmentUrl(THERE, 'b.pdf')})`;
+    fire(view, 'paste', clipboard({ 'text/plain': text }));
+    await settle();
+    // Two changes over one span is a transaction CodeMirror refuses: each rewrite is its
+    // own destination, and the label between them is left as it was.
+    expect(view.state.doc.toString()).toBe('[![a](files/a.png)](files/b.pdf)');
+    view.destroy();
+  });
+
   it('copies another note files across and links them under the names they got here', async () => {
     const copyFrom = vi.fn(async (_from: string, filenames: string[]) =>
       new Map(filenames.map((name) => [name, name === 'a.png' ? 'a-2.png' : name])),
@@ -99,6 +160,28 @@ describe('paste', () => {
     await settle();
     expect(copyFrom).toHaveBeenCalledWith(THERE, ['a.png', 'my b.pdf'], false);
     expect(view.state.doc.toString()).toBe('start ![a](files/a-2.png) [b](<files/my b.pdf>)');
+    view.destroy();
+  });
+
+  it('finds a link in a pasted nested bullet, once the text has its context', async () => {
+    const copyFrom = vi.fn(async (_from: string, filenames: string[]) => new Map(filenames.map((n) => [n, n])));
+    const view = mount('', { noteId: HERE, copyFrom });
+    fire(view, 'paste', clipboard({ 'text/plain': `- a\n  - b\n    - [x](${attachmentUrl(THERE, 'a.pdf')})` }));
+    await settle();
+    expect(copyFrom).toHaveBeenCalledWith(THERE, ['a.pdf'], false);
+    expect(view.state.doc.toString()).toBe('- a\n  - b\n    - [x](files/a.pdf)');
+    view.destroy();
+  });
+
+  it('claims text that only looks like it holds a link, and inserts it as it is', async () => {
+    const copyFrom = vi.fn();
+    const view = mount('', { noteId: HERE, copyFrom });
+    const text = `    [a](${attachmentUrl(THERE, 'a.pdf')})`;
+    const event = fire(view, 'paste', clipboard({ 'text/plain': text }));
+    expect(event.defaultPrevented).toBe(true);
+    await settle();
+    expect(copyFrom).not.toHaveBeenCalled();
+    expect(view.state.doc.toString()).toBe(text);
     view.destroy();
   });
 

@@ -1,8 +1,4 @@
-import {
-  attachmentFilenamesInMarkdown,
-  formatAttachmentMarkdown,
-  type AttachmentInfo,
-} from '@unbent/shared';
+import { formatAttachmentMarkdown, type AttachmentInfo } from '@unbent/shared';
 import type { AttachmentsRepo } from './attachments-repo.js';
 import type { NotesRepo } from './notes-repo.js';
 import { PlanRefused } from './free-plan.js';
@@ -84,13 +80,12 @@ export async function copyAttachments(
   }
 
   // Read once, after the copies: the body that matters is the one stored when the
-  // deletion is decided, not one read before the loop started.
+  // deletion is decided, not one read before the loop started. The store answers the
+  // names rather than the body, since finding them is a parse the Worker's CPU budget
+  // does not cover (`NotesStore.linkedFilenames`); it is still the one call it was.
   let stillLinked: Set<string> | null = null;
   const sourceStillLinks = async (filename: string) => {
-    if (!stillLinked) {
-      const source = await repos.notes.get(input.from);
-      stillLinked = attachmentFilenamesInMarkdown(source?.body ?? '');
-    }
+    stillLinked ??= new Set((await repos.notes.linkedFilenames(input.from)) ?? []);
     return stillLinked.has(filename);
   };
 

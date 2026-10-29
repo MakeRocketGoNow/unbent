@@ -18,32 +18,231 @@ import { visit } from 'unist-util-visit';
 export const ATTACHMENT_PREFIX = 'files/';
 
 /**
- * Build a markdown link or image for an attachment path.
+ * A path as a markdown link destination.
  *
  * CommonMark destinations cannot contain whitespace unless wrapped in angle brackets.
  * Dropped files keep their original names, so a PDF like `Treatment Plan.pdf` must become
  * `[Treatment Plan.pdf](<files/Treatment Plan.pdf>)`: without the brackets the preview
  * shows the raw markdown instead of a link, and PDFs never get an inline viewer.
+ *
+ * A parenthesis or a backslash takes the brackets too. Bare, a `(` or `)` is legal only
+ * in a balanced pair and a `\` escapes what follows, so the name has two spellings
+ * (`files/Report(R).pdf` and `files/Report\(R\).pdf`, which is what a markdown
+ * serialiser writes) and every reader of the body has to know both. Bracketed, the name
+ * ends at the `>`, the one form every reader already handled. A backslash is still an
+ * escape inside the brackets, so one in the name is doubled: written single, `a\(b.pdf`
+ * would be read back as `a(b.pdf` and flagged "Not linked" by the readers this exists
+ * to satisfy.
+ *
+ * An ampersand that begins a character reference is escaped too, bracketed or not,
+ * because a destination is read with its references decoded (`readDestination`): bare, a
+ * file named `a&copy;b.pdf` would be read back as `a©b.pdf`. Escaped, `\&` is the
+ * literal character to every reader. Only that ampersand: a plain one (`Tom & Jerry.pdf`,
+ * a common name) is read as itself by every reader already, and the editor draws a
+ * label's text as written, so escaping every `&` put a backslash in every such name on
+ * screen (2026-10-29).
+ */
+function attachmentDestination(path: string): string {
+  const escaped = path.replace(/\\/g, '\\\\').replace(REFERENCE_AMPERSAND_RE, '\\&');
+  return /[\s()\\]/.test(path) ? `<${escaped}>` : escaped;
+}
+
+/** An ampersand that would begin a character reference, the only kind a reader decodes. */
+const REFERENCE_AMPERSAND_RE = /&(?=#\d+;|#x[0-9a-f]+;|[a-z][a-z0-9]*;)/gi;
+
+/**
+ * Build a markdown link or image for an attachment path; see `attachmentDestination`.
+ *
+ * The label is nearly always the filename, and a bracket or a backslash in a filename
+ * is escaped there as any serialiser would: written bare, `[a]b.pdf](files/a]b.pdf)` is
+ * no link at all, and the panel called the file "Not linked" the moment it was added. A
+ * balanced pair would survive, but the readers take the escaped form either way.
  */
 export function formatAttachmentMarkdown(
   label: string,
   path: string,
   opts: { image?: boolean } = {},
 ): string {
-  const dest = /\s/.test(path) ? `<${path}>` : path;
-  return `${opts.image ? '!' : ''}[${label}](${dest})`;
+  const escapedLabel = label.replace(/[[\]\\]/g, '\\$&').replace(REFERENCE_AMPERSAND_RE, '\\&');
+  return `${opts.image ? '!' : ''}[${escapedLabel}](${attachmentDestination(path)})`;
 }
 
 /**
  * Decode a path segment the way the renderer does: percent-decoding when valid,
  * otherwise leaving the literal alone (a lone `%` is not encoding).
  */
-function decodePathSegment(segment: string): string {
+export function decodePathSegment(segment: string): string {
   try {
     return decodeURIComponent(segment);
   } catch {
     return segment;
   }
+}
+
+/**
+ * Takes the backslash escapes off a run of markdown as written in the body: a
+ * destination, or a label.
+ *
+ * CommonMark lets a backslash escape any ASCII punctuation, in a bracketed destination as
+ * in a bare one, and the Evernote importer's serialiser escapes every parenthesis it
+ * writes bare and every bracket in a label. The parser below does this itself; this is
+ * for the editor, which reads a link's raw text out of its own syntax tree and has to
+ * take the escapes off the same way, for the address it builds and for the alt it
+ * draws. Percent-decoding is separate (`decodePathSegment`): the editor keeps the
+ * encoded spelling for the address it builds, and only the readers here want the plain
+ * name.
+ */
+export function unescapeMarkdown(raw: string): string {
+  return raw.replace(/\\([!-/:-@[-`{-~])/g, '$1');
+}
+
+/**
+ * Whether a destination's raw spelling holds a character reference (`&amp;`, `&#39;`,
+ * `&copy;`), which the parser decodes and a backslash-escape pass does not.
+ */
+const CHARACTER_REFERENCE_RE = /&(?:#\d+|#x[0-9a-f]+|[a-z][a-z0-9]*);/i;
+
+/**
+ * A link destination as the parser reads it, from its raw spelling in a body (angle
+ * brackets and all): backslash escapes off and character references decoded. For the
+ * editor, whose own reading (`unescapeMarkdown` on its tree's `URL` node) takes the
+ * escapes off and nothing else, so `files/A&amp;B.pdf` was linked to the panel and not
+ * to Delete, and a web image at an address with `&amp;` in it was fetched at a different
+ * address from the one the preview draws (2026-10-29). The parser's own reading is the
+ * one decoding there is, and asking it keeps the two readers one; a reference table
+ * here would be a second. Null when the spelling is no link's destination at all.
+ */
+export function readDestination(raw: string): string | null {
+  if (!CHARACTER_REFERENCE_RE.test(raw)) return null;
+  const hit = destinations.get(raw);
+  if (hit !== undefined) return hit;
+  const link = parseInlineLinks(`[](${raw})`)[0];
+  const read = link && link.from === 0 && link.to === raw.length + 4 ? link.url : null;
+  // The editor asks on every decoration rebuild (each keystroke, scroll and selection)
+  // for every such link on screen, and a clipped page's image addresses often carry
+  // `&amp;`; the answer for a spelling never changes. Bounded, since spellings are few.
+  if (destinations.size >= 500) destinations.clear();
+  destinations.set(raw, read);
+  return read;
+}
+
+const destinations = new Map<string, string | null>();
+
+/** An inline link or image in some markdown, with where it sits in the text. */
+interface InlineLink {
+  image: boolean;
+  from: number;
+  to: number;
+  /** The destination as the parser reads it: brackets and backslash escapes off. */
+  url: string;
+}
+
+/**
+ * Parses markdown with the grammar the preview uses (`remarkDisableSetext` is part of
+ * it), minus the plugins that only shape output, so what is a link here is a link there.
+ */
+const linkParser = unified().use(remarkParse).use(remarkDisableSetext).use(remarkGfm).freeze();
+
+/**
+ * Every inline link and image in some markdown, in order, with positions: the one walk
+ * every reader of link destinations here is built on.
+ *
+ * Readers only. Nothing here rewrites a body: that is the editor's, from its own syntax
+ * tree (`apps/web/src/editor/links.ts`), which has the document's context and is the
+ * parser the person is looking at. Until 2026-10-29 this module held a second set of
+ * rewriters over the remark tree, and two parsers that had to agree about nesting,
+ * escapes and context did not.
+ *
+ * It is the markdown parser, not a regex. Until 2026-10-28 six hand-written regexes read
+ * link syntax, one per reader, and each had its own idea of where a label or a destination
+ * ended. None of them knew a backslash escape (which a serialiser writes for a parenthesis
+ * or a bracket in a filename) or a balanced pair of parentheses; one stopped at the first
+ * `)`, another at the first `]`, and a third took an image inside a link from the outer
+ * bracket. Each was found and fixed one at a time, and each fix turned up the next. The
+ * parser already answers what a link means, with the escapes handled, so that is what
+ * every reader asks now.
+ *
+ * Reference links, autolinks and the bare URLs GFM recognises are left out: they have no
+ * `[label](destination)`, and none of the readers wants them.
+ */
+function inlineLinks(markdown: string): InlineLink[] {
+  if (markdown === lastParsed.markdown) return lastParsed.links;
+  const links = parseInlineLinks(markdown);
+  lastParsed = { markdown, links };
+  return links;
+}
+
+/**
+ * The last body parsed and what was found in it. Two readers run on every keystroke of
+ * the body (the attachments panel's "linked" set and the count of web images in the
+ * head), and a parse is about 1.5 ms per kilobyte of body, measured in Node on
+ * 2026-10-28, against nothing for the regexes it replaced: a 100 KB clipped page is
+ * 150 ms. One entry is enough, since both ask about the same draft in the same render,
+ * and a string compare of two equal bodies is a memcmp. The callers defer the value they
+ * pass in as well, so the keystroke is painted before the parse runs. If a long note
+ * still types slowly, the next step is to read the links out of the editor's own
+ * incremental syntax tree instead of parsing the body again here.
+ */
+let lastParsed: { markdown: string; links: InlineLink[] } = { markdown: '', links: [] };
+
+function parseInlineLinks(markdown: string): InlineLink[] {
+  // Nothing to find is the common case for a note of a few lines, and `[` is in every
+  // inline link and image; the parse is the cost worth skipping, not the walk.
+  if (!markdown.includes('[')) return [];
+  const links: InlineLink[] = [];
+  visit(linkParser.parse(markdown) as never, (node: MdLinkNode) => {
+    if (node.type !== 'link' && node.type !== 'image') return;
+    const from = node.position?.start.offset;
+    const to = node.position?.end.offset;
+    if (from === undefined || to === undefined) return;
+    const image = node.type === 'image';
+    // A `link` that does not open with a bracket is a GFM literal autolink, a bare
+    // address in the text, which names no file and has no destination to read. A
+    // reference link, `[x][ref]`, is a `linkReference` node the walk never sees.
+    if (markdown.slice(from, from + (image ? 2 : 1)) !== (image ? '![' : '[')) return;
+    links.push({ image, from, to, url: node.url ?? '' });
+  });
+  return links;
+}
+
+interface MdLinkNode {
+  type: string;
+  url?: string;
+  position?: { start: { offset?: number }; end: { offset?: number } };
+}
+
+/**
+ * Every same-note `files/…` link or image in some markdown. The filename is as the
+ * attachment row has it, with the destination's escapes and encoding taken off.
+ */
+function relativeAttachmentLinks(markdown: string): Array<InlineLink & { filename: string }> {
+  const links: Array<InlineLink & { filename: string }> = [];
+  // Every same-note link spells `files` somewhere in its destination, in any of the
+  // forms (the slash after it may be escaped, `files\/a.pdf`, which the parser reads
+  // as the plain one); a body without it (most notes, and a note a move just cut a link
+  // out of) is answered without the parse.
+  if (!markdown.includes(ATTACHMENT_PREFIX.slice(0, -1))) return links;
+  for (const link of inlineLinks(markdown)) {
+    const filename = attachmentFilenameFromUrl(link.url);
+    if (filename !== null) links.push({ ...link, filename });
+  }
+  return links;
+}
+
+/**
+ * The note's own file a destination names, by the name the attachment row has, or null
+ * for any other destination. The one reading of "which file is this", for the parser's
+ * links here and the editor's tree's (`attachmentFilenameOf` in `editor/links.ts`).
+ */
+export function attachmentFilenameFromUrl(url: string): string | null {
+  if (!url.startsWith(ATTACHMENT_PREFIX)) return null;
+  const filename = decodePathSegment(url.slice(ATTACHMENT_PREFIX.length));
+  return filename === '' ? null : filename;
+}
+
+/** Whether a destination is on the web, as opposed to a note's own file or an anchor. */
+export function isWebUrl(url: string): boolean {
+  return /^https?:\/\//i.test(url);
 }
 
 /**
@@ -53,42 +252,7 @@ function decodePathSegment(segment: string): string {
  * removing a link does not delete the file.
  */
 export function attachmentFilenamesInMarkdown(markdown: string): Set<string> {
-  const names = new Set<string>();
-  // Two destination forms, and the delimiter that ends the filename differs between them.
-  // Angle-bracket `[…](<files/x (y).pdf>)`: the name runs to the closing `>`, so a `)` in
-  // the name (a real thing in imported filenames) is content, not the end. Bare
-  // `[…](files/x)`: CommonMark forbids whitespace, so the name ends at the `)`. Both cover
-  // image forms via the leading `!?`.
-  const re =
-    /!?\[[^\]]*]\(\s*<files\/([^>\n]+)>\s*\)|!?\[[^\]]*]\(\s*files\/([^)\s<>]+)\s*\)/g;
-  for (const match of markdown.matchAll(re)) {
-    const raw = (match[1] ?? match[2] ?? '').trim();
-    if (!raw) continue;
-    names.add(decodePathSegment(raw));
-  }
-  return names;
-}
-
-/** Escape a string for use inside a RegExp character class / pattern. */
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-/**
- * Removes markdown image/link nodes whose destination is `files/<filename>`.
- *
- * Handles both raw and percent-encoded destinations, and angle-bracket destinations
- * used when the path contains spaces. Leaves surrounding text intact.
- */
-export function removeAttachmentLinks(markdown: string, filename: string): string {
-  const variants = new Set([filename, encodeURIComponent(filename)]);
-  let out = markdown;
-  for (const name of variants) {
-    const dest = escapeRegExp(`${ATTACHMENT_PREFIX}${name}`);
-    out = out.replace(new RegExp(`!?\\[[^\\]]*\\]\\(\\s*<?${dest}>?\\s*\\)`, 'g'), '');
-  }
-  // Collapse runs of blank lines left behind by a removed-only paragraph.
-  return out.replace(/\n{3,}/g, '\n\n');
+  return new Set(relativeAttachmentLinks(markdown).map((link) => link.filename));
 }
 
 /**
@@ -102,127 +266,65 @@ export function removeAttachmentLinks(markdown: string, filename: string): strin
  * prepended when the text may be pasted outside the app, where a path alone is not a URL.
  */
 export function attachmentUrl(noteId: string, filename: string, origin = ''): string {
-  return `${origin}/api/notes/${encodeURIComponent(noteId)}/files/${encodeURIComponent(filename)}`;
+  return `${origin}/api/notes/${segment(noteId)}/files/${segment(filename)}`;
 }
 
 /**
- * A `files/…` destination in either of its two spellings; see `attachmentFilenamesInMarkdown`
- * for why the delimiter that ends the name differs between them.
+ * A path segment for a markdown destination. `encodeURIComponent` leaves `(` and `)` as
+ * they are, and a bare one in a destination either has to balance or ends the link, so
+ * `a(b.pdf` made a link other apps' parsers cannot read to the end. The server and the
+ * worker decode the segment, so `%28` reaches the same file.
  */
-const RELATIVE_ATTACHMENT_LINK_RE =
-  /(!?\[[^\]]*\])\(\s*(?:<files\/([^>\n]+)>|files\/([^)\s<>]+))\s*\)/g;
-
-/**
- * Rewrites every same-note `files/…` link to the absolute form `attachmentUrl` produces.
- *
- * Run on the way *out* of a note (the editor's copy handler), never on the stored body,
- * which stays relative so an exported folder works in any editor. The label is kept as
- * written; only the destination changes. Angle brackets are dropped along with the
- * spaces that needed them: the encoded URL has none.
- */
-export function absolutizeAttachmentLinks(
-  markdown: string,
-  opts: { noteId: string; origin?: string },
-): string {
-  return markdown.replace(RELATIVE_ATTACHMENT_LINK_RE, (_match, label: string, bracketed, bare) => {
-    const filename = decodePathSegment(((bracketed ?? bare ?? '') as string).trim());
-    return `${label}(${attachmentUrl(opts.noteId, filename, opts.origin)})`;
-  });
-}
-
-/** A link in pasted text that names another note's file, with where it sits in the text. */
-export interface AbsoluteAttachmentLink {
-  from: number;
-  to: number;
-  /** The `![alt]` or `[text]` part, verbatim, so a rewrite keeps the image mark. */
-  label: string;
-  noteId: string;
-  filename: string;
+function segment(value: string): string {
+  return encodeURIComponent(value).replace(/\(/g, '%28').replace(/\)/g, '%29');
 }
 
 /**
- * An absolute attachment destination, with or without an origin, with or without angle
- * brackets. The note id and filename groups stop at anything that could end a URL or a
- * markdown destination; the filename is percent-decoded by the caller.
+ * The `files/<filename>` destination a link to one of the note's own files is written
+ * with, bracketed when the name needs it; see `attachmentDestination`. For the editor,
+ * which rewrites a pasted link's destination in place once its file is here.
  */
-const ABSOLUTE_ATTACHMENT_LINK_RE =
-  /(!?\[[^\]]*\])\(\s*<?(?:https?:\/\/[^/\s<>]+)?\/api\/notes\/([^/\s<>)]+)\/files\/([^\s<>)]+?)>?\s*\)/g;
-
-/**
- * Every absolute attachment link in some markdown, in order, with positions.
- *
- * The positions are what the editor needs: it inserts pasted text first and rewrites the
- * links in place once the files have been copied, and a rewrite by position is one
- * transaction that leaves the cursor and the undo history alone. A whole-string
- * `relativizeAttachmentLinks` is built on the same walk for callers that hold text rather
- * than a document.
- */
-export function findAbsoluteAttachmentLinks(markdown: string): AbsoluteAttachmentLink[] {
-  const links: AbsoluteAttachmentLink[] = [];
-  for (const match of markdown.matchAll(ABSOLUTE_ATTACHMENT_LINK_RE)) {
-    const [whole, label, noteId, filename] = match;
-    if (!label || !noteId || !filename) continue;
-    links.push({
-      from: match.index,
-      to: match.index + whole.length,
-      label,
-      noteId: decodePathSegment(noteId),
-      // A query the panel's download link carries (`?download=1`) is not part of the name.
-      filename: decodePathSegment(filename.split('?')[0] ?? ''),
-    });
-  }
-  return links;
-}
-
-/** The distinct files some markdown links absolutely, each named once per note. */
-export function absoluteAttachmentRefs(markdown: string): Array<{ noteId: string; filename: string }> {
-  const seen = new Set<string>();
-  const refs: Array<{ noteId: string; filename: string }> = [];
-  for (const { noteId, filename } of findAbsoluteAttachmentLinks(markdown)) {
-    const key = `${noteId}${filename}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    refs.push({ noteId, filename });
-  }
-  return refs;
-}
-
-/** The markdown a link should become once its file is stored in the note as `filename`. */
-export function relativeAttachmentLink(link: Pick<AbsoluteAttachmentLink, 'label'>, filename: string): string {
-  const path = `${ATTACHMENT_PREFIX}${filename}`;
-  // Same rule as `formatAttachmentMarkdown`: a name with whitespace needs the brackets.
-  return `${link.label}(${/\s/.test(path) ? `<${path}>` : path})`;
+export function relativeAttachmentPath(filename: string): string {
+  return attachmentDestination(`${ATTACHMENT_PREFIX}${filename}`);
 }
 
 /**
- * Turns absolute attachment links back into `files/…` links, for text arriving in a note.
- *
- * `rename` answers, for each link, the filename the file now has in the destination note
- * (which may differ from the source's, since a name already taken there is suffixed)
- * or null to leave that link as it is. Leaving it absolute is the honest fallback when the
- * copy failed: the link still opens for the owner, and nothing pretends the file is here.
+ * An absolute attachment address, with or without an origin: a URL, not markdown, so
+ * the one regex left here is on the shape of a path. The note id and the filename are
+ * percent-decoded by `parseAbsoluteAttachmentUrl`.
  */
-export function relativizeAttachmentLinks(
-  markdown: string,
-  rename: (ref: { noteId: string; filename: string }) => string | null,
-): string {
-  let out = '';
-  let last = 0;
-  for (const link of findAbsoluteAttachmentLinks(markdown)) {
-    const renamed = rename(link);
-    if (renamed === null) continue;
-    out += markdown.slice(last, link.from) + relativeAttachmentLink(link, renamed);
-    last = link.to;
-  }
-  return out + markdown.slice(last);
+const ABSOLUTE_ATTACHMENT_URL_RE = /^(?:https?:\/\/[^/]+)?\/api\/notes\/([^/?#]+)\/files\/([^?#]+)/;
+
+/**
+ * The note and file an absolute attachment address names, decoded, or null for any
+ * other destination. What `attachmentUrl` writes for a copied link, read back on paste;
+ * the editor finds the links themselves in its own syntax tree and asks this of each
+ * destination. A query the panel's download link carries (`?download=1`) is not part of
+ * the name, and the pattern stops at it.
+ */
+export function parseAbsoluteAttachmentUrl(url: string): { noteId: string; filename: string } | null {
+  const match = ABSOLUTE_ATTACHMENT_URL_RE.exec(url);
+  return match ? { noteId: decodePathSegment(match[1]!), filename: decodePathSegment(match[2]!) } : null;
 }
 
 /**
- * A remote image: `![alt](http…)`, in either destination spelling. As with the relative
- * form, a bracketed address runs to the `>` and may hold spaces; a bare one ends at the `)`.
+ * Whether some text could hold an absolute attachment link at all: the address's path
+ * appears in it as a link's destination, `](` and then the address, bracketed or not.
+ * For claiming a paste before the text is in a document, where alone knowing whether
+ * that address is a link is possible (in a code block it is not), so this errs towards
+ * claiming, and a claimed paste with no link in it is a plain paste. The destination's
+ * shape is required, not only the address: a clipboard can carry an image's bytes with
+ * its bare address as the text, and claiming that would insert the address as prose and
+ * drop the picture, where the upload handler would have stored it.
  */
-const REMOTE_IMAGE_LINK_RE =
-  /(!\[[^\]]*\])\(\s*(?:<(https?:\/\/[^>\n]+)>|(https?:\/\/[^\s<>)]+))\s*\)/gi;
+export function mayHoldAbsoluteAttachmentLink(text: string): boolean {
+  return /\]\(\s*<?(?:https?:\/\/[^/\s>]+)?\/api\/notes\/[^/\s]+\/files\//.test(text);
+}
+
+/** Every image drawn from the web: `![alt](http…)`, whichever way the address is spelled. */
+function remoteImages(markdown: string): InlineLink[] {
+  return inlineLinks(markdown).filter((link) => link.image && isWebUrl(link.url));
+}
 
 /**
  * The distinct web addresses a note's images are drawn from.
@@ -230,37 +332,13 @@ const REMOTE_IMAGE_LINK_RE =
  * A note converted from a bookmark by an assistant, or clipped from a page, links its
  * pictures to the site they came from. Those rot, get hotlink-blocked, are in no export
  * and no search: Evernote never left an image on the web, and neither should a note
- * here. This is what "Save web images" counts and fetches; `localizeImageLinks` is how
- * the links are rewritten once the files are stored.
+ * here. This is what "Save web images" counts for its label; what it fetches and relinks
+ * is read from the editor's tree (`webImageUrls` and `relinkWebImageChanges` in
+ * `editor/links.ts`), which leaves a character reference as written where remark decodes
+ * it, so the label's count and the pass's can differ by that spelling.
  */
 export function remoteImageUrls(markdown: string): string[] {
-  const seen = new Set<string>();
-  for (const match of markdown.matchAll(REMOTE_IMAGE_LINK_RE)) {
-    const url = (match[2] ?? match[3] ?? '').trim();
-    if (url) seen.add(url);
-  }
-  return [...seen];
-}
-
-/**
- * Points remote images at the files they were saved as.
- *
- * `stored` answers, for a web address, the filename the file now has in this note, or
- * null to leave that image where it was: a fetch that failed stays a working web link
- * rather than becoming a broken local one. The label is kept; only the destination
- * changes, bracketed when the name needs it.
- */
-export function localizeImageLinks(
-  markdown: string,
-  stored: (url: string) => string | null,
-): string {
-  return markdown.replace(REMOTE_IMAGE_LINK_RE, (whole, label: string, bracketed, bare) => {
-    const filename = stored(((bracketed ?? bare ?? '') as string).trim());
-    if (filename === null) return whole;
-    return formatAttachmentMarkdown(label.slice(2, -1), `${ATTACHMENT_PREFIX}${filename}`, {
-      image: true,
-    });
-  });
+  return [...new Set(remoteImages(markdown).map((image) => image.url))];
 }
 
 /**
@@ -509,8 +587,7 @@ function parseHead(markdown: string): MdNode[] {
 }
 
 function parseBlocks(markdown: string): MdNode[] {
-  const tree = unified().use(remarkParse).use(remarkDisableSetext).use(remarkGfm).parse(markdown) as MdNode;
-  return tree.children ?? [];
+  return (linkParser.parse(markdown) as MdNode).children ?? [];
 }
 
 /**
