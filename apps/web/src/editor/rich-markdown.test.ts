@@ -93,6 +93,8 @@ function mountWithAttachments(
   // note opened by the sidebar's arrow keys is in, where the caret sits at offset 0 without
   // anyone having put it there. See the unfocused image test.
   focus = true,
+  // The editor to write into after a round trip; see `RichMarkdownOptions.liveView`.
+  liveView?: () => EditorView | null,
 ): EditorView {
   const parent = document.createElement('div');
   document.body.appendChild(parent);
@@ -109,6 +111,7 @@ function mountWithAttachments(
           copyAttachment,
           saveRemoteImage,
           deleteAttachment,
+          liveView,
         }),
       ],
     }),
@@ -885,6 +888,30 @@ describe('inline images', () => {
     v.dom.querySelector<HTMLButtonElement>('.cm-md-image .zoom-save')?.click();
     await new Promise((r) => setTimeout(r, 0));
     expect(v.state.doc.toString()).toBe('![Scan \\[1\\] my\\_pic](files/saved.png "shot")');
+  });
+
+  /**
+   * The editor is rebuilt on a rich/source switch, and CodeMirror takes a dispatch to a
+   * destroyed view silently. The fetch finishes after a switch here, and the stored copy
+   * must be written into the editor that is live then, found by its address since that
+   * editor has no DOM of the pressed widget's.
+   */
+  it('writes the stored file into the editor open when the fetch lands, not the one at the press', async () => {
+    let finish: (filename: string) => void = () => {};
+    saveRemoteImage.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+    const doc = 'intro\n\n![web pic](https://example.com/a.png)\n\nplain';
+    const views = { current: null as EditorView | null };
+    const pressed = mountWithAttachments(doc, 0, [], true, () => views.current);
+    views.current = pressed;
+    pressed.dom.querySelector<HTMLButtonElement>('.cm-md-image .zoom-save')?.click();
+    expect(saveRemoteImage).toHaveBeenCalledWith('https://example.com/a.png');
+
+    pressed.destroy();
+    const live = mountWithAttachments(doc, 0);
+    views.current = live;
+    finish('saved.png');
+    await new Promise((r) => setTimeout(r, 0));
+    expect(live.state.doc.toString()).toBe('intro\n\n![web pic](files/saved.png)\n\nplain');
   });
 
   it('keeps the web link when the save fails', async () => {

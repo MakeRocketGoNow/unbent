@@ -163,6 +163,23 @@ export function Editor({
   pdfFilenamesRef.current = pdfFilenames;
   const viewRef = useRef<EditorView | null>(null);
   /**
+   * The view that is live now, for an extension's write that lands after a round trip.
+   *
+   * The view is rebuilt on a rich/source switch (the effect below) and on every
+   * `editorRevision` the workspace bumps (a conflict, a restore, a body rewrite), and
+   * each extension is built with the view it is in. A write that waits on the server (a
+   * web image saved, an upload finished, a pasted file copied across) was dispatched to
+   * that captured view, and CodeMirror takes a dispatch to a destroyed view without a
+   * word: it stores the state and returns, no update listener fires, and the draft never
+   * hears of it. So the file was on the server and the note did not say so, with the
+   * head saying "Saved". The extensions cannot see a later view on their own, which is
+   * why each takes this getter; `viewRef` is set on mount and cleared on teardown, so it
+   * answers the view open at the moment the write lands, or null between two. The
+   * alternative, not rebuilding the view on a switch, is a refactor of the editor for a
+   * bug in four round trips.
+   */
+  const liveView = () => viewRef.current;
+  /**
    * The live document, held across a rebuild that is only a change of clothes.
    *
    * The view is torn down when `rich` flips: the two modes are different extensions, not
@@ -258,6 +275,7 @@ export function Editor({
                   // Read through the ref, like the handlers above: the view outlives the
                   // props. Offered on a read-only note too: following a link changes nothing.
                   pathOpener: pathOpener ? (path) => pathOpenerRef.current?.(path) : undefined,
+                  liveView,
                 }),
               ]
             : []),

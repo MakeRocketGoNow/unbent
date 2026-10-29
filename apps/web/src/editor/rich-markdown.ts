@@ -23,7 +23,7 @@ import {
   WidgetType,
 } from '@codemirror/view';
 import { ATTACHMENT_PREFIX, relativeAttachmentPath, unescapeMarkdown } from '@unbent/shared';
-import { decodePath, linkParts, removalRange } from './links.js';
+import { decodePath, linkParts, relinkWebImageChanges, removalRange } from './links.js';
 import { acquirePdf, type LoadedPdf, releasePdf } from '../pdf/render.js';
 import { downloadUrl, openAttachmentViewer, type ViewerTarget } from '../attachment-viewer.js';
 import { NOT_AVAILABLE_OFFLINE, standInForImage, unavailableOffline, whenBackOnline } from '../offline-file.js';
@@ -406,6 +406,8 @@ type CopyAttachment = NonNullable<RichMarkdownOptions['copyAttachment']>;
 type SaveRemoteImage = NonNullable<RichMarkdownOptions['saveRemoteImage']>;
 /** What the delete control does; see `RichMarkdownOptions.deleteAttachment`. */
 type DeleteAttachment = NonNullable<RichMarkdownOptions['deleteAttachment']>;
+/** The editor to write into after a round trip; see `RichMarkdownOptions.liveView`. */
+type LiveView = NonNullable<RichMarkdownOptions['liveView']>;
 
 /** How long a control says "Copied" before offering to copy again. */
 const COPIED_FOR_MS = 1500;
@@ -460,6 +462,7 @@ function attachmentToolbar(
     copy?: CopyAttachment;
     save?: SaveRemoteImage;
     remove?: DeleteAttachment;
+    liveView?: LiveView;
     /** The syntax node the widget stands for, for the bin. */
     source: 'Image' | 'Link';
   },
@@ -492,7 +495,7 @@ function attachmentToolbar(
 
     if (opts.copy) tools.appendChild(copyButton(opts.stored.filename, opts.stored.kind, opts.copy));
   } else if (opts.save) {
-    tools.appendChild(saveButton(view, host, opts.target.src, opts.save));
+    tools.appendChild(saveButton(view, host, opts.target.src, opts.save, opts.liveView));
   }
 
   const stored = opts.stored;
@@ -666,12 +669,19 @@ function copyButton(filename: string, kind: 'image' | 'pdf', copy: CopyAttachmen
  * picture is rewritten in place to `files/<name>`, at which point the widget is rebuilt
  * as a stored image with the full toolbar. A fetch the site refused leaves the address
  * as it was and says so for a moment.
+ *
+ * The rewrite goes into the editor that is open when the fetch lands (`liveView`), which
+ * is not always the one this button was built in. While it is, the picture's own node
+ * is found from the button's place in the DOM; a later view has no DOM of this
+ * widget's, so there the picture is found by its address, and every picture at that
+ * address takes the stored copy, as "Save web images" would give it.
  */
 function saveButton(
   view: EditorView,
   host: HTMLElement,
   url: string,
   save: SaveRemoteImage,
+  liveView?: LiveView,
 ): HTMLButtonElement {
   const button = toolButton('zoom-save', 'Save to note', imageDownIconMarkup());
   let busy = false;
@@ -685,6 +695,12 @@ function saveButton(
     button.dataset.tip = 'Saving…';
     save(url).then(
       (filename) => {
+        const live = liveView?.() ?? view;
+        if (live !== view) {
+          const changes = relinkWebImageChanges(live.state, (u) => (u === url ? filename : null));
+          if (changes.length > 0) live.dispatch({ changes });
+          return;
+        }
         const node = findWidgetNode(view, host, 'Image');
         if (!node) return;
         const parts = linkParts(view.state, node);
@@ -774,6 +790,7 @@ class ImageWidget extends WidgetType {
     private readonly copy?: CopyAttachment,
     private readonly save?: SaveRemoteImage,
     private readonly remove?: DeleteAttachment,
+    private readonly liveView?: LiveView,
   ) {
     super();
   }
@@ -848,6 +865,7 @@ class ImageWidget extends WidgetType {
       copy: this.copy,
       save: this.save,
       remove: this.remove,
+      liveView: this.liveView,
       source: 'Image',
     });
     frame.appendChild(img);
@@ -1551,6 +1569,12 @@ export interface RichMarkdownOptions {
    * for, which stays text; absent, every such link is text, as it was before.
    */
   pathOpener?: (path: string) => (() => void) | undefined;
+  /**
+   * The editor to write into once `saveRemoteImage` answers: the one open then, which
+   * may not be the one the control was built in. `liveView` in `Editor.tsx` says why an
+   * extension needs this at all. Absent, the view the control was built in.
+   */
+  liveView?: () => EditorView | null;
 }
 
 /**
@@ -1771,6 +1795,7 @@ function buildDecorations(
             options.copyAttachment,
             options.saveRemoteImage,
             options.deleteAttachment,
+            options.liveView,
           );
 
           /**
