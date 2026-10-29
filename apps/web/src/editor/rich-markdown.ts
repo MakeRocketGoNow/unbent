@@ -23,7 +23,7 @@ import {
   WidgetType,
 } from '@codemirror/view';
 import { ATTACHMENT_PREFIX, relativeAttachmentPath, unescapeMarkdown } from '@unbent/shared';
-import { decodePath, linkParts } from './links.js';
+import { decodePath, linkParts, removalRange } from './links.js';
 import { acquirePdf, type LoadedPdf, releasePdf } from '../pdf/render.js';
 import { downloadUrl, openAttachmentViewer, type ViewerTarget } from '../attachment-viewer.js';
 import { NOT_AVAILABLE_OFFLINE, standInForImage, unavailableOffline, whenBackOnline } from '../offline-file.js';
@@ -732,35 +732,17 @@ function findWidgetNode(view: EditorView, host: HTMLElement, source: 'Image' | '
  * Deletes the markdown a widget stands for: the `![alt](url)` an image replaces, or the
  * `[label](files/x.pdf)` a PDF page hangs under.
  *
- * A line left holding only whitespace goes too, and one of the blank lines around it,
- * or every removed picture would leave a double gap in the paragraph rhythm.
+ * What goes with it is `removalRange`'s decision, the same one the attachments panel's
+ * Delete makes, so a picture deleted from its widget and one deleted from the panel
+ * leave the paragraphs around them the same way. This had its own rule, which took the
+ * gap on different sides, and the two disagreed at the end of a note (2026-10-29).
  */
 function removeWidgetSource(view: EditorView, host: HTMLElement, source: 'Image' | 'Link'): void {
   // The one place every widget's delete arrives; a read-only note keeps what it shows.
   if (view.state.readOnly) return;
   const node = findWidgetNode(view, host, source);
   if (!node) return;
-
-  const doc = view.state.doc;
-  const line = doc.lineAt(node.from);
-  const rest = line.text.slice(0, node.from - line.from) + line.text.slice(node.to - line.from);
-  if (rest.trim() !== '') {
-    view.dispatch({ changes: { from: node.from, to: node.to }, userEvent: 'delete' });
-    return;
-  }
-
-  let from = line.from;
-  let to = line.to;
-  if (to < doc.length) {
-    to += 1; // the line's own break
-    // Blank on both sides (or at the top): keep one blank line, not two.
-    const blankBefore = from === 0 || doc.sliceString(from - 2, from) === '\n\n';
-    if (blankBefore && doc.sliceString(to, to + 1) === '\n') to += 1;
-  } else if (from > 0) {
-    from -= 1; // the break before the last line
-    if (from > 0 && doc.sliceString(from - 1, from) === '\n') from -= 1;
-  }
-  view.dispatch({ changes: { from, to }, userEvent: 'delete' });
+  view.dispatch({ changes: removalRange(view.state.doc, node.from, node.to), userEvent: 'delete' });
 }
 
 /**

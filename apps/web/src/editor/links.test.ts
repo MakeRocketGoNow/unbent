@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { markdownState, relinkWebImageChanges, removeAttachmentLinkChanges, rewriteText } from './links.js';
+import { markdownState, relinkWebImageChanges, removalRange, removeAttachmentLinkChanges, rewriteText } from './links.js';
 
 /**
  * The editor's rewrites of a note's attachment links, on a headless state: what the
@@ -58,6 +58,25 @@ describe('removing a file\'s links', () => {
   it('changes nothing when the file is not linked', () => {
     const text = '[a](files/a.pdf) and prose';
     expect(remove(text, 'b.pdf')).toBe(text);
+  });
+});
+
+/** The rule the rich editor's widget Delete shares with the panel's. */
+describe('removalRange', () => {
+  it('takes the range alone when its line holds other text', () => {
+    const doc = markdownState('see [x](files/x.png) here').doc;
+    expect(removalRange(doc, 4, 20)).toEqual({ from: 4, to: 20 });
+  });
+
+  it('takes the line and one gap only when the line is a paragraph of its own', () => {
+    const cut = (text: string, from: number, to: number) => {
+      const doc = markdownState(text).doc;
+      const range = removalRange(doc, from, to);
+      return doc.sliceString(0, range.from) + doc.sliceString(range.to);
+    };
+    expect(cut('a\n\n![x](files/x.png)\n\nb', 3, 20)).toBe('a\n\nb');
+    expect(cut('a\n![x](files/x.png)\n\nb', 2, 19)).toBe('a\n\nb');
+    expect(cut('a\n\n![x](files/x.png)', 3, 20)).toBe('a');
   });
 });
 
