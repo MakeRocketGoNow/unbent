@@ -11449,6 +11449,12 @@ button.settings-nav-item {
 
 .feature-shot {
   display: block;
+/* The quiet variant's hover is a wash of ink over nothing, which over a moving clip is
+   the glyph on the picture; here the wash goes over the frame's own background. */
+.feature-clip-toggle:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--fg) 8%, var(--bg));
+}
+
   width: 100%;
 }
 
