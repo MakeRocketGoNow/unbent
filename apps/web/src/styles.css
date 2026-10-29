@@ -10405,7 +10405,10 @@ button.settings-nav-item {
      cannot be transitioned, so the clip is a keyframe animation as long as the grow,
      which lets go when it ends, and the closed state's own value, which holds through the
      shrink. `none` once open, not a large inset: any clip-path makes a stacking context,
-     and the ⋯ menu inside one would sit under the sticky editor toolbar again.
+     and the ⋯ menu inside one would sit under the sticky editor toolbar again. The
+     animation also runs on a details drawn open from the start, where nothing grows: a
+     quarter of a second of clip on the first paint, too short to reach with a pointer,
+     and not worth a class to tell the two apart.
 
      `flow-root` because the box must stay a formatting context of its own, which
      `overflow: hidden` used to make it. Without one the first child's top margin
