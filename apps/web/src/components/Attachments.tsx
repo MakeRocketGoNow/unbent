@@ -2,7 +2,7 @@ import { useDeferredValue, useEffect, useMemo, useRef, useState, type ReactNode 
 import { Link } from '@tanstack/react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { EditorView } from '@codemirror/view';
-import { removeAttachmentLinkChanges, rewriteText } from '../editor/links.js';
+import { removeAttachmentLinkChanges, rewriteDocument } from '../editor/links.js';
 import type { AttachmentInfo } from '@unbent/shared';
 import {
   attachmentFilenamesInMarkdown,
@@ -173,13 +173,12 @@ export function Attachments({
    * open editor, or applied to the draft when no editor is mounted yet.
    */
   function dropLinks(filename: string) {
-    const view = editorViewNow();
-    if (view) {
-      const changes = removeAttachmentLinkChanges(view.state, filename);
-      if (changes.length > 0) view.dispatch({ changes });
-      return;
-    }
-    onBodyRewrite(rewriteText(bodyRef.current, (state) => removeAttachmentLinkChanges(state, filename)));
+    rewriteDocument(
+      editorViewNow(),
+      bodyRef.current,
+      (state) => removeAttachmentLinkChanges(state, filename),
+      onBodyRewrite,
+    );
   }
   useEffect(() => {
     setPending(null);

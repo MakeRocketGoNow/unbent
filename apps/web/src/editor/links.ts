@@ -1,6 +1,7 @@
 import { markdown } from '@codemirror/lang-markdown';
 import { ensureSyntaxTree, syntaxTree, type LanguageDescription } from '@codemirror/language';
-import { EditorState, type ChangeSpec, type Text } from '@codemirror/state';
+import { EditorState, type ChangeSpec, type Text, type TransactionSpec } from '@codemirror/state';
+import type { EditorView } from '@codemirror/view';
 import { GFM } from '@lezer/markdown';
 import {
   attachmentFilenameFromUrl,
@@ -191,6 +192,28 @@ export function rewriteText(text: string, changesFor: (state: EditorState) => Ch
   const state = markdownState(text);
   const changes = changesFor(state);
   return changes.length === 0 ? text : state.update({ changes }).state.doc.toString();
+}
+
+/**
+ * Applies `changesFor`'s changes to the open editor, or to `body` through a headless
+ * state, handed to `onBody`, when no editor is mounted (the attachments panel can act
+ * before the editor has, and a view can be gone by the time a round trip lands). The
+ * one branch every rewrite after a round trip takes; `spec` goes on the editor's
+ * transaction, for a change that should not be undoable.
+ */
+export function rewriteDocument(
+  view: EditorView | null,
+  body: string,
+  changesFor: (state: EditorState) => ChangeSpec[],
+  onBody: (next: string) => void,
+  spec: Omit<TransactionSpec, 'changes'> = {},
+): void {
+  if (view) {
+    const changes = changesFor(view.state);
+    if (changes.length > 0) view.dispatch({ ...spec, changes });
+    return;
+  }
+  onBody(rewriteText(body, changesFor));
 }
 
 /** Every link and image in the document, for a rewrite of the whole of it. */

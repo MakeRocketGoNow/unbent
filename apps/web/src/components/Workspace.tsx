@@ -3,11 +3,10 @@ import { noteOpened } from '../store/library.js';
 import { openSitePath, sitePathOpener } from '../useHostApp.js';
 import { Link, useNavigate, useRouter } from '@tanstack/react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import type { EditorState } from '@codemirror/state';
 import type { EditorView } from '@codemirror/view';
 import type { FieldDef, FieldType, FieldValue, Note, NoteRevisionSummary } from '@unbent/shared';
 import { remoteImageUrls, unreadFiles } from '@unbent/shared';
-import { markdownState, relinkWebImageChanges, rewriteText, webImageUrls } from '../editor/links.js';
+import { markdownState, relinkWebImageChanges, rewriteDocument, webImageUrls } from '../editor/links.js';
 import * as api from '../notes-api.js';
 import { isOfflineError, isStatus } from '../notes-api.js';
 import * as actions from '../store/actions.js';
@@ -1257,14 +1256,12 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
     if (stored.size > 0) {
       // Through the editor's syntax tree (`editor/links.ts`): a change to the open editor,
       // or to the draft when none is mounted.
-      const relink = (state: EditorState) => relinkWebImageChanges(state, (url) => stored.get(url) ?? null);
-      const view = editorViewNow();
-      if (view) {
-        const changes = relink(view.state);
-        if (changes.length > 0) view.dispatch({ changes });
-      } else {
-        rewriteBody(rewriteText(draftBodyRef.current, relink));
-      }
+      rewriteDocument(
+        editorViewNow(),
+        draftBodyRef.current,
+        (state) => relinkWebImageChanges(state, (url) => stored.get(url) ?? null),
+        rewriteBody,
+      );
       void queryClient.invalidateQueries({ queryKey: keys.attachments(startedFor) });
     }
     // Short, because it sits beside the title, which a phone gives little room. A count
