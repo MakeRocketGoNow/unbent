@@ -60,6 +60,7 @@ const FPS = 30;
 const WEBP_QUALITY = 80;
 
 const here = path.dirname(fileURLToPath(import.meta.url));
+const root = path.dirname(here);
 /**
  * The ids of the notes the drop clip made, written as soon as they are known and removed
  * once they are purged: a run that dies in between leaves the file, and the next run
@@ -101,7 +102,8 @@ function baseUrl() {
  *
  * `run` drives the page to the state the picture shows, from the scene's address, with
  * the helpers in `page`. A clip's `run` is recorded from its first line to its last;
- * `page.hold` runs a wait inside it that the clip keeps only a moment of.
+ * `page.hold` runs a wait inside it that the clip keeps only a moment of. `after` undoes
+ * what `run` did to the profile, which the next theme's scenes share.
  *
  * The order is the order a run takes them: the drop and Auto-fill first, since Auto-fill
  * wants the dropped note, and the dropped notes purged after the two (`purgeAfter`), so
@@ -234,13 +236,20 @@ const SCENES = [
     device: 'desktop',
     url: (data) => `/settings/notebooks/${data.receiptsId}`,
     // Keeping a notebook offline is a choice of this device, so the picture shows one
-    // made rather than the page's empty state: Receipts is kept, and the profile is
-    // thrown away with the run, so there is nothing to put back.
+    // made rather than the page's empty state: Receipts is kept. The profile outlives a
+    // theme, so the keep is let go after the still (`after`), or the other theme's
+    // Notebook still shows it kept and this scene finds no Keep offline to press.
     run: async (p) => {
       await p.click('button', 'Keep offline');
       await p.click('[aria-label="Confirm keep offline"] button', 'Keep offline');
       await p.waitFor(`document.body.innerText.includes('are on this device')`, 30000);
       await p.open('/settings/offline');
+    },
+    after: async (p, data) => {
+      await p.open(`/settings/notebooks/${data.receiptsId}`);
+      await p.click('button', 'Stop keeping');
+      await p.click('[aria-label="Confirm stop keeping"] button', 'Remove from this device');
+      await p.waitFor(`[...document.querySelectorAll('button')].some((b) => b.textContent.trim() === 'Keep offline')`, 15000);
     },
   },
   {
@@ -418,6 +427,14 @@ async function run(BASE, scenes, themes, work, keepSocket, onInterrupt) {
 
   let id = 0;
   const waiting = new Map();
+  // A closed socket drops what is sent on it without a word; every call still waiting
+  // is answered as timed out at once, rather than thirty seconds each after Chrome went.
+  ws.onclose = () => {
+    for (const [i, answer] of [...waiting]) {
+      waiting.delete(i);
+      answer({ timeout: true });
+    }
+  };
   const listeners = new Map();
   ws.onmessage = (m) => {
     const d = JSON.parse(m.data);
@@ -427,14 +444,6 @@ async function run(BASE, scenes, themes, work, keepSocket, onInterrupt) {
   };
   // The timer is cleared by the reply, or the last calls of a run hold Node open for
   // thirty seconds after everything is done.
-  // A closed socket drops what is sent on it without a word; every call still waiting
-  // is answered as timed out at once, rather than thirty seconds each after Chrome went.
-  ws.onclose = () => {
-    for (const [i, answer] of [...waiting]) {
-      waiting.delete(i);
-      answer({ timeout: true });
-    }
-  };
   const send = (method, params = {}, sessionId) =>
     new Promise((res) => {
       const i = ++id;
@@ -651,11 +660,15 @@ async function run(BASE, scenes, themes, work, keepSocket, onInterrupt) {
     let left = [];
     try { left = JSON.parse(fs.readFileSync(DROPPED_FILE, 'utf8')); } catch {}
     const ids = [...new Set([...(data.dropped ?? []), ...left])];
-    data.dropped = [];
-    fs.rmSync(DROPPED_FILE, { force: true });
-    if (!ids.length) return;
+    if (!ids.length) {
+      fs.rmSync(DROPPED_FILE, { force: true });
+      return;
+    }
     await ev(`fetch('/api/notes/trash', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: ${JSON.stringify(ids)} }) }).then(r => r.status)`);
     await ev(`fetch('/api/notes/purge', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: ${JSON.stringify(ids)} }) }).then(r => r.status)`);
+    // Only once the purge has gone through: the file is what keeps the ids past a failure.
+    data.dropped = [];
+    fs.rmSync(DROPPED_FILE, { force: true });
   };
   // A run that died halfway may have left its notes behind.
   await purgeDropped();
@@ -666,9 +679,6 @@ async function run(BASE, scenes, themes, work, keepSocket, onInterrupt) {
    * only, whether the run ended, failed or was interrupted.
    */
   let torn = false;
-    // Only once the purge has gone through: the file is what keeps the ids past a failure.
-    data.dropped = [];
-    fs.rmSync(DROPPED_FILE, { force: true });
   const teardown = async () => {
     if (torn) return;
     torn = true;
@@ -709,6 +719,12 @@ async function run(BASE, scenes, themes, work, keepSocket, onInterrupt) {
           recording = null;
           await send('Page.stopScreencast', {}, page);
           console.log(`${scene.name}${suffix}: FAILED ${e.message}`);
+        }
+        if (scene.after) {
+          await scene.after(p, data).catch((e) => {
+            failed++;
+            console.log(`${scene.name}${suffix}: could not undo: ${e.message}`);
+          });
         }
         if (scene.purgeAfter) await purgeDropped();
       }
