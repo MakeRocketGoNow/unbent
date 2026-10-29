@@ -359,9 +359,8 @@ async function main() {
     { stdio: 'ignore' },
   );
   let ws;
-  try {
-    return await run(BASE, scenes, themes, work, (w) => (ws = w));
-  } finally {
+  let interrupt = null;
+  const cleanup = async () => {
     try { ws?.close(); } catch {}
     chrome.kill();
     for (let i = 0; i < 10; i++) {
@@ -369,10 +368,21 @@ async function main() {
     }
     if (!process.env.KEEP_FRAMES) fs.rmSync(work, { recursive: true, force: true });
     else console.log(`frames kept in ${work}`);
+  };
+  // Ctrl-C would otherwise end the process with the demo note edited and the dropped
+  // notes in the library, and Chrome still running.
+  process.once('SIGINT', async () => {
+    console.log('\ninterrupted: putting the demo library back');
+    try { await interrupt?.(); } finally { await cleanup(); process.exit(130); }
+  });
+  try {
+    return await run(BASE, scenes, themes, work, (w) => (ws = w), (fn) => (interrupt = fn));
+  } finally {
+    await cleanup();
   }
 }
 
-async function run(BASE, scenes, themes, work, keepSocket) {
+async function run(BASE, scenes, themes, work, keepSocket, onInterrupt) {
   let version;
   for (let i = 0; i < 60 && !version; i++) {
     try { version = await (await fetch(`http://localhost:${DEBUG_PORT}/json/version`)).json(); } catch { await sleep(250); }
@@ -476,10 +486,14 @@ async function run(BASE, scenes, themes, work, keepSocket) {
   data.dropTitles = ['Scan 2026-10-21 09.14', 'Scan 2026-10-21 09.15', 'Scan 2026-10-21 09.17'];
   data.dropFiles = data.pdfs.map((f, i) => ({ ...f, name: `${data.dropTitles[i]}.pdf` }));
 
-  // A note with a history: one edit to a showcase note, put back at the end.
-  const original = await ev(`fetch('/api/notes/${data.sourdough.id}').then(r => r.json()).then(n => ({ title: n.title, body: n.body }))`);
-  const editedBody = original.body.replace(/(\d+) ?g/, (m, n) => `${Number(n) + 20} g`).replace(/\n$/, '') + '\n\nSecond proof overnight in the fridge: better crumb, less sour.\n';
-  await ev(`fetch('/api/notes/${data.sourdough.id}', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ body: ${JSON.stringify(editedBody)} }) }).then(r => r.status)`);
+  // A note with a history: one paragraph appended to a showcase note, put back at the
+  // end. One paragraph and nothing else, so a body a run that died left edited is
+  // recognised and the seed's body recovered from it, rather than edited a second time.
+  const SENTENCE = 'Second proof overnight in the fridge: better crumb, less sour.';
+  const found = await ev(`fetch('/api/notes/${data.sourdough.id}').then(r => r.json()).then(n => n.body)`);
+  const seedBody = found.includes(SENTENCE) ? found.slice(0, found.indexOf(SENTENCE)).replace(/\n*$/, '\n') : found;
+  const editedBody = seedBody.replace(/\n$/, '') + '\n\n' + SENTENCE + '\n';
+  const patchBody = (body) => ev(`fetch('/api/notes/${data.sourdough.id}', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ body: ${JSON.stringify(body)} }) }).then(r => r.status)`);
   data.edited = { id: data.sourdough.id };
 
   // Pointer, keys and the clip's frames.
@@ -621,8 +635,23 @@ async function run(BASE, scenes, themes, work, keepSocket) {
   // A run that died halfway may have left its notes behind.
   await purgeDropped();
 
+  /**
+   * What a run changes in the demo account, put back: the note's body first, since it is
+   * the one change the next run cannot sweep up by itself, then the dropped notes. Once
+   * only, whether the run ended, failed or was interrupted.
+   */
+  let torn = false;
+  const teardown = async () => {
+    if (torn) return;
+    torn = true;
+    await patchBody(seedBody).catch((e) => console.log(`could not put the demo note back: ${e.message}`));
+    await purgeDropped().catch((e) => console.log(`could not purge the dropped notes: ${e.message}`));
+  };
+  onInterrupt(teardown);
+
   let failed = 0;
   try {
+    await patchBody(editedBody);
     for (const th of themes) {
       await theme(th);
       for (const scene of scenes) {
@@ -654,8 +683,7 @@ async function run(BASE, scenes, themes, work, keepSocket) {
       await purgeDropped();
     }
   } finally {
-    await purgeDropped();
-    await ev(`fetch('/api/notes/${data.sourdough.id}', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ body: ${JSON.stringify(original.body)} }) }).then(r => r.status)`).catch(() => {});
+    await teardown();
   }
   return failed ? 1 : 0;
 }
