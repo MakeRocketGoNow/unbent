@@ -582,6 +582,8 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
             ended(transaction.id);
             return;
           }
+          // Taken after a purge marked it on the wire: the mark has nothing left to end.
+          unmadeNow(input.id);
           if (!took(created)) await settled();
           ended(transaction.id);
         } catch (err) {
@@ -606,6 +608,7 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
             ended(transaction.id);
             return;
           }
+          unmadeNow(copyId);
           // The copy's row goes in now; its files are the server's to make, and the
           // pull brings their rows. A copy whose files had no room (`filesSkipped`,
           // MAK-108) is still the copy, said so under its files rather than kept on the
