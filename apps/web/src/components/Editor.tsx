@@ -86,6 +86,12 @@ interface EditorProps {
   /** Receives the view so a toolbar can act on it. */
   onViewReady?: (view: EditorView | null) => void;
   /**
+   * The view that is open now, from the owner that outlives this component: a write an
+   * extension makes after a round trip goes into it. See `liveViewNow` below for why the
+   * extensions need it and why this component's own ref is not enough.
+   */
+  liveView?: () => EditorView | null;
+  /**
    * Show the document without accepting any change to it: offline, or a note in the
    * trash. Flips in place rather than rebuilding the view, so the undo history and the
    * caret survive going offline and coming back.
@@ -128,6 +134,7 @@ export function Editor({
   autoFocus = true,
   onEscape,
   onViewReady,
+  liveView,
   readOnly = false,
 }: EditorProps) {
   const host = useRef<HTMLDivElement>(null);
@@ -157,6 +164,8 @@ export function Editor({
   pathOpenerRef.current = pathOpener;
   const onViewReadyRef = useRef(onViewReady);
   onViewReadyRef.current = onViewReady;
+  const liveViewRef = useRef(liveView);
+  liveViewRef.current = liveView;
   // Read on every decoration rebuild rather than captured, so a list that arrives after
   // the view was built is seen without discarding the document's history.
   const pdfFilenamesRef = useRef(pdfFilenames);
@@ -173,12 +182,18 @@ export function Editor({
    * word: it stores the state and returns, no update listener fires, and the draft never
    * hears of it. So the file was on the server and the note did not say so, with the
    * head saying "Saved". The extensions cannot see a later view on their own, which is
-   * why each takes this getter; `viewRef` is set on mount and cleared on teardown, so it
-   * answers the view open at the moment the write lands, or null between two. The
-   * alternative, not rebuilding the view on a switch, is a refactor of the editor for a
-   * bug in four round trips.
+   * why each takes this getter. The alternative, not rebuilding the view on a switch, is
+   * a refactor of the editor for a bug in four round trips.
+   *
+   * The owner's `liveView` first, this component's `viewRef` only without one. The
+   * workspace keys this component on the revision, so a revision bump is a remount, not
+   * a rebuild: the new view lands in a new instance's ref, and the old instance's
+   * extensions, still waiting on their round trips, would read their own ref and find
+   * it cleared. The workspace's ref is set from `onViewReady` across remounts, so it is
+   * the one that answers the view open at the moment the write lands. The fallback is
+   * for a caller with no owner, where a rebuild is only ever the switch.
    */
-  const liveView = () => viewRef.current;
+  const liveViewNow = () => liveViewRef.current?.() ?? viewRef.current;
   /**
    * The live document, held across a rebuild that is only a change of clothes.
    *
@@ -275,7 +290,7 @@ export function Editor({
                   // Read through the ref, like the handlers above: the view outlives the
                   // props. Offered on a read-only note too: following a link changes nothing.
                   pathOpener: pathOpener ? (path) => pathOpenerRef.current?.(path) : undefined,
-                  liveView,
+                  liveView: liveViewNow,
                 }),
               ]
             : []),
@@ -309,7 +324,7 @@ export function Editor({
                 }
               : undefined,
             onPending: (count) => onUploadsPendingRef.current?.(count),
-            liveView,
+            liveView: liveViewNow,
           }),
           /*
              Attachment links across the clipboard: copied ones name this note, pasted
@@ -326,7 +341,7 @@ export function Editor({
                   return copy(from, filenames, move);
                 }
               : undefined,
-            liveView,
+            liveView: liveViewNow,
           }),
           /*
              The two modes are two different kinds of text, and the font is what says which.

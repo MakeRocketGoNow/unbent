@@ -2129,6 +2129,16 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
             // The way out of the editor, and the counterpart to the list's Enter.
             onEscape={focusActiveListItem}
             onViewReady={announceView}
+            /*
+               The view open when an extension's round trip lands: this ref outlives the
+               remount a revision bump is, which the editor's own cannot (`liveViewNow`
+               in `Editor.tsx`). Guarded by note, as `saveWebImages` is: after a switch
+               the ref holds the next note's view, and a web image relinked by its
+               address or a paste's links from the same source would be written into
+               the wrong note. An old instance's getter answers null then, and its
+               extension falls back to its own view, which is gone, so nothing lands.
+            */
+            liveView={() => (noteIdRef.current === note.id ? editorViewNow() : null)}
           />
         </div>
         {showSplit && (
