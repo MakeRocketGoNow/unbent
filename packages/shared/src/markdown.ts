@@ -100,8 +100,11 @@ interface InlineLink {
   title: string | null;
 }
 
-/** Parses markdown the way the preview does, minus the plugins that only shape output. */
-const linkParser = unified().use(remarkParse).use(remarkGfm).freeze();
+/**
+ * Parses markdown with the grammar the preview uses (`remarkDisableSetext` is part of
+ * it), minus the plugins that only shape output, so what is a link here is a link there.
+ */
+const linkParser = unified().use(remarkParse).use(remarkDisableSetext).use(remarkGfm).freeze();
 
 /**
  * Every inline link and image in some markdown, in order, with positions: the one walk
