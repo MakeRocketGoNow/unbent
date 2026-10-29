@@ -2,10 +2,10 @@ import { useState } from 'react';
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { render, screen, cleanup, fireEvent, waitFor, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { EditorView } from '@codemirror/view';
 import type { AttachmentInfo } from '@unbent/shared';
 import * as api from '../notes-api.js';
 import { keys } from '../queries.js';
-import { EditorView } from '@codemirror/view';
 import { markdownState } from '../editor/links.js';
 import { Attachments } from './Attachments.js';
 
