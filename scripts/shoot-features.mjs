@@ -61,6 +61,13 @@ const FPS = 30;
 const WEBP_QUALITY = 80;
 
 const here = dirname(fileURLToPath(import.meta.url));
+/**
+ * The ids of the notes the drop clip made, written as soon as they are known and removed
+ * once they are purged: a run that dies in between leaves the file, and the next run
+ * purges them from it. Finding them again by their file names would mean reading every
+ * note's files, since Auto-fill can refile the one it names into any notebook.
+ */
+const DROPPED_FILE = path.join(os.tmpdir(), 'unbent-shoot-features-dropped.json');
 const root = path.dirname(here);
 const OUT = path.join(root, 'apps/web/public/features');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -125,7 +132,7 @@ const SCENES = [
       await p.waitFor(`document.body.innerText.includes(${JSON.stringify(data.dropTitles[2])})`, 15000);
       await sleep(2500);
       data.dropped = await p.ev(`window.__notes('notebook=Receipts&limit=50').then((notes) => notes.filter((n) => !${JSON.stringify(data.before)}.includes(n.id)).map((n) => n.id))`);
-      console.log(`  dropped ${data.dropped.length} of ${data.before.length} before`);
+      fs.writeFileSync(DROPPED_FILE, JSON.stringify(data.dropped));
     },
   },
   {
@@ -613,21 +620,16 @@ async function run(BASE, scenes, themes, work, keepSocket, onInterrupt) {
 
   /**
    * Takes the dropped notes out of the library for good: the ones the drop scene saw
-   * appear, and any a run that died halfway left behind, found by the scanner's file
-   * names, since Auto-fill renames the note it fills.
+   * appear, and any a run that died halfway wrote to `DROPPED_FILE` and never purged.
+   * A note the server no longer has is skipped by the trash and purge routes, so an id
+   * purged by hand in between costs nothing.
    */
   const purgeDropped = async () => {
-    const names = data.dropFiles.map((f) => f.name);
-    const leftover = await ev(`(async () => {
-      const ids = [];
-      for (const n of await window.__notes('notebook=Receipts&limit=50')) {
-        const r = await (await fetch('/api/notes/' + n.id + '/files')).json();
-        if ((r.files ?? []).some((f) => ${JSON.stringify(names)}.includes(f.filename))) ids.push(n.id);
-      }
-      return ids;
-    })()`);
-    const ids = [...new Set([...(data.dropped ?? []), ...leftover])];
+    let left = [];
+    try { left = JSON.parse(fs.readFileSync(DROPPED_FILE, 'utf8')); } catch {}
+    const ids = [...new Set([...(data.dropped ?? []), ...left])];
     data.dropped = [];
+    fs.rmSync(DROPPED_FILE, { force: true });
     if (!ids.length) return;
     await ev(`fetch('/api/notes/trash', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: ${JSON.stringify(ids)} }) }).then(r => r.status)`);
     await ev(`fetch('/api/notes/purge', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: ${JSON.stringify(ids)} }) }).then(r => r.status)`);
