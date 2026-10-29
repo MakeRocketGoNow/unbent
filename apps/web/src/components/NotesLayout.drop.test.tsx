@@ -241,6 +241,25 @@ describe('files dropped on the note list', () => {
     expect(router.state.location.pathname).toBe('/settings/import');
   });
 
+  /* Left and come back to under another filter: not the list the file was dropped on. */
+  it('does not open the note in a list returned to under another filter', async () => {
+    lib = installTestLibrary({ notes: [note('a', { title: 'Alpha' })], notebooks: [{ id: 'nb1', name: 'Receipts', purpose: null, emoji: null, fieldDefs: [] }] });
+    const { router } = mount('/notes?notebook=Receipts');
+    await screen.findByRole('heading', { name: 'Receipts' });
+    let release!: () => void;
+    vi.mocked(actions.uploadFile).mockReturnValueOnce(new Promise((r) => (release = () => r({ filename: 'b.pdf', contentType: 'application/pdf', size: 1, path: 'files/b.pdf', indexing: 'server' as const }))));
+    drag('drop', column(), [pdf('b.pdf')]);
+    await waitFor(() => expect(actions.uploadFile).toHaveBeenCalled());
+    await router.navigate({ to: '/settings/import' });
+    await waitFor(() => expect(router.state.location.pathname).toBe('/settings/import'));
+    await router.navigate({ to: '/notes', search: {} });
+    await screen.findByRole('heading', { name: 'All notes' });
+    release();
+    await screen.findByRole('status');
+    await new Promise((r) => setTimeout(r, 20));
+    expect(router.state.location.pathname).toBe('/notes');
+  });
+
   /* Twelve uploads take a while; a selection put over another notebook's rows would be wrong. */
   it('does not select or open the notes when the list has moved to another scope meanwhile', async () => {
     lib = installTestLibrary({ notes: [note('a', { title: 'Alpha' })], notebooks: [{ id: 'nb1', name: 'Receipts', purpose: null, emoji: null, fieldDefs: [] }] });
