@@ -37,6 +37,14 @@ describe('formatAttachmentMarkdown', () => {
     );
   });
 
+  it('escapes a bracket in the label, so the file is a link and reads back as linked', () => {
+    for (const name of ['a]b.pdf', 'a[b.pdf', 'Scan [1].pdf']) {
+      const md = formatAttachmentMarkdown(name, `files/${name}`);
+      expect(attachmentFilenamesInMarkdown(md)).toEqual(new Set([name]));
+    }
+    expect(formatAttachmentMarkdown('a]b.pdf', 'files/a]b.pdf')).toBe('[a\\]b.pdf](files/a]b.pdf)');
+  });
+
   /** Without brackets the whole line is literal text: no link, no PDF viewer. */
   it('produces markdown the renderer can turn into a PDF embed', () => {
     const md = formatAttachmentMarkdown(
@@ -177,7 +185,7 @@ describe('attachment addresses', () => {
     expect(formatAttachmentMarkdown('Report(R).pdf', 'files/Report(R).pdf')).toBe(
       '[Report(R).pdf](<files/Report(R).pdf>)',
     );
-    expect(formatAttachmentMarkdown('a\\(b.pdf', 'files/a\\(b.pdf')).toBe('[a\\(b.pdf](<files/a\\\\(b.pdf>)');
+    expect(formatAttachmentMarkdown('a\\(b.pdf', 'files/a\\(b.pdf')).toBe('[a\\\\(b.pdf](<files/a\\\\(b.pdf>)');
     expect(attachmentFilenamesInMarkdown(formatAttachmentMarkdown('a\\(b.pdf', 'files/a\\(b.pdf'))).toEqual(
       new Set(['a\\(b.pdf']),
     );

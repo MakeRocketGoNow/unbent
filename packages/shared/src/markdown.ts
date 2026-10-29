@@ -40,13 +40,18 @@ function attachmentDestination(path: string): string {
 
 /**
  * Build a markdown link or image for an attachment path; see `attachmentDestination`.
+ *
+ * The label is nearly always the filename, and a bracket or a backslash in a filename
+ * is escaped there as any serialiser would: written bare, `[a]b.pdf](files/a]b.pdf)` is
+ * no link at all, and the panel called the file "Not linked" the moment it was added. A
+ * balanced pair would survive, but the readers take the escaped form either way.
  */
 export function formatAttachmentMarkdown(
   label: string,
   path: string,
   opts: { image?: boolean } = {},
 ): string {
-  return `${opts.image ? '!' : ''}[${label}](${attachmentDestination(path)})`;
+  return `${opts.image ? '!' : ''}[${label.replace(/[[\]\\]/g, '\\$&')}](${attachmentDestination(path)})`;
 }
 
 /**
