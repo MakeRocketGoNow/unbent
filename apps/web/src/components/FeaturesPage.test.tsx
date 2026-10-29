@@ -150,7 +150,8 @@ describe('FeaturesPage', () => {
         }
       }
     };
-    for (const prefs of [{}, { '(prefers-color-scheme: dark)': true }, { '(prefers-reduced-motion: reduce)': true }]) {
+    const variants: Record<string, boolean>[] = [{}, { '(prefers-color-scheme: dark)': true }, { '(prefers-reduced-motion: reduce)': true }];
+    for (const prefs of variants) {
       media = prefs;
       const { findByRole, container } = harness(null);
       await findByRole('heading', { name: 'What Unbent does' });
