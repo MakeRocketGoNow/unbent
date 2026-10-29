@@ -22,7 +22,7 @@ import {
   type ViewUpdate,
   WidgetType,
 } from '@codemirror/view';
-import { ATTACHMENT_PREFIX, relativeAttachmentPath, unescapeMarkdown } from '@unbent/shared';
+import { ATTACHMENT_PREFIX, attachmentFilenameFromUrl, relativeAttachmentPath, unescapeMarkdown } from '@unbent/shared';
 import { decodePath, linkParts, relinkWebImageChanges, removalRange } from './links.js';
 import { acquirePdf, type LoadedPdf, releasePdf } from '../pdf/render.js';
 import { downloadUrl, openAttachmentViewer, type ViewerTarget } from '../attachment-viewer.js';
@@ -1783,12 +1783,9 @@ function buildDecorations(
           // the note still says what belongs there. See `failedImages`.
           if (failedImages.has(src)) return;
 
-          // The query, if any, is cut before decoding, as `attachmentFilenameOf` in
-          // `links.ts` cuts it, so the name this deletes is the one the link removal
-          // matches, and a name with an encoded `?` of its own keeps it.
-          const stored = url.startsWith(ATTACHMENT_PREFIX)
-            ? decodePath(url.slice(ATTACHMENT_PREFIX.length).split('?')[0] ?? '')
-            : null;
+          // By the shared reading of a destination's name, so the name this deletes is
+          // the one the panel counts and the link removal matches.
+          const stored = attachmentFilenameFromUrl(url);
           // The alt as a reader should see it: the label is the raw text, and a serialiser
           // writes a bracket in it as `\[`. The caption drawn over the text below keeps the
           // raw spelling, since it is the text itself, and `saveButton` leaves it as written.
