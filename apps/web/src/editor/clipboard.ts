@@ -130,8 +130,9 @@ function exportSelection(
   const ranges = state.selection.ranges.filter((range) => !range.empty);
   if (ranges.length === 0) return false;
   // The walk is spared for the common copy of prose: every same-note link spells
-  // `files/` in its destination.
-  if (!ranges.some((range) => state.sliceDoc(range.from, range.to).includes(ATTACHMENT_PREFIX))) return false;
+  // `files` in its destination (the slash after it may be escaped, `files\/a.pdf`,
+  // which the tree reads as the plain one).
+  if (!ranges.some((range) => state.sliceDoc(range.from, range.to).includes(ATTACHMENT_PREFIX.slice(0, -1)))) return false;
 
   const links = linksWithin(state, ranges).filter((link) => link.url.startsWith(ATTACHMENT_PREFIX));
   if (links.length === 0) return false;

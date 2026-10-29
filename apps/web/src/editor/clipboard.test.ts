@@ -108,6 +108,17 @@ describe('copy in context', () => {
   });
 });
 
+describe('an escaped slash in a destination', () => {
+  it('is still a same-note link to copy', () => {
+    const doc = '[a](files\\/a.pdf)';
+    const view = mount(doc, { noteId: HERE }, { anchor: 0, head: doc.length });
+    const data = clipboard();
+    fire(view, 'copy', data);
+    expect(data.store.get('text/plain')).toBe(`[a](${attachmentUrl(HERE, 'a.pdf')})`);
+    view.destroy();
+  });
+});
+
 describe('cut', () => {
   it('marks the text as cut and removes it from the document', () => {
     const doc = 'keep ![a](files/a.png)';
