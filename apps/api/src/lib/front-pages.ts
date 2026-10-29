@@ -4,7 +4,8 @@ import type { RawEnv } from '../types.js';
 
 /**
  * The pages for people who are not signed in, as a crawler and a link preview see them
- * (MAK-240): the static copies of the story and the comparisons, the front page's shell,
+ * (MAK-240): the static copies of the story, the features page and the comparisons, the
+ * front page's shell,
  * `robots.txt` and the sitemap.
  *
  * Every other path is the web app's shell, which the `ASSETS` binding serves for any

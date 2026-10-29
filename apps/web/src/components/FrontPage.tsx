@@ -271,8 +271,9 @@ export function FrontPage() {
 
 /**
  * The header and footer of the public pages, around their content: the front page, the
- * pricing page (`PricingPage`), the story (`WhyPage`) and support (`SupportPage`). One component so they cannot
- * drift apart, and so each is recognisably the same site.
+ * pricing page (`PricingPage`), the story (`WhyPage`), the features page (`FeaturesPage`),
+ * the comparisons (`ComparePage`) and support (`SupportPage`). One component so they
+ * cannot drift apart, and so each is recognisably the same site.
  *
  * The header's nav is the three pages a visitor deciding whether to try the app goes
  * looking for (Features, Pricing, Why), as links, with the one they are on marked
