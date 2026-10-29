@@ -337,6 +337,11 @@ async function main() {
     console.log(`port ${DEBUG_PORT} is already serving a DevTools endpoint; close that Chrome first`);
     return 1;
   }
+  // Auto-fill fills the note the drop made, so naming it names the drop too.
+  if (names.includes('autofill') && !names.includes('drop')) {
+    console.log('autofill is of the note drop makes: shooting drop as well');
+    names.unshift('drop');
+  }
   const scenes = names.length ? SCENES.filter((s) => names.includes(s.name)) : SCENES;
   const unknown = names.filter((n) => !SCENES.some((s) => s.name === n));
   if (unknown.length) {
