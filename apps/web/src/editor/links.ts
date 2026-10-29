@@ -99,6 +99,15 @@ export interface DocumentLink extends LinkParts {
 const PARSE_WAIT_MS = 200;
 
 /**
+ * The wait for a walk of the whole document before a rewrite. A rewrite is one press,
+ * not a keystroke, and a partial one is worse than a slow one: a delete that stopped
+ * where the parse did would leave the links past that point, silently. A headless state
+ * starts with no tree at all, and a body at `MAX_BODY_BYTES` on a phone takes seconds
+ * to parse (a desktop under vitest reached the end of 1.5 MB in about 270 ms).
+ */
+const REWRITE_PARSE_WAIT_MS = 5000;
+
+/**
  * Every link and image lying whole within one of `ranges`, in document order, by the
  * `URL` range it would be rewritten at. A picture inside a link's label is listed on
  * its own, before the link, since its destination comes first in the text; the two
@@ -108,11 +117,12 @@ const PARSE_WAIT_MS = 200;
 export function linksWithin(
   state: EditorState,
   ranges: readonly { from: number; to: number }[],
+  wait = PARSE_WAIT_MS,
 ): DocumentLink[] {
   const links: DocumentLink[] = [];
   if (ranges.length === 0) return links;
   const end = Math.max(...ranges.map((range) => range.to));
-  const tree = ensureSyntaxTree(state, end, PARSE_WAIT_MS) ?? syntaxTree(state);
+  const tree = ensureSyntaxTree(state, end, wait) ?? syntaxTree(state);
   for (const range of ranges) {
     tree.iterate({
       from: range.from,
@@ -153,9 +163,9 @@ export function rewriteText(text: string, changesFor: (state: EditorState) => Ch
   return changes.length === 0 ? text : state.update({ changes }).state.doc.toString();
 }
 
-/** Every link and image in the document. */
+/** Every link and image in the document, for a rewrite of the whole of it. */
 function allLinks(state: EditorState): DocumentLink[] {
-  return linksWithin(state, [{ from: 0, to: state.doc.length }]);
+  return linksWithin(state, [{ from: 0, to: state.doc.length }], REWRITE_PARSE_WAIT_MS);
 }
 
 /** Whether a link's destination is on the web, as opposed to the note's own file. */
