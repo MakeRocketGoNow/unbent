@@ -3,10 +3,17 @@ import { noteOpened } from '../store/library.js';
 import { openSitePath, sitePathOpener } from '../useHostApp.js';
 import { Link, useNavigate, useRouter } from '@tanstack/react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Transaction } from '@codemirror/state';
 import type { EditorView } from '@codemirror/view';
 import type { FieldDef, FieldType, FieldValue, Note, NoteRevisionSummary } from '@unbent/shared';
 import { remoteImageUrls, unreadFiles } from '@unbent/shared';
-import { markdownState, relinkWebImageChanges, rewriteDocument, webImageUrls } from '../editor/links.js';
+import {
+  markdownState,
+  relinkWebImageChanges,
+  removeAttachmentLinkChanges,
+  rewriteDocument,
+  webImageUrls,
+} from '../editor/links.js';
 import { useSettledBody } from '../useSettledBody.js';
 import * as api from '../notes-api.js';
 import { isOfflineError, isStatus } from '../notes-api.js';
@@ -2078,10 +2085,30 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
               readOnly
                 ? undefined
                 : async (filename) => {
+                    const startedFor = note.id;
                     // The same rule as the panel's Delete: a picture added offline has not
                     // reached the server, so deleting it there would fail.
-                    await actions.deleteOrCancelAttachment(note.id, filename);
-                    void queryClient.invalidateQueries({ queryKey: keys.attachments(note.id) });
+                    await actions.deleteOrCancelAttachment(startedFor, filename);
+                    void queryClient.invalidateQueries({ queryKey: keys.attachments(startedFor) });
+                    /*
+                       The file is gone, so every link to it goes, as the panel's Delete
+                       does: not only the widget's own, which the widget used to remove
+                       itself. Into the editor that is open when the delete lands, which
+                       the widget cannot reach (`deleteStored` in `rich-markdown.ts` says
+                       why), or into the draft when none is mounted; and into neither
+                       once the open note has changed, since the draft is then the next
+                       note's. Kept out of the undo history for the panel's reason
+                       (`dropLinks` in `Attachments.tsx`): the file is gone before the
+                       link is, so undo could only bring back a link to nothing.
+                    */
+                    if (noteIdRef.current !== startedFor) return;
+                    rewriteDocument(
+                      editorViewNow(),
+                      draftBodyRef.current,
+                      (state) => removeAttachmentLinkChanges(state, filename),
+                      rewriteBody,
+                      { annotations: Transaction.addToHistory.of(false) },
+                    );
                   }
             }
             pathOpener={pathOpener}

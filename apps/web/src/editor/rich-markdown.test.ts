@@ -528,10 +528,15 @@ describe('inline PDF', () => {
   /**
    * The way to read a scan large. The control arrives with the first page rather than
    * with the widget, so it never sits on a page that has not drawn.
+   *
+   * The link the page hangs under is the caller's to remove once the file has gone
+   * (`deleteStored` says why the widget cannot): the document is left as it was here,
+   * and `Workspace.delete-file.test.tsx` has the link coming out.
    */
-  it('deletes the file and removes the link the page hangs under', async () => {
+  it('deletes the file and leaves its link to the caller', async () => {
     deleteAttachment.mockClear();
-    const v = mountWithAttachments('intro\n\n[report](files/report.pdf)');
+    const doc = 'intro\n\n[report](files/report.pdf)';
+    const v = mountWithAttachments(doc);
     await settle();
     v.dom.querySelector<HTMLButtonElement>('.cm-md-pdf .zoom-remove')?.click();
     [...v.dom.querySelectorAll<HTMLButtonElement>('.cm-md-pdf .attachment-tool-confirm')]
@@ -539,7 +544,7 @@ describe('inline PDF', () => {
       ?.click();
     expect(deleteAttachment).toHaveBeenCalledWith('report.pdf');
     await settle();
-    expect(v.state.doc.toString()).toBe('intro');
+    expect(v.state.doc.toString()).toBe(doc);
   });
 
   it('offers to copy the file once the first page has drawn', async () => {
@@ -910,10 +915,12 @@ describe('inline images', () => {
       ?.click();
 
   /**
-   * The bin on a stored picture deletes the file, confirmed in the pill itself: the file
-   * goes first, then the markdown and the blank line it would leave.
+   * The bin on a stored picture deletes the file, confirmed in the pill itself. The
+   * markdown is the caller's to take out once the file has gone, into whichever editor
+   * is open then (`deleteStored` says why this one cannot), so the document is left as
+   * it was here; `Workspace.delete-file.test.tsx` has the picture coming out.
    */
-  it('asks in place, then deletes the file and takes the picture out of the note', async () => {
+  it('asks in place, then deletes the file and leaves the picture to the caller', async () => {
     deleteAttachment.mockClear();
     const doc = 'before\n\n![scan](<files/my scan.jpg>)\n\nafter';
     const v = mountWithAttachments(doc, doc.length);
@@ -923,7 +930,7 @@ describe('inline images', () => {
     answer(v, 'Delete');
     expect(deleteAttachment).toHaveBeenCalledWith('my scan.jpg');
     await new Promise((r) => setTimeout(r, 0));
-    expect(v.state.doc.toString()).toBe('before\n\nafter');
+    expect(v.state.doc.toString()).toBe(doc);
   });
 
   it('puts the toolbar back on Cancel and on Escape', () => {
@@ -956,12 +963,10 @@ describe('inline images', () => {
     );
   });
 
-  it('removes only the picture when text shares its line', async () => {
-    const doc = 'see ![scan](files/scan.jpg) here';
+  it('removes only a remote picture when text shares its line', () => {
+    const doc = 'see ![web](https://example.com/a.png) here';
     const v = mountWithAttachments(doc, 0);
     v.dom.querySelector<HTMLButtonElement>('.cm-md-image .zoom-remove')?.click();
-    answer(v, 'Delete');
-    await new Promise((r) => setTimeout(r, 0));
     expect(v.state.doc.toString()).toBe('see  here');
   });
 

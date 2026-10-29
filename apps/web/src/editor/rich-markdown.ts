@@ -508,7 +508,7 @@ function attachmentToolbar(
     // delete a file on the server and then refuse to change the note.
     if (view.state.readOnly) return;
     if (stored && opts.remove) {
-      askToDelete(tools, () => deleteStored(view, host, opts.source, stored.filename, opts.remove!));
+      askToDelete(tools, () => deleteStored(stored.filename, opts.remove!));
     } else {
       removeWidgetSource(view, host, opts.source);
     }
@@ -580,7 +580,7 @@ function askToDelete(tools: HTMLElement, onConfirm: () => Promise<void>): void {
     yes.textContent = 'Deleting…';
     onConfirm().then(
       () => {
-        // The widget is gone with its markdown; nothing to restore into.
+        // The caller takes the link out, and the widget with it; nothing to restore into.
         document.removeEventListener('pointerdown', outside, true);
       },
       () => {
@@ -605,19 +605,20 @@ function askToDelete(tools: HTMLElement, onConfirm: () => Promise<void>): void {
 }
 
 /**
- * The file first, then the markdown. A delete the server refused leaves the picture and
- * its link exactly as they were, which is the truth; the other order would leave a link
- * to a file that is still there but no longer drawn.
+ * The file, and nothing else. A delete the server refused leaves the picture and its
+ * link exactly as they were, which is the truth: the pill says "Couldn't delete" and the
+ * markdown is not touched.
+ *
+ * The link's removal is the caller's (`RichMarkdownOptions.deleteAttachment`), not this
+ * widget's. The widget used to dispatch the removal itself once `remove` resolved, into
+ * the view it was built in, and that view is gone whenever the editor was rebuilt during
+ * the round trip (a rich/source switch, a restore, a conflict): CodeMirror takes a
+ * dispatch to a destroyed view without a word, so the file was deleted and the note
+ * still linked it, with the head saying "Saved". The workspace holds the view that is
+ * live when the delete lands, and removes every link to the file, not only this one.
  */
-async function deleteStored(
-  view: EditorView,
-  host: HTMLElement,
-  source: 'Image' | 'Link',
-  filename: string,
-  remove: DeleteAttachment,
-): Promise<void> {
+async function deleteStored(filename: string, remove: DeleteAttachment): Promise<void> {
   await remove(filename);
-  removeWidgetSource(view, host, source);
 }
 
 /**
@@ -1538,8 +1539,9 @@ export interface RichMarkdownOptions {
    */
   saveRemoteImage?: (url: string) => Promise<string>;
   /**
-   * Permanently deletes a stored file, for the bin on an image or a PDF. The widget
-   * removes the markdown itself once this resolves. Absent, the bin only removes the
+   * Permanently deletes a stored file, for the bin on an image or a PDF, and takes the
+   * file's links out of the note once it has gone: the widget touches no markdown on
+   * this path (see `deleteStored` for why it cannot). Absent, the bin only removes the
    * markdown, as it does for a remote image.
    */
   deleteAttachment?: (filename: string) => Promise<void>;
