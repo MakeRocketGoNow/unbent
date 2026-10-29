@@ -154,7 +154,9 @@ function parseInlineLinks(markdown: string): InlineLink[] {
     const labelEnd = node.children?.length
       ? (node.children[node.children.length - 1]!.position?.end.offset ?? -1)
       : closingBracket(markdown, from + (image ? 2 : 1));
-    // `[x][ref]` has no inline destination; the parser answers it with the definition's.
+    // What follows the label has to be `](`: a reference link, `[x][ref]`, is a
+    // `linkReference` node the walk never sees, so this guards the walk's own reading of
+    // where the label ends, which for an image is a scan over the text.
     if (labelEnd < 0 || markdown[labelEnd] !== ']' || markdown[labelEnd + 1] !== '(') return;
     links.push({
       image,
