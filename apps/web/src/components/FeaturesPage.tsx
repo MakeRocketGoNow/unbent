@@ -309,8 +309,10 @@ function Still({ name, phone = false, alt }: { name: string; phone?: boolean; al
  * first frame as a `<picture>` that follows the theme as the stills do. Four posters and
  * four clips' metadata were fetched on every visit before this, however far down they
  * sat, and the static copy started the light set for a dark reader before the app
- * swapped it. Once near, the video takes the poster's place with `preload="none"`, and
- * plays only while on screen. A reader who has asked for less motion keeps the picture.
+ * swapped it. Once near, the video takes the poster's place and fetches its metadata
+ * (a few kilobytes; `none` was tried and left the first play of some clips with a decode
+ * error in Chromium), and plays only while on screen. A reader who has asked for less
+ * motion keeps the picture.
  *
  * A clip loops for longer than five seconds beside the text, so it can be paused: a
  * press on it, with the pointer or Enter or Space, pauses it and the next press plays
@@ -394,7 +396,7 @@ function Clip({ name, label }: { name: string; label: string }) {
         muted
         loop
         playsInline
-        preload="none"
+        preload="metadata"
         poster={`${file}-poster.webp`}
         aria-label={label}
         aria-description={paused ? 'Paused. Press to play.' : 'Playing. Press to pause.'}
