@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { render, cleanup, waitFor } from '@testing-library/react';
+import { render, cleanup, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   createMemoryHistory,
@@ -109,6 +109,25 @@ describe('FeaturesPage', () => {
       expect(poster.closest('picture')?.querySelector('source')?.getAttribute('srcset')).toMatch(/-dark-poster\.webp$/);
       expect(poster.getAttribute('alt')).toBeTruthy();
     }
+  });
+
+  /** A loop beside text must be pausable (WCAG 2.2.2), and stay paused when scrolled back into view. */
+  it('pauses a clip on a press and plays it on the next', async () => {
+    const { findByRole, container } = harness(null);
+    await findByRole('heading', { name: 'What Unbent does' });
+    await waitFor(() => expect(container.querySelectorAll('video')).toHaveLength(4));
+    const clip = container.querySelector('video')!;
+    const pause = vi.spyOn(clip, 'pause').mockImplementation(() => {});
+    const play = vi.spyOn(clip, 'play').mockImplementation(() => Promise.resolve());
+    expect(clip.getAttribute('data-tip')).toBe('Pause');
+    expect(clip.tabIndex).toBe(0);
+    fireEvent.click(clip);
+    expect(pause).toHaveBeenCalledTimes(1);
+    expect(clip.getAttribute('data-tip')).toBe('Play');
+    expect(clip.getAttribute('aria-description')).toMatch(/^Paused/);
+    fireEvent.keyDown(clip, { key: ' ' });
+    expect(play).toHaveBeenCalledTimes(1);
+    expect(clip.getAttribute('data-tip')).toBe('Pause');
   });
 
   it('gives someone signed in their notes as the way out, and no trial', async () => {

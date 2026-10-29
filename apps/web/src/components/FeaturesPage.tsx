@@ -312,6 +312,12 @@ function Still({ name, phone = false, alt }: { name: string; phone?: boolean; al
  * swapped it. Once near, the video takes the poster's place with `preload="none"`, and
  * plays only while on screen. A reader who has asked for less motion keeps the picture.
  *
+ * A clip loops for longer than five seconds beside the text, so it can be paused: a
+ * press on it, with the pointer or Enter or Space, pauses it and the next press plays
+ * it, and a clip the reader paused is not started again by scrolling it into view. The
+ * tip and the description say which press is next, since a paused frame and a poster
+ * look the same.
+ *
  * The theme is read with `useMediaQuery` rather than `<source media>`, which `<video>`
  * does not honour. `label` says what the clip shows, since a video has no alt text.
  */
@@ -319,6 +325,7 @@ function Clip({ name, label }: { name: string; label: string }) {
   const dark = useMediaQuery('(prefers-color-scheme: dark)');
   const still = useMediaQuery('(prefers-reduced-motion: reduce)');
   const [near, setNear] = useState(false);
+  const [paused, setPaused] = useState(false);
   const box = useRef<HTMLDivElement>(null);
   const video = useRef<HTMLVideoElement>(null);
   const file = `/features/${name}-${dark ? 'dark' : 'light'}`;
@@ -350,14 +357,22 @@ function Clip({ name, label }: { name: string; label: string }) {
     const watcher = new IntersectionObserver(
       ([entry]) => {
         if (!entry) return;
-        if (entry.isIntersecting) void el.play().catch(() => {});
+        if (entry.isIntersecting && !paused) void el.play().catch(() => {});
         else el.pause();
       },
       { threshold: 0.4 },
     );
     watcher.observe(el);
     return () => watcher.disconnect();
-  }, [still, near, file]);
+  }, [still, near, paused, file]);
+
+  const toggle = () => {
+    const el = video.current;
+    if (!el) return;
+    if (paused) void el.play().catch(() => {});
+    else el.pause();
+    setPaused(!paused);
+  };
 
   if (still || !near) {
     return (
@@ -382,6 +397,15 @@ function Clip({ name, label }: { name: string; label: string }) {
         preload="none"
         poster={`${file}-poster.webp`}
         aria-label={label}
+        aria-description={paused ? 'Paused. Press to play.' : 'Playing. Press to pause.'}
+        data-tip={paused ? 'Play' : 'Pause'}
+        tabIndex={0}
+        onClick={toggle}
+        onKeyDown={(e) => {
+          if (e.key !== 'Enter' && e.key !== ' ') return;
+          e.preventDefault();
+          toggle();
+        }}
       >
         <source src={`${file}.webm`} type="video/webm" />
         <source src={`${file}.mp4`} type="video/mp4" />

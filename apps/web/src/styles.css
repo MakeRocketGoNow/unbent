@@ -11434,7 +11434,10 @@ button.settings-nav-item {
 }
 
 /* A picture or a clip, framed as the front page frames its desktop shot. The video is
-   sized by its attributes before it loads, as the images are, so nothing jumps. */
+   sized by its attributes before it loads, as the images are, so nothing jumps. A clip
+   is a control (a press pauses it), so the pointer says so. */
+.feature-clip video { cursor: pointer; }
+
 .feature-shot {
   display: block;
   width: 100%;
