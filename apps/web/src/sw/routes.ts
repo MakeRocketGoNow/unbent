@@ -37,6 +37,7 @@ export const WORKER_PREFIXES = ['/api/', '/.well-known/', '/ingest/', '/manifest
  */
 export const WORKER_PAGES = [
   '/why',
+  '/features',
   '/compare',
   '/compare/evernote',
   '/compare/notion',

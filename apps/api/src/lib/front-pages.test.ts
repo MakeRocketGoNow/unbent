@@ -1,5 +1,8 @@
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { serveFrontPage } from './front-pages.js';
+import { PRERENDERED, serveFrontPage } from './front-pages.js';
 
 /**
  * The story's static copy as the build writes it: site-relative addresses in the head,
@@ -33,6 +36,27 @@ const built = assets({ '/why.html': WHY_HTML, '/compare-joplin.html': COMPARE_HT
 
 const get = (path: string, env: Parameters<typeof serveFrontPage>[1]) =>
   serveFrontPage(new Request(`https://notes.example.com${path}`), env);
+
+describe('PRERENDERED', () => {
+  /*
+   * A page in the table reaches this module only if `run_worker_first` names it: for any
+   * other path the asset layer answers first, and it resolves `/features` to
+   * `features.html` on its own, raw, on every instance, forks with no front page included.
+   * `/features` shipped that way once (2026-10-29), in the table and the sitemap and not
+   * in the lists, which nothing checked. The service worker's own list is held to the toml
+   * by `sw/routes.test.ts`, so between the two every prerendered page is tied through.
+   */
+  it('is handed to the Worker first, in every environment', () => {
+    const here = dirname(fileURLToPath(import.meta.url));
+    const toml = readFileSync(resolve(here, '../../wrangler.toml'), 'utf8');
+    const blocks = [...toml.matchAll(/^\s*run_worker_first\s*=\s*\[([\s\S]*?)\]/gm)];
+    expect(blocks.length).toBeGreaterThan(0);
+    for (const [, body] of blocks) {
+      const entries = new Set([...body!.matchAll(/^\s*"([^"]+)"/gm)].map(([, path]) => path));
+      for (const path of Object.keys(PRERENDERED)) expect(entries.has(path), path).toBe(true);
+    }
+  });
+});
 
 describe('serveFrontPage', () => {
   it('hands the story’s static copy over for /why, with its addresses completed from the origin', async () => {
@@ -108,6 +132,7 @@ describe('serveFrontPage', () => {
     const xml = await sitemap!.text();
     expect(xml).toContain('<loc>https://unbent.example/</loc>');
     expect(xml).toContain('<loc>https://unbent.example/why</loc>');
+    expect(xml).toContain('<loc>https://unbent.example/features</loc>');
     expect(xml).toContain('<loc>https://unbent.example/pricing</loc>');
     expect(xml).toContain('<loc>https://unbent.example/support</loc>');
     for (const app of ['', '/evernote', '/notion', '/joplin', '/paperless-ngx']) {

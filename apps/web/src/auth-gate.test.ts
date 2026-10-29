@@ -31,6 +31,12 @@ describe('shellFor', () => {
     expect(shellFor('/')).toBe('front');
   });
 
+  /** The features page is read by someone with no account yet, like the story. */
+  it('gives the features page the front page’s shell', () => {
+    expect(shellFor('/features')).toBe('front');
+    expect(shellFor('/features/')).toBe('front');
+  });
+
   /** The comparisons are read by someone with no account yet, and only the listed ones are pages. */
   it('gives the comparisons the front page’s shell, and nothing else under their prefix', () => {
     expect(shellFor('/compare')).toBe('front');
