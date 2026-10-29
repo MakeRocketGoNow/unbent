@@ -180,20 +180,41 @@ interface MdLinkNode {
 /**
  * Where the `]` closing a label that opened at `from` is, or -1. An image's alt has no
  * children in the tree to take the position from, so it is found the way the parser found
- * it: a backslash hides what follows, and a bracket pair inside the label nests.
+ * it: a backslash hides what follows, a bracket pair inside the label nests, and a code
+ * span binds tighter than either, so a bracket inside one is text. A backtick run with no
+ * closing run of the same length is a literal backtick, as it is to the parser.
  */
 function closingBracket(markdown: string, from: number): number {
   let depth = 0;
   for (let i = from; i < markdown.length; i++) {
     const c = markdown[i];
     if (c === '\\') i++;
-    else if (c === '[') depth++;
+    else if (c === '`') {
+      const close = codeSpanEnd(markdown, i);
+      if (close >= 0) i = close;
+    } else if (c === '[') depth++;
     else if (c === ']') {
       if (depth === 0) return i;
       depth--;
     }
   }
   return -1;
+}
+
+/** The index of the last backtick closing the code span that opens at `open`, or -1. */
+function codeSpanEnd(markdown: string, open: number): number {
+  let length = 0;
+  while (markdown[open + length] === '`') length++;
+  const fence = '`'.repeat(length);
+  let at = open + length;
+  for (;;) {
+    const next = markdown.indexOf(fence, at);
+    if (next < 0) return -1;
+    let run = 0;
+    while (markdown[next + run] === '`') run++;
+    if (run === length) return next + run - 1;
+    at = next + run;
+  }
 }
 
 /** A replacement of one span of the markdown. */

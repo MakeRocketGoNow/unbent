@@ -133,6 +133,15 @@ describe('attachmentFilenamesInMarkdown', () => {
   });
 });
 
+describe('a code span in an alt', () => {
+  it('may hold a bracket, as it does for the parser', () => {
+    expect(attachmentFilenamesInMarkdown('![a `]` b](files/c.png)')).toEqual(new Set(['c.png']));
+    expect(attachmentFilenamesInMarkdown('![a ``]`` b](files/c.png)')).toEqual(new Set(['c.png']));
+    // An unclosed backtick is a literal one, and the `]` after it closes the alt.
+    expect(attachmentFilenamesInMarkdown('![a ` b](files/c.png)')).toEqual(new Set(['c.png']));
+  });
+});
+
 describe('removeAttachmentLinks', () => {
   it('removes the matching link and leaves neighbors', () => {
     const md = 'Before [keep](files/keep.pdf) [gone](files/gone.pdf) after';
