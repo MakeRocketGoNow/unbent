@@ -1,3 +1,4 @@
+import { formatAttachmentMarkdown } from '@unbent/shared';
 import { enmlToMarkdown } from './enml-to-markdown.js';
 import { parseEnexStream } from './parse.js';
 import { enexNoteHash, withSourceLink } from './note-body.js';
@@ -131,7 +132,7 @@ async function importOne(
 
   let finalBody = applyRenames(body, renames);
   if (unreferenced.length > 0) {
-    const links = unreferenced.map((f) => `- [${f}](files/${f})`).join('\n');
+    const links = unreferenced.map((f) => `- ${formatAttachmentMarkdown(f, `files/${f}`)}`).join('\n');
     finalBody = `${finalBody}\n\n## Attachments\n\n${links}\n`.trim();
   }
 

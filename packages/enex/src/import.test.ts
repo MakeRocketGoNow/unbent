@@ -202,15 +202,21 @@ describe('attachments', () => {
       note({
         title: 'Orphan file',
         content: '<div>no media element here</div>',
-        resources: [{ base64: HELLO_B64, mime: 'text/plain', filename: 'stray.txt' }],
+        resources: [
+          { base64: HELLO_B64, mime: 'text/plain', filename: 'stray.txt' },
+          { base64: HELLO_B64, mime: 'text/plain', filename: 'stray (2).txt' },
+        ],
       }),
     ]);
 
     await importEnex(file, client);
 
-    expect(files).toHaveLength(1);
+    expect(files).toHaveLength(2);
     expect(notes[0]!.body).toContain('## Attachments');
-    expect(notes[0]!.body).toContain('files/stray.txt');
+    expect(notes[0]!.body).toContain('- [stray.txt](files/stray.txt)');
+    // A name with a space or a parenthesis is bracketed, as everywhere else a link is
+    // written; bare, the space ended the destination and the link was raw text.
+    expect(notes[0]!.body).toContain('- [stray (2).txt](<files/stray (2).txt>)');
   });
 
   it('rewrites links when the server renames a colliding file', async () => {
