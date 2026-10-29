@@ -16,6 +16,11 @@ describe('removing a file\'s links', () => {
     );
   });
 
+  it('reads a character reference as the panel does, and an escaped ampersand as itself', () => {
+    expect(remove('a [r](files/A&amp;B.pdf) b', 'A&B.pdf')).toBe('a  b');
+    expect(remove('a [r](files/A\\&amp;B.pdf) b', 'A&amp;B.pdf')).toBe('a  b');
+  });
+
   it('removes angle-bracket, percent-encoded, escaped and balanced forms', () => {
     expect(remove('![x](<files/my photo.png>)', 'my photo.png')).toBe('');
     expect(remove('a ![x](files/caf%C3%A9.png) b', 'café.png')).toBe('a  b');
@@ -111,10 +116,11 @@ describe('relinking saved web images', () => {
       'https://cdn.example/a.jpg',
       'http://example.com/pics/b c.png',
     ]);
-    // What is fetched is what is looked up: a character reference stays as written.
+    // A character reference is decoded, as the preview reads it: what is fetched is the
+    // address the picture is drawn from, and what is looked up is the same.
     const amp = '![a](https://e.com/p?a=1&amp;b=2)';
-    const [url] = webImageUrls(markdownState(amp));
-    expect(rewriteText(amp, (state) => relinkWebImageChanges(state, (u) => (u === url ? 'p.png' : null)))).toBe(
+    expect(webImageUrls(markdownState(amp))).toEqual(['https://e.com/p?a=1&b=2']);
+    expect(rewriteText(amp, (state) => relinkWebImageChanges(state, (u) => (u === 'https://e.com/p?a=1&b=2' ? 'p.png' : null)))).toBe(
       '![a](files/p.png)',
     );
   });

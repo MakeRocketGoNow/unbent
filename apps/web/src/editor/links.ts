@@ -2,7 +2,14 @@ import { markdown } from '@codemirror/lang-markdown';
 import { ensureSyntaxTree, syntaxTree, type LanguageDescription } from '@codemirror/language';
 import { EditorState, type ChangeSpec, type Text } from '@codemirror/state';
 import { GFM } from '@lezer/markdown';
-import { ATTACHMENT_PREFIX, relativeAttachmentPath, unescapeMarkdown } from '@unbent/shared';
+import {
+  attachmentFilenameFromUrl,
+  decodePathSegment,
+  isWebUrl,
+  readDestination,
+  relativeAttachmentPath,
+  unescapeMarkdown,
+} from '@unbent/shared';
 
 /**
  * Links and images read from the editor's own syntax tree.
@@ -49,11 +56,12 @@ export interface LinkParts {
  * The tree already knows where the label ends and the destination begins: a `]` in a
  * label is escaped as `\]` by any serialiser, and a regex that stopped at the first `]`
  * drew no link at all for an imported `Scan [1].pdf`. The destination is the `URL`
- * node, which excludes the title. Angle brackets come off, and so do backslash escapes:
- * the Evernote importer writes a `(` in a filename as `\(`, and the file's address has
- * to be built from the same name or the viewer under the link asks the server for a file
- * with backslashes in it and draws "Rendering…" for good. A reference link, `[x][ref]`,
- * has no `URL` child and no parts: nothing to hide and no attachment to render.
+ * node, which excludes the title. Angle brackets come off, and so do backslash escapes
+ * and character references, as the parser reads them: the Evernote importer writes a
+ * `(` in a filename as `\(`, and the file's address has to be built from the same name
+ * or the viewer under the link asks the server for a file with backslashes in it and
+ * draws "Rendering…" for good. A reference link, `[x][ref]`, has no `URL` child and no
+ * parts: nothing to hide and no attachment to render.
  */
 export function linkParts(state: EditorState, node: SyntaxNode): LinkParts | undefined {
   let labelFrom = -1;
@@ -79,7 +87,9 @@ export function linkParts(state: EditorState, node: SyntaxNode): LinkParts | und
     labelTo,
     urlFrom: url.from,
     urlTo: url.to,
-    url: unescapeMarkdown(inner),
+    // A character reference is the parser's to decode (`readDestination` says why); the
+    // common destination has none and is read here.
+    url: readDestination(raw) ?? unescapeMarkdown(inner),
   };
 }
 
@@ -139,13 +149,7 @@ export function linksWithin(
 }
 
 /** Percent-decodes when valid, leaving a literal `%` alone rather than throwing. */
-export function decodePath(value: string): string {
-  try {
-    return decodeURIComponent(value);
-  } catch {
-    return value;
-  }
-}
+export const decodePath = decodePathSegment;
 
 /**
  * The editor's markdown grammar, the one definition `Editor` mounts and a headless state
@@ -179,11 +183,6 @@ function allLinks(state: EditorState): DocumentLink[] {
   return linksWithin(state, [{ from: 0, to: state.doc.length }], REWRITE_PARSE_WAIT_MS);
 }
 
-/** Whether a link's destination is on the web, as opposed to the note's own file. */
-function isWebUrl(url: string): boolean {
-  return /^https?:\/\//i.test(url);
-}
-
 /**
  * The web images in the document, each address once, in document order: what "Save web
  * images" fetches. Read from the same tree `relinkWebImageChanges` rewrites, and by the
@@ -203,9 +202,7 @@ export function webImageUrls(state: EditorState): string[] {
 
 /** The note's own file a link points at, by the name the attachment row has, or null. */
 export function attachmentFilenameOf(link: Pick<DocumentLink, 'url'>): string | null {
-  if (!link.url.startsWith(ATTACHMENT_PREFIX)) return null;
-  const filename = decodePath(link.url.slice(ATTACHMENT_PREFIX.length));
-  return filename === '' ? null : filename;
+  return attachmentFilenameFromUrl(link.url);
 }
 
 /**

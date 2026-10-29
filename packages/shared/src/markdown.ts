@@ -33,9 +33,15 @@ export const ATTACHMENT_PREFIX = 'files/';
  * escape inside the brackets, so one in the name is doubled: written single, `a\(b.pdf`
  * would be read back as `a(b.pdf` and flagged "Not linked" by the readers this exists
  * to satisfy.
+ *
+ * An ampersand is escaped too, bracketed or not, because a destination is read with its
+ * character references decoded (`readDestination`): bare, a file named `a&copy;b.pdf`
+ * would be read back as `a©b.pdf`. Escaped, `\&` is the literal character to every
+ * reader, and the name round-trips whatever follows it.
  */
 function attachmentDestination(path: string): string {
-  return /[\s()\\]/.test(path) ? `<${path.replace(/\\/g, '\\\\')}>` : path;
+  const escaped = path.replace(/\\/g, '\\\\').replace(/&/g, '\\&');
+  return /[\s()\\]/.test(path) ? `<${escaped}>` : escaped;
 }
 
 /**
@@ -51,14 +57,14 @@ export function formatAttachmentMarkdown(
   path: string,
   opts: { image?: boolean } = {},
 ): string {
-  return `${opts.image ? '!' : ''}[${label.replace(/[[\]\\]/g, '\\$&')}](${attachmentDestination(path)})`;
+  return `${opts.image ? '!' : ''}[${label.replace(/[[\]\\&]/g, '\\$&')}](${attachmentDestination(path)})`;
 }
 
 /**
  * Decode a path segment the way the renderer does: percent-decoding when valid,
  * otherwise leaving the literal alone (a lone `%` is not encoding).
  */
-function decodePathSegment(segment: string): string {
+export function decodePathSegment(segment: string): string {
   try {
     return decodeURIComponent(segment);
   } catch {
@@ -81,6 +87,29 @@ function decodePathSegment(segment: string): string {
  */
 export function unescapeMarkdown(raw: string): string {
   return raw.replace(/\\([!-/:-@[-`{-~])/g, '$1');
+}
+
+/**
+ * Whether a destination's raw spelling holds a character reference (`&amp;`, `&#39;`,
+ * `&copy;`), which the parser decodes and a backslash-escape pass does not.
+ */
+const CHARACTER_REFERENCE_RE = /&(?:#\d+|#x[0-9a-f]+|[a-z][a-z0-9]*);/i;
+
+/**
+ * A link destination as the parser reads it, from its raw spelling in a body (angle
+ * brackets and all): backslash escapes off and character references decoded. For the
+ * editor, whose own reading (`unescapeMarkdown` on its tree's `URL` node) takes the
+ * escapes off and nothing else, so `files/A&amp;B.pdf` was linked to the panel and not
+ * to Delete, and a web image at an address with `&amp;` in it was fetched at a different
+ * address from the one the preview draws (2026-10-29). The parser's own reading is the
+ * one decoding there is, and asking it keeps the two readers one; a reference table
+ * here would be a second. Null when the spelling is no link's destination at all.
+ */
+export function readDestination(raw: string): string | null {
+  if (!CHARACTER_REFERENCE_RE.test(raw)) return null;
+  const links = parseInlineLinks(`[](${raw})`);
+  const link = links[0];
+  return link && link.from === 0 && link.to === raw.length + 4 ? link.url : null;
 }
 
 /** An inline link or image in some markdown, with where it sits in the text. */
@@ -178,11 +207,26 @@ function relativeAttachmentLinks(markdown: string): Array<InlineLink & { filenam
   // out of) is answered without the parse.
   if (!markdown.includes(ATTACHMENT_PREFIX.slice(0, -1))) return links;
   for (const link of inlineLinks(markdown)) {
-    if (!link.url.startsWith(ATTACHMENT_PREFIX)) continue;
-    const filename = decodePathSegment(link.url.slice(ATTACHMENT_PREFIX.length));
-    if (filename) links.push({ ...link, filename });
+    const filename = attachmentFilenameFromUrl(link.url);
+    if (filename !== null) links.push({ ...link, filename });
   }
   return links;
+}
+
+/**
+ * The note's own file a destination names, by the name the attachment row has, or null
+ * for any other destination. The one reading of "which file is this", for the parser's
+ * links here and the editor's tree's (`attachmentFilenameOf` in `editor/links.ts`).
+ */
+export function attachmentFilenameFromUrl(url: string): string | null {
+  if (!url.startsWith(ATTACHMENT_PREFIX)) return null;
+  const filename = decodePathSegment(url.slice(ATTACHMENT_PREFIX.length));
+  return filename === '' ? null : filename;
+}
+
+/** Whether a destination is on the web, as opposed to a note's own file or an anchor. */
+export function isWebUrl(url: string): boolean {
+  return /^https?:\/\//i.test(url);
 }
 
 /**
@@ -259,7 +303,7 @@ export function mayHoldAbsoluteAttachmentLink(text: string): boolean {
 
 /** Every image drawn from the web: `![alt](http…)`, whichever way the address is spelled. */
 function remoteImages(markdown: string): InlineLink[] {
-  return inlineLinks(markdown).filter((link) => link.image && /^https?:\/\//i.test(link.url));
+  return inlineLinks(markdown).filter((link) => link.image && isWebUrl(link.url));
 }
 
 /**

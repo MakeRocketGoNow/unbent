@@ -6,6 +6,7 @@ import {
   formatAttachmentMarkdown,
   mayHoldAbsoluteAttachmentLink,
   parseAbsoluteAttachmentUrl,
+  readDestination,
   relativeAttachmentPath,
   remoteImageUrls,
   renderMarkdown,
@@ -40,6 +41,14 @@ describe('formatAttachmentMarkdown', () => {
       expect(attachmentFilenamesInMarkdown(md)).toEqual(new Set([name]));
     }
     expect(formatAttachmentMarkdown('a]b.pdf', 'files/a]b.pdf')).toBe('[a\\]b.pdf](files/a]b.pdf)');
+  });
+
+  it('escapes an ampersand, so a name that spells a character reference reads back', () => {
+    for (const name of ['a&copy;b.pdf', 'A&amp;B.pdf', 'Tom & Jerry.pdf']) {
+      const md = formatAttachmentMarkdown(name, `files/${name}`);
+      expect(attachmentFilenamesInMarkdown(md)).toEqual(new Set([name]));
+    }
+    expect(formatAttachmentMarkdown('a&b.pdf', 'files/a&b.pdf')).toBe('[a\\&b.pdf](files/a\\&b.pdf)');
   });
 
   /** Without brackets the whole line is literal text: no link, no PDF viewer. */
@@ -669,5 +678,20 @@ describe('snippetParts', () => {
 
   it('shows the snippet as it came when flattening leaves nothing', () => {
     expect(shown('(files/<<onlyurl>>.pdf)')).toBe('(files/[onlyurl].pdf)');
+  });
+});
+
+/** The editor asks the parser to decode a destination it cannot read itself. */
+describe('readDestination', () => {
+  it('decodes character references and escapes, brackets and all', () => {
+    expect(readDestination('https://e.com/p?a=1&amp;b=2')).toBe('https://e.com/p?a=1&b=2');
+    expect(readDestination('<files/A&amp;B c.pdf>')).toBe('files/A&B c.pdf');
+    expect(readDestination('files/a\\&amp;b.pdf')).toBe('files/a&amp;b.pdf');
+    expect(readDestination('files/x&#40;1&#41;.pdf')).toBe('files/x(1).pdf');
+  });
+
+  it('answers null for a destination with no reference in it, and for no destination', () => {
+    expect(readDestination('files/a.pdf')).toBeNull();
+    expect(readDestination('a & b')).toBeNull();
   });
 });
