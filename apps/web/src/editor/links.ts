@@ -1,5 +1,5 @@
 import { markdown } from '@codemirror/lang-markdown';
-import { ensureSyntaxTree, syntaxTree, type LanguageDescription } from '@codemirror/language';
+import { ensureSyntaxTree, language, syntaxTree, type LanguageDescription } from '@codemirror/language';
 import { EditorState, type ChangeSpec, type Text, type TransactionSpec } from '@codemirror/state';
 import type { EditorView } from '@codemirror/view';
 import { GFM } from '@lezer/markdown';
@@ -117,6 +117,10 @@ const PARSE_SLICE_MS = 200;
 
 /** The tree parsed through `end`, however long that takes; see `PARSE_SLICE_MS`. */
 function treeThrough(state: EditorState, end: number) {
+  // A state with no language never answers `ensureSyntaxTree`, and the loop below would
+  // never end. Every caller parses with `editorMarkdown`; this is what keeps a future
+  // one that does not from freezing the tab, and it walks an empty tree instead.
+  if (!state.facet(language)) return syntaxTree(state);
   for (;;) {
     const tree = ensureSyntaxTree(state, end, PARSE_SLICE_MS);
     if (tree) return tree;
