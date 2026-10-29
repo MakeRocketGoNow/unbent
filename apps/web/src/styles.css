@@ -2933,6 +2933,14 @@ a.sidebar-status:hover {
 }
 
 .avatar {
+  /*
+     Never shrunk. On the rail's floor it is a row's glyph, and the closed strip pads its
+     rows for an 18px icon (`--rail-strip-pad`), which leaves this 28px circle less room
+     than it has: as a flex item it gave up width and drew as an upright oval. Centred, it
+     overflows into the padding evenly instead, which the row has to spare; a long
+     address beside it in the open rail is what truncates.
+  */
+  flex: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
