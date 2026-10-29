@@ -151,14 +151,10 @@ function parseInlineLinks(markdown: string): InlineLink[] {
     const to = node.position?.end.offset;
     if (from === undefined || to === undefined) return;
     const image = node.type === 'image';
+    // A `link` that does not open with a bracket is a GFM literal autolink, a bare
+    // address in the text, which names no file and has no destination to read. A
+    // reference link, `[x][ref]`, is a `linkReference` node the walk never sees.
     if (markdown.slice(from, from + (image ? 2 : 1)) !== (image ? '![' : '[')) return;
-    const labelEnd = node.children?.length
-      ? (node.children[node.children.length - 1]!.position?.end.offset ?? -1)
-      : closingBracket(markdown, from + (image ? 2 : 1));
-    // What follows the label has to be `](`: a reference link, `[x][ref]`, is a
-    // `linkReference` node the walk never sees, so this guards the walk's own reading of
-    // where the label ends, which for an image is a scan over the text.
-    if (labelEnd < 0 || markdown[labelEnd] !== ']' || markdown[labelEnd + 1] !== '(') return;
     links.push({ image, from, to, url: node.url ?? '' });
   });
   return links;
@@ -168,47 +164,6 @@ interface MdLinkNode {
   type: string;
   url?: string;
   position?: { start: { offset?: number }; end: { offset?: number } };
-  children?: MdLinkNode[];
-}
-
-/**
- * Where the `]` closing a label that opened at `from` is, or -1. An image's alt has no
- * children in the tree to take the position from, so it is found the way the parser found
- * it: a backslash hides what follows, a bracket pair inside the label nests, and a code
- * span binds tighter than either, so a bracket inside one is text. A backtick run with no
- * closing run of the same length is a literal backtick, as it is to the parser.
- */
-function closingBracket(markdown: string, from: number): number {
-  let depth = 0;
-  for (let i = from; i < markdown.length; i++) {
-    const c = markdown[i];
-    if (c === '\\') i++;
-    else if (c === '`') {
-      const close = codeSpanEnd(markdown, i);
-      if (close >= 0) i = close;
-    } else if (c === '[') depth++;
-    else if (c === ']') {
-      if (depth === 0) return i;
-      depth--;
-    }
-  }
-  return -1;
-}
-
-/** The index of the last backtick closing the code span that opens at `open`, or -1. */
-function codeSpanEnd(markdown: string, open: number): number {
-  let length = 0;
-  while (markdown[open + length] === '`') length++;
-  const fence = '`'.repeat(length);
-  let at = open + length;
-  for (;;) {
-    const next = markdown.indexOf(fence, at);
-    if (next < 0) return -1;
-    let run = 0;
-    while (markdown[next + run] === '`') run++;
-    if (run === length) return next + run - 1;
-    at = next + run;
-  }
 }
 
 /**
