@@ -333,119 +333,41 @@ function segment(value: string): string {
 }
 
 /**
- * Rewrites every same-note `files/…` link to the absolute form `attachmentUrl` produces.
- *
- * Run on the way *out* of a note (the editor's copy handler), never on the stored body,
- * which stays relative so an exported folder works in any editor. The label is kept as
- * written; only the destination changes. Angle brackets are dropped along with the
- * spaces that needed them: the encoded URL has none.
+ * The `files/<filename>` destination a link to one of the note's own files is written
+ * with, bracketed when the name needs it; see `attachmentDestination`. For the editor,
+ * which rewrites a pasted link's destination in place once its file is here.
  */
-export function absolutizeAttachmentLinks(
-  markdown: string,
-  opts: { noteId: string; origin?: string },
-): string {
-  return rewriteLinks(markdown, relativeAttachmentLinks(markdown), (link) =>
-    destinationEdit(link, attachmentUrl(opts.noteId, link.filename, opts.origin)),
-  );
-}
-
-/** A link in pasted text that names another note's file, with where it sits in the text. */
-export interface AbsoluteAttachmentLink {
-  from: number;
-  to: number;
-  /**
-   * Where its `(destination)` starts. A rewrite replaces from here to `to`, so the label,
-   * and an image inside it with its own entry, stay as they are; see `rewriteLinks`.
-   */
-  destFrom: number;
-  /** Its title, kept by `relativeAttachmentDestination`. */
-  title: string | null;
-  noteId: string;
-  filename: string;
+export function relativeAttachmentPath(filename: string): string {
+  return attachmentDestination(`${ATTACHMENT_PREFIX}${filename}`);
 }
 
 /**
- * An absolute attachment address, with or without an origin, as the parser hands it
- * back: a URL, not markdown, so the one regex left here is on the shape of a path. The
- * note id and the filename are percent-decoded by the caller.
+ * An absolute attachment address, with or without an origin: a URL, not markdown, so
+ * the one regex left here is on the shape of a path. The note id and the filename are
+ * percent-decoded by `parseAbsoluteAttachmentUrl`.
  */
 const ABSOLUTE_ATTACHMENT_URL_RE = /^(?:https?:\/\/[^/]+)?\/api\/notes\/([^/?#]+)\/files\/([^?#]+)/;
 
 /**
- * Every absolute attachment link in some markdown, in order, with positions.
- *
- * The positions are what the editor needs: it inserts pasted text first and rewrites the
- * links in place once the files have been copied, and a rewrite by position is one
- * transaction that leaves the cursor and the undo history alone. A whole-string
- * `relativizeAttachmentLinks` is built on the same walk for callers that hold text rather
- * than a document.
+ * The note and file an absolute attachment address names, decoded, or null for any
+ * other destination. What `attachmentUrl` writes for a copied link, read back on paste;
+ * the editor finds the links themselves in its own syntax tree and asks this of each
+ * destination. A query the panel's download link carries (`?download=1`) is not part of
+ * the name, and the pattern stops at it.
  */
-export function findAbsoluteAttachmentLinks(markdown: string): AbsoluteAttachmentLink[] {
-  return absoluteLinks(markdown).map(({ from, to, destFrom, title, noteId, filename }) => ({
-    from,
-    to,
-    destFrom,
-    title,
-    noteId,
-    filename,
-  }));
-}
-
-function absoluteLinks(markdown: string): Array<InlineLink & { noteId: string; filename: string }> {
-  const links: Array<InlineLink & { noteId: string; filename: string }> = [];
-  for (const link of inlineLinks(markdown)) {
-    const match = ABSOLUTE_ATTACHMENT_URL_RE.exec(link.url);
-    if (!match) continue;
-    // A query the panel's download link carries (`?download=1`) is not part of the name,
-    // and the pattern above already stops at it.
-    links.push({ ...link, noteId: decodePathSegment(match[1]!), filename: decodePathSegment(match[2]!) });
-  }
-  return links;
-}
-
-/** The distinct files some markdown links absolutely, each named once per note. */
-export function absoluteAttachmentRefs(markdown: string): Array<{ noteId: string; filename: string }> {
-  const seen = new Set<string>();
-  const refs: Array<{ noteId: string; filename: string }> = [];
-  for (const { noteId, filename } of findAbsoluteAttachmentLinks(markdown)) {
-    const key = `${noteId}${filename}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    refs.push({ noteId, filename });
-  }
-  return refs;
+export function parseAbsoluteAttachmentUrl(url: string): { noteId: string; filename: string } | null {
+  const match = ABSOLUTE_ATTACHMENT_URL_RE.exec(url);
+  return match ? { noteId: decodePathSegment(match[1]!), filename: decodePathSegment(match[2]!) } : null;
 }
 
 /**
- * The `(destination)` a link should have, from its `destFrom` to its `to`, once its file
- * is stored in the note as `filename`. The label is not part of it, so an image inside
- * the label is left for its own rewrite.
+ * Whether some text could hold an absolute attachment link at all: the address's path
+ * appears in it. For claiming a paste before the text is in a document, where alone
+ * knowing whether that address is a link is possible (in a code block it is not), so
+ * this errs towards claiming, and a claimed paste with no link in it is a plain paste.
  */
-export function relativeAttachmentDestination(
-  link: Pick<AbsoluteAttachmentLink, 'title'>,
-  filename: string,
-): string {
-  return destinationText(link, attachmentDestination(`${ATTACHMENT_PREFIX}${filename}`));
-}
-
-/**
- * Turns absolute attachment links back into `files/…` links, for text arriving in a note.
- *
- * `rename` answers, for each link, the filename the file now has in the destination note
- * (which may differ from the source's, since a name already taken there is suffixed)
- * or null to leave that link as it is. Leaving it absolute is the honest fallback when the
- * copy failed: the link still opens for the owner, and nothing pretends the file is here.
- */
-export function relativizeAttachmentLinks(
-  markdown: string,
-  rename: (ref: { noteId: string; filename: string }) => string | null,
-): string {
-  return rewriteLinks(markdown, absoluteLinks(markdown), (link) => {
-    const renamed = rename(link);
-    return renamed === null
-      ? null
-      : destinationEdit(link, attachmentDestination(`${ATTACHMENT_PREFIX}${renamed}`));
-  });
+export function mayHoldAbsoluteAttachmentLink(text: string): boolean {
+  return /\/api\/notes\/[^/\s]+\/files\//.test(text);
 }
 
 /** Every image drawn from the web: `![alt](http…)`, whichever way the address is spelled. */

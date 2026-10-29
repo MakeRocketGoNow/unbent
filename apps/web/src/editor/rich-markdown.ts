@@ -22,7 +22,8 @@ import {
   type ViewUpdate,
   WidgetType,
 } from '@codemirror/view';
-import { ATTACHMENT_PREFIX, formatAttachmentMarkdown, unescapeDestination } from '@unbent/shared';
+import { ATTACHMENT_PREFIX, formatAttachmentMarkdown } from '@unbent/shared';
+import { decodePath, linkParts } from './links.js';
 import { acquirePdf, type LoadedPdf, releasePdf } from '../pdf/render.js';
 import { downloadUrl, openAttachmentViewer, type ViewerTarget } from '../attachment-viewer.js';
 import { NOT_AVAILABLE_OFFLINE, standInForImage, unavailableOffline, whenBackOnline } from '../offline-file.js';
@@ -1214,66 +1215,6 @@ function revealScope(
 
 /** Attachment links pointing at a PDF, by extension (mirrors the shared pipeline). */
 const PDF_PATH = /\.pdf$/i;
-
-/** Percent-decodes when valid, leaving a literal `%` alone rather than throwing. */
-function decodePath(value: string): string {
-  try {
-    return decodeURIComponent(value);
-  } catch {
-    return value;
-  }
-}
-
-/** A node of the syntax tree, as `@codemirror/language` hands it out; `@lezer/common` is not a dependency here. */
-type SyntaxNode = ReturnType<typeof syntaxTree>['topNode'];
-
-/** What a `[label](url)` or `![alt](url)` is made of, read from the tree's own marks. */
-interface LinkParts {
-  /** The label's text, between the brackets, and where it sits. */
-  label: string;
-  labelFrom: number;
-  labelTo: number;
-  /** The destination with its angle brackets and backslash escapes off, as the parser reads it. */
-  url: string;
-}
-
-/**
- * A link's or image's parts, from the syntax tree rather than a regex over its text.
- *
- * The tree already knows where the label ends and the destination begins: a `]` in a
- * label is escaped as `\]` by any serialiser, and a regex that stopped at the first `]`
- * drew no link at all for an imported `Scan [1].pdf`. The destination is the `URL`
- * node, which excludes the title. Angle brackets come off, and so do backslash escapes:
- * the Evernote importer writes a `(` in a filename as `\(`, and the file's address has
- * to be built from the same name or the viewer under the link asks the server for a file
- * with backslashes in it and draws "Rendering…" for good. A reference link, `[x][ref]`,
- * has no `URL` child and no parts: nothing to hide and no attachment to render.
- */
-function linkParts(state: EditorState, node: SyntaxNode): LinkParts | undefined {
-  let labelFrom = -1;
-  let labelTo = -1;
-  let url: SyntaxNode | null = null;
-  for (let child = node.firstChild; child; child = child.nextSibling) {
-    if (child.name === 'LinkMark') {
-      if (labelFrom < 0) labelFrom = child.to;
-      else if (labelTo < 0) labelTo = child.from;
-    } else if (child.name === 'URL' && labelTo >= 0) {
-      // Only past the closing bracket: GFM marks a bare address inside the label as a
-      // `URL` node as well, and `[https://x](https://y)` goes to `y`.
-      url = child;
-      break;
-    }
-  }
-  if (labelFrom < 0 || labelTo < 0 || !url) return undefined;
-  const raw = state.doc.sliceString(url.from, url.to);
-  const inner = raw.startsWith('<') && raw.endsWith('>') ? raw.slice(1, -1) : raw;
-  return {
-    label: state.doc.sliceString(labelFrom, labelTo),
-    labelFrom,
-    labelTo,
-    url: unescapeDestination(inner),
-  };
-}
 
 /**
  * Schemes a click may follow, and whether each leaves the note open behind it.

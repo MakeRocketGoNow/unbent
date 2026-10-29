@@ -1,14 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
-  absoluteAttachmentRefs,
-  absolutizeAttachmentLinks,
   attachmentFilenamesInMarkdown,
   attachmentUrl,
   excerptMarkdown,
-  findAbsoluteAttachmentLinks,
   formatAttachmentMarkdown,
   localizeImageLinks,
-  relativizeAttachmentLinks,
+  mayHoldAbsoluteAttachmentLink,
+  parseAbsoluteAttachmentUrl,
+  relativeAttachmentPath,
   remoteImageUrls,
   removeAttachmentLinks,
   renderMarkdown,
@@ -168,14 +167,7 @@ describe('removeAttachmentLinks', () => {
  * which note's file they mean, and come back relative once the file is stored in the
  * destination, under whatever name it got there.
  */
-describe('absolutizeAttachmentLinks', () => {
-  it('names the note in every same-note link and image', () => {
-    const md = 'See [a](files/a.pdf) and ![b](files/b.png).';
-    expect(absolutizeAttachmentLinks(md, { noteId: NOTE })).toBe(
-      `See [a](/api/notes/${NOTE}/files/a.pdf) and ![b](/api/notes/${NOTE}/files/b.png).`,
-    );
-  });
-
+describe('attachment addresses', () => {
   /**
    * A bare `(` would be read as a balanced pair by one parser and an unfinished
    * destination by another; a backslash would be an escape. The brackets make the name
@@ -190,84 +182,44 @@ describe('absolutizeAttachmentLinks', () => {
       new Set(['a\\(b.pdf']),
     );
     expect(formatAttachmentMarkdown('plain.pdf', 'files/plain.pdf')).toBe('[plain.pdf](files/plain.pdf)');
+    expect(relativeAttachmentPath('my b.pdf')).toBe('<files/my b.pdf>');
   });
 
-  it('absolutizes a backslash-escaped destination by the name it means', () => {
-    expect(
-      absolutizeAttachmentLinks('[r](files/Report\\(R\\).pdf)', { noteId: NOTE, origin: 'https://app.example' }),
-    ).toBe(`[r](https://app.example/api/notes/${NOTE}/files/Report%28R%29.pdf)`);
-  });
-
-  it('encodes a bracketed name and drops the brackets it no longer needs', () => {
-    const md = formatAttachmentMarkdown('Report (final) v2.pdf', 'files/Report (final) v2.pdf');
-    expect(absolutizeAttachmentLinks(md, { noteId: NOTE, origin: 'https://app.example' })).toBe(
-      `[Report (final) v2.pdf](https://app.example/api/notes/${NOTE}/files/Report%20%28final%29%20v2.pdf)`,
+  it('encodes a name for the address and reads it back, with or without an origin', () => {
+    expect(attachmentUrl(NOTE, 'Report (final) v2.pdf', 'https://app.example')).toBe(
+      `https://app.example/api/notes/${NOTE}/files/Report%20%28final%29%20v2.pdf`,
     );
-  });
-
-  it('leaves remote links and prose alone', () => {
-    const md = 'A [site](https://example.com/files/x.pdf) and files/plain.txt in prose.';
-    expect(absolutizeAttachmentLinks(md, { noteId: NOTE })).toBe(md);
-  });
-});
-
-describe('findAbsoluteAttachmentLinks', () => {
-  it('reads the note and decoded filename, with or without an origin', () => {
-    const md = `![a](${attachmentUrl('n1', 'my photo.png', 'https://app.example')}) [b](<${attachmentUrl('n2', 'b.pdf')}>)`;
-    expect(findAbsoluteAttachmentLinks(md)).toEqual([
-      { from: 0, to: md.indexOf(' [b]'), destFrom: 4, title: null, noteId: 'n1', filename: 'my photo.png' },
-      { from: md.indexOf('[b]'), to: md.length, destFrom: md.indexOf('[b]') + 3, title: null, noteId: 'n2', filename: 'b.pdf' },
-    ]);
-  });
-
-  it('lists an image inside a link as its own entry, with its own destination range', () => {
-    const md = `[![a](${attachmentUrl('n1', 'a.png')})](${attachmentUrl('n1', 'b.pdf')})`;
-    const [outer, inner] = findAbsoluteAttachmentLinks(md);
-    expect(outer).toMatchObject({ from: 0, to: md.length, filename: 'b.pdf' });
-    expect(inner).toMatchObject({ from: 1, filename: 'a.png' });
-    expect(inner!.to).toBeLessThan(outer!.destFrom);
-  });
-
-  /**
-   * What `absolutizeAttachmentLinks` writes for a parenthesised name has to come back
-   * whole, or a link cut and pasted within its own note is rewritten to a file that does
-   * not exist.
-   */
-  it('reads a parenthesised name back from what absolutize wrote', () => {
-    const md = absolutizeAttachmentLinks('[r](files/Report\\(R\\).pdf) tail', {
+    expect(parseAbsoluteAttachmentUrl(attachmentUrl('n1', 'my photo.png', 'https://app.example'))).toEqual({
       noteId: 'n1',
-      origin: 'https://app.example',
+      filename: 'my photo.png',
     });
-    const [link] = findAbsoluteAttachmentLinks(md);
-    expect(link?.filename).toBe('Report(R).pdf');
-    expect(md.slice(link!.to)).toBe(' tail');
+    expect(parseAbsoluteAttachmentUrl(attachmentUrl('n2', 'b.pdf'))).toEqual({ noteId: 'n2', filename: 'b.pdf' });
   });
 
   /**
    * A lone parenthesis cannot be read back bare, balanced or not, so the address never
    * carries one: `attachmentUrl` encodes it, and the file is found by the decoded name.
    */
-  it('round-trips a name with an unbalanced parenthesis', () => {
-    for (const name of ['a(b.pdf', 'a)b.pdf', 'x((y)).pdf']) {
-      const md = absolutizeAttachmentLinks(`[l](<files/${name}>) tail`, { noteId: 'n1' });
-      const [link] = findAbsoluteAttachmentLinks(md);
-      expect(link?.filename).toBe(name);
-      expect(md.slice(link!.to)).toBe(' tail');
+  it('round-trips a name with a parenthesis', () => {
+    for (const name of ['Report(R).pdf', 'a(b.pdf', 'a)b.pdf', 'x((y)).pdf']) {
+      const url = attachmentUrl('n1', name);
+      expect(url).not.toMatch(/[()]/);
+      expect(parseAbsoluteAttachmentUrl(url)?.filename).toBe(name);
     }
   });
 
   it('ignores the download query the panel link carries', () => {
-    const md = `[a](${attachmentUrl('n1', 'a.pdf')}?download=1)`;
-    expect(findAbsoluteAttachmentLinks(md)[0]?.filename).toBe('a.pdf');
+    expect(parseAbsoluteAttachmentUrl(`${attachmentUrl('n1', 'a.pdf')}?download=1`)?.filename).toBe('a.pdf');
   });
 
-  it('names each file once per note', () => {
-    const url = attachmentUrl('n1', 'a.pdf');
-    const md = `[a](${url}) [again](${url}) [other](${attachmentUrl('n2', 'a.pdf')})`;
-    expect(absoluteAttachmentRefs(md)).toEqual([
-      { noteId: 'n1', filename: 'a.pdf' },
-      { noteId: 'n2', filename: 'a.pdf' },
-    ]);
+  it('is not any other destination', () => {
+    expect(parseAbsoluteAttachmentUrl('https://example.com/files/x.pdf')).toBeNull();
+    expect(parseAbsoluteAttachmentUrl('files/x.pdf')).toBeNull();
+  });
+
+  it('says whether text could hold one, on the shape of the path', () => {
+    expect(mayHoldAbsoluteAttachmentLink(`see [a](${attachmentUrl('n1', 'a.pdf')})`)).toBe(true);
+    expect(mayHoldAbsoluteAttachmentLink('see [a](files/a.pdf) and https://example.com/')).toBe(false);
   });
 });
 
@@ -305,21 +257,6 @@ describe('remote images', () => {
   });
 });
 
-describe('relativizeAttachmentLinks', () => {
-  it('rewrites to the name the destination gave the file, bracketed when it needs to be', () => {
-    const md = `![a](${attachmentUrl('n1', 'a.png')}) and [b](${attachmentUrl('n1', 'b.pdf')})`;
-    const out = relativizeAttachmentLinks(md, ({ filename }) =>
-      filename === 'a.png' ? 'a-2.png' : 'my b.pdf',
-    );
-    expect(out).toBe('![a](files/a-2.png) and [b](<files/my b.pdf>)');
-  });
-
-  it('leaves a link alone when told to', () => {
-    const md = `[a](${attachmentUrl('n1', 'a.pdf')}) text`;
-    expect(relativizeAttachmentLinks(md, () => null)).toBe(md);
-  });
-});
-
 describe('an image inside a link', () => {
   /**
    * The clickable picture every exporter writes. The walk lists the link and the image
@@ -327,12 +264,6 @@ describe('an image inside a link', () => {
    * inner image after it, so the body held the image twice.
    */
   const md = 'see [![a](files/x.png)](files/y.pdf) end';
-
-  it('is absolutized with its container, each in place', () => {
-    expect(absolutizeAttachmentLinks(md, { noteId: NOTE })).toBe(
-      `see [![a](/api/notes/${NOTE}/files/x.png)](/api/notes/${NOTE}/files/y.pdf) end`,
-    );
-  });
 
   it('is renamed with its container, or alone', () => {
     expect(rewriteAttachmentLinks(md, (f) => `${f}-2`)).toBe('see [![a](files/x.png-2)](files/y.pdf-2) end');
@@ -350,10 +281,6 @@ describe('an image inside a link', () => {
     expect(removeAttachmentLinks(md, 'x.png')).toBe('see [](files/y.pdf) end');
   });
 
-  it('is relativized with its container', () => {
-    const abs = `[![a](${attachmentUrl('n1', 'x.png')})](${attachmentUrl('n1', 'y.pdf')})`;
-    expect(relativizeAttachmentLinks(abs, ({ filename }) => filename)).toBe('[![a](files/x.png)](files/y.pdf)');
-  });
 });
 
 describe('attachment resolution', () => {
