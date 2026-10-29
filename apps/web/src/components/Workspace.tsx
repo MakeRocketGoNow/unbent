@@ -68,6 +68,7 @@ import type { HistoryCurrent } from './HistoryChanges.js';
 import type { PropValue } from '../note-diff.js';
 import { caretBelowEnd } from '../editor/rich-markdown.js';
 import { noteDropZone } from '../editor/drop-zone.js';
+import { PendingUploads } from '../editor/attach.js';
 import { formatRevisionWhen } from './format-when.js';
 import { Button } from './Button';
 import { BackArrow } from './BackArrow.js';
@@ -862,6 +863,11 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
      (see `busy.ts`).
   */
   const [uploadsPending, setUploadsPending] = useState(0);
+  // Made once for the workspace, not per editor: the editor is rebuilt on a rich/source
+  // switch and remounted on a revision bump (and on a change of note), and the uploads
+  // run on through all three. A count kept by the editor went to zero at each, and the
+  // guard let go with files half-way to the server (`PendingUploads` in attach.ts).
+  const [pendingUploads] = useState(() => new PendingUploads(setUploadsPending));
   const unsent =
     saveState === 'dirty' || saveState === 'saving' || saveState === 'error' || saveState === 'conflict';
   useEffect(() => (unsent || uploadsPending > 0 ? holdPage() : undefined), [unsent, uploadsPending]);
@@ -2078,7 +2084,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
                     return new Map(files.map((f) => [f.from, f.filename]));
                   }
             }
-            onUploadsPending={setUploadsPending}
+            pendingUploads={pendingUploads}
             onSaveRemoteImage={readOnly ? undefined : saveRemoteImage}
             onDeleteAttachment={
               readOnly

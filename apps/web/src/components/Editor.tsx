@@ -8,7 +8,7 @@ import { markdownKeymap } from '../editor/markdown-commands.js';
 import { tableTools } from '../editor/table-toolbar.js';
 import { fileDropCursor } from '../editor/drop-cursor.js';
 import { proseSpellcheck } from '../editor/spellcheck.js';
-import { attachments } from '../editor/attach.js';
+import { attachments, PendingUploads } from '../editor/attach.js';
 import { attachmentClipboard } from '../editor/clipboard.js';
 import { attachmentSrc, editorMarkdown } from '../editor/links.js';
 import { copyAttachmentToClipboard } from '../attachment-clipboard.js';
@@ -25,8 +25,13 @@ interface EditorProps {
    * without the handler CodeMirror's own drop would paste a file's bytes in as text.
    */
   onUpload?: (file: File) => Promise<string>;
-  /** How many uploads are in flight, whenever that changes. The Android app shows it. */
-  onUploadsPending?: (count: number) => void;
+  /**
+   * Where the uploads in flight are counted, from the owner that outlives this
+   * component: the count holds the page open (`holdPage`) until the last one lands, and
+   * a rich/source rebuild or a revision remount mid-upload must not let go of it. See
+   * `PendingUploads` in `editor/attach.ts`. Absent, each view counts its own.
+   */
+  pendingUploads?: PendingUploads;
   /**
    * Copies files from another note into this one, for a paste that links them.
    *
@@ -126,7 +131,7 @@ export function Editor({
   initialValue,
   onChange,
   onUpload,
-  onUploadsPending,
+  pendingUploads,
   onCopyAttachments,
   onSaveRemoteImage,
   onDeleteAttachment,
@@ -154,8 +159,6 @@ export function Editor({
   onChangeRef.current = onChange;
   const onUploadRef = useRef(onUpload);
   onUploadRef.current = onUpload;
-  const onUploadsPendingRef = useRef(onUploadsPending);
-  onUploadsPendingRef.current = onUploadsPending;
   const onCopyAttachmentsRef = useRef(onCopyAttachments);
   onCopyAttachmentsRef.current = onCopyAttachments;
   const onSaveRemoteImageRef = useRef(onSaveRemoteImage);
@@ -332,7 +335,9 @@ export function Editor({
                   return upload(file);
                 }
               : undefined,
-            onPending: (count) => onUploadsPendingRef.current?.(count),
+            // The owner's object itself, not a reader of a ref: it is the one the owner
+            // made once, and the view is built with it as every earlier view was.
+            pending: pendingUploads,
             liveView: liveViewNow,
           }),
           /*

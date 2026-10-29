@@ -5,6 +5,7 @@ import {
   attachments,
   insertUploads,
   pendingUploads,
+  PendingUploads,
   type AttachConfig,
 } from './attach.js';
 
@@ -162,7 +163,7 @@ describe('insertUploads', () => {
   it('reports the number in flight as it changes', async () => {
     const { upload, calls, call } = deferredUpload();
     const onPending = vi.fn();
-    const view = mount('', { upload, onPending });
+    const view = mount('', { upload, pending: new PendingUploads(onPending) });
     const done = insertUploads(view, [png(), pdf()], 0);
     call(0).resolve('files/a.png');
     await settle();
@@ -171,6 +172,39 @@ describe('insertUploads', () => {
     // Two registered before the first upload, then down one at a time.
     expect(onPending.mock.calls.map((c) => c[0])).toEqual([1, 2, 1, 0]);
     view.destroy();
+  });
+
+  /*
+     The count is the owner's, not the view's: a view rebuilt mid-upload (the rich/source
+     switch) is built with the same `pending`, so the number the owner holds the page
+     open on does not drop to zero and come back, and goes to zero only when the upload
+     lands. A plugin kept it before, and reported zero when its view was destroyed.
+  */
+  it('keeps the count across a rebuild of the view, until the upload lands', async () => {
+    const { upload, call } = deferredUpload();
+    const onPending = vi.fn();
+    const views = { current: null as EditorView | null };
+    const config: AttachConfig = {
+      upload,
+      pending: new PendingUploads(onPending),
+      liveView: () => views.current,
+    };
+    const pressed = mount('', config);
+    views.current = pressed;
+    const done = insertUploads(pressed, [png()], 0);
+    const carried = pressed.state.doc.toString();
+
+    pressed.destroy();
+    const live = mount(carried, config);
+    views.current = live;
+    expect(pendingUploads(live)).toBe(1);
+    expect(onPending.mock.calls.map((c) => c[0])).toEqual([1]);
+
+    call(0).resolve('files/a.png');
+    await done;
+    expect(pendingUploads(live)).toBe(0);
+    expect(onPending.mock.calls.map((c) => c[0])).toEqual([1, 0]);
+    live.destroy();
   });
 
   it('does nothing without an uploader', async () => {

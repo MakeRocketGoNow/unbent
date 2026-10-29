@@ -4,7 +4,7 @@ import type { EditorView } from '@codemirror/view';
 import { undoDepth } from '@codemirror/commands';
 import { useRef, useState } from 'react';
 import { caretRoom } from '../editor/rich-markdown.js';
-import { insertUploads } from '../editor/attach.js';
+import { insertUploads, PendingUploads } from '../editor/attach.js';
 import { Editor } from './Editor.js';
 
 /**
@@ -289,5 +289,59 @@ describe('Editor across a remount', () => {
     finish('files/a.png');
     await done;
     expect(live.state.doc.toString()).toBe('![a.png](files/a.png)\nsaved body');
+  });
+
+  /*
+     The count that holds the page open (`holdPage` in `Workspace.tsx`) is the owner's
+     too: made once beside the getter and handed to every instance, so the remount
+     changes nothing about it. It used to be the view's, and went to zero at the remount
+     with the upload still running, so a tab closed then lost the file without a warning.
+  */
+  it('keeps the owner\'s count of uploads in flight across the remount', async () => {
+    let finish: (path: string) => void = () => {};
+    const onUpload = vi.fn(() => new Promise<string>((resolve) => { finish = resolve; }));
+    let bump: () => void = () => {};
+    let current: () => EditorView | null = () => null;
+    const counts: number[] = [];
+    const pending = new PendingUploads((n) => counts.push(n));
+
+    function Host() {
+      const [revision, setRevision] = useState(0);
+      const viewRef = useRef<EditorView | null>(null);
+      const bodyRef = useRef('saved body');
+      bump = () => setRevision((n) => n + 1);
+      current = () => viewRef.current;
+      return (
+        <Editor
+          key={`n1-${revision}`}
+          noteId="n1"
+          initialValue={bodyRef.current}
+          onChange={(body) => {
+            bodyRef.current = body;
+          }}
+          onUpload={onUpload}
+          pendingUploads={pending}
+          onViewReady={(v) => {
+            viewRef.current = v;
+          }}
+          liveView={() => viewRef.current}
+        />
+      );
+    }
+    render(<Host />);
+
+    const pressed = current()!;
+    const done = insertUploads(pressed, [new File(['x'], 'a.png', { type: 'image/png' })], 0);
+    expect(pending.size).toBe(1);
+
+    act(() => bump());
+    expect(current()).not.toBe(pressed);
+    expect(pending.size).toBe(1);
+    expect(counts).toEqual([1]);
+
+    finish('files/a.png');
+    await done;
+    expect(pending.size).toBe(0);
+    expect(counts).toEqual([1, 0]);
   });
 });
