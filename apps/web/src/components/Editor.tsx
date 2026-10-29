@@ -185,17 +185,24 @@ export function Editor({
    * hears of it. So the file was on the server and the note did not say so, with the
    * head saying "Saved". The extensions cannot see a later view on their own, which is
    * why each takes this getter. The alternative, not rebuilding the view on a switch, is
-   * a refactor of the editor for a bug in four round trips.
+   * a refactor of the editor for a bug in three round trips.
    *
-   * The owner's `liveView` first, this component's `viewRef` only without one. The
-   * workspace keys this component on the revision, so a revision bump is a remount, not
-   * a rebuild: the new view lands in a new instance's ref, and the old instance's
-   * extensions, still waiting on their round trips, would read their own ref and find
-   * it cleared. The workspace's ref is set from `onViewReady` across remounts, so it is
-   * the one that answers the view open at the moment the write lands. The fallback is
-   * for a caller with no owner, where a rebuild is only ever the switch.
+   * The owner's `liveView` when there is one, this component's `viewRef` only without
+   * one. The workspace keys this component on the revision, so a revision bump is a
+   * remount, not a rebuild: the new view lands in a new instance's ref, and the old
+   * instance's extensions, still waiting on their round trips, would read their own ref
+   * and find it cleared. The workspace's ref is set from `onViewReady` across remounts,
+   * so it is the one that answers the view open at the moment the write lands. The
+   * fallback is for a caller with no owner, where a rebuild is only ever the switch.
+   *
+   * An owner's null is an answer, not a gap: the workspace answers null once the open
+   * note is no longer the one the round trip began on, and the write is dropped. The
+   * extensions do not fall back to their captured view then, since that view is gone
+   * and the write would only be lost later and more quietly; this is the one place the
+   * two are told apart. The draft is not written either: the workspace mounts an editor
+   * for every open note, so a round trip for the open note always finds a view.
    */
-  const liveViewNow = () => liveViewRef.current?.() ?? viewRef.current;
+  const liveViewNow = () => (liveViewRef.current ? liveViewRef.current() : viewRef.current);
   /**
    * The live document, held across a rebuild that is only a change of clothes.
    *

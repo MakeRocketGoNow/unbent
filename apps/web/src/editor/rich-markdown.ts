@@ -695,7 +695,8 @@ function saveButton(
     button.dataset.tip = 'Saving…';
     save(url).then(
       (filename) => {
-        const live = liveView?.() ?? view;
+        const live = liveView ? liveView() : view;
+        if (!live) return; // the note is no longer open; the pressed view is gone
         if (live !== view) {
           const changes = relinkWebImageChanges(live.state, (u) => (u === url ? filename : null));
           if (changes.length > 0) live.dispatch({ changes });
@@ -1571,8 +1572,9 @@ export interface RichMarkdownOptions {
   pathOpener?: (path: string) => (() => void) | undefined;
   /**
    * The editor to write into once `saveRemoteImage` answers: the one open then, which
-   * may not be the one the control was built in. `liveView` in `Editor.tsx` says why an
-   * extension needs this at all. Absent, the view the control was built in.
+   * may not be the one the control was built in, or null for none, when that note is
+   * no longer open. `liveViewNow` in `Editor.tsx` says why an extension needs this at
+   * all. Absent, the view the control was built in.
    */
   liveView?: () => EditorView | null;
 }

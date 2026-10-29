@@ -130,6 +130,25 @@ describe('insertUploads', () => {
     live.destroy();
   });
 
+  it('writes nowhere when the owner says no editor is open for the note', async () => {
+    const { upload, call } = deferredUpload();
+    const views = { current: null as EditorView | null };
+    const config: AttachConfig = { upload, liveView: () => views.current };
+    const pressed = mount('one\ntwo', config);
+    views.current = pressed;
+    const done = insertUploads(pressed, [png()], 4);
+
+    // The note was switched away from: the owner answers null, and the pressed view is
+    // gone. Another note's editor is open, and must not receive the link.
+    pressed.destroy();
+    views.current = null;
+    const next = mount('another note', { upload });
+    call(0).resolve('files/a.png');
+    await done;
+    expect(next.state.doc.toString()).toBe('another note');
+    next.destroy();
+  });
+
   it('leaves a comment where an upload failed', async () => {
     const { upload, calls, call } = deferredUpload();
     const view = mount('', { upload });

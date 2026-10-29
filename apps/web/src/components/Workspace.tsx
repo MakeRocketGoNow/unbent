@@ -2135,8 +2135,8 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
                in `Editor.tsx`). Guarded by note, as `saveWebImages` is: after a switch
                the ref holds the next note's view, and a web image relinked by its
                address or a paste's links from the same source would be written into
-               the wrong note. An old instance's getter answers null then, and its
-               extension falls back to its own view, which is gone, so nothing lands.
+               the wrong note. An old instance's getter answers null then, which the
+               extensions take as nowhere to write, and the write is dropped.
             */
             liveView={() => (noteIdRef.current === note.id ? editorViewNow() : null)}
           />

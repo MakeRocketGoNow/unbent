@@ -36,8 +36,9 @@ export interface AttachConfig {
   onPending?: (count: number) => void;
   /**
    * The editor to write into once an upload answers: the one open then, which may not
-   * be the one the files went into. `liveView` in `Editor.tsx` says why an extension
-   * needs this at all. Absent, the view the files went into.
+   * be the one the files went into, or null for none, when the note the files went
+   * into is no longer open. `liveViewNow` in `Editor.tsx` says why an extension needs
+   * this at all. Absent, the view the files went into.
    */
   liveView?: () => EditorView | null;
 }
@@ -180,16 +181,22 @@ export async function insertUploads(
   for (const job of jobs) pending.add(job.token);
 
   // The count stays the view the files went into: its plugin reports zero on destroy
-  // and lets the uploads finish. Only the replacement moves to the live view.
+  // and lets the uploads finish. Only the replacement moves to the live view, and a
+  // `liveView` that answers null (the note is no longer open) means nowhere: the view
+  // the files went into is gone then, and a dispatch to it would be taken silently.
   for (const { file, token } of jobs) {
+    let replacement: string;
     try {
       const path = await upload(file);
-      const link = formatAttachmentMarkdown(file.name, path, {
+      replacement = formatAttachmentMarkdown(file.name, path, {
         image: file.type.startsWith('image/'),
       });
-      replaceToken(liveView?.() ?? view, token, link);
     } catch (err) {
-      replaceToken(liveView?.() ?? view, token, `<!-- upload failed: ${(err as Error).message} -->`);
+      replacement = `<!-- upload failed: ${(err as Error).message} -->`;
+    }
+    try {
+      const live = liveView ? liveView() : view;
+      if (live) replaceToken(live, token, replacement);
     } finally {
       pending.remove(token);
     }
