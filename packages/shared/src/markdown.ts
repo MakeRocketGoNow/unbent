@@ -268,8 +268,10 @@ function remoteImages(markdown: string): InlineLink[] {
  * A note converted from a bookmark by an assistant, or clipped from a page, links its
  * pictures to the site they came from. Those rot, get hotlink-blocked, are in no export
  * and no search: Evernote never left an image on the web, and neither should a note
- * here. This is what "Save web images" counts and fetches; the editor points the images
- * at the stored files afterwards (`relinkWebImageChanges` in `editor/links.ts`).
+ * here. This is what "Save web images" counts for its label; what it fetches and relinks
+ * is read from the editor's tree (`webImageUrls` and `relinkWebImageChanges` in
+ * `editor/links.ts`), which leaves a character reference as written where remark decodes
+ * it, so the label's count and the pass's can differ by that spelling.
  */
 export function remoteImageUrls(markdown: string): string[] {
   return [...new Set(remoteImages(markdown).map((image) => image.url))];
