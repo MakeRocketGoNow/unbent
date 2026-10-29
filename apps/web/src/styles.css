@@ -11351,6 +11351,99 @@ button.settings-nav-item {
 
 .front-pricing-page .front-cta { margin-top: 2.5rem; }
 
+/*
+   The features page (`FeaturesPage.tsx`): a group's heading and sentence on the front
+   page's rhythm, then a row per feature, the paragraph beside its picture. Alternate
+   rows put the picture on the other side, so the page reads in a zigzag down rather
+   than a column of pictures with captions, and the alternation is the stylesheet's, so
+   a row added in the middle of a group does not renumber the rest.
+
+   The picture takes the larger share: it is the point of the row, and the paragraph
+   beside it is three sentences at most. Under 860px (the app's own breakpoint) the
+   row stacks, text first, so the sentence says what the picture under it shows.
+*/
+.features .features-group + .features-group { padding-top: var(--front-gap); }
+
+.feature {
+  display: grid;
+  gap: 1rem 2.5rem;
+  align-items: center;
+  margin-top: 2.5rem;
+}
+
+.feature-text h3 {
+  margin: 0;
+  font-size: 1.15rem;
+  letter-spacing: -0.01em;
+}
+
+.feature-text p {
+  margin: 0.5rem 0 0;
+  color: var(--muted);
+  text-wrap: pretty;
+}
+
+@media (width > 860px) {
+  .feature {
+    grid-template-columns: minmax(16rem, 2fr) 3fr;
+    margin-top: 3.5rem;
+  }
+  .features-group .feature:nth-of-type(even) .feature-text { order: 2; }
+}
+
+/* A picture or a clip, framed as the front page frames its desktop shot. The video is
+   sized by its attributes before it loads, as the images are, so nothing jumps. */
+.feature-shot {
+  display: block;
+  width: 100%;
+}
+
+.feature-shot img,
+.feature-shot video {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  background: var(--bg);
+  box-shadow: 0 1.5rem 3rem -1.5rem var(--front-shadow);
+}
+
+/* The phone pictures, three abreast at the phone's own rounded corners; on a phone
+   they are two abreast, since one abreast would be three screens tall. */
+.features-phones {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1.5rem;
+  margin-top: 2.5rem;
+}
+
+.features-phones .feature-shot img { border-radius: 1.4rem; }
+
+@media (width <= 860px) {
+  .features-phones { grid-template-columns: repeat(2, 1fr); gap: 1rem; }
+  .features-phones .feature-shot:last-child { display: none; }
+}
+
+/* The two themes side by side, forced, since this is the one row where the reader's own
+   theme must not choose. */
+.features-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
+.features-pair img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  box-shadow: 0 1rem 2rem -1rem var(--front-shadow);
+}
+
+.features-cta { margin-top: var(--front-gap); }
+
 .front-footer {
   display: flex;
   flex-wrap: wrap;

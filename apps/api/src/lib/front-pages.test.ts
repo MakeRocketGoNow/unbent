@@ -108,6 +108,7 @@ describe('serveFrontPage', () => {
     const xml = await sitemap!.text();
     expect(xml).toContain('<loc>https://unbent.example/</loc>');
     expect(xml).toContain('<loc>https://unbent.example/why</loc>');
+    expect(xml).toContain('<loc>https://unbent.example/features</loc>');
     expect(xml).toContain('<loc>https://unbent.example/pricing</loc>');
     expect(xml).toContain('<loc>https://unbent.example/support</loc>');
     for (const app of ['', '/evernote', '/notion', '/joplin', '/paperless-ngx']) {

@@ -34,13 +34,14 @@ import type { RawEnv } from '../types.js';
 export const WHY_PATH = '/why';
 
 /**
- * Every page the build writes a static copy of, and the file it wrote it to: the story
- * and the comparisons (`PAGES` in the web app's `prerender.tsx`, which this must match).
+ * Every page the build writes a static copy of, and the file it wrote it to: the story,
+ * the features page and the comparisons (`PAGES` in the web app's `prerender.tsx`, which this must match).
  * Flat file names rather than a `compare/` directory, so no path the asset layer would
  * resolve on its own ever lands on one of them.
  */
 export const PRERENDERED: Readonly<Record<string, string>> = {
   [WHY_PATH]: '/why.html',
+  '/features': '/features.html',
   '/compare': '/compare.html',
   '/compare/evernote': '/compare-evernote.html',
   '/compare/notion': '/compare-notion.html',

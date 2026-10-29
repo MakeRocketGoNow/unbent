@@ -15,6 +15,7 @@ import { Route as ConsentRouteImport } from './routes/consent'
 import { Route as DeleteAccountRouteImport } from './routes/delete-account'
 import { Route as DeleteMyAccountRouteImport } from './routes/delete-my-account'
 import { Route as DeviceRouteImport } from './routes/device'
+import { Route as FeaturesRouteImport } from './routes/features'
 import { Route as GoodbyeRouteImport } from './routes/goodbye'
 import { Route as ImportRouteImport } from './routes/import'
 import { Route as LoginRouteImport } from './routes/login'
@@ -83,6 +84,11 @@ const DeleteMyAccountRoute = DeleteMyAccountRouteImport.update({
 const DeviceRoute = DeviceRouteImport.update({
   id: '/device',
   path: '/device',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FeaturesRoute = FeaturesRouteImport.update({
+  id: '/features',
+  path: '/features',
   getParentRoute: () => rootRouteImport,
 } as any)
 const GoodbyeRoute = GoodbyeRouteImport.update({
@@ -289,6 +295,7 @@ export interface FileRoutesByFullPath {
   '/delete-account': typeof DeleteAccountRoute
   '/delete-my-account': typeof DeleteMyAccountRoute
   '/device': typeof DeviceRoute
+  '/features': typeof FeaturesRoute
   '/goodbye': typeof GoodbyeRoute
   '/import': typeof ImportRoute
   '/login': typeof LoginRoute
@@ -336,6 +343,7 @@ export interface FileRoutesByTo {
   '/delete-account': typeof DeleteAccountRoute
   '/delete-my-account': typeof DeleteMyAccountRoute
   '/device': typeof DeviceRoute
+  '/features': typeof FeaturesRoute
   '/goodbye': typeof GoodbyeRoute
   '/import': typeof ImportRoute
   '/login': typeof LoginRoute
@@ -381,6 +389,7 @@ export interface FileRoutesById {
   '/delete-account': typeof DeleteAccountRoute
   '/delete-my-account': typeof DeleteMyAccountRoute
   '/device': typeof DeviceRoute
+  '/features': typeof FeaturesRoute
   '/goodbye': typeof GoodbyeRoute
   '/import': typeof ImportRoute
   '/login': typeof LoginRoute
@@ -430,6 +439,7 @@ export interface FileRouteTypes {
     | '/delete-account'
     | '/delete-my-account'
     | '/device'
+    | '/features'
     | '/goodbye'
     | '/import'
     | '/login'
@@ -477,6 +487,7 @@ export interface FileRouteTypes {
     | '/delete-account'
     | '/delete-my-account'
     | '/device'
+    | '/features'
     | '/goodbye'
     | '/import'
     | '/login'
@@ -521,6 +532,7 @@ export interface FileRouteTypes {
     | '/delete-account'
     | '/delete-my-account'
     | '/device'
+    | '/features'
     | '/goodbye'
     | '/import'
     | '/login'
@@ -569,6 +581,7 @@ export interface RootRouteChildren {
   DeleteAccountRoute: typeof DeleteAccountRoute
   DeleteMyAccountRoute: typeof DeleteMyAccountRoute
   DeviceRoute: typeof DeviceRoute
+  FeaturesRoute: typeof FeaturesRoute
   GoodbyeRoute: typeof GoodbyeRoute
   ImportRoute: typeof ImportRoute
   LoginRoute: typeof LoginRoute
@@ -634,6 +647,13 @@ declare module '@tanstack/react-router' {
       path: '/device'
       fullPath: '/device'
       preLoaderRoute: typeof DeviceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/features': {
+      id: '/features'
+      path: '/features'
+      fullPath: '/features'
+      preLoaderRoute: typeof FeaturesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/goodbye': {
@@ -981,6 +1001,7 @@ const rootRouteChildren: RootRouteChildren = {
   DeleteAccountRoute: DeleteAccountRoute,
   DeleteMyAccountRoute: DeleteMyAccountRoute,
   DeviceRoute: DeviceRoute,
+  FeaturesRoute: FeaturesRoute,
   GoodbyeRoute: GoodbyeRoute,
   ImportRoute: ImportRoute,
   LoginRoute: LoginRoute,

@@ -103,6 +103,13 @@ export const PRICING = '/pricing';
 export const WHY = '/why';
 
 /**
+ * Every feature, shown, `/features`: the pictures and clips the front page has no room
+ * for. The story's rules: public, shown to a signed-in person who asks for it, and only
+ * on an instance with a front page.
+ */
+export const FEATURES = '/features';
+
+/**
  * Support, `/support`: how to reach a person, and where receipts, refunds, sign-in,
  * export and deletion are handled. The pricing page's rules again: public, shown to a
  * signed-in person who asks for it, and only on an instance with a front page. Stripe's
@@ -161,7 +168,7 @@ export function shellFor(pathname: string): Shell {
   // and which never means a different page.
   const path = pathname.length > 1 ? pathname.replace(/\/$/, '') : pathname;
   if (path === TURNSTILE) return 'embed';
-  if (path === FRONT || path === PRICING || path === WHY || path === SUPPORT || COMPARE_PATHS.has(path)) return 'front';
+  if (path === FRONT || path === PRICING || path === WHY || path === FEATURES || path === SUPPORT || COMPARE_PATHS.has(path)) return 'front';
   if (PUBLIC.has(path)) return 'plain';
   return 'app';
 }

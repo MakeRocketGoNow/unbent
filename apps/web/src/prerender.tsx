@@ -10,6 +10,7 @@ import {
 } from '@tanstack/react-router';
 import { keys } from './queries.js';
 import { WhyPage, WHY_META } from './components/WhyPage.js';
+import { FeaturesPage, FEATURES_META } from './components/FeaturesPage.js';
 import {
   CompareIndexPage,
   EvernoteComparison,
@@ -34,8 +35,8 @@ import type { PageMeta } from './page-meta.js';
  * Only the pages for people who are not signed in belong here, and not all of those:
  * `/` is served as `index.html`, which is the shell for every route of the app, so a
  * copy of the front page written there would be drawn for a moment on every page load
- * of the notes. The pricing page could join the list; the story and the comparisons are
- * the ones a search lands on, so they went first.
+ * of the notes. The pricing page could join the list; the story, the comparisons and
+ * the features page are the ones a search lands on, so they went first.
  *
  * What the page is rendered with is the least the shell needs: a config that says there
  * is a front page, and nothing of the operator (`legal`, `operator`), which the build
@@ -57,6 +58,7 @@ export interface PrerenderedPage {
  */
 export const PAGES: Record<string, PrerenderedPage> = {
   '/why': { component: WhyPage, meta: WHY_META, file: 'why.html' },
+  '/features': { component: FeaturesPage, meta: FEATURES_META, file: 'features.html' },
   '/compare': { component: CompareIndexPage, meta: COMPARE_META, file: 'compare.html' },
   '/compare/evernote': { component: EvernoteComparison, meta: comparison('evernote').meta, file: 'compare-evernote.html' },
   '/compare/notion': { component: NotionComparison, meta: comparison('notion').meta, file: 'compare-notion.html' },

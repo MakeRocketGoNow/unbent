@@ -296,6 +296,14 @@ export default defineConfig({
            */
           'why.html',
           /*
+           * The features page's static copy, for the same reason, and its pictures and
+           * clips (`public/features/`), for the front page's: they are read by someone
+           * deciding whether to try the app, never by someone using it, and the clips
+           * alone are megabytes.
+           */
+          'features.html',
+          'features/**',
+          /*
            * The link-preview card (`CARD_IMAGE` in `src/page-meta.ts`), the one PNG under
            * `front/`. It is read by Slack and the like, never by the app, so every install
            * would download it for nothing.
