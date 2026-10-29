@@ -1,14 +1,14 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link } from '@tanstack/react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import type { EditorView } from '@codemirror/view';
 import { Transaction } from '@codemirror/state';
-import { removeAttachmentLinkChanges, rewriteDocument } from '../editor/links.js';
+import type { EditorView } from '@codemirror/view';
 import type { AttachmentInfo } from '@unbent/shared';
 import {
   attachmentFilenamesInMarkdown,
   formatAttachmentMarkdown,
 } from '@unbent/shared';
+import { removeAttachmentLinkChanges, rewriteDocument } from '../editor/links.js';
 import * as api from '../notes-api.js';
 import { copyAttachmentToClipboard } from '../attachment-clipboard.js';
 import { attachmentsQuery, keys } from '../queries.js';
@@ -34,8 +34,9 @@ interface AttachmentsProps {
    */
   editorViewNow: () => EditorView | null;
   /**
-   * Called after a linked file is deleted so the editor can drop the markdown
-   * destination and remount with the rewritten body.
+   * Writes a rewritten body when no editor is mounted to take the change itself
+   * (`dropLinks`, and the fallback of `insertLink`); with one mounted the change is
+   * dispatched to it instead.
    */
   onBodyRewrite: (nextBody: string) => void;
   /**
