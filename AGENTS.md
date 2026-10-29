@@ -429,17 +429,6 @@ Sessions are stored per origin: a debug app switched from production to a local 
 asks for a sign-in there, and switching back finds the production session where it was
 left. Say which instance the app is on when you hand it back.
 
-**The features page's pictures and clips are made by a script, never by hand.**
-`pnpm shoot:features` (`scripts/shoot-features.mjs`) drives a headless Chrome through the
-scenes `/features` shows, against this checkout's dev server with the demo library
-loaded, in both themes, and writes `apps/web/public/features/`. A change that moves a
-control or a layout the page shows is a reason to run it again and commit what changed;
-a page of stale pictures is worse than one with none. The front page's two screenshots
-in `public/front/` predate it and are still hand-made. To see the public pages on a local
-instance at all, set `FRONT_PAGE=1` in `apps/api/.dev.vars` and restart `pnpm dev`
-(wrangler does not reload that file): without it `/`, `/features` and `/why` send a
-visitor to the sign-in screen, and a signed-in one to their notes.
-
 Store screenshots must not show the debug name. `resValue("string", "app_name", …)` in
 `apps/android/app/build.gradle.kts` makes the debug build "Unbent (debug)"; set it to
 "Unbent" for the build you shoot, then **revert it and confirm `git diff` on that file is
@@ -448,6 +437,22 @@ empty**. Existing assets and the full recipe are in `apps/android/store/`.
 `adb exec-out screencap -p > shot.png` captures without a temporary file on the device.
 `uiautomator dump` returns empty while the app is mid-animation or busy: let it settle
 rather than treating the empty file as a missing element.
+
+**The features page's pictures and clips are made by a script, never by hand.**
+`pnpm shoot:features` (`scripts/shoot-features.mjs`) drives a headless Chrome through the
+scenes `/features` shows, against this checkout's dev server with the demo library
+loaded, in both themes, and writes `apps/web/public/features/`. A change that moves a
+control or a layout the page shows is a reason to shoot *the scenes it touched* again
+(`pnpm shoot:features table views`; `--list` names them) and commit what changed; a page
+of stale pictures is worse than one with none. Not the whole set: every file a run writes
+is new bytes in the history for good, the four clips are two thirds of the eight
+megabytes, and a clip is never byte-identical twice (the frames' timing, the typing's
+pauses and Auto-fill's answer all vary), so a full reshoot costs every clone that much
+whether or not anything visible changed. The front page's two screenshots in
+`public/front/` predate the script and are still hand-made. To see the public pages on a
+local instance at all, set `FRONT_PAGE=1` in `apps/api/.dev.vars` and restart `pnpm dev`
+(wrangler does not reload that file): without it `/`, `/features` and `/why` send a
+visitor to the sign-in screen, and a signed-in one to their notes.
 
 ### The iOS simulator: ask before booting, and know which instance it is on
 
