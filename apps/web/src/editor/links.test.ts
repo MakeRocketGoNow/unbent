@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { markdownState, relinkWebImageChanges, removalRange, removeAttachmentLinkChanges, rewriteText, webImageUrls } from './links.js';
+import { attachmentSrc, markdownState, relinkWebImageChanges, removalRange, removeAttachmentLinkChanges, rewriteText, webImageUrls } from './links.js';
 
 /**
  * The editor's rewrites of a note's attachment links, on a headless state: what the
@@ -142,5 +142,15 @@ describe('relinking saved web images', () => {
 describe('a headless state', () => {
   it('parses with the editor\'s grammar', () => {
     expect(markdownState('- [x](files/x.png)').doc.toString()).toBe('- [x](files/x.png)');
+  });
+});
+
+/** What `Editor` resolves a `files/…` destination to, for the viewer and the pictures. */
+describe('attachmentSrc', () => {
+  it('encodes the name once, whether the link spelled it encoded or plain', () => {
+    expect(attachmentSrc('n1', 'my scan.pdf')).toBe('/api/notes/n1/files/my%20scan.pdf');
+    expect(attachmentSrc('n1', 'my%20scan.pdf')).toBe('/api/notes/n1/files/my%20scan.pdf');
+    expect(attachmentSrc('n1', 'Report(R).pdf')).toBe('/api/notes/n1/files/Report%28R%29.pdf');
+    expect(attachmentSrc('n1', '100%.pdf')).toBe('/api/notes/n1/files/100%25.pdf');
   });
 });

@@ -10,7 +10,7 @@ import { fileDropCursor } from '../editor/drop-cursor.js';
 import { proseSpellcheck } from '../editor/spellcheck.js';
 import { attachments } from '../editor/attach.js';
 import { attachmentClipboard } from '../editor/clipboard.js';
-import { editorMarkdown } from '../editor/links.js';
+import { attachmentSrc, editorMarkdown } from '../editor/links.js';
 import { copyAttachmentToClipboard } from '../attachment-clipboard.js';
 
 interface EditorProps {
@@ -230,8 +230,7 @@ export function Editor({
           ...(rich
             ? [
                 richMarkdown({
-                  resolveAttachment: (filename) =>
-                    `/api/notes/${encodeURIComponent(noteId)}/files/${encodeURIComponent(filename)}`,
+                  resolveAttachment: (filename) => attachmentSrc(noteId, filename),
                   isPdfAttachment: (filename) => pdfFilenamesRef.current?.has(filename) ?? false,
                   // The same clipboard payload the Attachments panel's Copy writes. The
                   // type only decides whether a PNG goes along; the size is not used.

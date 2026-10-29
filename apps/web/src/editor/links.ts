@@ -4,6 +4,7 @@ import { EditorState, type ChangeSpec, type Text } from '@codemirror/state';
 import { GFM } from '@lezer/markdown';
 import {
   attachmentFilenameFromUrl,
+  attachmentUrl,
   decodePathSegment,
   isWebUrl,
   readDestination,
@@ -152,6 +153,18 @@ export function linksWithin(
 
 /** Percent-decodes when valid, leaving a literal `%` alone rather than throwing. */
 export const decodePath = decodePathSegment;
+
+/**
+ * The address the editor draws a note's own file from, by the name after `files/` as
+ * the tree's `URL` node spells it. The spelling may be percent-encoded already (a link
+ * the clipboard or an importer wrote, `files/my%20scan.pdf`), so it is decoded before
+ * `attachmentUrl` encodes it: encoding it as it stood asked the server for
+ * `my%2520scan.pdf`, a file that does not exist, and the viewer under the link drew
+ * "Rendering…" for good while the preview, which decodes first, drew the file.
+ */
+export function attachmentSrc(noteId: string, filename: string): string {
+  return attachmentUrl(noteId, decodePath(filename));
+}
 
 /**
  * The editor's markdown grammar, the one definition `Editor` mounts and a headless state
