@@ -4,14 +4,11 @@ import {
   attachmentUrl,
   excerptMarkdown,
   formatAttachmentMarkdown,
-  localizeImageLinks,
   mayHoldAbsoluteAttachmentLink,
   parseAbsoluteAttachmentUrl,
   relativeAttachmentPath,
   remoteImageUrls,
-  removeAttachmentLinks,
   renderMarkdown,
-  rewriteAttachmentLinks,
   snippetParts,
 } from './markdown.js';
 
@@ -148,43 +145,6 @@ describe('a code span in an alt', () => {
   });
 });
 
-describe('removeAttachmentLinks', () => {
-  it('removes the matching link and leaves neighbors', () => {
-    const md = 'Before [keep](files/keep.pdf) [gone](files/gone.pdf) after';
-    expect(removeAttachmentLinks(md, 'gone.pdf')).toBe(
-      'Before [keep](files/keep.pdf)  after',
-    );
-  });
-
-  it('removes angle-bracket and image forms', () => {
-    expect(removeAttachmentLinks('![x](<files/my photo.png>)', 'my photo.png')).toBe('');
-  });
-
-  /** The Joplin import wraps a picture in a link; the file goes, the link around it stays. */
-  it('removes an image inside a link without eating the outer bracket', () => {
-    expect(removeAttachmentLinks('a [![x](files/a.png)](https://e.com) b', 'a.png')).toBe(
-      'a [](https://e.com) b',
-    );
-  });
-
-  it('keeps a link title through a rewrite', () => {
-    const md = '![a](files/old.png "A \\"quoted\\" caption") tail';
-    expect(rewriteAttachmentLinks(md, () => 'new (1).png')).toBe(
-      '![a](<files/new (1).png> "A \\"quoted\\" caption") tail',
-    );
-  });
-
-  it('removes the percent-encoded form', () => {
-    expect(removeAttachmentLinks('a ![x](files/caf%C3%A9.png) b', 'café.png')).toBe('a  b');
-  });
-
-  /** Deleting an imported file has to take its escaped link with it. */
-  it('removes a backslash-escaped and a balanced-parenthesis form', () => {
-    const md = '[r](files/Report\\(R\\).pdf)\n\n[r](files/Report(R).pdf)\n\n[keep](files/Report.pdf)';
-    expect(removeAttachmentLinks(md, 'Report(R).pdf')).toBe('\n\n[keep](files/Report.pdf)');
-  });
-});
-
 /**
  * The round trip the clipboard makes: relative links leave a note absolute, so they say
  * which note's file they mean, and come back relative once the file is stored in the
@@ -259,51 +219,15 @@ describe('remote images', () => {
       'http://example.com/pics/b c.png',
     ]);
   });
-
-  it('points saved images at their files and leaves the rest', () => {
-    const out = localizeImageLinks(md, (url) =>
-      url.endsWith('a.jpg') ? 'a.jpg' : url.endsWith('b c.png') ? 'b c-2.png' : null,
-    );
-    expect(out).toBe(
-      [
-        '![a](files/a.jpg) and ![again](files/a.jpg)',
-        '![b](<files/b c-2.png>)',
-        '[not an image](https://example.com/x.png) ![local](files/x.png)',
-      ].join('\n'),
-    );
-  });
-
-  it('keeps a web link a fetch could not replace', () => {
-    expect(localizeImageLinks('![a](https://cdn.example/a.jpg)', () => null)).toBe(
-      '![a](https://cdn.example/a.jpg)',
-    );
-  });
 });
 
 describe('an image inside a link', () => {
-  /**
-   * The clickable picture every exporter writes. The walk lists the link and the image
-   * in it, and until 2026-10-29 the rewriter spliced the outer link whole and then the
-   * inner image after it, so the body held the image twice.
-   */
-  const md = 'see [![a](files/x.png)](files/y.pdf) end';
-
-  it('is renamed with its container, or alone', () => {
-    expect(rewriteAttachmentLinks(md, (f) => `${f}-2`)).toBe('see [![a](files/x.png-2)](files/y.pdf-2) end');
-    expect(rewriteAttachmentLinks(md, (f) => (f === 'y.pdf' ? 'z.pdf' : null))).toBe(
-      'see [![a](files/x.png)](files/z.pdf) end',
-    );
-    expect(rewriteAttachmentLinks(md, (f) => (f === 'x.png' ? 'w.png' : null))).toBe(
-      'see [![a](files/w.png)](files/y.pdf) end',
+  /** The clickable picture every exporter writes: the link and the image in it are both read. */
+  it('names both files', () => {
+    expect(attachmentFilenamesInMarkdown('see [![a](files/x.png)](files/y.pdf) end')).toEqual(
+      new Set(['x.png', 'y.pdf']),
     );
   });
-
-  it('goes with its container when the container is removed', () => {
-    expect(removeAttachmentLinks(md, 'y.pdf')).toBe('see  end');
-    expect(removeAttachmentLinks('see [![a](files/x.png)](files/x.png) end', 'x.png')).toBe('see  end');
-    expect(removeAttachmentLinks(md, 'x.png')).toBe('see [](files/y.pdf) end');
-  });
-
 });
 
 describe('attachment resolution', () => {

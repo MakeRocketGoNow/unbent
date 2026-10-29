@@ -88,18 +88,8 @@ interface InlineLink {
   image: boolean;
   from: number;
   to: number;
-  /** The `![alt]` or `[text]` part, verbatim, so a rewrite keeps it as written. */
-  label: string;
-  /**
-   * Where the `(` after the label is. A rewrite of the destination replaces from here to
-   * `to` and leaves the label alone, so an image inside the label (its own entry in the
-   * list) is still rewritten on its own, in place, rather than copied into the new text.
-   */
-  destFrom: number;
   /** The destination as the parser reads it: brackets and backslash escapes off. */
   url: string;
-  /** The link's title, if it had one, so a rewrite keeps it. */
-  title: string | null;
 }
 
 /**
@@ -110,7 +100,13 @@ const linkParser = unified().use(remarkParse).use(remarkDisableSetext).use(remar
 
 /**
  * Every inline link and image in some markdown, in order, with positions: the one walk
- * every reader and rewriter of link destinations here is built on.
+ * every reader of link destinations here is built on.
+ *
+ * Readers only. Nothing here rewrites a body: that is the editor's, from its own syntax
+ * tree (`apps/web/src/editor/links.ts`), which has the document's context and is the
+ * parser the person is looking at. Until 2026-10-29 this module held a second set of
+ * rewriters over the remark tree, and two parsers that had to agree about nesting,
+ * escapes and context did not, often enough to fill three review rounds.
  *
  * It is the markdown parser, not a regex. Until 2026-10-28 six hand-written regexes read
  * link syntax, one per reader, and each had its own idea of where a label or a destination
@@ -118,11 +114,11 @@ const linkParser = unified().use(remarkParse).use(remarkDisableSetext).use(remar
  * or a bracket in a filename) or a balanced pair of parentheses; one stopped at the first
  * `)`, another at the first `]`, and a third took an image inside a link from the outer
  * bracket. Each was found and fixed one at a time, and each fix turned up the next. The
- * parser already answers what a link means, with the escapes and the title handled, and
- * with the positions a rewrite by slice needs, so that is what every reader asks now.
+ * parser already answers what a link means, with the escapes handled, so that is what
+ * every reader asks now.
  *
  * Reference links, autolinks and the bare URLs GFM recognises are left out: they have no
- * `[label](destination)` to rewrite, and none of the readers wants them.
+ * `[label](destination)`, and none of the readers wants them.
  */
 function inlineLinks(markdown: string): InlineLink[] {
   if (markdown === lastParsed.markdown) return lastParsed.links;
@@ -163,15 +159,7 @@ function parseInlineLinks(markdown: string): InlineLink[] {
     // `linkReference` node the walk never sees, so this guards the walk's own reading of
     // where the label ends, which for an image is a scan over the text.
     if (labelEnd < 0 || markdown[labelEnd] !== ']' || markdown[labelEnd + 1] !== '(') return;
-    links.push({
-      image,
-      from,
-      to,
-      label: markdown.slice(from, labelEnd + 1),
-      destFrom: labelEnd + 1,
-      url: node.url ?? '',
-      title: node.title ?? null,
-    });
+    links.push({ image, from, to, url: node.url ?? '' });
   });
   return links;
 }
@@ -179,7 +167,6 @@ function parseInlineLinks(markdown: string): InlineLink[] {
 interface MdLinkNode {
   type: string;
   url?: string;
-  title?: string | null;
   position?: { start: { offset?: number }; end: { offset?: number } };
   children?: MdLinkNode[];
 }
@@ -224,61 +211,6 @@ function codeSpanEnd(markdown: string, open: number): number {
   }
 }
 
-/** A replacement of one span of the markdown. */
-interface Edit {
-  from: number;
-  to: number;
-  text: string;
-}
-
-/** The `(destination "title")` a link's would become with `dest` in it, the title kept. */
-function destinationText(link: Pick<InlineLink, 'title'>, dest: string): string {
-  const title = link.title === null ? '' : ` "${link.title.replace(/["\\]/g, '\\$&')}"`;
-  return `(${dest}${title})`;
-}
-
-/** The edit that repoints `link` at `dest` and touches nothing else of it. */
-function destinationEdit(link: InlineLink, dest: string): Edit {
-  return { from: link.destFrom, to: link.to, text: destinationText(link, dest) };
-}
-
-/** The edit that takes `link` out whole, label and all. */
-function removalEdit(link: InlineLink): Edit {
-  return { from: link.from, to: link.to, text: '' };
-}
-
-/**
- * Applies `rewrite`'s edits and leaves the rest of the markdown as it was.
- *
- * A link's label can hold an image (`[![alt](files/a.png)](files/b.pdf)`, the clickable
- * picture every exporter writes), and the walk lists both. A rewrite that replaced the
- * outer link whole, label included, then wrote the inner image's replacement after it,
- * and the body held the image twice, once as the label still said it (2026-10-29). So a
- * destination edit replaces only the destination, which no inner link overlaps, and
- * the edits go in by position, with one inside a span already replaced (an image in a
- * removed link's label) dropped: it went with its container.
- */
-function rewriteLinks<L extends InlineLink>(
-  markdown: string,
-  links: L[],
-  rewrite: (link: L) => Edit | null,
-): string {
-  const edits: Edit[] = [];
-  for (const link of links) {
-    const edit = rewrite(link);
-    if (edit) edits.push(edit);
-  }
-  edits.sort((a, b) => a.from - b.from);
-  let out = '';
-  let last = 0;
-  for (const edit of edits) {
-    if (edit.from < last) continue;
-    out += markdown.slice(last, edit.from) + edit.text;
-    last = edit.to;
-  }
-  return out + markdown.slice(last);
-}
-
 /**
  * Every same-note `files/…` link or image in some markdown. The filename is as the
  * attachment row has it, with the destination's escapes and encoding taken off.
@@ -306,40 +238,6 @@ function relativeAttachmentLinks(markdown: string): Array<InlineLink & { filenam
  */
 export function attachmentFilenamesInMarkdown(markdown: string): Set<string> {
   return new Set(relativeAttachmentLinks(markdown).map((link) => link.filename));
-}
-
-/**
- * Repoints same-note `files/…` links at other names, keeping each label as written.
- *
- * `rename` answers the name a link should point at instead, or null to leave that link
- * alone. Matched by the name a destination means, in any of its spellings, and written
- * back by `attachmentDestination`'s rule; the importer uses it when the server stored a
- * resource under a suffixed name because the note already held one by that name.
- */
-export function rewriteAttachmentLinks(
-  markdown: string,
-  rename: (filename: string) => string | null,
-): string {
-  return rewriteLinks(markdown, relativeAttachmentLinks(markdown), (link) => {
-    const renamed = rename(link.filename);
-    return renamed === null
-      ? null
-      : destinationEdit(link, attachmentDestination(`${ATTACHMENT_PREFIX}${renamed}`));
-  });
-}
-
-/**
- * Removes markdown image/link nodes whose destination is `files/<filename>`.
- *
- * Matched by what the destination names, not by its spelling, so the percent-encoded,
- * bracketed and backslash-escaped forms all go. Leaves surrounding text intact.
- */
-export function removeAttachmentLinks(markdown: string, filename: string): string {
-  const out = rewriteLinks(markdown, relativeAttachmentLinks(markdown), (link) =>
-    link.filename === filename ? removalEdit(link) : null,
-  );
-  // Collapse runs of blank lines left behind by a removed-only paragraph.
-  return out.replace(/\n{3,}/g, '\n\n');
 }
 
 /**
@@ -415,31 +313,11 @@ function remoteImages(markdown: string): InlineLink[] {
  * A note converted from a bookmark by an assistant, or clipped from a page, links its
  * pictures to the site they came from. Those rot, get hotlink-blocked, are in no export
  * and no search: Evernote never left an image on the web, and neither should a note
- * here. This is what "Save web images" counts and fetches; `localizeImageLinks` is how
- * the links are rewritten once the files are stored.
+ * here. This is what "Save web images" counts and fetches; the editor points the images
+ * at the stored files afterwards (`relinkWebImageChanges` in `editor/links.ts`).
  */
 export function remoteImageUrls(markdown: string): string[] {
   return [...new Set(remoteImages(markdown).map((image) => image.url))];
-}
-
-/**
- * Points remote images at the files they were saved as.
- *
- * `stored` answers, for a web address, the filename the file now has in this note, or
- * null to leave that image where it was: a fetch that failed stays a working web link
- * rather than becoming a broken local one. The label is kept; only the destination
- * changes, bracketed when the name needs it.
- */
-export function localizeImageLinks(
-  markdown: string,
-  stored: (url: string) => string | null,
-): string {
-  return rewriteLinks(markdown, remoteImages(markdown), (image) => {
-    const filename = stored(image.url);
-    return filename === null
-      ? null
-      : destinationEdit(image, attachmentDestination(`${ATTACHMENT_PREFIX}${filename}`));
-  });
 }
 
 /**
