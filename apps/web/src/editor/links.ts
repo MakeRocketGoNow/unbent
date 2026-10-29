@@ -1,6 +1,6 @@
 import { markdown } from '@codemirror/lang-markdown';
 import { ensureSyntaxTree, language, syntaxTree, type LanguageDescription } from '@codemirror/language';
-import { EditorState, type ChangeSpec, type Text, type TransactionSpec } from '@codemirror/state';
+import { EditorState, Transaction, type ChangeSpec, type Text, type TransactionSpec } from '@codemirror/state';
 import type { EditorView } from '@codemirror/view';
 import { GFM } from '@lezer/markdown';
 import {
@@ -218,6 +218,25 @@ export function rewriteDocument(
     return;
   }
   onBody(rewriteText(body, changesFor));
+}
+
+/**
+ * Takes a deleted file's links out of the note, for the attachments panel's Delete and
+ * the widget's: `rewriteDocument` with `removeAttachmentLinkChanges`, kept out of the
+ * editor's undo history. The file is gone from the server by the time this runs, so
+ * undoing the removal would bring back a link to nothing, and the panel would list no
+ * file for it. Before the rewrite went through the editor it remounted the editor and
+ * could not be undone either, at the cost of the whole history; this keeps the rest.
+ */
+export function dropAttachmentLinks(
+  view: EditorView | null,
+  body: string,
+  filename: string,
+  onBody: (next: string) => void,
+): void {
+  rewriteDocument(view, body, (state) => removeAttachmentLinkChanges(state, filename), onBody, {
+    annotations: Transaction.addToHistory.of(false),
+  });
 }
 
 /** Every link and image in the document, for a rewrite of the whole of it. */
