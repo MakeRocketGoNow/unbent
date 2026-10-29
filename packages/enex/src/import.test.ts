@@ -292,6 +292,13 @@ describe('applyRenames', () => {
     );
   });
 
+  it('rewrites a link whose label holds the escaped bracket the serialiser writes', () => {
+    const body = '[Scan \\[1\\].pdf](<files/Scan [1].pdf>)\n';
+    expect(applyRenames(body, new Map([['Scan [1].pdf', 'Scan [1]-2.pdf']]))).toBe(
+      '[Scan \\[1\\].pdf](<files/Scan [1]-2.pdf>)\n',
+    );
+  });
+
   it('does not let a shorter name eat the start of a spaced neighbour', () => {
     const body = '[a](<files/Menu Card.pdf>)\n';
     expect(applyRenames(body, new Map([['Menu', 'Menu-2']]))).toBe(body);
@@ -300,12 +307,11 @@ describe('applyRenames', () => {
   /*
    * A guard on an assumption, not on behaviour anyone wants.
    *
-   * The boundary above stops at the characters that end a destination in the markdown
-   * this importer writes, and a space is deliberately not one of them, so that
-   * `files/Menu` cannot eat `files/Menu Card.pdf`. That is only safe while a space
-   * cannot follow a destination, which holds because `enmlToMarkdown` emits a bare
-   * `href`/`src` and never a link title. If it ever emits one, this test fails and the
-   * boundary has to grow a case for it, rather than the rename silently not happening.
+   * The shared walker the rename runs on knows no link title: its destination runs to
+   * the `)` that closes the link, so a destination followed by `"caption"` is not read
+   * as a link at all. That is harmless while `enmlToMarkdown` emits a bare `href`/`src`
+   * and never a title. If it ever emits one, this test fails and the walker has to grow
+   * a title, rather than the rename silently not happening.
    */
   it('leaves a destination followed by a title alone, a shape this importer never writes', () => {
     const body = '![a](files/image.png "caption")\n';

@@ -100,6 +100,13 @@ describe('attachmentFilenamesInMarkdown', () => {
     expect(attachmentFilenamesInMarkdown(md)).toEqual(new Set(['Report(R).pdf', 'Scan(2).png']));
   });
 
+  /** The serialiser escapes a bracket in the label too; the link is still a link. */
+  it('reads a link whose label holds an escaped bracket', () => {
+    expect(attachmentFilenamesInMarkdown('[Scan \\[1\\].pdf](<files/Scan [1].pdf>)')).toEqual(
+      new Set(['Scan [1].pdf']),
+    );
+  });
+
   it('reads an escape inside an angle-bracket destination', () => {
     expect(attachmentFilenamesInMarkdown('[x](<files/My Report\\(R\\).pdf>)')).toEqual(
       new Set(['My Report(R).pdf']),

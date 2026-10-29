@@ -76,6 +76,24 @@ export function unescapeDestination(raw: string): string {
 }
 
 /**
+ * A bare destination's name, as regex source: a backslash-escaped punctuation mark, one
+ * balanced pair of parentheses, or any character that could not end the destination.
+ * Single-quoted, since it holds a backtick, so the regexes that use it are built with
+ * `new RegExp` rather than written as literals.
+ */
+const BARE_NAME_SRC = '(?:\\\\[!-/:-@[-`{-~]|\\([^()\\s<>]*\\)|[^()\\s<>\\\\])+';
+
+/**
+ * A link's label, between its brackets, as regex source: anything but a `]`, or a
+ * backslash and whatever it escapes. A serialiser writes a bracket in a filename as
+ * `\[`, so an imported `Scan [1].pdf` has the label `Scan \[1\].pdf`, and a label that
+ * stopped at its first `]` saw no link there at all: the file was "Not linked" and its
+ * rename on import never happened. A label holding a whole image, `[![x](files/a.png)]`,
+ * is still read for the inner image only; nothing here writes that shape.
+ */
+const LABEL_SRC = '(?:\\\\.|[^\\]\\\\])*';
+
+/**
  * The two spellings of a `files/…` destination, as regex source: bracketed, where the
  * name runs to the closing `>`, and bare, where it ends at whitespace or the `)` that
  * closes the link. A bare name may still hold a backslash-escaped character (`\(`, and
@@ -83,8 +101,7 @@ export function unescapeDestination(raw: string): string {
  * which CommonMark allows and a serialiser or a person writes; see `unescapeDestination`.
  * Two capture groups, bracketed then bare; whichever matched holds the raw name.
  */
-const RELATIVE_DESTINATION_SRC =
-  '(?:<files\\/([^>\\n]+)>|files\\/((?:\\\\[!-/:-@[-`{-~]|\\([^()\\s<>]*\\)|[^()\\s<>\\\\])+))';
+const RELATIVE_DESTINATION_SRC = `(?:<files\\/([^>\\n]+)>|files\\/(${BARE_NAME_SRC}))`;
 
 /**
  * Filenames pointed at by relative `files/…` image or link destinations in markdown.
@@ -100,9 +117,9 @@ export function attachmentFilenamesInMarkdown(markdown: string): Set<string> {
 
 /**
  * Every same-note `files/…` link or image in some markdown, in order, with positions:
- * the one walk `attachmentFilenamesInMarkdown`, `removeAttachmentLinks` and
- * `absolutizeAttachmentLinks` are built on, so a spelling one of them understands is a
- * spelling all of them do. The filename is as the attachment row has it, with the
+ * the one walk `attachmentFilenamesInMarkdown`, `removeAttachmentLinks`,
+ * `rewriteAttachmentLinks` and `absolutizeAttachmentLinks` are built on, so a spelling
+ * one of them understands is a spelling all of them do. The filename is as the attachment row has it, with the
  * destination's escapes and encoding taken off.
  */
 function relativeAttachmentLinks(
@@ -194,7 +211,7 @@ function segment(value: string): string {
  * bracketed name or the bare one. See `RELATIVE_DESTINATION_SRC`.
  */
 const RELATIVE_ATTACHMENT_LINK_RE = new RegExp(
-  `(!?\\[[^\\]]*\\])\\(\\s*${RELATIVE_DESTINATION_SRC}\\s*\\)`,
+  `(!?\\[${LABEL_SRC}\\])\\(\\s*${RELATIVE_DESTINATION_SRC}\\s*\\)`,
   'g',
 );
 
@@ -241,8 +258,10 @@ export interface AbsoluteAttachmentLink {
  * the first `)` cut the name to `Report(R` and pasted it back as a link to a file that
  * does not exist. Such links are still on clipboards and in other apps' notes.
  */
-const ABSOLUTE_ATTACHMENT_LINK_RE =
-  /(!?\[[^\]]*\])\(\s*<?(?:https?:\/\/[^/\s<>]+)?\/api\/notes\/([^/\s<>)]+)\/files\/((?:\\[!-/:-@[-`{-~]|\([^()\s<>]*\)|[^()\s<>\\])+?)>?\s*\)/g;
+const ABSOLUTE_ATTACHMENT_LINK_RE = new RegExp(
+  `(!?\\[${LABEL_SRC}\\])\\(\\s*<?(?:https?:\\/\\/[^/\\s<>]+)?\\/api\\/notes\\/([^/\\s<>)]+)\\/files\\/(${BARE_NAME_SRC}?)>?\\s*\\)`,
+  'g',
+);
 
 /**
  * Every absolute attachment link in some markdown, in order, with positions.
