@@ -258,11 +258,8 @@ const PRELUDE = `
   cursor.innerHTML = '<svg viewBox="0 0 24 24" width="22" height="22"><path d="M5 3l14 9-6 1.5L16 20l-3 1.3-3-6.5L5 19z" fill="#fff" stroke="#000" stroke-width="1.4" stroke-linejoin="round"/></svg>';
   document.addEventListener('DOMContentLoaded', () => { document.head.appendChild(style); document.body.appendChild(cursor); });
   window.__cursor = (x, y, show) => { cursor.style.transform = 'translate(' + x + 'px,' + y + 'px)'; cursor.style.opacity = show ? '1' : '0'; };
-  // The notes a list address answers, whatever the page's shape (\`items\` with a cursor).
-  window.__notes = async (query) => {
-    const j = await (await fetch('/api/notes?' + query)).json();
-    return Array.isArray(j) ? j : (j.notes ?? j.items ?? []);
-  };
+  // The notes a list address answers: a page, \`items\` beside a cursor (routes/notes.ts).
+  window.__notes = async (query) => (await (await fetch('/api/notes?' + query)).json()).items;
   window.__rect = (selector, text) => {
     const all = [...document.querySelectorAll(selector)];
     const el = text === undefined ? all[0] : all.find((e) => ((e.getAttribute('aria-label') || '') + ' ' + (e.textContent || '')).trim().includes(text));
@@ -472,7 +469,7 @@ async function run(BASE, scenes, themes, work, keepSocket, onInterrupt) {
     const notebooks = (await (await fetch('/api/notebooks')).json()).notebooks;
     const receipts = notebooks.find((n) => n.name === 'Receipts');
     const notes = await window.__notes('notebook=Receipts&limit=50');
-    // A note's files: `{ files: [{ filename, contentType, size }] }` (`routes/attachments.ts`).
+    // A note's files: { files: [{ filename, contentType, size }] } (routes/attachments.ts).
     const files = async (id) => (await (await fetch('/api/notes/' + id + '/files')).json()).files;
     let receipt = null, pdfs = [];
     for (const n of notes) {
