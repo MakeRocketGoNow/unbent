@@ -421,11 +421,13 @@ export class ImportRun {
   }
 
   /**
-   * Records something that went wrong that was not a note: a notebook's definitions the
-   * server would not take, or one field of them it could not apply. Counted with the
+   * Records something that went wrong that was not a note failing: a notebook's
+   * definitions the server would not take, or one field of them it could not apply, or
+   * a note that landed with a file under a name the body does not link. Counted with the
    * failures and reported through the same log, since that is the list a person reads
-   * to find out what did not land, but outside `attempt`, so it never counts toward the
-   * notes processed and the bar still measures notes.
+   * to find out what needs a look, but outside `attempt`, so it never counts toward the
+   * notes processed and the bar still measures notes. A note reported here was also
+   * `created`, and the summary says both: it is there, and it wants looking at.
    */
   problem(title: string, reason: string): void {
     this.progress.failed += 1;
