@@ -155,10 +155,11 @@ export function Attachments({
      Workspace is reused across notes, and so is this panel. A delete or move's round trip
      outlives a switch the same way Auto-fill's does: `dropLinks` writes to the editor, or
      the draft, that is *current*, so finishing after the user has moved on would take the
-     previous note's links out of the incoming note's body. Drop the in-flight UI here so a Delete, Move, or "delete not
-     linked" confirm started on the last note cannot sit on this one, especially when both
-     happen to have a `scan.pdf`. The request itself is left to finish against the note it
-     started on; wasting it is cheaper than landing the rewrite on the wrong one.
+     previous note's links out of the incoming note's body. Drop the in-flight UI here so
+     a Delete, Move, or "delete not linked" confirm started on the last note cannot sit on
+     this one, especially when both happen to have a `scan.pdf`. The request itself is
+     left to finish against the note it started on; wasting it is cheaper than landing
+     the rewrite on the wrong one.
   */
   const noteIdRef = useRef(noteId);
   noteIdRef.current = noteId;
