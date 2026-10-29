@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useRouter, useRouterState } from '@tanstack/react-router';
-import { getFileNotes, undoFileNotes, useFileNotes, type FileNotesState } from '../file-notes.js';
+import { undoFileNotes, useFileNotes, type FileNotesState } from '../file-notes.js';
 import { Snackbar } from './Snackbar.js';
 
 const IMPORT_PAGE = '/settings/import';
@@ -39,11 +39,10 @@ export function FileNotesSnackbar() {
     label: 'Undo',
     onClick: async () => {
       const { ids } = state;
-      await undoFileNotes(queryClient);
-      // Read after the trash, not at the press: only a note still open then, and only
-      // when the trash went through, which an error report in its place says it did not.
+      const trashed = await undoFileNotes(queryClient);
+      // Read after the trash, not at the press: only a note still open then.
       const open = router.state.matches.find((m) => m.routeId === '/notes/$noteId')?.params as { noteId?: string } | undefined;
-      if (getFileNotes().status === 'error' || !open?.noteId || !ids.includes(open.noteId)) return;
+      if (!trashed || !open?.noteId || !ids.includes(open.noteId)) return;
       void router.navigate({ to: '/notes', search: (p) => p });
     },
   };
