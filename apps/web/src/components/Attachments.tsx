@@ -2,6 +2,7 @@ import { useDeferredValue, useEffect, useMemo, useRef, useState, type ReactNode 
 import { Link } from '@tanstack/react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { EditorView } from '@codemirror/view';
+import { Transaction } from '@codemirror/state';
 import { removeAttachmentLinkChanges, rewriteDocument } from '../editor/links.js';
 import type { AttachmentInfo } from '@unbent/shared';
 import {
@@ -171,6 +172,12 @@ export function Attachments({
    * Takes a deleted file's links out of the note, through the editor's own syntax tree
    * (`editor/links.ts`, the one place a body is rewritten): a change dispatched to the
    * open editor, or applied to the draft when no editor is mounted yet.
+   *
+   * Kept out of the editor's undo history. The file is gone from the server by the time
+   * this runs, so undoing the removal would bring back a link to nothing, and the panel
+   * would list no file for it. Before the rewrite went through the editor it remounted
+   * the editor and could not be undone either, at the cost of the whole history; this
+   * keeps the rest.
    */
   function dropLinks(filename: string) {
     rewriteDocument(
@@ -178,6 +185,7 @@ export function Attachments({
       bodyRef.current,
       (state) => removeAttachmentLinkChanges(state, filename),
       onBodyRewrite,
+      { annotations: Transaction.addToHistory.of(false) },
     );
   }
   useEffect(() => {
