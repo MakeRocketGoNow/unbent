@@ -85,6 +85,18 @@ describe('cut', () => {
 });
 
 describe('paste', () => {
+  it('relinks a picture inside a link and the link around it in one transaction', async () => {
+    const copyFrom = vi.fn(async (_from: string, filenames: string[]) => new Map(filenames.map((n) => [n, n])));
+    const view = mount('', { noteId: HERE, copyFrom });
+    const text = `[![a](${attachmentUrl(THERE, 'a.png')})](${attachmentUrl(THERE, 'b.pdf')})`;
+    fire(view, 'paste', clipboard({ 'text/plain': text }));
+    await settle();
+    // Two changes over one span is a transaction CodeMirror refuses: each rewrite is its
+    // own destination, and the label between them is left as it was.
+    expect(view.state.doc.toString()).toBe('[![a](files/a.png)](files/b.pdf)');
+    view.destroy();
+  });
+
   it('copies another note files across and links them under the names they got here', async () => {
     const copyFrom = vi.fn(async (_from: string, filenames: string[]) =>
       new Map(filenames.map((name) => [name, name === 'a.png' ? 'a-2.png' : name])),

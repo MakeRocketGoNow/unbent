@@ -5,7 +5,7 @@ import {
   absoluteAttachmentRefs,
   absolutizeAttachmentLinks,
   findAbsoluteAttachmentLinks,
-  relativeAttachmentLink,
+  relativeAttachmentDestination,
   relativizeAttachmentLinks,
 } from '@unbent/shared';
 
@@ -171,7 +171,9 @@ function relinkCopied(view: EditorView, source: string, names: Map<string, strin
   const changes = findAbsoluteAttachmentLinks(view.state.doc.toString()).flatMap((link) => {
     const renamed = link.noteId === source ? names.get(link.filename) : undefined;
     if (renamed === undefined) return [];
-    return [{ from: link.from, to: link.to, insert: relativeAttachmentLink(link, renamed) }];
+    // The destination only: a picture inside the label is its own link, with its own
+    // change here, and two changes over one span is a transaction CodeMirror refuses.
+    return [{ from: link.destFrom, to: link.to, insert: relativeAttachmentDestination(link, renamed) }];
   });
   if (changes.length > 0) view.dispatch({ changes });
 }

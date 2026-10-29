@@ -83,6 +83,12 @@ interface InlineLink {
   to: number;
   /** The `![alt]` or `[text]` part, verbatim, so a rewrite keeps it as written. */
   label: string;
+  /**
+   * Where the `(` after the label is. A rewrite of the destination replaces from here to
+   * `to` and leaves the label alone, so an image inside the label (its own entry in the
+   * list) is still rewritten on its own, in place, rather than copied into the new text.
+   */
+  destFrom: number;
   /** The destination as the parser reads it: brackets and backslash escapes off. */
   url: string;
   /** The link's title, if it had one, so a rewrite keeps it. */
@@ -150,6 +156,7 @@ function parseInlineLinks(markdown: string): InlineLink[] {
       from,
       to,
       label: markdown.slice(from, labelEnd + 1),
+      destFrom: labelEnd + 1,
       url: node.url ?? '',
       title: node.title ?? null,
     });
@@ -184,25 +191,57 @@ function closingBracket(markdown: string, from: number): number {
   return -1;
 }
 
-/** The link `link` would be with `dest` as its destination: label and title as they were. */
-function withDestination(link: InlineLink, dest: string): string {
-  const title = link.title === null ? '' : ` "${link.title.replace(/["\\]/g, '\\$&')}"`;
-  return `${link.label}(${dest}${title})`;
+/** A replacement of one span of the markdown. */
+interface Edit {
+  from: number;
+  to: number;
+  text: string;
 }
 
-/** The pieces of `markdown` that are not in `rewrite`'s answer stay as they were. */
+/** The `(destination "title")` a link's would become with `dest` in it, the title kept. */
+function destinationText(link: Pick<InlineLink, 'title'>, dest: string): string {
+  const title = link.title === null ? '' : ` "${link.title.replace(/["\\]/g, '\\$&')}"`;
+  return `(${dest}${title})`;
+}
+
+/** The edit that repoints `link` at `dest` and touches nothing else of it. */
+function destinationEdit(link: InlineLink, dest: string): Edit {
+  return { from: link.destFrom, to: link.to, text: destinationText(link, dest) };
+}
+
+/** The edit that takes `link` out whole, label and all. */
+function removalEdit(link: InlineLink): Edit {
+  return { from: link.from, to: link.to, text: '' };
+}
+
+/**
+ * Applies `rewrite`'s edits and leaves the rest of the markdown as it was.
+ *
+ * A link's label can hold an image (`[![alt](files/a.png)](files/b.pdf)`, the clickable
+ * picture every exporter writes), and the walk lists both. A rewrite that replaced the
+ * outer link whole, label included, then wrote the inner image's replacement after it,
+ * and the body held the image twice, once as the label still said it (2026-10-29). So a
+ * destination edit replaces only the destination, which no inner link overlaps, and
+ * the edits go in by position, with one inside a span already replaced (an image in a
+ * removed link's label) dropped: it went with its container.
+ */
 function rewriteLinks<L extends InlineLink>(
   markdown: string,
   links: L[],
-  rewrite: (link: L) => string | null,
+  rewrite: (link: L) => Edit | null,
 ): string {
+  const edits: Edit[] = [];
+  for (const link of links) {
+    const edit = rewrite(link);
+    if (edit) edits.push(edit);
+  }
+  edits.sort((a, b) => a.from - b.from);
   let out = '';
   let last = 0;
-  for (const link of links) {
-    const replaced = rewrite(link);
-    if (replaced === null) continue;
-    out += markdown.slice(last, link.from) + replaced;
-    last = link.to;
+  for (const edit of edits) {
+    if (edit.from < last) continue;
+    out += markdown.slice(last, edit.from) + edit.text;
+    last = edit.to;
   }
   return out + markdown.slice(last);
 }
@@ -247,7 +286,7 @@ export function rewriteAttachmentLinks(
     const renamed = rename(link.filename);
     return renamed === null
       ? null
-      : withDestination(link, attachmentDestination(`${ATTACHMENT_PREFIX}${renamed}`));
+      : destinationEdit(link, attachmentDestination(`${ATTACHMENT_PREFIX}${renamed}`));
   });
 }
 
@@ -259,7 +298,7 @@ export function rewriteAttachmentLinks(
  */
 export function removeAttachmentLinks(markdown: string, filename: string): string {
   const out = rewriteLinks(markdown, relativeAttachmentLinks(markdown), (link) =>
-    link.filename === filename ? '' : null,
+    link.filename === filename ? removalEdit(link) : null,
   );
   // Collapse runs of blank lines left behind by a removed-only paragraph.
   return out.replace(/\n{3,}/g, '\n\n');
@@ -302,7 +341,7 @@ export function absolutizeAttachmentLinks(
   opts: { noteId: string; origin?: string },
 ): string {
   return rewriteLinks(markdown, relativeAttachmentLinks(markdown), (link) =>
-    withDestination(link, attachmentUrl(opts.noteId, link.filename, opts.origin)),
+    destinationEdit(link, attachmentUrl(opts.noteId, link.filename, opts.origin)),
   );
 }
 
@@ -310,8 +349,13 @@ export function absolutizeAttachmentLinks(
 export interface AbsoluteAttachmentLink {
   from: number;
   to: number;
-  /** The `![alt]` or `[text]` part, verbatim, so a rewrite keeps the image mark. */
-  label: string;
+  /**
+   * Where its `(destination)` starts. A rewrite replaces from here to `to`, so the label,
+   * and an image inside it with its own entry, stay as they are; see `rewriteLinks`.
+   */
+  destFrom: number;
+  /** Its title, kept by `relativeAttachmentDestination`. */
+  title: string | null;
   noteId: string;
   filename: string;
 }
@@ -333,10 +377,11 @@ const ABSOLUTE_ATTACHMENT_URL_RE = /^(?:https?:\/\/[^/]+)?\/api\/notes\/([^/?#]+
  * than a document.
  */
 export function findAbsoluteAttachmentLinks(markdown: string): AbsoluteAttachmentLink[] {
-  return absoluteLinks(markdown).map(({ from, to, label, noteId, filename }) => ({
+  return absoluteLinks(markdown).map(({ from, to, destFrom, title, noteId, filename }) => ({
     from,
     to,
-    label,
+    destFrom,
+    title,
     noteId,
     filename,
   }));
@@ -367,9 +412,16 @@ export function absoluteAttachmentRefs(markdown: string): Array<{ noteId: string
   return refs;
 }
 
-/** The markdown a link should become once its file is stored in the note as `filename`. */
-export function relativeAttachmentLink(link: Pick<AbsoluteAttachmentLink, 'label'>, filename: string): string {
-  return `${link.label}(${attachmentDestination(`${ATTACHMENT_PREFIX}${filename}`)})`;
+/**
+ * The `(destination)` a link should have, from its `destFrom` to its `to`, once its file
+ * is stored in the note as `filename`. The label is not part of it, so an image inside
+ * the label is left for its own rewrite.
+ */
+export function relativeAttachmentDestination(
+  link: Pick<AbsoluteAttachmentLink, 'title'>,
+  filename: string,
+): string {
+  return destinationText(link, attachmentDestination(`${ATTACHMENT_PREFIX}${filename}`));
 }
 
 /**
@@ -388,7 +440,7 @@ export function relativizeAttachmentLinks(
     const renamed = rename(link);
     return renamed === null
       ? null
-      : withDestination(link, attachmentDestination(`${ATTACHMENT_PREFIX}${renamed}`));
+      : destinationEdit(link, attachmentDestination(`${ATTACHMENT_PREFIX}${renamed}`));
   });
 }
 
@@ -426,7 +478,7 @@ export function localizeImageLinks(
     const filename = stored(image.url);
     return filename === null
       ? null
-      : withDestination(image, attachmentDestination(`${ATTACHMENT_PREFIX}${filename}`));
+      : destinationEdit(image, attachmentDestination(`${ATTACHMENT_PREFIX}${filename}`));
   });
 }
 

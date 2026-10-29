@@ -215,9 +215,17 @@ describe('findAbsoluteAttachmentLinks', () => {
   it('reads the note and decoded filename, with or without an origin', () => {
     const md = `![a](${attachmentUrl('n1', 'my photo.png', 'https://app.example')}) [b](<${attachmentUrl('n2', 'b.pdf')}>)`;
     expect(findAbsoluteAttachmentLinks(md)).toEqual([
-      { from: 0, to: md.indexOf(' [b]'), label: '![a]', noteId: 'n1', filename: 'my photo.png' },
-      { from: md.indexOf('[b]'), to: md.length, label: '[b]', noteId: 'n2', filename: 'b.pdf' },
+      { from: 0, to: md.indexOf(' [b]'), destFrom: 4, title: null, noteId: 'n1', filename: 'my photo.png' },
+      { from: md.indexOf('[b]'), to: md.length, destFrom: md.indexOf('[b]') + 3, title: null, noteId: 'n2', filename: 'b.pdf' },
     ]);
+  });
+
+  it('lists an image inside a link as its own entry, with its own destination range', () => {
+    const md = `[![a](${attachmentUrl('n1', 'a.png')})](${attachmentUrl('n1', 'b.pdf')})`;
+    const [outer, inner] = findAbsoluteAttachmentLinks(md);
+    expect(outer).toMatchObject({ from: 0, to: md.length, filename: 'b.pdf' });
+    expect(inner).toMatchObject({ from: 1, filename: 'a.png' });
+    expect(inner!.to).toBeLessThan(outer!.destFrom);
   });
 
   /**
@@ -309,6 +317,42 @@ describe('relativizeAttachmentLinks', () => {
   it('leaves a link alone when told to', () => {
     const md = `[a](${attachmentUrl('n1', 'a.pdf')}) text`;
     expect(relativizeAttachmentLinks(md, () => null)).toBe(md);
+  });
+});
+
+describe('an image inside a link', () => {
+  /**
+   * The clickable picture every exporter writes. The walk lists the link and the image
+   * in it, and until 2026-10-29 the rewriter spliced the outer link whole and then the
+   * inner image after it, so the body held the image twice.
+   */
+  const md = 'see [![a](files/x.png)](files/y.pdf) end';
+
+  it('is absolutized with its container, each in place', () => {
+    expect(absolutizeAttachmentLinks(md, { noteId: NOTE })).toBe(
+      `see [![a](/api/notes/${NOTE}/files/x.png)](/api/notes/${NOTE}/files/y.pdf) end`,
+    );
+  });
+
+  it('is renamed with its container, or alone', () => {
+    expect(rewriteAttachmentLinks(md, (f) => `${f}-2`)).toBe('see [![a](files/x.png-2)](files/y.pdf-2) end');
+    expect(rewriteAttachmentLinks(md, (f) => (f === 'y.pdf' ? 'z.pdf' : null))).toBe(
+      'see [![a](files/x.png)](files/z.pdf) end',
+    );
+    expect(rewriteAttachmentLinks(md, (f) => (f === 'x.png' ? 'w.png' : null))).toBe(
+      'see [![a](files/w.png)](files/y.pdf) end',
+    );
+  });
+
+  it('goes with its container when the container is removed', () => {
+    expect(removeAttachmentLinks(md, 'y.pdf')).toBe('see  end');
+    expect(removeAttachmentLinks('see [![a](files/x.png)](files/x.png) end', 'x.png')).toBe('see  end');
+    expect(removeAttachmentLinks(md, 'x.png')).toBe('see [](files/y.pdf) end');
+  });
+
+  it('is relativized with its container', () => {
+    const abs = `[![a](${attachmentUrl('n1', 'x.png')})](${attachmentUrl('n1', 'y.pdf')})`;
+    expect(relativizeAttachmentLinks(abs, ({ filename }) => filename)).toBe('[![a](files/x.png)](files/y.pdf)');
   });
 });
 
