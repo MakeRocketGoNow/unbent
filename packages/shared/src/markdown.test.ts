@@ -209,9 +209,13 @@ describe('attachment addresses', () => {
     expect(parseAbsoluteAttachmentUrl('files/x.pdf')).toBeNull();
   });
 
-  it('says whether text could hold one, on the shape of the path', () => {
+  it('says whether text could hold one, on the shape of a link to the path', () => {
     expect(mayHoldAbsoluteAttachmentLink(`see [a](${attachmentUrl('n1', 'a.pdf')})`)).toBe(true);
+    expect(mayHoldAbsoluteAttachmentLink(`![a](<${attachmentUrl('n1', 'a b.pdf', 'https://x.test')}>)`)).toBe(true);
+    expect(mayHoldAbsoluteAttachmentLink('see [a](/api/notes/n1/files/a.pdf "t")')).toBe(true);
     expect(mayHoldAbsoluteAttachmentLink('see [a](files/a.pdf) and https://example.com/')).toBe(false);
+    // A bare address beside an image's bytes is the upload handler's, not a link.
+    expect(mayHoldAbsoluteAttachmentLink(attachmentUrl('n1', 'a.png', 'https://x.test'))).toBe(false);
   });
 });
 

@@ -293,12 +293,16 @@ export function parseAbsoluteAttachmentUrl(url: string): { noteId: string; filen
 
 /**
  * Whether some text could hold an absolute attachment link at all: the address's path
- * appears in it. For claiming a paste before the text is in a document, where alone
- * knowing whether that address is a link is possible (in a code block it is not), so
- * this errs towards claiming, and a claimed paste with no link in it is a plain paste.
+ * appears in it as a link's destination, `](` and then the address, bracketed or not.
+ * For claiming a paste before the text is in a document, where alone knowing whether
+ * that address is a link is possible (in a code block it is not), so this errs towards
+ * claiming, and a claimed paste with no link in it is a plain paste. The destination's
+ * shape is required, not only the address: a clipboard can carry an image's bytes with
+ * its bare address as the text, and claiming that would insert the address as prose and
+ * drop the picture, where the upload handler would have stored it.
  */
 export function mayHoldAbsoluteAttachmentLink(text: string): boolean {
-  return /\/api\/notes\/[^/\s]+\/files\//.test(text);
+  return /\]\(\s*<?(?:https?:\/\/[^/\s>]+)?\/api\/notes\/[^/\s]+\/files\//.test(text);
 }
 
 /** Every image drawn from the web: `![alt](http…)`, whichever way the address is spelled. */
