@@ -44,8 +44,10 @@ interface EditorProps {
    */
   onSaveRemoteImage?: (url: string) => Promise<string>;
   /**
-   * Permanently deletes a stored file, for the bin on a rendered attachment. The editor
-   * removes the markdown itself afterwards. Absent, the bin only removes the markdown.
+   * Permanently deletes a stored file, for the bin on a rendered attachment, and takes
+   * the file's links out of the note once it has gone: the editor touches no markdown on
+   * this path (`deleteStored` in `rich-markdown.ts` says why it cannot). Absent, the bin
+   * only removes the markdown.
    */
   onDeleteAttachment?: (filename: string) => Promise<void>;
   /**
