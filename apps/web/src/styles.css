@@ -10398,23 +10398,41 @@ button.settings-nav-item {
      details' content; transitioning it discretely keeps the content drawn until the
      shrink has finished.
 
-     `hidden` rather than `clip`, because `hidden` makes the box a formatting context of
-     its own. With `clip` the first child's top margin collapsed out through the shrinking
-     box, so the panel jumped by that margin on the first frame of an open and again on
-     the last frame of a close.
+     The growing box is cut with `clip-path`, not `overflow: hidden`, and only while it
+     moves. It was `overflow: hidden` for good, and that clipped anything hung off the
+     content of an open details as well: an attachment's ⋯ menu opened below the last row
+     and was cut off at the panel's edge, so the button seemed to do nothing. `overflow`
+     cannot be transitioned, so the clip is a keyframe animation as long as the grow,
+     which lets go when it ends, and the closed state's own value, which holds through the
+     shrink. `none` once open, not a large inset: any clip-path makes a stacking context,
+     and the ⋯ menu inside one would sit under the sticky editor toolbar again.
+
+     `flow-root` because the box must stay a formatting context of its own, which
+     `overflow: hidden` used to make it. Without one the first child's top margin
+     collapsed out through the shrinking box, so the panel jumped by that margin on the
+     first frame of an open and again on the last frame of a close.
   */
   @supports (interpolate-size: allow-keywords) and selector(::details-content) {
     details { interpolate-size: allow-keywords; }
 
     details::details-content {
+      display: flow-root;
       block-size: 0;
-      overflow: hidden;
+      clip-path: inset(0);
       transition:
         block-size 0.25s cubic-bezier(0.2, 0, 0, 1),
         content-visibility 0.25s allow-discrete;
     }
 
-    details[open]::details-content { block-size: auto; }
+    details[open]::details-content {
+      block-size: auto;
+      clip-path: none;
+      animation: details-growing 0.25s;
+    }
+
+    @keyframes details-growing {
+      from, to { clip-path: inset(0); }
+    }
   }
 }
 
