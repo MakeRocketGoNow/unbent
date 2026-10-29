@@ -196,10 +196,15 @@ export interface AbsoluteAttachmentLink {
 /**
  * An absolute attachment destination, with or without an origin, with or without angle
  * brackets. The note id and filename groups stop at anything that could end a URL or a
- * markdown destination; the filename is percent-decoded by the caller.
+ * markdown destination; the filename is unescaped and percent-decoded by the caller.
+ *
+ * The filename takes the bare grammar of `RELATIVE_DESTINATION_SRC`: `attachmentUrl`
+ * leaves a parenthesis as it is, so a copied `Report(R).pdf` link has a balanced pair
+ * in its address, and a group that stopped at the first `)` cut the name to `Report(R`
+ * and pasted it back as a link to a file that does not exist.
  */
 const ABSOLUTE_ATTACHMENT_LINK_RE =
-  /(!?\[[^\]]*\])\(\s*<?(?:https?:\/\/[^/\s<>]+)?\/api\/notes\/([^/\s<>)]+)\/files\/([^\s<>)]+?)>?\s*\)/g;
+  /(!?\[[^\]]*\])\(\s*<?(?:https?:\/\/[^/\s<>]+)?\/api\/notes\/([^/\s<>)]+)\/files\/((?:\\[!-/:-@[-`{-~]|\([^()\s<>]*\)|[^()\s<>\\])+?)>?\s*\)/g;
 
 /**
  * Every absolute attachment link in some markdown, in order, with positions.
@@ -221,7 +226,7 @@ export function findAbsoluteAttachmentLinks(markdown: string): AbsoluteAttachmen
       label,
       noteId: decodePathSegment(noteId),
       // A query the panel's download link carries (`?download=1`) is not part of the name.
-      filename: decodePathSegment(filename.split('?')[0] ?? ''),
+      filename: decodePathSegment(unescapeDestination(filename).split('?')[0] ?? ''),
     });
   }
   return links;

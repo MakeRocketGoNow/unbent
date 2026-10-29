@@ -184,6 +184,21 @@ describe('findAbsoluteAttachmentLinks', () => {
     ]);
   });
 
+  /**
+   * What `absolutizeAttachmentLinks` writes for a parenthesised name has to come back
+   * whole, or a link cut and pasted within its own note is rewritten to a file that does
+   * not exist.
+   */
+  it('reads a parenthesised name back from what absolutize wrote', () => {
+    const md = absolutizeAttachmentLinks('[r](files/Report\\(R\\).pdf) tail', {
+      noteId: 'n1',
+      origin: 'https://app.example',
+    });
+    const [link] = findAbsoluteAttachmentLinks(md);
+    expect(link?.filename).toBe('Report(R).pdf');
+    expect(md.slice(link!.to)).toBe(' tail');
+  });
+
   it('ignores the download query the panel link carries', () => {
     const md = `[a](${attachmentUrl('n1', 'a.pdf')}?download=1)`;
     expect(findAbsoluteAttachmentLinks(md)[0]?.filename).toBe('a.pdf');
