@@ -1,9 +1,8 @@
 import { EditorState, EditorSelection, StateEffect } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
-import { markdown } from '@codemirror/lang-markdown';
-import { GFM } from '@lezer/markdown';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { resetConnectivity, setReachableForTests } from '../connectivity.js';
+import { editorMarkdown } from './links.js';
 import {
   bulletGlyph,
   caretBelowEnd,
@@ -57,7 +56,7 @@ function mount(doc: string, cursor = doc.length): EditorView {
     state: EditorState.create({
       doc,
       selection: EditorSelection.cursor(cursor),
-      extensions: [markdown({ extensions: [GFM] }), richMarkdown()],
+      extensions: [editorMarkdown(), richMarkdown()],
     }),
     parent,
   });
@@ -103,7 +102,7 @@ function mountWithAttachments(
       doc,
       selection: EditorSelection.cursor(cursor),
       extensions: [
-        markdown({ extensions: [GFM] }),
+        editorMarkdown(),
         richMarkdown({
           resolveAttachment: (name) => `/api/notes/n1/files/${name}`,
           isPdfAttachment: (name) => names.has(name),
@@ -636,7 +635,7 @@ describe('inline PDF', () => {
         doc: '[Menu Card](<files/Menu Card>)',
         selection: EditorSelection.cursor(0),
         extensions: [
-          markdown({ extensions: [GFM] }),
+          editorMarkdown(),
           richMarkdown({
             resolveAttachment: (name) => `/api/notes/n1/files/${name}`,
             isPdfAttachment: (name) => names.has(name),
@@ -1809,7 +1808,7 @@ describe('following links', () => {
       state: EditorState.create({
         doc,
         selection: EditorSelection.cursor(doc.length),
-        extensions: [markdown({ extensions: [GFM] }), richMarkdown({ pathOpener })],
+        extensions: [editorMarkdown(), richMarkdown({ pathOpener })],
       }),
       parent,
     });
