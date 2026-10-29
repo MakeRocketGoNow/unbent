@@ -645,6 +645,10 @@ async function run(BASE, scenes, themes, work, keepSocket, onInterrupt) {
     if (torn) return;
     torn = true;
     await patchBody(seedBody).catch((e) => console.log(`could not put the demo note back: ${e.message}`));
+    // The edit and its undoing each keep a copy of the note (one per half hour of a
+    // person's edits), so without this the History sheet filled with identical versions,
+    // one or two a run, and the picture recorded how often the script had been run.
+    await ev(`fetch('/api/notes/${data.sourdough.id}/revisions', { method: 'DELETE' }).then(r => r.status)`).catch((e) => console.log(`could not clear the demo note's history: ${e.message}`));
     await purgeDropped().catch((e) => console.log(`could not purge the dropped notes: ${e.message}`));
   };
   onInterrupt(teardown);
