@@ -1182,10 +1182,13 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
    * Deferred, as the attachments panel's "linked" set is: the count comes from a parse
    * of the whole body, and a keystroke is painted before it runs. Deferred with the
    * note, for the panel's reason: on a switch the deferred body is the previous note's
-   * for one render, and the count would be that note's.
+   * for one render, and the count would be that note's. The draft itself is the previous
+   * note's for that render too, until the seeding effect runs (`draftFor` says whose it
+   * is, as the panel's `body` prop reads it), so the note's own body stands in meanwhile.
    */
-  const deferredDraft = useDeferredValue(useMemo(() => ({ noteId, body: draft.body }), [noteId, draft.body]));
-  const settledBody = deferredDraft.noteId === noteId ? deferredDraft.body : draft.body;
+  const liveBody = draftFor === noteId ? draft.body : (note?.body ?? '');
+  const deferredDraft = useDeferredValue(useMemo(() => ({ noteId, body: liveBody }), [noteId, liveBody]));
+  const settledBody = deferredDraft.noteId === noteId ? deferredDraft.body : liveBody;
   const remoteImages = useMemo(() => remoteImageUrls(settledBody), [settledBody]);
   const draftBodyRef = useRef(draft.body);
   draftBodyRef.current = draft.body;
