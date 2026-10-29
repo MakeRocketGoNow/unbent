@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { markdownState, relinkWebImageChanges, removalRange, removeAttachmentLinkChanges, rewriteText } from './links.js';
+import { markdownState, relinkWebImageChanges, removalRange, removeAttachmentLinkChanges, rewriteText, webImageUrls } from './links.js';
 
 /**
  * The editor's rewrites of a note's attachment links, on a headless state: what the
@@ -99,6 +99,19 @@ describe('relinking saved web images', () => {
         '![b](<files/b c-2.png>)',
         '[not an image](https://example.com/x.png) ![local](files/x.png)',
       ].join('\n'),
+    );
+  });
+
+  it('lists each web image once, by the reading the relink uses', () => {
+    expect(webImageUrls(markdownState(md))).toEqual([
+      'https://cdn.example/a.jpg',
+      'http://example.com/pics/b c.png',
+    ]);
+    // What is fetched is what is looked up: a character reference stays as written.
+    const amp = '![a](https://e.com/p?a=1&amp;b=2)';
+    const [url] = webImageUrls(markdownState(amp));
+    expect(rewriteText(amp, (state) => relinkWebImageChanges(state, (u) => (u === url ? 'p.png' : null)))).toBe(
+      '![a](files/p.png)',
     );
   });
 

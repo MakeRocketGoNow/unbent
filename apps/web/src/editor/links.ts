@@ -158,6 +158,28 @@ function allLinks(state: EditorState): DocumentLink[] {
   return linksWithin(state, [{ from: 0, to: state.doc.length }]);
 }
 
+/** Whether a link's destination is on the web, as opposed to the note's own file. */
+function isWebUrl(url: string): boolean {
+  return /^https?:\/\//i.test(url);
+}
+
+/**
+ * The web images in the document, each address once, in document order: what "Save web
+ * images" fetches. Read from the same tree `relinkWebImageChanges` rewrites, and by the
+ * same reading of each destination, so every address fetched is one the relink will
+ * find. The shared module's `remoteImageUrls` reads the body through remark, which
+ * decodes character references where the tree does not: an address with `&amp;` in it
+ * was fetched under one spelling and looked up under the other, and the picture kept
+ * its web link while the head said it was saved (2026-10-29).
+ */
+export function webImageUrls(state: EditorState): string[] {
+  const urls: string[] = [];
+  for (const link of allLinks(state)) {
+    if (link.image && isWebUrl(link.url) && !urls.includes(link.url)) urls.push(link.url);
+  }
+  return urls;
+}
+
 /** The note's own file a link points at, by the name the attachment row has, or null. */
 export function attachmentFilenameOf(link: Pick<DocumentLink, 'url'>): string | null {
   if (!link.url.startsWith(ATTACHMENT_PREFIX)) return null;
@@ -231,7 +253,7 @@ export function removeAttachmentLinkChanges(state: EditorState, filename: string
 export function relinkWebImageChanges(state: EditorState, stored: (url: string) => string | null): ChangeSpec[] {
   const changes: ChangeSpec[] = [];
   for (const link of allLinks(state)) {
-    if (!link.image || !/^https?:\/\//i.test(link.url)) continue;
+    if (!link.image || !isWebUrl(link.url)) continue;
     const filename = stored(link.url);
     if (filename === null) continue;
     changes.push({ from: link.urlFrom, to: link.urlTo, insert: relativeAttachmentPath(filename) });

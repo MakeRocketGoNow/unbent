@@ -7,7 +7,7 @@ import type { EditorState } from '@codemirror/state';
 import type { EditorView } from '@codemirror/view';
 import type { FieldDef, FieldType, FieldValue, Note, NoteRevisionSummary } from '@unbent/shared';
 import { remoteImageUrls, unreadFiles } from '@unbent/shared';
-import { relinkWebImageChanges, rewriteText } from '../editor/links.js';
+import { markdownState, relinkWebImageChanges, rewriteText, webImageUrls } from '../editor/links.js';
 import * as api from '../notes-api.js';
 import { isOfflineError, isStatus } from '../notes-api.js';
 import * as actions from '../store/actions.js';
@@ -1240,7 +1240,8 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
     const startedFor = noteId;
     await flush();
     if (noteIdRef.current !== startedFor) return;
-    const urls = remoteImageUrls(draftBodyRef.current);
+    // From the same tree the relink below reads, so each address fetched is one it finds.
+    const urls = webImageUrls(editorViewNow()?.state ?? markdownState(draftBodyRef.current));
     const stored = new Map<string, string>();
     let failed = 0;
     for (const [i, url] of urls.entries()) {
