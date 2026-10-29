@@ -609,6 +609,9 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   /** The scope as it is now, for a drop's batch to check against the one it was made in. */
   const scopeRef = useRef(scopeKey);
   scopeRef.current = scopeKey;
+  /** The note open now, for a drop's single note to check it has not been left meanwhile. */
+  const openRef = useRef(layout.open);
+  openRef.current = layout.open;
   /*
    * Opening a note drops the selection too, as it does in Finder: a plain click or an
    * arrow key is browsing, and a selection left standing behind the note you moved to
@@ -1265,7 +1268,10 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    * notes at once; a single note is filed from its own head, and a selection of one
    * left the person looking at a checkbox and "Select a note" beside the very note they
    * had just made. Under the same rule, and the search kept, so the list stays the one
-   * dropped on.
+   * dropped on; and only while the note open is the one that was open at the drop. A
+   * selection landing late is harmless beside an open note, but a navigation landing
+   * late takes the editor from whatever the person opened or began with New while the
+   * upload ran.
    */
   const asideRef = useRef<HTMLElement>(null);
   const [dropHint, setDropHint] = useState<string | null>(null);
@@ -1276,11 +1282,12 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
     accept: (count) => (planInactive ? null : dropSentence(count, dropPlace)),
     onFiles: (files) => {
       const droppedIn = scopeRef.current;
+      const openAtDrop = openRef.current;
       void notesFromFiles(files, filing, dropPlace, 'list', queryClient).then((ids) => {
         const [first] = ids;
         if (!first || scopeRef.current !== droppedIn) return;
-        if (files.length === 1) void navigate({ to: '/notes/$noteId', params: { noteId: first }, search: (p) => p });
-        else selection.select(ids);
+        if (files.length > 1) selection.select(ids);
+        else if (openRef.current === openAtDrop) void navigate({ to: '/notes/$noteId', params: { noteId: first }, search: (p) => p });
       });
     },
   };

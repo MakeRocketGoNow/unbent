@@ -207,6 +207,22 @@ describe('files dropped on the note list', () => {
     expect((await screen.findByRole('status')).textContent).toContain('1 note added to Receipts.');
   });
 
+  /* An upload landing late must not take the editor from a note opened meanwhile. */
+  it('does not open the note when another note was opened meanwhile', async () => {
+    lib = installTestLibrary({ notes: [note('a', { title: 'Alpha' })], notebooks: [{ id: 'nb1', name: 'Receipts', purpose: null, emoji: null, fieldDefs: [] }] });
+    const { router } = mount('/notes?notebook=Receipts');
+    await screen.findByRole('heading', { name: 'Receipts' });
+    let release!: () => void;
+    vi.mocked(actions.uploadFile).mockReturnValueOnce(new Promise((r) => (release = () => r({ filename: 'b.pdf', contentType: 'application/pdf', size: 1, path: 'files/b.pdf', indexing: 'server' as const }))));
+    drag('drop', column(), [pdf('b.pdf')]);
+    await waitFor(() => expect(actions.uploadFile).toHaveBeenCalled());
+    await router.navigate({ to: '/notes/$noteId', params: { noteId: 'a' }, search: { notebook: 'Receipts' } });
+    await screen.findByText('note open');
+    release();
+    await screen.findByRole('status');
+    expect(router.state.location.pathname).toBe('/notes/a');
+  });
+
   /* Twelve uploads take a while; a selection put over another notebook's rows would be wrong. */
   it('does not select or open the notes when the list has moved to another scope meanwhile', async () => {
     lib = installTestLibrary({ notes: [note('a', { title: 'Alpha' })], notebooks: [{ id: 'nb1', name: 'Receipts', purpose: null, emoji: null, fieldDefs: [] }] });
