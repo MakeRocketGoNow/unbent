@@ -24,11 +24,19 @@ describe('removing a file\'s links', () => {
     );
   });
 
-  it('takes a link standing alone on its line out with the line and the gap before it', () => {
+  it('takes a link that is a paragraph of its own out with the line and one gap', () => {
     expect(remove('a\n\n![x](files/x.png)\n\nb', 'x.png')).toBe('a\n\nb');
     expect(remove('![x](files/x.png)\n\nb', 'x.png')).toBe('b');
-    expect(remove('a\n\n![x](files/x.png)', 'x.png')).toBe('a\n');
+    expect(remove('a\n\n![x](files/x.png)', 'x.png')).toBe('a');
     expect(remove('- [x](files/x.png)\n- b', 'x.png')).toBe('- \n- b');
+  });
+
+  it('keeps the paragraph gap when the link shares its paragraph with text', () => {
+    expect(remove('text\n![x](files/x.png)\n\nmore', 'x.png')).toBe('text\n\nmore');
+    expect(remove('a\n\n![x](files/x.png)\nb', 'x.png')).toBe('a\n\nb');
+    expect(remove('- a\n\n  ![x](files/x.png)\n  tail', 'x.png')).toBe('- a\n\n  tail');
+    // Two pictures of one file on adjacent lines: each takes its line, neither the gap.
+    expect(remove('a\n\n![x](files/x.png)\n![y](files/x.png)\n\nb', 'x.png')).toBe('a\n\n\nb');
   });
 
   /** The Joplin import wraps a picture in a link; the file goes, the link around it stays. */

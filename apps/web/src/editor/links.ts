@@ -1,6 +1,6 @@
 import { markdown } from '@codemirror/lang-markdown';
 import { ensureSyntaxTree, syntaxTree } from '@codemirror/language';
-import { EditorState, type ChangeSpec } from '@codemirror/state';
+import { EditorState, type ChangeSpec, type Text } from '@codemirror/state';
 import { GFM } from '@lezer/markdown';
 import { ATTACHMENT_PREFIX, relativeAttachmentPath, unescapeMarkdown } from '@unbent/shared';
 
@@ -166,40 +166,60 @@ export function attachmentFilenameOf(link: Pick<DocumentLink, 'url'>): string | 
 }
 
 /**
+ * What removing `from..to` should take with it: the range itself, or, when it is all its
+ * line holds, the line, and one blank line beside it when the line is a paragraph of its
+ * own, so a removed-only paragraph does not leave a double gap.
+ *
+ * The blank line goes only when both sides are blank (or the document's edge). A link
+ * that shares its paragraph with a line of text keeps the paragraph's gap: taking the
+ * blank beside `text\n![x](files/x.png)\n\nmore` merged the two paragraphs into one,
+ * which the text remover this replaced never did (2026-10-29). At the end of the
+ * document the break before the blank goes too, so the note does not end in a newline
+ * it did not have.
+ *
+ * `floor` is where an earlier removal in the same transaction ended: a blank line it
+ * took is not taken again, since CodeMirror refuses two changes over one span.
+ */
+export function removalRange(doc: Text, from: number, to: number, floor = 0): { from: number; to: number } {
+  const line = doc.lineAt(from);
+  const alone =
+    doc.lineAt(to).number === line.number &&
+    doc.sliceString(line.from, from).trim() === '' &&
+    doc.sliceString(to, line.to).trim() === '';
+  if (!alone) return { from, to };
+  const previous = line.number > 1 ? doc.line(line.number - 1) : null;
+  const next = line.number < doc.lines ? doc.line(line.number + 1) : null;
+  const blank = (l: { text: string } | null) => l === null || l.text.trim() === '';
+  let start = line.from;
+  let end = Math.min(line.to + 1, doc.length);
+  if (blank(previous) && blank(next)) {
+    if (previous && previous.from >= floor) {
+      start = previous.from;
+      if (next === null && start > floor) start -= 1; // the break before the last paragraph
+    } else if (next) {
+      end = Math.min(next.to + 1, doc.length);
+    }
+  }
+  return { from: start, to: end };
+}
+
+/**
  * The changes that take every link and image to the note's own `filename` out of the
  * document. Matched by what the destination names, not its spelling, so the
- * percent-encoded, bracketed and backslash-escaped forms all go.
- *
- * A link standing alone on its line goes with the line and one blank line beside it,
- * so a removed-only paragraph does not leave a double gap. A
- * picture inside a removed link's label goes with its container, and is not a second
- * change over the same span, which CodeMirror refuses.
+ * percent-encoded, bracketed and backslash-escaped forms all go. Each goes by
+ * `removalRange`; a picture inside a removed link's label goes with its container, and
+ * is not a second change over the same span.
  */
 export function removeAttachmentLinkChanges(state: EditorState, filename: string): ChangeSpec[] {
-  const changes: Array<{ from: number; to: number }> = [];
-  let last = -1;
+  const changes: ChangeSpec[] = [];
+  let last = 0;
   for (const link of allLinks(state).sort((a, b) => a.from - b.from)) {
     if (link.from < last || attachmentFilenameOf(link) !== filename) continue;
-    const line = state.doc.lineAt(link.from);
-    const alone =
-      state.doc.lineAt(link.to).number === line.number &&
-      state.doc.sliceString(line.from, link.from).trim() === '' &&
-      state.doc.sliceString(link.to, line.to).trim() === '';
-    if (!alone) {
-      changes.push({ from: link.from, to: link.to });
-    } else {
-      // The line and one blank line beside it: the one before, else the one after.
-      const previous = line.number > 1 ? state.doc.line(line.number - 1) : null;
-      const next = line.number < state.doc.lines ? state.doc.line(line.number + 1) : null;
-      let from = line.from;
-      let to = Math.min(line.to + 1, state.doc.length);
-      if (previous && previous.text.trim() === '' && previous.from >= last) from = previous.from;
-      else if (next && next.text.trim() === '') to = Math.min(next.to + 1, state.doc.length);
-      changes.push({ from, to });
-    }
-    last = link.to;
+    const range = removalRange(state.doc, link.from, link.to, last);
+    changes.push({ ...range, insert: '' });
+    last = range.to;
   }
-  return changes.map(({ from, to }) => ({ from, to, insert: '' }));
+  return changes;
 }
 
 /**
