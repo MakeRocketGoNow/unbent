@@ -22,7 +22,7 @@ import {
   type ViewUpdate,
   WidgetType,
 } from '@codemirror/view';
-import { ATTACHMENT_PREFIX, formatAttachmentMarkdown, unescapeMarkdown } from '@unbent/shared';
+import { ATTACHMENT_PREFIX, relativeAttachmentPath, unescapeMarkdown } from '@unbent/shared';
 import { decodePath, linkParts } from './links.js';
 import { acquirePdf, type LoadedPdf, releasePdf } from '../pdf/render.js';
 import { downloadUrl, openAttachmentViewer, type ViewerTarget } from '../attachment-viewer.js';
@@ -686,13 +686,13 @@ function saveButton(
       (filename) => {
         const node = findWidgetNode(view, host, 'Image');
         if (!node) return;
-        const alt = linkParts(view.state, node)?.label ?? '';
+        const parts = linkParts(view.state, node);
+        if (!parts) return;
+        // The destination only. Rebuilding the whole image from its raw alt put the alt
+        // through the formatter's escaping a second time, and `Scan \[1\]` came back as
+        // `Scan \\\[1\\\]` on every save; the alt and a title are left as written.
         view.dispatch({
-          changes: {
-            from: node.from,
-            to: node.to,
-            insert: formatAttachmentMarkdown(alt, `${ATTACHMENT_PREFIX}${filename}`, { image: true }),
-          },
+          changes: { from: parts.urlFrom, to: parts.urlTo, insert: relativeAttachmentPath(filename) },
         });
       },
       () => {
@@ -1778,7 +1778,7 @@ function buildDecorations(
             : null;
           // The alt as a reader should see it: the label is the raw text, and a serialiser
           // writes a bracket in it as `\[`. The caption drawn over the text below keeps the
-          // raw spelling, since it is the text itself, and `saveButton` writes it back.
+          // raw spelling, since it is the text itself, and `saveButton` leaves it as written.
           const widget = new ImageWidget(
             src,
             unescapeMarkdown(parts.label),

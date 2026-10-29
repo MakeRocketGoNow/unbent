@@ -874,6 +874,15 @@ describe('inline images', () => {
     expect(v.state.doc.toString()).toBe('intro\n\n![web pic](files/saved.png)\n\nplain');
   });
 
+  it('leaves an escaped alt and a title as written when it saves', async () => {
+    saveRemoteImage.mockClear();
+    const doc = '![Scan \\[1\\] my\\_pic](https://example.com/a.png "shot")';
+    const v = mountWithAttachments(doc, 0);
+    v.dom.querySelector<HTMLButtonElement>('.cm-md-image .zoom-save')?.click();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(v.state.doc.toString()).toBe('![Scan \\[1\\] my\\_pic](files/saved.png "shot")');
+  });
+
   it('keeps the web link when the save fails', async () => {
     saveRemoteImage.mockRejectedValueOnce(new Error('403'));
     const doc = '![web](https://example.com/a.png)\n\nplain';
