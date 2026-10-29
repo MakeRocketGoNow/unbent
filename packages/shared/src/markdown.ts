@@ -135,7 +135,7 @@ const linkParser = unified().use(remarkParse).use(remarkDisableSetext).use(remar
  * tree (`apps/web/src/editor/links.ts`), which has the document's context and is the
  * parser the person is looking at. Until 2026-10-29 this module held a second set of
  * rewriters over the remark tree, and two parsers that had to agree about nesting,
- * escapes and context did not, often enough to fill three review rounds.
+ * escapes and context did not.
  *
  * It is the markdown parser, not a regex. Until 2026-10-28 six hand-written regexes read
  * link syntax, one per reader, and each had its own idea of where a label or a destination
@@ -571,8 +571,7 @@ function parseHead(markdown: string): MdNode[] {
 }
 
 function parseBlocks(markdown: string): MdNode[] {
-  const tree = unified().use(remarkParse).use(remarkDisableSetext).use(remarkGfm).parse(markdown) as MdNode;
-  return tree.children ?? [];
+  return (linkParser.parse(markdown) as MdNode).children ?? [];
 }
 
 /**

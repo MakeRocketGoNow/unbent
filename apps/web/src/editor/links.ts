@@ -27,7 +27,7 @@ import {
  * reads links (the panel's "linked" set, the import's checks, the store's move check)
  * and never rewrites them: until 2026-10-29 it held a second set of rewriters over the
  * remark tree, one per caller, and two parsers that had to agree about nesting, escapes
- * and context disagreed often enough to fill three review rounds. A rewrite here is a
+ * and context disagreed. A rewrite here is a
  * `ChangeSpec` on an `EditorState`, dispatched to the open editor or applied to a
  * headless one (`rewriteText`) when no editor is mounted.
  */
