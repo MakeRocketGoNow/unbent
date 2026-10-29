@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Link } from '@tanstack/react-router';
+import { Link, useLocation } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { configQuery } from '../queries.js';
 import { useSession } from '../auth-client.js';
@@ -294,6 +294,13 @@ export function FrontShell({ children }: { children: ReactNode }) {
   const legal = config.data?.legal;
   const operator = config.data?.operator;
   const { data: session } = useSession();
+  const onFront = useLocation({ select: (l) => l.pathname === FRONT });
+  const brand = (
+    <>
+      <img src="/icons/icon-192.png" alt="" width={28} height={28} />
+      Unbent
+    </>
+  );
 
   return (
     <div className="front">
@@ -301,10 +308,13 @@ export function FrontShell({ children }: { children: ReactNode }) {
         {/* The brand is a link home on every page but the front page itself, where it
             is already there; a link to the page it is on would be a control that does
             nothing, so it is text there. */}
-        <Link to={FRONT} className="front-brand" activeOptions={{ exact: true }} activeProps={{ 'aria-current': 'page' }}>
-          <img src="/icons/icon-192.png" alt="" width={28} height={28} />
-          Unbent
-        </Link>
+        {onFront ? (
+          <span className="front-brand">{brand}</span>
+        ) : (
+          <Link to={FRONT} className="front-brand">
+            {brand}
+          </Link>
+        )}
         <nav className="front-nav" aria-label="Unbent">
           <Link to={FEATURES} activeProps={{ 'aria-current': 'page' }}>
             Features

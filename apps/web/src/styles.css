@@ -10982,19 +10982,20 @@ button.settings-nav-item {
   margin-left: 1rem;
 }
 
-.front .front-nav a,
-.front a.front-brand {
+.front .front-nav a {
   color: var(--muted);
+  text-decoration: none;
+}
+
+.front a.front-brand {
+  color: var(--fg);
   text-decoration: none;
 }
 
 .front .front-nav a:hover,
 .front a.front-brand:hover { color: var(--fg); text-decoration: underline; }
 
-.front .front-nav a[aria-current='page'],
-.front a.front-brand[aria-current='page'] { color: var(--fg); text-decoration: none; }
-
-.front a.front-brand { color: var(--fg); }
+.front .front-nav a[aria-current='page'] { color: var(--fg); text-decoration: none; }
 
 /* On a phone the three links take the row under the brand and the sign-in, whole,
    rather than squeezing beside them. */
