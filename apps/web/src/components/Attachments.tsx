@@ -116,7 +116,10 @@ export function Attachments({
   // Deferred: the set is read from a parse of the whole body, which costs about a
   // millisecond and a half per kilobyte, and a keystroke is painted before it runs.
   // Fast typing coalesces into one parse of the latest draft; see `inlineLinks` in
-  // `@unbent/shared`.
+  // `@unbent/shared`. What is drawn may therefore trail the draft by one parse, which
+  // is why the actions below read the draft itself (`linkedNow`) and never this set: a
+  // link pasted just before Delete was pressed would otherwise be left pointing at a
+  // file that is gone.
   const settledBody = useDeferredValue(body);
   const linked = useMemo(() => attachmentFilenamesInMarkdown(settledBody), [settledBody]);
   // Not a file still waiting to upload: the cleanup deletes on the server, which has no such file yet.
@@ -148,6 +151,8 @@ export function Attachments({
   noteIdRef.current = noteId;
   const bodyRef = useRef(body);
   bodyRef.current = body;
+  /** What the draft links at this moment: one parse, at a press, never per keystroke. */
+  const linkedNow = () => attachmentFilenamesInMarkdown(bodyRef.current);
   useEffect(() => {
     setPending(null);
     setSending(null);
@@ -230,7 +235,7 @@ export function Attachments({
    */
   async function sendTo(file: AttachmentInfo, target: PickedNote, mode: 'copy' | 'move') {
     const startedFor = noteId;
-    const stillLinked = linked.has(file.filename);
+    const stillLinked = linkedNow().has(file.filename);
     setBusy(file.filename);
     setDeleteError(null);
     setSent(null);
@@ -279,7 +284,8 @@ export function Attachments({
    */
   async function removeUnlinked() {
     const startedFor = noteId;
-    const toDelete = unlinked;
+    const now = linkedNow();
+    const toDelete = files.filter((f) => !now.has(f.filename) && !f.pending);
     setCleaning(false);
     setBusy('*');
     setDeleteError(null);
@@ -295,7 +301,7 @@ export function Attachments({
 
   async function remove(filename: string) {
     const startedFor = noteId;
-    const stillLinked = linked.has(filename);
+    const stillLinked = linkedNow().has(filename);
     setPending(null);
     setBusy(filename);
     setDeleteError(null);
