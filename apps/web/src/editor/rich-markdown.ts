@@ -1403,10 +1403,13 @@ function linkUrlAt(state: EditorState, pos: number): string | undefined {
         return match ? linkDestination(match[2]!) : undefined;
       }
       if (node.name === 'Autolink') {
-        // Only the brackets: CommonMark applies no backslash escapes inside an autolink,
-        // so `<https://x/a\_b>` goes to `a\_b`, as the preview's href does.
+        // Only the brackets: CommonMark applies no backslash escapes inside an autolink.
+        // The preview's href is micromark's normalizeUri of the text, which encodes the
+        // backslash; handed to the URL parser raw, `\` reads as `/` in an http address
+        // and `<https://x/a\_b>` would land on `a/_b` here and `a%5C_b` in the preview.
         const raw = state.doc.sliceString(node.from, node.to);
-        return raw.startsWith('<') && raw.endsWith('>') ? raw.slice(1, -1) : raw;
+        const inner = raw.startsWith('<') && raw.endsWith('>') ? raw.slice(1, -1) : raw;
+        return inner.replace(/\\/g, '%5C');
       }
       if (node.name === 'URL' && bareUrl === undefined) {
         bareUrl = bareLinkTarget(state.doc.sliceString(node.from, node.to));

@@ -1917,12 +1917,15 @@ describe('following links', () => {
     expect(followed.map((f) => f.href)).toEqual(['https://example.com/x']);
   });
 
-  /** CommonMark applies no backslash escapes inside an autolink, and neither does the preview. */
-  it('follows an autolink with a backslash in it as written', () => {
+  /**
+   * CommonMark applies no backslash escapes inside an autolink, and the preview encodes
+   * the backslash in its href; the URL parser would otherwise read it as a slash.
+   */
+  it('follows an autolink with a backslash where the preview does', () => {
     const doc = '<https://example.com/a\\_b>\n\nplain';
     const v = mount(doc, doc.length);
     clickLabel(v);
-    expect(followed.map((f) => f.href)).toEqual(['https://example.com/a\\_b']);
+    expect(followed.map((f) => f.href)).toEqual(['https://example.com/a%5C_b']);
   });
 
   it('keeps a middle-click from opening it', () => {
