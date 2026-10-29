@@ -496,6 +496,12 @@ describe('inline PDF', () => {
     expect(acquirePdf).toHaveBeenCalledWith('/api/notes/n1/files/Report(R).pdf');
   });
 
+  /** A serialiser escapes a bracket in the label too; the tree still sees one link. */
+  it('renders a link whose label holds an escaped bracket', () => {
+    mountWithAttachments('[Scan \\[1\\].pdf](<files/Scan [1].pdf>)');
+    expect(acquirePdf).toHaveBeenCalledWith('/api/notes/n1/files/Scan [1].pdf');
+  });
+
   it('resolves a bracketed destination holding parentheses', () => {
     mountWithAttachments('[r](<files/Report (R).pdf>)');
     expect(acquirePdf).toHaveBeenCalledWith('/api/notes/n1/files/Report (R).pdf');

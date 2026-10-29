@@ -685,8 +685,7 @@ function saveButton(
       (filename) => {
         const node = findWidgetNode(view, host, 'Image');
         if (!node) return;
-        const text = view.state.doc.sliceString(node.from, node.to);
-        const alt = /^!\[([^\]]*)\]/.exec(text)?.[1] ?? '';
+        const alt = linkParts(view.state, node)?.label ?? '';
         view.dispatch({
           changes: {
             from: node.from,
@@ -1225,35 +1224,55 @@ function decodePath(value: string): string {
   }
 }
 
-/**
- * Strips the angle brackets CommonMark uses around URLs containing spaces, and the
- * backslashes it uses to escape punctuation.
- *
- * The escapes matter for a stored file's name: the Evernote importer writes a `(` in a
- * filename as `\(`, which the markdown parser reads as the plain character, and the
- * file's address has to be built from the same name or the viewer under the link asks
- * the server for a file with backslashes in it and draws "Rendering…" for good.
- */
-function unwrapUrl(raw: string): string {
-  const inner = raw.startsWith('<') && raw.endsWith('>') ? raw.slice(1, -1) : raw;
-  return unescapeDestination(inner);
+/** A node of the syntax tree, as `@codemirror/language` hands it out; `@lezer/common` is not a dependency here. */
+type SyntaxNode = ReturnType<typeof syntaxTree>['topNode'];
+
+/** What a `[label](url)` or `![alt](url)` is made of, read from the tree's own marks. */
+interface LinkParts {
+  /** The label's text, between the brackets, and where it sits. */
+  label: string;
+  labelFrom: number;
+  labelTo: number;
+  /** The destination with its angle brackets and backslash escapes off, as the parser reads it. */
+  url: string;
 }
 
 /**
- * A link's destination without its optional title: `url "Title"` → `url`.
+ * A link's or image's parts, from the syntax tree rather than a regex over its text.
  *
- * The `Link` branch matches `(…)` whole, which is the destination plus whatever title
- * followed it. A title is display text for a tooltip, never part of where the link goes,
- * and a URL cannot contain a bare space, so the first whitespace ends it, unless the
- * destination is angle-bracketed, where spaces are allowed and `>` ends it instead.
+ * The tree already knows where the label ends and the destination begins: a `]` in a
+ * label is escaped as `\]` by any serialiser, and a regex that stopped at the first `]`
+ * drew no link at all for an imported `Scan [1].pdf`. The destination is the `URL`
+ * node, which excludes the title. Angle brackets come off, and so do backslash escapes:
+ * the Evernote importer writes a `(` in a filename as `\(`, and the file's address has
+ * to be built from the same name or the viewer under the link asks the server for a file
+ * with backslashes in it and draws "Rendering…" for good. A reference link, `[x][ref]`,
+ * has no `URL` child and no parts: nothing to hide and no attachment to render.
  */
-function linkDestination(raw: string): string {
-  const inner = raw.trim();
-  if (inner.startsWith('<')) {
-    const close = inner.indexOf('>');
-    return unescapeDestination(close === -1 ? inner : inner.slice(1, close));
+function linkParts(state: EditorState, node: SyntaxNode): LinkParts | undefined {
+  let labelFrom = -1;
+  let labelTo = -1;
+  let url: SyntaxNode | null = null;
+  for (let child = node.firstChild; child; child = child.nextSibling) {
+    if (child.name === 'LinkMark') {
+      if (labelFrom < 0) labelFrom = child.to;
+      else if (labelTo < 0) labelTo = child.from;
+    } else if (child.name === 'URL' && labelTo >= 0) {
+      // Only past the closing bracket: GFM marks a bare address inside the label as a
+      // `URL` node as well, and `[https://x](https://y)` goes to `y`.
+      url = child;
+      break;
+    }
   }
-  return unescapeDestination(inner.split(/\s/, 1)[0] ?? '');
+  if (labelFrom < 0 || labelTo < 0 || !url) return undefined;
+  const raw = state.doc.sliceString(url.from, url.to);
+  const inner = raw.startsWith('<') && raw.endsWith('>') ? raw.slice(1, -1) : raw;
+  return {
+    label: state.doc.sliceString(labelFrom, labelTo),
+    labelFrom,
+    labelTo,
+    url: unescapeDestination(inner),
+  };
 }
 
 /**
@@ -1403,8 +1422,7 @@ function linkUrlAt(state: EditorState, pos: number): string | undefined {
     for (let node: Node | null = tree.resolveInner(pos, side); node; node = node.parent) {
       if (node.name === 'Image') return undefined;
       if (node.name === 'Link') {
-        const match = /^\[([^\]]*)\]\((.+)\)$/.exec(state.doc.sliceString(node.from, node.to));
-        return match ? linkDestination(match[2]!) : undefined;
+        return linkParts(state, node)?.url;
       }
       if (node.name === 'Autolink') {
         // Only the brackets: CommonMark applies no backslash escapes inside an autolink.
@@ -1543,27 +1561,23 @@ export function collectAttachmentTargets(
   tree.iterate({
     enter(node) {
       if (node.name === 'Image') {
-        const text = state.doc.sliceString(node.from, node.to);
-        const match = /^!\[([^\]]*)\]\((.+)\)$/.exec(text);
-        if (!match) return;
-        const src = resolveImageSrc(unwrapUrl(match[2]!.trim()), options.resolveAttachment);
+        const parts = linkParts(state, node.node);
+        if (!parts) return;
+        const src = resolveImageSrc(parts.url, options.resolveAttachment);
         if (src === undefined || failedImages.has(src)) return;
-        targets.push({ kind: 'image', src, alt: match[1] ?? '' });
+        targets.push({ kind: 'image', src, alt: parts.label });
         return;
       }
 
       if (node.name === 'Link') {
         const resolve = options.resolveAttachment;
         if (!resolve) return;
-        const text = state.doc.sliceString(node.from, node.to);
-        const match = /^\[([^\]]*)\]\((.+)\)$/.exec(text);
-        if (!match) return;
-        const url = unwrapUrl(match[2]!.trim());
-        if (!url.startsWith(ATTACHMENT_PREFIX)) return;
-        const filename = url.slice(ATTACHMENT_PREFIX.length);
+        const parts = linkParts(state, node.node);
+        if (!parts || !parts.url.startsWith(ATTACHMENT_PREFIX)) return;
+        const filename = parts.url.slice(ATTACHMENT_PREFIX.length);
         const decoded = decodePath(filename).split('?')[0] ?? '';
         if (!PDF_PATH.test(decoded) && !options.isPdfAttachment?.(decoded)) return;
-        targets.push({ kind: 'pdf', src: resolve(filename), label: match[1] ?? '' });
+        targets.push({ kind: 'pdf', src: resolve(filename), label: parts.label });
       }
     },
   });
@@ -1803,11 +1817,10 @@ function buildDecorations(
         }
 
         if (node.name === 'Image') {
-          const text = state.doc.sliceString(node.from, node.to);
-          const match = /^!\[([^\]]*)\]\((.+)\)$/.exec(text);
-          if (!match) return;
+          const parts = linkParts(state, node.node);
+          if (!parts) return;
 
-          const url = unwrapUrl(match[2]!.trim());
+          const url = parts.url;
           const src = resolveImageSrc(url, options.resolveAttachment);
           // No source we are willing to load: a stored file with no resolver, or a
           // destination outside the http(s)/attachment set the preview pane renders.
@@ -1824,7 +1837,7 @@ function buildDecorations(
             : null;
           const widget = new ImageWidget(
             src,
-            match[1] ?? '',
+            parts.label,
             siblings,
             stored,
             options.copyAttachment,
@@ -1853,12 +1866,12 @@ function buildDecorations(
            */
           const scope = revealScope(state, node.node);
           if (!reveals(scope.from, scope.to)) {
-            const alt = match[1] ?? '';
+            const alt = parts.label;
             if (alt) {
               // `![` before the alt, `](url)` after it: hidden, with the alt itself drawn
               // as a caption and the picture appended after the whole node.
-              const altStart = node.from + 2;
-              const altEnd = altStart + alt.length;
+              const altStart = parts.labelFrom;
+              const altEnd = parts.labelTo;
               marks.push(hiddenMark.range(node.from, altStart));
               marks.push(imageAlt.range(altStart, altEnd));
               marks.push(hiddenMark.range(altEnd, node.to));
@@ -1894,7 +1907,9 @@ function buildDecorations(
              */
             marks.push(Decoration.replace({ widget }).range(node.from, node.to));
             const line = state.doc.lineAt(node.from);
-            if (line.text.trim() === text) marks.push(imageOnlyLine.range(line.from));
+            if (line.text.trim() === state.doc.sliceString(node.from, node.to)) {
+              marks.push(imageOnlyLine.range(line.from));
+            }
             return;
           }
 
@@ -2020,13 +2035,12 @@ function buildDecorations(
         }
 
         if (node.name === 'Link') {
-          const text = state.doc.sliceString(node.from, node.to);
-          // A `[…](…)` that does not match is a reference link or footnote: it has no
-          // inline destination to hide and no attachment to render.
-          const match = /^\[([^\]]*)\]\((.+)\)$/.exec(text);
-          if (!match) return;
+          // A reference link or footnote has no parts: no inline destination to hide
+          // and no attachment to render.
+          const parts = linkParts(state, node.node);
+          if (!parts) return;
 
-          const label = match[1] ?? '';
+          const label = parts.label;
 
           /**
            * Read as a link: style the label, hide the brackets and destination.
@@ -2038,15 +2052,15 @@ function buildDecorations(
            */
           const scope = revealScope(state, node.node);
           if (label && !reveals(scope.from, scope.to)) {
-            const labelStart = node.from + 1;
-            const labelEnd = labelStart + label.length;
+            const labelStart = parts.labelFrom;
+            const labelEnd = parts.labelTo;
             marks.push(hiddenMark.range(node.from, labelStart));
             marks.push(
               Decoration.mark({
                 class: 'cm-md-link',
                 // The destination is hidden with the rest of the syntax; the tooltip is
                 // where a reader can see where a click will take them before making it.
-                attributes: { title: linkDestination(match[2]!) },
+                attributes: { title: parts.url },
               }).range(labelStart, labelEnd),
             );
             marks.push(hiddenMark.range(labelEnd, node.to));
@@ -2055,7 +2069,7 @@ function buildDecorations(
           const resolve = options.resolveAttachment;
           if (!resolve) return;
 
-          const url = unwrapUrl(match[2]!.trim());
+          const url = parts.url;
           if (!url.startsWith(ATTACHMENT_PREFIX)) return;
 
           const filename = url.slice(ATTACHMENT_PREFIX.length);
