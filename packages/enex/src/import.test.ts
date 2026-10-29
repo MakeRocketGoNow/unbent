@@ -270,6 +270,7 @@ describe('attachments', () => {
   });
 });
 
+/** Resumability is the point: a 3GB import will be interrupted. */
 describe('resume', () => {
   it('skips notes already imported and does not re-upload their files', async () => {
     const { client, notes, files } = fakeClient();
