@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { render, cleanup } from '@testing-library/react';
+import { render, cleanup, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   createMemoryHistory,
@@ -72,9 +72,10 @@ describe('FeaturesPage', () => {
       expect(img?.getAttribute('loading')).toBe('lazy');
     }
 
-    // Every clip is a muted loop with a poster, both encodings, and a description.
+    // Every clip is a muted loop with a poster, both encodings, and a description. The
+    // video is mounted once the row is near, which under jsdom (no observer) is at once.
+    await waitFor(() => expect(container.querySelectorAll('video')).toHaveLength(4));
     const clips = [...container.querySelectorAll<HTMLVideoElement>('video')];
-    expect(clips).toHaveLength(4);
     for (const clip of clips) {
       expect(clip.muted).toBe(true);
       expect(clip.loop).toBe(true);
@@ -88,6 +89,7 @@ describe('FeaturesPage', () => {
     media = { '(prefers-color-scheme: dark)': true };
     const { findByRole, container } = harness(null);
     await findByRole('heading', { name: 'What Unbent does' });
+    await waitFor(() => expect(container.querySelectorAll('video')).toHaveLength(4));
     for (const clip of container.querySelectorAll('video')) {
       expect(clip.getAttribute('poster')).toMatch(/-dark-poster\.webp$/);
       expect(clip.querySelector('source')?.getAttribute('src')).toMatch(/-dark\.webm$/);
@@ -103,7 +105,8 @@ describe('FeaturesPage', () => {
     const posters = [...container.querySelectorAll<HTMLImageElement>('.feature-clip img')];
     expect(posters).toHaveLength(4);
     for (const poster of posters) {
-      expect(poster.getAttribute('src')).toMatch(/-poster\.webp$/);
+      expect(poster.getAttribute('src')).toMatch(/-light-poster\.webp$/);
+      expect(poster.closest('picture')?.querySelector('source')?.getAttribute('srcset')).toMatch(/-dark-poster\.webp$/);
       expect(poster.getAttribute('alt')).toBeTruthy();
     }
   });

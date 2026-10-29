@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link } from '@tanstack/react-router';
 import { TRIAL_DAYS } from '@unbent/shared';
 import { useSession } from '../auth-client.js';
@@ -304,52 +304,82 @@ function Still({ name, phone = false, alt }: { name: string; phone?: boolean; al
 /**
  * A short silent loop of the app being used, in the reader's theme.
  *
- * Played only while it is on screen, and never for a reader who has asked for less
- * motion, who gets the first frame as a picture instead. The theme is read with
- * `useMediaQuery` rather than `<source media>`, which `<video>` does not honour; the
- * static copy of the page, drawn with no window, carries the light clip, as it carries
- * the light poster, and the app redraws it once it runs. `label` says what the clip
- * shows, since a video has no alt text.
+ * Nothing of a clip is fetched until its row is within a screen of the viewport: until
+ * then, and in the static copy of the page, which is drawn with no window, it is its
+ * first frame as a `<picture>` that follows the theme as the stills do. Four posters and
+ * four clips' metadata were fetched on every visit before this, however far down they
+ * sat, and the static copy started the light set for a dark reader before the app
+ * swapped it. Once near, the video takes the poster's place with `preload="none"`, and
+ * plays only while on screen. A reader who has asked for less motion keeps the picture.
+ *
+ * The theme is read with `useMediaQuery` rather than `<source media>`, which `<video>`
+ * does not honour. `label` says what the clip shows, since a video has no alt text.
  */
 function Clip({ name, label }: { name: string; label: string }) {
   const dark = useMediaQuery('(prefers-color-scheme: dark)');
   const still = useMediaQuery('(prefers-reduced-motion: reduce)');
-  const ref = useRef<HTMLVideoElement>(null);
+  const [near, setNear] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+  const video = useRef<HTMLVideoElement>(null);
   const file = `/features/${name}-${dark ? 'dark' : 'light'}`;
 
+  // Near: within a screen's height of the viewport, once; a browser with no observer
+  // (none this app runs in, but the tests' jsdom) is near at once.
   useEffect(() => {
-    const video = ref.current;
-    if (!video || still || typeof IntersectionObserver === 'undefined') return;
+    const el = box.current;
+    if (still || near || !el) return;
+    if (typeof IntersectionObserver === 'undefined') {
+      setNear(true);
+      return;
+    }
+    const watcher = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry?.isIntersecting) return;
+        setNear(true);
+        watcher.disconnect();
+      },
+      { rootMargin: '100% 0px' },
+    );
+    watcher.observe(el);
+    return () => watcher.disconnect();
+  }, [still, near]);
+
+  useEffect(() => {
+    const el = video.current;
+    if (!el || still || !near || typeof IntersectionObserver === 'undefined') return;
     const watcher = new IntersectionObserver(
       ([entry]) => {
         if (!entry) return;
-        if (entry.isIntersecting) void video.play().catch(() => {});
-        else video.pause();
+        if (entry.isIntersecting) void el.play().catch(() => {});
+        else el.pause();
       },
       { threshold: 0.4 },
     );
-    watcher.observe(video);
+    watcher.observe(el);
     return () => watcher.disconnect();
-  }, [still, file]);
+  }, [still, near, file]);
 
-  if (still) {
+  if (still || !near) {
     return (
-      <div className="feature-shot feature-clip">
-        <img src={`${file}-poster.webp`} width={1920} height={1200} loading="lazy" decoding="async" alt={label} />
+      <div ref={box} className="feature-shot feature-clip">
+        <picture>
+          <source srcSet={`/features/${name}-dark-poster.webp`} media="(prefers-color-scheme: dark)" />
+          <img src={`/features/${name}-light-poster.webp`} width={1920} height={1200} loading="lazy" decoding="async" alt={label} />
+        </picture>
       </div>
     );
   }
   return (
-    <div className="feature-shot feature-clip">
+    <div ref={box} className="feature-shot feature-clip">
       <video
         key={file}
-        ref={ref}
+        ref={video}
         width={1920}
         height={1200}
         muted
         loop
         playsInline
-        preload="metadata"
+        preload="none"
         poster={`${file}-poster.webp`}
         aria-label={label}
       >
