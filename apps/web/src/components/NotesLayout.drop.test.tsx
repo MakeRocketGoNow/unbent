@@ -364,3 +364,26 @@ describe('New on the free plan', () => {
     expect(screen.getByRole('link', { name: 'Plan' })).toBeTruthy();
   });
 });
+
+/**
+ * Clip a link beside New: drawn only where the instance offers the clipper
+ * (`AppConfig.webClip`, the operator's `WEB_CLIP` switch). An instance without it, or
+ * one from before the setting, has no control at all rather than a faded one.
+ */
+describe('Clip a link beside New', () => {
+  it('is drawn where the instance offers the clipper', async () => {
+    vi.mocked(api.getConfig).mockResolvedValue({ providers: [], webClip: true } as unknown as Awaited<ReturnType<typeof api.getConfig>>);
+    lib = installTestLibrary({ notes: [note('a', { title: 'Alpha' })] });
+    mount('/notes');
+    await screen.findByText('Alpha');
+    expect(await screen.findByRole('button', { name: 'Clip a link' })).toBeTruthy();
+  });
+
+  it('is not drawn where the instance does not', async () => {
+    lib = installTestLibrary({ notes: [note('a', { title: 'Alpha' })] });
+    mount('/notes');
+    await screen.findByText('Alpha');
+    await screen.findByRole('button', { name: 'New' });
+    expect(screen.queryByRole('button', { name: 'Clip a link' })).toBeNull();
+  });
+});

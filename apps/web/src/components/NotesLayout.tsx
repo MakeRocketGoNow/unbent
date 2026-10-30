@@ -1255,6 +1255,12 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    * does, since the server refuses the note. Focus goes back to the control when the form
    * closes without a note, since the field that had it is gone by then; when a note is
    * made the note takes it.
+   *
+   * Drawn only where the instance offers the clipper (`config.webClip`, the operator's
+   * `WEB_CLIP` switch), as the editor draws Auto-fill only on `config.autofill`: hidden,
+   * not faded, since an instance without the clipper has nothing to explain and no way
+   * to get it from here. Absent from an instance deployed before the setting, which
+   * reads the same as off.
    */
   const [clipping, setClipping] = useState(false);
   const clipRef = useRef<HTMLButtonElement>(null);
@@ -1291,6 +1297,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   const clipForm = clipping ? (
     <ClipLinkForm filing={filing} offline={offline} compact={isMobile} onClipped={(note) => void clipped(note)} onCancel={closeClip} />
   ) : undefined;
+  const webClip = config.data?.webClip === true;
 
   /*
    * Files let go on the list become one note each, filed as New would file them (see
@@ -1369,8 +1376,8 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
           eyebrow={eyebrow}
           titleMenu={viewMenu}
           renaming={viewRename}
-          clip={clipControl}
-          clipping={clipForm}
+          clip={webClip ? clipControl : undefined}
+          clipping={webClip ? clipForm : undefined}
           onCloseClip={closeClip}
           headingRef={headingRef}
           query={q}
