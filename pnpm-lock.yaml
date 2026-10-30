@@ -29,6 +29,9 @@ importers:
       '@modelcontextprotocol/server':
         specifier: ^2.3.1
         version: 2.3.1
+      '@unbent/clip':
+        specifier: workspace:*
+        version: link:../../packages/clip
       '@unbent/enex':
         specifier: workspace:*
         version: link:../../packages/enex

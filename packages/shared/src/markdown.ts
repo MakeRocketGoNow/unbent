@@ -129,7 +129,7 @@ export function readDestination(raw: string): string | null {
 const destinations = new Map<string, string | null>();
 
 /** An inline link or image in some markdown, with where it sits in the text. */
-interface InlineLink {
+export interface InlineLink {
   image: boolean;
   from: number;
   to: number;
@@ -184,6 +184,21 @@ function inlineLinks(markdown: string): InlineLink[] {
  * incremental syntax tree instead of parsing the body again here.
  */
 let lastParsed: { markdown: string; links: InlineLink[] } = { markdown: '', links: [] };
+
+/**
+ * Every inline link and image in some markdown, with where each sits: `inlineLinks` for
+ * a caller outside this module.
+ *
+ * For the server's web clip (`lib/clip.ts` in the API), which wrote the body itself a
+ * moment before and has to point a picture it could not fetch back at the web. It
+ * splices that one destination, inside a span this reader found, and reads the spliced
+ * link back through this same reader before keeping it. That is not the second rewriter
+ * the note on `inlineLinks` retired: nothing here rewrites, and the clip has no editor
+ * tree to ask, since the body has never been in an editor.
+ */
+export function inlineLinkSpans(markdown: string): readonly InlineLink[] {
+  return inlineLinks(markdown);
+}
 
 function parseInlineLinks(markdown: string): InlineLink[] {
   // Nothing to find is the common case for a note of a few lines, and `[` is in every
