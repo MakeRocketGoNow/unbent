@@ -218,6 +218,20 @@ describe('clipUrl', () => {
     expect(store.puts).toHaveLength(1);
   });
 
+  it('still answers with the note when the store refuses the repair', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    stubWeb({ [PAGE_URL]: html(articlePage(['/gone.png'])) });
+    const store = fakeStore();
+    store.repos.notes.update = async () => {
+      throw new StorageFull(2000, 1000, 0, 'notes');
+    };
+
+    const result = await clipUrl(store.env, ctx, store.repos, { url: PAGE_URL }, options);
+
+    expect(result).toMatchObject({ ok: true, existing: false });
+    if (result.ok) expect(result.images.failed).toHaveLength(1);
+  });
+
   it('says a host refused this server, so the caller can read the page itself', async () => {
     stubWeb({ [PAGE_URL]: () => new Response('denied', { status: 403 }) });
     const store = fakeStore();

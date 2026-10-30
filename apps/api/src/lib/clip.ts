@@ -260,12 +260,20 @@ async function finishClip(
      not offered for them; that is the rarer failure, and better than overwriting them.
   */
   const body = relink(clip.markdown, clip.images, outcome.relinks);
-  const updated = await repos.notes.update(note.id, {
-    body,
-    ifUpdatedAt: note.updatedAt,
-    ...(opts.by ? { by: opts.by } : {}),
-  });
-  return { note: updated && !('stale' in updated) ? updated : note, images };
+  try {
+    const updated = await repos.notes.update(note.id, {
+      body,
+      ifUpdatedAt: note.updatedAt,
+      ...(opts.by ? { by: opts.by } : {}),
+    });
+    return { note: updated && !('stale' in updated) ? updated : note, images };
+  } catch (err) {
+    // The store refusing the repair (out of room, or a passing unavailability). The note
+    // and its pictures are made, and a caller told the clip failed would make it again,
+    // so this is the failure the answer's `failed` already names, not a failed clip.
+    console.error('clip: repairing the body failed:', (err as Error).message);
+    return { note, images };
+  }
 }
 
 type FetchedPage = { ok: true; html: string; url: URL } | Extract<ClipResult, { ok: false }>;
