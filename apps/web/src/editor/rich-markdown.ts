@@ -22,7 +22,7 @@ import {
   type ViewUpdate,
   WidgetType,
 } from '@codemirror/view';
-import { ATTACHMENT_PREFIX, attachmentFilenameFromUrl, relativeAttachmentPath, unescapeMarkdown } from '@unbent/shared';
+import { ATTACHMENT_PREFIX, attachmentFilenameFromUrl, unescapeMarkdown } from '@unbent/shared';
 import { decodePath, linkParts, relinkWebImageChanges, removalRange } from './links.js';
 import { acquirePdf, type LoadedPdf, releasePdf } from '../pdf/render.js';
 import { downloadUrl, openAttachmentViewer, type ViewerTarget } from '../attachment-viewer.js';
@@ -495,7 +495,7 @@ function attachmentToolbar(
 
     if (opts.copy) tools.appendChild(copyButton(opts.stored.filename, opts.stored.kind, opts.copy));
   } else if (opts.save) {
-    tools.appendChild(saveButton(view, host, opts.target.src, opts.save, opts.liveView));
+    tools.appendChild(saveButton(view, opts.target.src, opts.save, opts.liveView));
   }
 
   const stored = opts.stored;
@@ -671,14 +671,19 @@ function copyButton(filename: string, kind: 'image' | 'pdf', copy: CopyAttachmen
  * as it was and says so for a moment.
  *
  * The rewrite goes into the editor that is open when the fetch lands (`liveView`), which
- * is not always the one this button was built in. While it is, the picture's own node
- * is found from the button's place in the DOM; a later view has no DOM of this
- * widget's, so there the picture is found by its address, and every picture at that
- * address takes the stored copy, as "Save web images" would give it.
+ * is not always the one this button was built in, and the picture is found by its
+ * address, not from this widget's DOM. Image widgets only exist in the viewport, so
+ * scrolling the picture off-screen destroys the host while the same view is still
+ * open, and `posAtDOM` on the detached host answers the start or the end of the
+ * document: whichever image sits there was rewritten, which was not always the one
+ * that had been saved. Every picture at this address takes the stored copy, as "Save
+ * web images" would give it. The destination only: rebuilding the whole image from
+ * its raw alt put the alt through the formatter's escaping a second time, and
+ * `Scan \[1\]` came back as `Scan \\\[1\\\]` on every save; the alt and a title are
+ * left as written.
  */
 function saveButton(
   view: EditorView,
-  host: HTMLElement,
   url: string,
   save: SaveRemoteImage,
   liveView?: LiveView,
@@ -697,21 +702,8 @@ function saveButton(
       (filename) => {
         const live = liveView ? liveView() : view;
         if (!live) return; // the note is no longer open; the pressed view is gone
-        if (live !== view) {
-          const changes = relinkWebImageChanges(live.state, (u) => (u === url ? filename : null));
-          if (changes.length > 0) live.dispatch({ changes });
-          return;
-        }
-        const node = findWidgetNode(view, host, 'Image');
-        if (!node) return;
-        const parts = linkParts(view.state, node);
-        if (!parts) return;
-        // The destination only. Rebuilding the whole image from its raw alt put the alt
-        // through the formatter's escaping a second time, and `Scan \[1\]` came back as
-        // `Scan \\\[1\\\]` on every save; the alt and a title are left as written.
-        view.dispatch({
-          changes: { from: parts.urlFrom, to: parts.urlTo, insert: relativeAttachmentPath(filename) },
-        });
+        const changes = relinkWebImageChanges(live.state, (u) => (u === url ? filename : null));
+        if (changes.length > 0) live.dispatch({ changes });
       },
       () => {
         busy = false;

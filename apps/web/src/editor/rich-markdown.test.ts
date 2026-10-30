@@ -914,6 +914,34 @@ describe('inline images', () => {
     expect(live.state.doc.toString()).toBe('intro\n\n![web pic](files/saved.png)\n\nplain');
   });
 
+  /**
+   * Image widgets only exist in the viewport. Scrolling the picture off-screen destroys
+   * its DOM while the same EditorView is still open, and `posAtDOM` on the detached host
+   * does not throw: it answers the start or the end of the document. Finding the picture
+   * from that host then rewrites whichever image sits there, which may not be the one
+   * that was saved. The stored copy is found by its address instead, as a remount is.
+   */
+  it('writes the stored file by address when the pressed widget is gone from the same view', async () => {
+    let finish: (filename: string) => void = () => {};
+    saveRemoteImage.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+    const doc = '![save](https://example.com/save.png)\n\nplain\n\n![keep](https://example.com/keep.png)';
+    const v = mountWithAttachments(doc, doc.indexOf('plain'));
+    const widgets = v.dom.querySelectorAll('.cm-md-image');
+    expect(widgets).toHaveLength(2);
+    const host = widgets[0] as HTMLElement;
+    host.querySelector<HTMLButtonElement>('.zoom-save')?.click();
+    expect(saveRemoteImage).toHaveBeenCalledWith('https://example.com/save.png');
+    // Leave the viewport empty and repaint: the same thing scrolling the picture
+    // off-screen does, and the host is then gone from the view.
+    vi.spyOn(v, 'visibleRanges', 'get').mockReturnValue([]);
+    v.dispatch({ effects: pdfNamesChanged.of(null) });
+    finish('saved.png');
+    await new Promise((r) => setTimeout(r, 0));
+    expect(v.state.doc.toString()).toBe(
+      '![save](files/saved.png)\n\nplain\n\n![keep](https://example.com/keep.png)',
+    );
+  });
+
   it('keeps the web link when the save fails', async () => {
     saveRemoteImage.mockRejectedValueOnce(new Error('403'));
     const doc = '![web](https://example.com/a.png)\n\nplain';
