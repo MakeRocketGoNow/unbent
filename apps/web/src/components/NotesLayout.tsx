@@ -65,7 +65,7 @@ import {
 } from './icons.js';
 import { Sheet } from './Sheet.js';
 import { NoteListHead } from './NoteListHead.js';
-import { ClipLinkForm, useClipLink } from './ClipLinkForm.js';
+import { CLIP_RUNNING_TIP, ClipLinkForm, useClipLink } from './ClipLinkForm.js';
 import { NotesSort } from './NotesSort.js';
 import { NotesViewMenu } from './NotesViewMenu.js';
 import { NoteTable } from './NoteTable.js';
@@ -1296,7 +1296,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
     onClipped: (note) => void clipped(note),
     onCancel: closeClip,
   });
-  const noClip = planInactive ? READ_ONLY_TIP : offline ? 'Clipping needs a connection' : undefined;
+  const noClip = clipLink.busy ? CLIP_RUNNING_TIP : planInactive ? READ_ONLY_TIP : offline ? 'Clipping needs a connection' : undefined;
   const clipControl = (
     <button
       ref={clipRef}
@@ -1397,7 +1397,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
           clip={webClip ? clipControl : undefined}
           clipping={webClip ? clipForm : undefined}
           onCloseClip={closeClip}
-          clipBusy={clipLink.busy}
+          clipRunning={clipLink.busy ? CLIP_RUNNING_TIP : undefined}
           headingRef={headingRef}
           query={q}
           onQuery={setQuery}

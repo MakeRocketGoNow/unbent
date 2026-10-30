@@ -43,6 +43,9 @@ export function whatWentWrong(err: unknown): string {
 
 const NEEDS_CONNECTION = 'Clipping needs a connection.';
 
+/** Why the controls that would close the form are faded while it clips. */
+export const CLIP_RUNNING_TIP = 'Clipping this link';
+
 interface ClipLinkOptions {
   /** Where the note goes: the list's own filing, as New files a note (`NotesLayout`'s `filing`). */
   filing: { tags: string[]; notebook: string | null };

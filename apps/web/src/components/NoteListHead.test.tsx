@@ -160,8 +160,10 @@ describe('NoteListHead', () => {
     cleanup();
 
     // A running clip cannot be stopped from here, so the arrow does not say it can.
-    const busy = render(<NoteListHead {...props} clipping={<input aria-label="Link to clip" />} onCloseClip={onCloseClip} clipBusy />);
-    expect((busy.getByLabelText('Close without clipping') as HTMLButtonElement).disabled).toBe(true);
+    const busy = render(<NoteListHead {...props} clipping={<input aria-label="Link to clip" />} onCloseClip={onCloseClip} clipRunning="Clipping this link" />);
+    const arrow = busy.getByLabelText('Close without clipping') as HTMLButtonElement;
+    expect(arrow.disabled).toBe(true);
+    expect(arrow.getAttribute('aria-description')).toBe('Clipping this link');
     cleanup();
 
     const desktop = render(

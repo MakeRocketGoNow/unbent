@@ -139,8 +139,8 @@ interface NoteListHeadProps {
    * `clipping` is set.
    */
   onCloseClip?: () => void;
-  /** A clip is running, which closing the form could not stop: the arrow fades. */
-  clipBusy?: boolean;
+  /** A clip is running, which closing the form could not stop: the arrow fades, and this says why. */
+  clipRunning?: string;
   /**
    * The last thing in the row: the desktop's New button.
    *
@@ -208,7 +208,7 @@ export function NoteListHead({
   clip,
   clipping,
   onCloseClip,
-  clipBusy = false,
+  clipRunning,
   toolbar = false,
   action,
 }: NoteListHeadProps) {
@@ -287,7 +287,7 @@ export function NoteListHead({
      */
     return (
       <div className="list-search list-clip">
-        <button type="button" className="icon-btn" aria-label="Close without clipping" data-tip="Close" disabled={clipBusy} onClick={onCloseClip}>
+        <button type="button" className="icon-btn" aria-label="Close without clipping" data-tip={clipRunning ?? 'Close'} aria-description={clipRunning} disabled={clipRunning !== undefined} onClick={onCloseClip}>
           <BackArrow />
         </button>
         {clipping}
