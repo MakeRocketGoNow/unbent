@@ -531,11 +531,11 @@ describe('paste from a page', () => {
     pressed.destroy();
   });
 
-  it('leaves HTML too large to convert to the browser, which pastes its plain text', async () => {
+  it('pastes the plain text of HTML too large to convert', async () => {
     const view = mount('', { noteId: HERE });
     const html = `<table>${'<tr><td style="color:red">x</td></tr>'.repeat(30_000)}</table>`;
-    const event = await pasteInto(view, clipboard({ 'text/html': html, 'text/plain': 'x' }));
-    expect(event.defaultPrevented).toBe(false);
+    await pasteInto(view, clipboard({ 'text/html': html, 'text/plain': 'x' }));
+    expect(view.state.doc.toString()).toBe('x');
     view.destroy();
   });
 
