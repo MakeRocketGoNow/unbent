@@ -132,11 +132,11 @@ which is what Safari's Share sends) is kept as the page rather than as a note ho
 link: that first request is `POST /api/clip`, and the server fetches the page and writes
 the article as the note with up to ten of its pictures as files (`CaptureJob.Clip`). A
 page the server cannot read (not HTML, too large, a site that refused it, an address it
-will not fetch: 400, 413, 415 or 502), or an instance with no clipper (the operator's
-`WEB_CLIP` switch is off, or the instance predates the route: 404 either way), falls back
-to the plain note under the same id, and
-the notification says "Saved" rather than "Page clipped", so the share lands either way. Each result is applied to the capture's record, `.job.json`
-beside its files, by a pure function with the rules in it (`CaptureJob.handle`): four
+will not fetch: 400, 413, 415 or 502), an instance with no clipper (the operator's `WEB_CLIP`
+switch is off, or the instance predates the route: 404 either way), or a clip that has failed
+twice with no such answer falls back to the plain note under the same id, and the notification
+says "Saved" rather than "Page clipped", so the share lands either way. Each result is applied
+to the capture's record, `.job.json` beside its files, by a pure function with the rules in it (`CaptureJob.handle`): four
 tries with a backoff, and none for a 4xx that will be the same next time; a file given up
 on is left out of a capture that is otherwise saved; a 503 with `Retry-After` waited
 out, up to fourteen times, without spending a try; a 401 for the session the phone still
