@@ -141,6 +141,9 @@ importers:
       '@unbent/api':
         specifier: workspace:*
         version: link:../api
+      '@unbent/clip':
+        specifier: workspace:*
+        version: link:../../packages/clip
       '@unbent/enex':
         specifier: workspace:*
         version: link:../../packages/enex

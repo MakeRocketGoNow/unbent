@@ -49,6 +49,10 @@ Every affordance is built on top of that rather than around it:
 - An Attach button in the toolbar opens the file picker, for a phone and for anyone who
   would rather not drag. It goes through the same routine as a drop or a paste: a
   placeholder at the cursor, replaced by the link when the upload lands, one undo step.
+- Pasting from a web page, a mail or a document brings its headings, links, lists,
+  emphasis and tables across as Markdown, converted from the HTML the clipboard carries
+  beside the plain text, in one undo step. Inside code, and with Paste and Match Style
+  (⌘⇧V), the plain text goes in as it always did.
 
 The test for any new editing feature is the same one every time: **can it be expressed as
 an edit to the text, undone with a single ⌘Z, and retyped by hand to the same result?** If

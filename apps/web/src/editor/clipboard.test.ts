@@ -1,10 +1,11 @@
-import { describe, expect, it, vi } from 'vitest';
-import { EditorState } from '@codemirror/state';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
+import { history, undo } from '@codemirror/commands';
+import { EditorState, type Extension } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import { markdown } from '@codemirror/lang-markdown';
 import { GFM } from '@lezer/markdown';
 import { attachmentUrl } from '@unbent/shared';
-import { attachmentClipboard, CUT_FLAVOUR, type ClipboardConfig } from './clipboard.js';
+import { attachmentClipboard, CUT_FLAVOUR, loadConverter, type ClipboardConfig } from './clipboard.js';
 
 /**
  * Attachment links across the clipboard: what leaves a note names the note, and what
@@ -14,9 +15,18 @@ import { attachmentClipboard, CUT_FLAVOUR, type ClipboardConfig } from './clipbo
 const HERE = 'note-here';
 const THERE = 'note-there';
 
-function mount(doc: string, config: ClipboardConfig, selection?: { anchor: number; head: number }) {
+function mount(
+  doc: string,
+  config: ClipboardConfig,
+  selection?: { anchor: number; head: number },
+  extensions: Extension[] = [],
+) {
   return new EditorView({
-    state: EditorState.create({ doc, selection, extensions: [markdown({ extensions: [GFM] }), attachmentClipboard(config)] }),
+    state: EditorState.create({
+      doc,
+      selection,
+      extensions: [markdown({ extensions: [GFM] }), attachmentClipboard(config), ...extensions],
+    }),
     parent: document.body,
   });
 }
@@ -284,6 +294,200 @@ describe('paste', () => {
     await settle();
     expect(copyFrom).toHaveBeenCalledWith(THERE, ['a.png'], false);
     expect(view.state.doc.toString()).toBe('![a](files/a.png)');
+    view.destroy();
+  });
+});
+
+/**
+ * A paste from a web page, a mail or a document arrives as the Markdown a person would
+ * have typed for it, rather than as the flat text the clipboard also carries.
+ */
+describe('paste from a page', () => {
+  // A paste this handler declines is CodeMirror's, which claims the event too and inserts
+  // `text/plain`; so a decline shows as the plain text in the document, not as an
+  // unclaimed event.
+
+  // The converter is its own chunk, loaded on first use; loaded here once, a paste waits
+  // only a microtask for it, as every paste after a page's first does.
+  beforeAll(() => loadConverter());
+
+  async function pasteInto(view: EditorView, data: ReturnType<typeof clipboard>) {
+    const event = fire(view, 'paste', data);
+    await settle();
+    return event;
+  }
+  const PAGE = [
+    '<meta charset="utf-8">',
+    '<h2 style="color: #333">Getting started</h2>',
+    '<p>Read <a href="https://example.com/guide" class="x">the guide</a> <b>first</b>.</p>',
+    '<ul><li>one</li><li>two</li></ul>',
+  ].join('');
+  const PAGE_MD = '## Getting started\n\nRead [the guide](https://example.com/guide) **first**.\n\n- one\n- two';
+
+  it('inserts the HTML as Markdown and leaves the plain text unused', async () => {
+    const view = mount('', { noteId: HERE });
+    const event = await pasteInto(view, clipboard({ 'text/html': PAGE, 'text/plain': 'Getting started\nRead the guide first.' }));
+    expect(event.defaultPrevented).toBe(true);
+    expect(view.state.doc.toString()).toBe(PAGE_MD);
+    expect(view.state.selection.main.head).toBe(PAGE_MD.length);
+    view.destroy();
+  });
+
+  /**
+   * A code editor writes a `<div>` a line and a `<span>` a colour. Made into paragraphs
+   * the code would lose its line structure and its indentation; it is plain text.
+   */
+  it('pastes the plain text of HTML that is only divs and spans', async () => {
+    const view = mount('', { noteId: HERE });
+    const html =
+      '<div style="color: #d4d4d4"><div><span style="color: #569cd6">if</span> (x) {</div>' +
+      '<div>&nbsp;&nbsp;<span>go</span>();</div><div>}</div></div>';
+    await pasteInto(view, clipboard({ 'text/html': html, 'text/plain': 'if (x) {\n  go();\n}' }));
+    expect(view.state.doc.toString()).toBe('if (x) {\n  go();\n}');
+    view.destroy();
+  });
+
+  it('pastes the characters into a fenced code block', async () => {
+    const doc = '```\nlet a = 1;\n\n```';
+    const at = doc.indexOf('\n\n') + 1;
+    const view = mount(doc, { noteId: HERE }, { anchor: at, head: at });
+    await pasteInto(view, clipboard({ 'text/html': '<pre><code>b = 2</code></pre>', 'text/plain': 'b = 2' }));
+    expect(view.state.doc.toString()).toBe('```\nlet a = 1;\nb = 2\n```');
+    view.destroy();
+  });
+
+  it('pastes the characters into an unclosed fence and inline code, and converts after a closed one', async () => {
+    const html = '<b>bold</b>';
+    const paste = async (doc: string, at: number) => {
+      const view = mount(doc, { noteId: HERE }, { anchor: at, head: at });
+      await pasteInto(view, clipboard({ 'text/html': html, 'text/plain': 'bold' }));
+      const out = view.state.doc.toString();
+      view.destroy();
+      return out;
+    };
+    expect(await paste('```\nx\n', 6)).toBe('```\nx\nbold');
+    expect(await paste('a `xy` b', 4)).toBe('a `xboldy` b');
+    expect(await paste('a `xy` b', 6)).toBe('a `xy`**bold** b');
+    expect(await paste('```\nx\n```', 9)).toBe('```\nx\n```**bold**');
+  });
+
+  it('leaves text cut from a note on the plain path', async () => {
+    const view = mount('', { noteId: HERE });
+    await pasteInto(view, clipboard({ 'text/html': '<b>moved</b>', 'text/plain': 'moved', [CUT_FLAVOUR]: '1' }));
+    expect(view.state.doc.toString()).toBe('moved');
+    view.destroy();
+  });
+
+  it('leaves HTML naming a note file to the plain path', async () => {
+    const view = mount('', { noteId: HERE });
+    const html = `<p><a href="${attachmentUrl(THERE, 'a.pdf', 'https://app.example')}">a.pdf</a></p>`;
+    await pasteInto(view, clipboard({ 'text/html': html, 'text/plain': 'a.pdf' }));
+    expect(view.state.doc.toString()).toBe('a.pdf');
+    view.destroy();
+  });
+
+  it('brings a linked file across rather than converting, when the text links one', async () => {
+    const copyFrom = vi.fn(async (_from: string, filenames: string[]) => new Map(filenames.map((n) => [n, n])));
+    const view = mount('', { noteId: HERE, copyFrom });
+    const text = `[a](${attachmentUrl(THERE, 'a.pdf')})`;
+    await pasteInto(view, clipboard({ 'text/html': '<h1>Not this</h1>', 'text/plain': text }));
+    await settle();
+    expect(copyFrom).toHaveBeenCalledWith(THERE, ['a.pdf'], false);
+    expect(view.state.doc.toString()).toBe('[a](files/a.pdf)');
+    view.destroy();
+  });
+
+  it('replaces the selection', async () => {
+    const doc = 'keep this and that';
+    const view = mount(doc, { noteId: HERE }, { anchor: 5, head: 9 });
+    await pasteInto(view, clipboard({ 'text/html': '<a href="https://example.com/">link</a>', 'text/plain': 'link' }));
+    expect(view.state.doc.toString()).toBe('keep [link](https://example.com/) and that');
+    expect(view.state.selection.main.head).toBe('keep [link](https://example.com/)'.length);
+    view.destroy();
+  });
+
+  it('is undone with one undo, apart from the typing before it', async () => {
+    const view = mount('', { noteId: HERE }, undefined, [history()]);
+    view.dispatch({ changes: { from: 0, insert: 'typed ' }, selection: { anchor: 6 }, userEvent: 'input.type' });
+    await pasteInto(view, clipboard({ 'text/html': PAGE, 'text/plain': 'flat' }));
+    expect(view.state.doc.toString()).toBe(`typed \n\n${PAGE_MD}`);
+    undo(view);
+    expect(view.state.doc.toString()).toBe('typed ');
+    view.destroy();
+  });
+
+  it('pastes one paragraph inline, mid-sentence', async () => {
+    const view = mount('before  after', { noteId: HERE }, { anchor: 7, head: 7 });
+    await pasteInto(view, clipboard({ 'text/html': '<p>an <em>emphatic</em> word</p>', 'text/plain': 'an emphatic word' }));
+    expect(view.state.doc.toString()).toBe('before an _emphatic_ word after');
+    view.destroy();
+  });
+
+  it('sets blocks pasted mid-line apart on lines of their own', async () => {
+    const view = mount('before after', { noteId: HERE }, { anchor: 7, head: 7 });
+    await pasteInto(view, clipboard({ 'text/html': '<h3>Title</h3><p>Body</p>', 'text/plain': 'Title\nBody' }));
+    expect(view.state.doc.toString()).toBe('before \n\n### Title\n\nBody\n\nafter');
+    expect(view.state.selection.main.head).toBe('before \n\n### Title\n\nBody'.length);
+    view.destroy();
+  });
+
+  it('sets a block apart from the paragraph above and below it, adding only what is missing', async () => {
+    const doc = 'above\n\nbelow';
+    const view = mount(doc, { noteId: HERE }, { anchor: 6, head: 6 });
+    await pasteInto(view, clipboard({ 'text/html': '<ul><li>a</li></ul>', 'text/plain': 'a' }));
+    expect(view.state.doc.toString()).toBe('above\n\n- a\n\nbelow');
+    view.destroy();
+  });
+
+  /**
+   * Google Docs wraps a selection in `<b style="font-weight:normal">` and draws its own
+   * bold and italic with styled spans. Read as written, the whole paste was one bold run.
+   */
+  it('reads Google Docs bold and italic from their styles, not from its wrapper', async () => {
+    const view = mount('', { noteId: HERE });
+    const html =
+      '<meta charset="utf-8"><b style="font-weight:normal;" id="docs-internal-guid-1">' +
+      '<h1 dir="ltr"><span style="font-size:20pt;font-weight:700">Plan</span></h1>' +
+      '<p dir="ltr"><span style="font-weight:700">Bold</span><span style="font-weight:400"> and </span>' +
+      '<span style="font-style:italic">slanted</span></p></b><br class="Apple-interchange-newline">';
+    await pasteInto(view, clipboard({ 'text/html': html, 'text/plain': 'Plan\nBold and slanted' }));
+    expect(view.state.doc.toString()).toBe('# Plan\n\n**Bold** and _slanted_');
+    view.destroy();
+  });
+
+  it('drops the fragment markers, a picture made of bytes, and a link with nowhere to go', async () => {
+    const view = mount('', { noteId: HERE });
+    const html =
+      '<html><body><!--StartFragment--><h2>Head</h2><p>See <a href="/elsewhere">there</a>' +
+      '<img src="data:image/png;base64,AAAA" alt="x"><img src="https://example.com/a.png" alt="pic"></p>' +
+      '<!--EndFragment--></body></html>';
+    await pasteInto(view, clipboard({ 'text/html': html, 'text/plain': 'Head\nSee there' }));
+    expect(view.state.doc.toString()).toBe('## Head\n\nSee there![pic](https://example.com/a.png)');
+    view.destroy();
+  });
+
+  it('inserts the plain text when the conversion comes out empty', async () => {
+    const view = mount('', { noteId: HERE });
+    const event = await pasteInto(view, clipboard({ 'text/html': '<img src="data:image/png;base64,AAAA">', 'text/plain': 'alt' }));
+    expect(event.defaultPrevented).toBe(true);
+    expect(view.state.doc.toString()).toBe('alt');
+    view.destroy();
+  });
+
+  it('resolves relative addresses against the source the clipboard names', async () => {
+    const view = mount('', { noteId: HERE });
+    const html =
+      'Version:0.9\r\nStartHTML:0000000105\r\nSourceURL:https://example.com/docs/page\r\n' +
+      '<html><body><!--StartFragment--><p><a href="other">other</a> <img src="../pic.png" alt="p"></p><!--EndFragment--></body></html>';
+    await pasteInto(view, clipboard({ 'text/html': html, 'text/plain': 'other' }));
+    expect(view.state.doc.toString()).toBe('[other](https://example.com/docs/other) ![p](https://example.com/pic.png)');
+    view.destroy();
+  });
+
+  it('declines on a read-only note', async () => {
+    const view = mount('', { noteId: HERE }, undefined, [EditorState.readOnly.of(true)]);
+    await pasteInto(view, clipboard({ 'text/html': PAGE, 'text/plain': 'flat' }));
+    expect(view.state.doc.toString()).toBe('');
     view.destroy();
   });
 });
