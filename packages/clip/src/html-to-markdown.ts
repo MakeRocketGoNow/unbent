@@ -171,7 +171,7 @@ export function divsToParagraphs(): Transform {
  * `[text](url)` form even when the text is the URL. Changing any of them changes every
  * note an import or a clip writes from then on, and the ENML tests pin them.
  */
-export function hastToMarkdown(tree: Node): string {
+export function hastToMarkdown(tree: Node, opts: { tidyInsideCode?: boolean } = {}): string {
   const mdast = toMdast(tree as never);
 
   const markdown = toMarkdown(mdast as never, {
@@ -184,7 +184,7 @@ export function hastToMarkdown(tree: Node): string {
     resourceLink: false,
   });
 
-  return tidy(markdown);
+  return opts.tidyInsideCode ? tidy(markdown) : tidyOutsideCode(markdown);
 }
 
 export interface HtmlToMarkdownOptions {
@@ -195,6 +195,11 @@ export interface HtmlToMarkdownOptions {
    * on.
    */
   transforms?: Transform[];
+  /**
+   * Run the text clean-up over code blocks too, which damages them; see `tidyOutsideCode`.
+   * For the ENEX import alone, whose dedupe hash covers this output.
+   */
+  tidyInsideCode?: boolean;
 }
 
 /**
@@ -211,7 +216,7 @@ export function htmlToMarkdown(input: string | HastRoot | Node, opts: HtmlToMark
   stripPresentation()(tree);
   divsToParagraphs()(tree);
 
-  return hastToMarkdown(tree);
+  return hastToMarkdown(tree, { tidyInsideCode: opts.tidyInsideCode ?? false });
 }
 
 /**
@@ -235,4 +240,45 @@ function tidy(markdown: string): string {
     .replace(/[ \t]+$/gm, '')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
+}
+
+/**
+ * `tidy`, leaving code blocks exactly as they came.
+ *
+ * Its rules are about prose, and inside a code block each one breaks something: a line's
+ * trailing backslash is a shell continuation, blank lines and trailing spaces are the
+ * sample's own, and `\\_` means what it says. On a documentation page, the thing people
+ * most often clip or paste code from, `docker run \\` lost its backslash silently.
+ *
+ * By lines rather than in the AST for the reason `tidy` gives. The serialiser writes every
+ * code block fenced (`fences: true`) and always with a fence longer than any run inside
+ * it, so a line that closes the fence cannot be part of the code. A fence can follow a
+ * list marker or a quote's `>`. A backtick fence's opening line holds no other backtick,
+ * which is what tells it from inline code that happens to start a line.
+ */
+function tidyOutsideCode(markdown: string): string {
+  const out: string[] = [];
+  let fence: string | null = null;
+  let blank = false;
+  for (const line of markdown.split('\n')) {
+    if (fence !== null) {
+      out.push(line);
+      const closing = /^[\s>]*(`{3,}|~{3,})\s*$/.exec(line)?.[1];
+      if (closing && closing[0] === fence[0] && closing.length >= fence.length) fence = null;
+      continue;
+    }
+    const opening = /^[\s>]*(?:(?:[-*+]|\d+[.)])\s+[\s>]*)*(`{3,}|~{3,})(.*)$/.exec(line);
+    if (opening && !(opening[1]![0] === '`' && opening[2]!.includes('`'))) fence = opening[1]!;
+
+    const tidied = line
+      .replace(/\u00a0/g, ' ')
+      .replace(/(?<=\w)\\_(?=\w)/g, '_')
+      .replace(/\\$/, '')
+      .replace(/[ \t]+$/, '');
+    // One blank line at most between blocks, as `tidy`'s run of newlines does.
+    if (tidied === '' && blank) continue;
+    blank = tidied === '';
+    out.push(tidied);
+  }
+  return out.join('\n').trim();
 }

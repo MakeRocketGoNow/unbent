@@ -27,6 +27,26 @@ describe('htmlToMarkdown', () => {
     );
   });
 
+  it('leaves a code block exactly as it came, whatever tidies the text around it', () => {
+    const code = 'docker run \\\n  --rm foo   \n\n\n\necho a\\_b\u00a0c';
+    expect(htmlToMarkdown(`<p>Run a_b:</p><pre><code>${code}</code></pre><p>then\u00a0go</p>`)).toBe(
+      `Run a_b:\n\n\`\`\`\n${code}\n\`\`\`\n\nthen go`,
+    );
+  });
+
+  it('knows a code block inside a list or a quote, and tidies again after it', () => {
+    const inList = htmlToMarkdown('<ul><li><pre><code>a \\\nb</code></pre></li></ul><p>one<br>two</p>');
+    expect(inList).toContain('a \\\n');
+    expect(htmlToMarkdown('<blockquote><pre><code>a \\\nb</code></pre></blockquote>')).toContain('a \\\n');
+    expect(htmlToMarkdown('<pre><code>x</code></pre><p>1</p>\n\n<p></p><p>2</p>')).toBe('```\nx\n```\n\n1\n\n2');
+  });
+
+  it('takes a fence longer than the code holds for the one that closes it', () => {
+    expect(htmlToMarkdown('<pre><code>```\na  \n```</code></pre><p>after\u00a0it</p>')).toBe(
+      '````\n```\na  \n```\n````\n\nafter it',
+    );
+  });
+
   it('keeps a rule inside a div apart from the text either side of it', () => {
     // Made a paragraph, the div would run the three together as `a---b`.
     expect(htmlToMarkdown('<div>a<hr>b</div>')).toBe('a\n\n---\n\nb');

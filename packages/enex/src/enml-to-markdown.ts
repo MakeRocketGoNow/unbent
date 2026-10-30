@@ -141,6 +141,12 @@ export function enmlToMarkdown(enml: string, resources: EnexResource[]): Convert
   // conversion was in every note that had one, for good, while the hash only matters to
   // someone importing the same export again over a library imported before the fix,
   // where such a note lands a second time and the rest are still skipped.
-  return { markdown: htmlToMarkdown(tree), usedMd5 };
+  //
+  // `tidyInsideCode` keeps what this converter has always done to a code block, which is
+  // to take trailing backslashes and spaces and blank lines out of it. That is wrong too,
+  // and the clipper and the paste no longer do it, but fixing it here would move the
+  // dedupe hash of every imported note with a code block touched by those rules: a call
+  // that has not been made for this one.
+  return { markdown: htmlToMarkdown(tree, { tidyInsideCode: true }), usedMd5 };
 }
 
