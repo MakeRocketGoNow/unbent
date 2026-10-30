@@ -27,10 +27,8 @@ describe('htmlToMarkdown', () => {
     );
   });
 
-  it('takes a narrower list of block elements when asked', () => {
-    // What the ENML converter does: there, a div holding an <hr> is still a line, as it
-    // always was, which runs the rule into the text either side of it.
-    expect(htmlToMarkdown('<div>a<hr>b</div>', { blockTags: new Set(['p']) })).toBe('a---b');
+  it('keeps a rule inside a div apart from the text either side of it', () => {
+    // Made a paragraph, the div would run the three together as `a---b`.
     expect(htmlToMarkdown('<div>a<hr>b</div>')).toBe('a\n\n---\n\nb');
   });
 

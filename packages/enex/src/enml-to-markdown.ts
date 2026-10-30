@@ -131,30 +131,16 @@ export function enmlToMarkdown(enml: string, resources: EnexResource[]): Convert
 
   // The cleaning (styling stripped, divs made paragraphs) and the serialisation are the
   // web clipper's too, and live in `@unbent/clip`; ENML only adds its own elements first.
-  return { markdown: htmlToMarkdown(tree, { blockTags: ENML_BLOCK_TAGS }), usedMd5 };
+  //
+  // That includes which children keep a div a container (`BLOCK_TAGS`). Until 2026-10-30
+  // this passed a shorter list of its own, frozen because the import's dedupe hash
+  // (`enexNoteHash`) is taken over the converted body: a div holding a `<pre>`, an `<hr>`
+  // or a `<dl>` (all of which ENML allows) was made a paragraph, which ran a code block,
+  // a rule or a list of terms into the text beside it ("Run this:```npm install```then
+  // restart"), and fixing it moves those notes' hash. Fixed all the same: the wrong
+  // conversion was in every note that had one, for good, while the hash only matters to
+  // someone importing the same export again over a library imported before the fix,
+  // where such a note lands a second time and the rest are still skipped.
+  return { markdown: htmlToMarkdown(tree), usedMd5 };
 }
 
-/**
- * The children that keep an ENML `<div>` a container rather than a line.
- *
- * Shorter than the clipper's `BLOCK_TAGS` on purpose, and frozen: it is the list every
- * note imported so far was converted with. With the longer one, a div around a `<pre>`,
- * an `<hr>` or a `<dl>` (all of which ENML allows) would convert differently, and since
- * an import's dedupe hash (`enexNoteHash`) is taken over the converted body, importing
- * the same export again would no longer recognise those notes as already there. The rest of the longer list (`article`, `section` and the like) is HTML5,
- * which ENML does not allow, so it would change nothing here either way.
- */
-const ENML_BLOCK_TAGS: ReadonlySet<string> = new Set([
-  'div',
-  'p',
-  'ul',
-  'ol',
-  'table',
-  'blockquote',
-  'h1',
-  'h2',
-  'h3',
-  'h4',
-  'h5',
-  'h6',
-]);

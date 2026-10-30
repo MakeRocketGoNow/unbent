@@ -40,6 +40,14 @@ export async function contentHash(title: string, body: string, id?: string): Pro
  * any order, so the importer and the ENML endpoint arrive at one key from their own inputs.
  * A missing date is keyed as missing rather than as the import time the note is given in
  * its place, or no resumed run would ever match.
+ *
+ * The body is the converted Markdown, so the key moves when the ENML conversion does. It
+ * has twice: on 2026-09-16, when the key grew from title and body to all of the above, and
+ * on 2026-10-30, when a div holding a `<pre>`, an `<hr>` or a `<dl>` stopped being made a
+ * paragraph (`enmlToMarkdown`). A note imported before a change and converted differently
+ * after it is not recognised, so importing the same export again adds it a second time:
+ * every note after the first change, only those notes after the second. Clearing the
+ * library before importing over it is the way round both.
  */
 export async function enexNoteHash(note: {
   title: string;

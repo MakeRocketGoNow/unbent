@@ -145,16 +145,18 @@ export const BLOCK_TAGS: ReadonlySet<string> = new Set([
  * text was written with.
  *
  * A div wrapping block content is a container and is left alone: made a `<p>`, it would
- * fold everything inside it into one paragraph. `blockTags` says which children make it
- * one. It defaults to every block element (`BLOCK_TAGS`), which a web page needs: an
- * article Readability hands back is an `<article>` and a code sample is a `<pre>`, each
- * inside a div. The ENML converter passes its own, shorter list; see `enmlToMarkdown`.
+ * fold everything inside it into one paragraph. `BLOCK_TAGS` says which children make it
+ * one: every block element, which a web page needs (an article Readability hands back is
+ * an `<article>` and a code sample is a `<pre>`, each inside a div) and which ENML needs
+ * too, where a div can hold a `<pre>`, an `<hr>` or a `<dl>`. The ENML converter kept a
+ * shorter list of its own until 2026-10-30, because the import's dedupe hash covers its
+ * output; `enmlToMarkdown` says what that cost and why it went.
  */
-export function divsToParagraphs(blockTags: ReadonlySet<string> = BLOCK_TAGS): Transform {
+export function divsToParagraphs(): Transform {
   return (tree: Node) => {
     visit(tree as never, 'element', (node: Node) => {
       if (node.tagName !== 'div') return;
-      const hasBlockChild = (node.children ?? []).some((c) => isElement(c) && blockTags.has(c.tagName ?? ''));
+      const hasBlockChild = (node.children ?? []).some((c) => isElement(c) && BLOCK_TAGS.has(c.tagName ?? ''));
       if (!hasBlockChild) node.tagName = 'p';
     });
   };
@@ -193,8 +195,6 @@ export interface HtmlToMarkdownOptions {
    * on.
    */
   transforms?: Transform[];
-  /** Children that keep a `<div>` a container; see `divsToParagraphs`. */
-  blockTags?: ReadonlySet<string>;
 }
 
 /**
@@ -209,7 +209,7 @@ export function htmlToMarkdown(input: string | HastRoot | Node, opts: HtmlToMark
 
   for (const transform of opts.transforms ?? []) transform(tree);
   stripPresentation()(tree);
-  divsToParagraphs(opts.blockTags)(tree);
+  divsToParagraphs()(tree);
 
   return hastToMarkdown(tree);
 }
