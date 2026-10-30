@@ -388,7 +388,11 @@ describe('Clip a link beside New', () => {
     const { router } = mount('/notes?q=alpha');
     (await screen.findByRole('button', { name: 'Clip a link' })).click();
     expect(await screen.findByLabelText('Link to clip')).toBeTruthy();
-    await waitFor(() => expect((router.state.location.search as Record<string, unknown>).q).toBeUndefined());
+    await waitFor(() => {
+      // The router's own parsed search: the router owns the location (`url-boundary.test.ts`).
+      const { search } = router.state.location;
+      expect((search as Record<string, unknown>).q).toBeUndefined();
+    });
   });
 
   it('is not drawn where the instance does not', async () => {
