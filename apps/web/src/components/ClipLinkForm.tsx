@@ -41,6 +41,8 @@ export function whatWentWrong(err: unknown): string {
   return errorText(err);
 }
 
+const NEEDS_CONNECTION = 'Clipping needs a connection.';
+
 interface ClipLinkOptions {
   /** Where the note goes: the list's own filing, as New files a note (`NotesLayout`'s `filing`). */
   filing: { tags: string[]; notebook: string | null };
@@ -93,6 +95,11 @@ export function useClipLink({ filing, offline, onStart, onClipped, onCancel }: C
     };
   }, []);
 
+  // Said to a press made offline, and untrue once the connection is back.
+  useEffect(() => {
+    if (!offline) setError((shown) => (shown === NEEDS_CONNECTION ? null : shown));
+  }, [offline]);
+
   function reset() {
     setValue('');
     setBusy(false);
@@ -105,7 +112,7 @@ export function useClipLink({ filing, offline, onStart, onClipped, onCancel }: C
     if (busy) return;
     // Enter reaches here with the button faded, and a phone never draws that button's tip.
     if (offline) {
-      setError('Clipping needs a connection.');
+      setError(NEEDS_CONNECTION);
       return;
     }
     const url = asPageUrl(value);

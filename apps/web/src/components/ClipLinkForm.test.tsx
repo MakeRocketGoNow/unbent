@@ -193,6 +193,15 @@ describe('ClipLinkForm', () => {
     expect(clip.getAttribute('aria-description')).toBe('Clipping needs a connection');
   });
 
+  it('takes the offline line back when the connection returns', () => {
+    const props = { filing, onClipped: () => {}, onCancel: () => {} };
+    const { getByLabelText, queryByRole, rerender } = render(<Form {...props} offline />);
+    fireEvent.keyDown(getByLabelText('Link to clip'), { key: 'Enter' });
+    expect(queryByRole('alert')).toBeTruthy();
+    rerender(<Form {...props} offline={false} />);
+    expect(queryByRole('alert')).toBeNull();
+  });
+
   /* The head draws the form in another place when its layout changes, and a table row
      opening beside it is enough. It is the same form, and the note keeps the focus. */
   it('keeps the address and leaves focus alone when the layout moves it', () => {
