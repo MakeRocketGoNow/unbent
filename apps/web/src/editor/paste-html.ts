@@ -157,7 +157,9 @@ function resolveAddresses(base: string | null): Transform {
       if (child.tagName === 'a' && typeof props.href !== 'string') return child.children ?? [];
       if (child.tagName === 'a' && typeof props.href === 'string') {
         const href = absolute(props.href, base);
-        if (href === null) return child.children ?? [];
+        // A `javascript:` link does something on its page and nothing in a note. As in a clip,
+        // the words stay and the link goes.
+        if (href === null || /^javascript:/i.test(href)) return child.children ?? [];
         props.href = href;
       }
       // Written by the converter as links to their files, so held to what a link is held

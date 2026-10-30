@@ -504,6 +504,13 @@ describe('paste from a page', () => {
     dropped.destroy();
   });
 
+  it('keeps the words of a javascript: link, and not the link', async () => {
+    const view = mount('', { noteId: HERE });
+    await pasteInto(view, clipboard({ 'text/html': '<h2>Head</h2><p><a href="javascript:void(0)">Go</a></p>', 'text/plain': 'Head\nGo' }));
+    expect(view.state.doc.toString()).toBe('## Head\n\nGo');
+    view.destroy();
+  });
+
   it('holds video to what a link is held to', async () => {
     const view = mount('', { noteId: HERE });
     const html =
