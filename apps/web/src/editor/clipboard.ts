@@ -138,18 +138,29 @@ export function attachmentClipboard(config: ClipboardConfig): Extension {
  * A paste that carries files never gets this far: the upload handler (`attach.ts`) is
  * mounted before this one and takes it. A browser's Copy Image puts the picture's bytes
  * beside an `<img>` naming it, and the bytes are the better copy.
+ *
+ * Nor does HTML past `MAX_CONVERTED_HTML`, read before anything parses it.
  */
 function pasteHtml(event: ClipboardEvent, view: EditorView, data: DataTransfer, config: ClipboardConfig): boolean {
   const { state } = view;
   if (state.readOnly || data.getData(CUT_FLAVOUR)) return false;
   const html = data.getData('text/html');
-  if (!html || !worthConverting(html)) return false;
+  if (!html || html.length > MAX_CONVERTED_HTML || !worthConverting(html)) return false;
   if (state.selection.ranges.some((range) => inCode(state, range.from))) return false;
 
   event.preventDefault();
   void insertConverted(view, html, data.getData('text/plain'), config);
   return true;
 }
+
+/**
+ * The most clipboard HTML converted. A spreadsheet's copy is a table with inline styles
+ * on every cell, and the conversion runs on the page's own thread: measured warm on a
+ * desktop in Node, 0.34 s at one megabyte and 2 s at five, for the converter alone, and a
+ * phone is several times slower. Past this a frozen page is the worse outcome, and the
+ * plain text goes in at once.
+ */
+const MAX_CONVERTED_HTML = 1_000_000;
 
 /**
  * Converts and inserts, at the selection as it is when the converter answers.

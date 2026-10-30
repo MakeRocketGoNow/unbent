@@ -531,6 +531,14 @@ describe('paste from a page', () => {
     pressed.destroy();
   });
 
+  it('leaves HTML too large to convert to the browser, which pastes its plain text', async () => {
+    const view = mount('', { noteId: HERE });
+    const html = `<table>${'<tr><td style="color:red">x</td></tr>'.repeat(30_000)}</table>`;
+    const event = await pasteInto(view, clipboard({ 'text/html': html, 'text/plain': 'x' }));
+    expect(event.defaultPrevented).toBe(false);
+    view.destroy();
+  });
+
   it('declines on a read-only note', async () => {
     const view = mount('', { noteId: HERE }, undefined, [EditorState.readOnly.of(true)]);
     await pasteInto(view, clipboard({ 'text/html': PAGE, 'text/plain': 'flat' }));
