@@ -1,5 +1,6 @@
 import { isProbablyReaderable, Readability } from '@mozilla/readability';
 import { parseHTML } from 'linkedom/worker';
+import { clean, hostName, withoutSiteName } from './site.js';
 
 /**
  * Finds the article in a web page: the part a person meant to keep when they clipped it,
@@ -107,38 +108,4 @@ interface BaseElement {
   getAttribute(name: string): string | null;
   setAttribute(name: string, value: string): void;
   remove(): void;
-}
-
-/**
- * The title without the site's name tacked on before or after it: `Caring for your anvil
- * | Acme Workshop` is `Caring for your anvil`.
- *
- * Readability trims these itself, but not from a title of four words or fewer, where it
- * cannot tell a site name from half the headline. Here the site name is known, so only
- * an exact match is taken, and only beside a separator; a title that is nothing but the
- * site's name is left whole. The note's source line names the site, so it is not lost.
- */
-function withoutSiteName(title: string, siteName: string | null): string {
-  if (!siteName) return title;
-  const name = siteName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  // A bar with or without spaces; a hyphen, en dash, em dash, middle dot or double angle
-  // quote only with spaces both sides, so `Acme-Tools` is never split; a colon with a
-  // space after it.
-  const separator = '(?:\\s*\\|\\s*|\\s+[-\u2013\u2014\u00b7\u00bb]\\s+|:\\s+)';
-  const trimmed = title
-    .replace(new RegExp(`${separator}${name}$`, 'i'), '')
-    .replace(new RegExp(`^${name}${separator}`, 'i'), '')
-    .trim();
-  return trimmed || title;
-}
-
-/** The URL's host without a leading `www.`, the way a person would name the site. */
-export function hostName(url: URL): string {
-  return url.hostname.replace(/^www\./i, '');
-}
-
-/** Trimmed, with runs of whitespace made one space; null when nothing is left. */
-function clean(value: string | null | undefined): string | null {
-  const text = value?.replace(/\s+/g, ' ').trim();
-  return text ? text : null;
 }

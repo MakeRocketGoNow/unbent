@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@mozilla/readability": "^0.6.0",
+    "@unbent/shared": "workspace:*",
     "hast-util-from-html": "^2.0.3",
     "hast-util-to-mdast": "^10.1.2",
     "linkedom": "^0.18.14",
@@ -25,5 +26,6 @@
   "devDependencies": {
     "typescript": "^7.0.2",
     "vitest": "^5.0.3"
-  }
+  },
+  "sideEffects": false
 }

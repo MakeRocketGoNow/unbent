@@ -262,6 +262,9 @@ importers:
       '@mozilla/readability':
         specifier: ^0.6.0
         version: 0.6.0
+      '@unbent/shared':
+        specifier: workspace:*
+        version: link:../shared
       hast-util-from-html:
         specifier: ^2.0.3
         version: 2.0.3
