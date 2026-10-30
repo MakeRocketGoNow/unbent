@@ -188,8 +188,12 @@ async function insertConverted(view: EditorView, html: string, plain: string, co
   if (!target) return;
   const { state } = target;
   if (state.readOnly) return;
-  const { markdown, inline } = converted ?? { markdown: plain, inline: true };
-  if (!markdown) return;
+  const { markdown: written, inline } = converted ?? { markdown: plain, inline: true };
+  if (!written) return;
+  // The converter trims what it writes, which suits a block. A run going in mid-sentence
+  // keeps the spaces its selection had: a double-click on Windows takes the one after the
+  // word, and without it the word runs into the next.
+  const markdown = inline ? `${/^[ \t]*/.exec(plain)![0]}${written.trim()}${/[ \t]*$/.exec(plain)![0]}` : written;
   target.dispatch(
     state.changeByRange((range) => {
       const [lead, tail] = inline ? ['', ''] : apart(state.doc, range.from, range.to);

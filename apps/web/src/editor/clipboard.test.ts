@@ -539,6 +539,13 @@ describe('paste from a page', () => {
     view.destroy();
   });
 
+  it('keeps the spaces at the edge of a run going in mid-sentence', async () => {
+    const view = mount('a b', { noteId: HERE }, { anchor: 2, head: 2 });
+    await pasteInto(view, clipboard({ 'text/html': '<b>word</b> ', 'text/plain': 'word ' }));
+    expect(view.state.doc.toString()).toBe('a **word** b');
+    view.destroy();
+  });
+
   it('declines on a read-only note', async () => {
     const view = mount('', { noteId: HERE }, undefined, [EditorState.readOnly.of(true)]);
     await pasteInto(view, clipboard({ 'text/html': PAGE, 'text/plain': 'flat' }));
