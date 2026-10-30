@@ -66,7 +66,10 @@ Four are worth knowing about:
   tags, notebook and fields, and `POST /api/clip` is the same thing for the apps. Where a
   site will not serve this server (a 401, 403 or 429, or a page that needs a sign-in or
   JavaScript to show its text), the assistant reads the page itself and writes the note
-  with `create_note`; a file at an address, a PDF say, is `add_attachment`'s.
+  with `create_note`; a file at an address, a PDF say, is `add_attachment`'s. The tool is
+  offered only where the instance has `WEB_CLIP=1` set (unbent.app does): the reading
+  costs more CPU than Workers Free allows, so a self-hosted instance switches it on once
+  it is on a plan that can run it. Where it is absent, the long way is the way.
 
 **Filling a notebook's fields in bulk is an assistant's job, on the assistant's own
 model.** Pressing Auto-fill fills one note's empty fields, and there is deliberately no

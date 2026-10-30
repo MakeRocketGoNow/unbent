@@ -28,7 +28,7 @@ function tool(notes: Partial<Record<keyof NotesRepo, unknown>>): Handler {
   };
   registerClipTool(
     server as never,
-    { BLOBS: {} } as never,
+    { BLOBS: {}, WEB_CLIP: '1' } as never,
     { waitUntil() {} },
     { notes: notes as unknown as NotesRepo, attachments: {} as AttachmentsRepo },
     appLinks('https://notes.example.com'),

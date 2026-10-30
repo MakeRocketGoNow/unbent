@@ -162,6 +162,21 @@ export interface Env {
    */
   FRONT_PAGE?: string;
   /**
+   * '1' turns on the web clipper: `POST /api/clip` and the `clip_web_page` tool, which
+   * fetch a page and read its article on the server, and the `webClip` flag in
+   * `/api/config` the apps draw their clip controls on.
+   *
+   * Opt-in because the reading is CPU the Free plan does not have: Readability over a
+   * long article runs tens of milliseconds against Free's ten an invocation (measured in
+   * lib/clip.ts), so on Free a clip of most real articles is ended mid-request with no
+   * note to show for it. unbent.app is on Workers Paid, where it is nothing; a fork is on
+   * Free until its operator decides otherwise, so this is a feature an operator switches
+   * on, as AGENTS.md asks of anything sized for Paid. Unset, the route answers 404 with
+   * `CLIP_OFF`, the tool is not registered, and the apps file a shared link as a plain
+   * note, as they did before the clipper. Exactly '1', like `FRONT_PAGE`. See `webClipOf`.
+   */
+  WEB_CLIP?: string;
+  /**
    * Resend credentials, for password reset mail. Both must be set for mail to be sent;
    * without them a reset link is logged rather than delivered, which is what local
    * development wants and what a deployed instance must not do. See lib/email.ts.

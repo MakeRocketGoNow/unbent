@@ -48,8 +48,10 @@ import type { Env } from '../types.js';
  *     (67 KB of Markdown) 63 ms. A cold isolate is slower still. That is past the Free
  *     plan's 10 ms an invocation for most pages, so on Free a clip of a long article
  *     will be ended for its CPU; unbent.app is on Workers Paid (thirty seconds), where it
- *     is nothing. The body's repair parses the Markdown once more, about as long again
- *     as the clip on the same page, and only when a picture failed.
+ *     is nothing. Which is why the whole feature is behind `WEB_CLIP` (`webClipOf`): an
+ *     operator says their plan can run it, and a fork that said nothing offers no clip
+ *     its Worker would fail. The body's repair parses the Markdown once more, about as
+ *     long again as the clip on the same page, and only when a picture failed.
  */
 
 /** A page larger than this is not read. An article's HTML is a few hundred kilobytes; five megabytes is a page that is mostly something else. */

@@ -74,6 +74,7 @@ export function createUnbentMcpHandler(
       async () => refuseIfPastFree(env, attachments, await plan()),
     );
     // A web page kept as a note, fetched here: the same function as `POST /api/clip`.
+    // Registers nothing where the instance has not switched the clipper on (`WEB_CLIP`).
     registerClipTool(
       gated,
       env,

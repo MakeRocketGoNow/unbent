@@ -76,7 +76,7 @@ describe('gatedRegistrar', () => {
     const links = appLinks('https://example.com');
     registerWriteTools(recorder, {} as never, links);
     registerAttachmentTools(recorder, {} as never, { waitUntil: () => {} }, {} as never, links, async () => null);
-    registerClipTool(recorder, {} as never, { waitUntil: () => {} }, {} as never, links, async () => null);
+    registerClipTool(recorder, { WEB_CLIP: '1' } as never, { waitUntil: () => {} }, {} as never, links, async () => null);
     registerFeedbackTool(recorder, {} as never, { userId: 'u1', clientId: 'c1' });
     expect(writes.length).toBeGreaterThan(10);
     expect(writes.filter((t) => !HELD_IN_STORE_TOOLS.has(t) && !ALLOWED_INACTIVE.has(t)), 'write tools on neither list').toEqual([]);

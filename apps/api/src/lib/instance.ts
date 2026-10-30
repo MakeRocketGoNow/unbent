@@ -155,6 +155,17 @@ export function frontPageOf(env: Pick<Env, 'FRONT_PAGE'>): true | undefined {
   return env.FRONT_PAGE?.trim() === '1' || undefined;
 }
 
+/**
+ * Whether this instance clips web pages on the server (`WEB_CLIP`, see types.ts): the
+ * route, the tool and the apps' controls all follow this one answer, so a fork on Workers
+ * Free, where the reading would run out of CPU, offers nothing it cannot finish. The same
+ * shape as `frontPageOf`, for the same reasons: exactly `'1'`, and `undefined` when off so
+ * `/api/config` drops the field and an older instance reads as one with no clipper.
+ */
+export function webClipOf(env: Pick<Env, 'WEB_CLIP'>): true | undefined {
+  return env.WEB_CLIP?.trim() === '1' || undefined;
+}
+
 /** PostHog's US cloud, which is where a project lives unless its owner chose otherwise. */
 const DEFAULT_POSTHOG_HOST = 'https://us.i.posthog.com';
 

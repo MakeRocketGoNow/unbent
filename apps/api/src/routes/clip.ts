@@ -3,6 +3,7 @@ import { zValidator } from '@hono/zod-validator';
 import { clipRequestSchema } from '@unbent/shared';
 import { clipUrl } from '../lib/clip.js';
 import { refuseIfPastFree } from '../lib/free-plan.js';
+import { webClipOf } from '../lib/instance.js';
 import { quotaOf } from '../lib/quota.js';
 import { requireAuth } from '../lib/session.js';
 import { withRepos } from '../lib/repos-middleware.js';
@@ -26,8 +27,20 @@ import type { AppEnv } from '../types.js';
  * The plan: held to the free plan in the store (`HELD_IN_STORE` in
  * lib/plan-middleware.ts), as a note's create and a file's fetch are, with
  * `refuseIfPastFree` before the page is fetched, as the file routes have.
+ *
+ * Only where the operator switched the clipper on (`WEB_CLIP`, see `webClipOf`): the
+ * reading costs CPU the Free plan does not have, so an instance that did not say it
+ * has it answers 404, as an instance from before the route does, signed in or not: the
+ * app's own session middleware has run by then, but there is nothing here to be signed
+ * in to, so the switch is read ahead of `requireAuth` and the repos. The code names the
+ * reason for a client that knows the route exists. The route stays mounted when off so
+ * the plan rule's test sees it and the answer here is the deliberate one.
  */
 export const clip = new Hono<AppEnv>()
+  .use('/clip', async (c, next) => {
+    if (!webClipOf(c.env)) return c.json({ error: 'Web clipping is off on this instance', code: 'CLIP_OFF' }, 404);
+    await next();
+  })
   .use('/clip', requireAuth, withRepos)
 
   .post('/clip', zValidator('json', clipRequestSchema), async (c) => {

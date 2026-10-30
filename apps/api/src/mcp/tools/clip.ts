@@ -4,6 +4,7 @@ import type { McpServer } from '@modelcontextprotocol/server';
 import type { AppLinks } from '../../lib/app-links.js';
 import type { AttachmentsRepo } from '../../lib/attachments-repo.js';
 import { CLIP_MAX_IMAGES, clipUrl } from '../../lib/clip.js';
+import { webClipOf } from '../../lib/instance.js';
 import type { NotesRepo } from '../../lib/notes-repo.js';
 import type { Env } from '../../types.js';
 import { SHARE_NOTE_LINK, jsonResult, noteRef, toolError } from './result.js';
@@ -25,10 +26,16 @@ import { fieldsSchema, normalizeNotebook, notebookSchema, resolveFieldNames, tag
  *
  * Inputs are `create_note`'s, less the body: the notebook by name and the fields by
  * name, resolved the same way, so nothing about filing a clip has to be learned twice.
+ *
+ * Registered only where the operator switched the clipper on (`WEB_CLIP`, `webClipOf`),
+ * as the route answers only there: a tool in the list that failed every call would send
+ * an assistant down the long way after a wasted turn, where no tool sends it there at
+ * once. Decided here rather than by the caller so the decision is the function's own and
+ * a test can see it.
  */
 export function registerClipTool(
   server: Pick<McpServer, 'registerTool'>,
-  env: Pick<Env, 'BLOBS' | 'AI' | 'ALLOW_TEST_CREDENTIALS' | 'ATTACHMENT_FETCH_USER_AGENT'>,
+  env: Pick<Env, 'BLOBS' | 'AI' | 'ALLOW_TEST_CREDENTIALS' | 'ATTACHMENT_FETCH_USER_AGENT' | 'WEB_CLIP'>,
   ctx: { waitUntil(promise: Promise<unknown>): void },
   repos: { notes: NotesRepo; attachments: AttachmentsRepo },
   links: AppLinks,
@@ -37,6 +44,7 @@ export function registerClipTool(
   /** Refuses an account past the free plan before the page is fetched (`refuseIfPastFree`). */
   pastFree: () => Promise<unknown> = async () => {},
 ): void {
+  if (!webClipOf(env)) return;
   // As add_attachment's: loopback only in local development, where the test suite's
   // page server is.
   const allowLoopback = env.ALLOW_TEST_CREDENTIALS === '1';

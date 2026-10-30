@@ -364,6 +364,15 @@ export interface AppConfig {
    */
   frontPage?: boolean;
   /**
+   * This instance clips web pages on the server: `POST /api/clip` answers, and an
+   * assistant has `clip_web_page`. The web app draws its "Clip a link" control and the
+   * phones send a shared address to the route only on its presence; absent, a shared
+   * link is filed as a plain note, as before the clipper. `WEB_CLIP=1` in the API,
+   * opt-in because the reading is CPU that Workers Free does not allow (see the API's
+   * `webClipOf`). Absent on an instance from before the setting, which reads the same.
+   */
+  webClip?: boolean;
+  /**
    * This instance keeps backups of its own: a daily dump of every changed account's store
    * into a backups bucket, which unbent.app's nightly mirror then copies to a second
    * Cloudflare account (MAK-171; "Durability" in docs/architecture.md).
