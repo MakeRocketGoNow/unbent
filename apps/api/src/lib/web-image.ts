@@ -150,7 +150,11 @@ export async function fetchWebImage(
     if (res.status >= 300 && res.status < 400) {
       const location = res.headers.get('Location');
       if (!location) return { ok: false, status: 502, error: 'The site redirected nowhere' };
-      current = new URL(location, current).toString();
+      try {
+        current = new URL(location, current).toString();
+      } catch {
+        return { ok: false, status: 502, error: 'The site redirected to an address that is not a URL' };
+      }
       continue;
     }
     if (!res.ok) return { ok: false, status: 502, error: `The site answered ${res.status}` };
@@ -163,7 +167,13 @@ export async function fetchWebImage(
     const declared = Number(res.headers.get('Content-Length') ?? '0');
     if (declared > MAX_WEB_IMAGE_BYTES) return { ok: false, status: 413, error: 'Image too large' };
 
-    const bytes = await res.arrayBuffer();
+    let bytes: ArrayBuffer;
+    try {
+      bytes = await res.arrayBuffer();
+    } catch (err) {
+      // A connection reset, or the timeout running out, part way through the body.
+      return { ok: false, status: 502, error: `Reading the image failed: ${(err as Error).message}` };
+    }
     if (bytes.byteLength > MAX_WEB_IMAGE_BYTES) return { ok: false, status: 413, error: 'Image too large' };
     if (bytes.byteLength === 0) return { ok: false, status: 502, error: 'The site sent an empty image' };
 

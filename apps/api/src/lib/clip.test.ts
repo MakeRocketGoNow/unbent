@@ -179,6 +179,32 @@ describe('clipUrl', () => {
     expect(store.created).toEqual([]);
   });
 
+  it('points a picture back at the web when its fetch breaks, rather than failing the clip', async () => {
+    const asked = stubWeb({
+      [PAGE_URL]: html(articlePage(['/bad-redirect.png', '/bad-body.png', '/good.png'])),
+      'https://example.com/bad-redirect.png': () =>
+        new Response(null, { status: 302, headers: { location: 'http://[not-a-url' } }),
+      'https://example.com/bad-body.png': () =>
+        new Response(new ReadableStream({ pull: (c) => c.error(new Error('connection reset')) }), {
+          headers: { 'content-type': 'image/png' },
+        }),
+      'https://example.com/good.png': png,
+    });
+    const store = fakeStore();
+
+    const result = await clipUrl(store.env, ctx, store.repos, { url: PAGE_URL }, options);
+
+    expect(asked).toHaveLength(4);
+    expect(result).toMatchObject({ ok: true, images: { stored: 1 } });
+    if (result.ok) expect(result.images.failed.map((f) => f.url)).toEqual([
+      'https://example.com/bad-redirect.png',
+      'https://example.com/bad-body.png',
+    ]);
+    expect(store.updates[0]!.patch.body).toContain('(https://example.com/bad-redirect.png)');
+    expect(store.updates[0]!.patch.body).toContain('(https://example.com/bad-body.png)');
+    expect(store.updates[0]!.patch.body).toContain('(files/good.png)');
+  });
+
   it('says a host refused this server, so the caller can read the page itself', async () => {
     stubWeb({ [PAGE_URL]: () => new Response('denied', { status: 403 }) });
     const store = fakeStore();
