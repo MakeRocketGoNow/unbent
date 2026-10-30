@@ -1280,7 +1280,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   };
   const clipped = async (note: Note) => {
     setClipping(false);
-    await queryClient.invalidateQueries({ queryKey: ['notes'] });
+    void queryClient.invalidateQueries({ queryKey: ['notes'] });
     invalidateNoteMembership(queryClient);
     await navigate({ to: '/notes/$noteId', params: { noteId: note.id }, search: (p) => p });
   };
