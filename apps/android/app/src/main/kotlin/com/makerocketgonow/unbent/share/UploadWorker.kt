@@ -253,7 +253,7 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
          * the rare instance without the clipper, and the 404 says the same thing.
          *
          * A 400 can also be the request itself (a title too long), which the create then
-         * repeats and is refused by the same way: one request more, in a rare case, for a
+         * repeats and is refused the same way: one request more, in a rare case, for a
          * rule the iOS app can share. Its answers arrive through a background session that
          * hands it the status and no body, so a code is nothing it could read, and two
          * phones that fall back on different answers to the same page would be a bug
