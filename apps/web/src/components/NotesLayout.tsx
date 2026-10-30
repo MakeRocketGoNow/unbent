@@ -1268,10 +1268,11 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    */
   const [clipping, setClipping] = useState(false);
   const clipRef = useRef<HTMLButtonElement>(null);
+  const clipPressedAt = useRef('');
   const openClip = () => {
     setSearchOpen(false);
     // Not `setQuery`, which goes to the list: a note open beside the results stays open.
-    if (q) void navigate({ to: '.', search: (prev) => ({ ...prev, q: undefined }), replace: true });
+    if (q) void navigate({ to: '.', search: (prev) => ({ ...prev, q: undefined }), replace: true, resetScroll: false });
     setClipping(true);
   };
   const closeClip = () => {
@@ -1283,9 +1284,18 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
     setClipping(false);
     void queryClient.invalidateQueries({ queryKey: ['notes'] });
     invalidateNoteMembership(queryClient);
+    // A clip can take a minute, with the list live beside it. Someone who has moved on to
+    // another note stays there and finds this one in the list, as a dropped file's does.
+    if (router.state.location.href !== clipPressedAt.current) return;
     await navigate({ to: '/notes/$noteId', params: { noteId: note.id }, search: (p) => p });
   };
-  const clipLink = useClipLink({ filing, offline, onClipped: (note) => void clipped(note), onCancel: closeClip });
+  const clipLink = useClipLink({
+    filing,
+    offline,
+    onStart: () => (clipPressedAt.current = router.state.location.href),
+    onClipped: (note) => void clipped(note),
+    onCancel: closeClip,
+  });
   const noClip = planInactive ? READ_ONLY_TIP : offline ? 'Clipping needs a connection' : undefined;
   const clipControl = (
     <button

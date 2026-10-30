@@ -46,6 +46,8 @@ interface ClipLinkOptions {
   filing: { tags: string[]; notebook: string | null };
   /** Faded with the reason while the server is out of reach: the server does the fetching. */
   offline: boolean;
+  /** The press has gone to the server: what the caller wants to remember about that moment. */
+  onStart?: () => void;
   /** The library holds the note; the caller opens it. Not called once the caller has gone. */
   onClipped: (note: Note) => void;
   /** The form has nothing more to say: the free plan's notice has taken over. */
@@ -71,7 +73,7 @@ export interface ClipLinkState {
  * state came back empty and enabled while its clip was still running, one press from a
  * second note. Held here the address, the wait and the error survive that.
  */
-export function useClipLink({ filing, offline, onClipped, onCancel }: ClipLinkOptions): ClipLinkState {
+export function useClipLink({ filing, offline, onStart, onClipped, onCancel }: ClipLinkOptions): ClipLinkState {
   const [value, setValue] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -113,6 +115,7 @@ export function useClipLink({ filing, offline, onClipped, onCancel }: ClipLinkOp
     }
     setBusy(true);
     setError(null);
+    onStart?.();
     try {
       attempt.current ??= crypto.randomUUID();
       const note = await actions.clipLink({ id: attempt.current, url, tags: filing.tags, notebook: filing.notebook });

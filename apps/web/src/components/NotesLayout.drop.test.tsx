@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
-import { render, screen, cleanup, waitFor } from '@testing-library/react';
+import { render, screen, cleanup, waitFor, fireEvent, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createRootRoute, createRoute, createRouter, createMemoryHistory, Outlet, RouterProvider } from '@tanstack/react-router';
 import type { FeedNote, Note } from '@unbent/shared';
@@ -30,6 +30,7 @@ vi.mock('../useAppSession.js', () => ({
 vi.mock('../store/actions.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../store/actions.js')>()),
   createNote: vi.fn(),
+  clipLink: vi.fn(),
   synced: vi.fn(async () => true),
   uploadFile: vi.fn(),
   saveNote: vi.fn(),
@@ -407,6 +408,36 @@ describe('Clip a link beside New', () => {
       expect((search as Record<string, unknown>).q).toBeUndefined();
     });
     expect(router.state.location.pathname).toBe('/notes/a');
+  });
+
+  describe('when the clip lands', () => {
+    const clipIn = async () => {
+      vi.mocked(api.getConfig).mockResolvedValue({ providers: [], webClip: true } as unknown as Awaited<ReturnType<typeof api.getConfig>>);
+      let land: (n: api.ClippedNote) => void = () => {};
+      vi.mocked(actions.clipLink).mockReturnValue(new Promise((resolve) => (land = resolve)));
+      lib = installTestLibrary({ notes: [note('a', { title: 'Alpha' })] });
+      const { router } = mount('/notes');
+      (await screen.findByRole('button', { name: 'Clip a link' })).click();
+      fireEvent.change(await screen.findByLabelText('Link to clip'), { target: { value: 'https://example.com/' } });
+      screen.getByRole('button', { name: 'Clip' }).click();
+      await screen.findByRole('button', { name: 'Clipping…' });
+      return { router, land: () => land({ id: 'n1', clip: { images: { stored: 0, failed: [] } } } as unknown as api.ClippedNote) };
+    };
+
+    it('opens the note for someone still where they pressed', async () => {
+      const { router, land } = await clipIn();
+      land();
+      await waitFor(() => expect(router.state.location.pathname).toBe('/notes/n1'));
+    });
+
+    /* A clip can take a minute with the list live beside it. */
+    it('leaves someone who has moved to another note where they are', async () => {
+      const { router, land } = await clipIn();
+      await act(() => router.navigate({ to: '/notes/$noteId', params: { noteId: 'a' } }));
+      land();
+      await waitFor(() => expect(screen.queryByLabelText('Link to clip')).toBeNull());
+      expect(router.state.location.pathname).toBe('/notes/a');
+    });
   });
 
   it('is not drawn where the instance does not', async () => {
