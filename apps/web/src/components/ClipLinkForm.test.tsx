@@ -45,6 +45,8 @@ describe('asPageUrl', () => {
     expect(asPageUrl(' https://example.com/a-slug?x=1 ')).toBe('https://example.com/a-slug?x=1');
     expect(asPageUrl('http://example.com')).toBe('http://example.com/');
     expect(asPageUrl('example.com/article')).toBe('https://example.com/article');
+    expect(asPageUrl('example.com:8080/article')).toBe('https://example.com:8080/article');
+    expect(asPageUrl('localhost:5173')).toBe('https://localhost:5173/');
   });
 
   it('refuses what is not a web page', () => {

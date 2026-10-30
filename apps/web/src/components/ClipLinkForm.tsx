@@ -15,7 +15,8 @@ import { Button } from './Button';
 export function asPageUrl(text: string): string | null {
   const trimmed = text.trim();
   if (!trimmed || /\s/.test(trimmed)) return null;
-  const withScheme = /^[a-z][a-z0-9+.-]*:/i.test(trimmed) ? trimmed : `https://${trimmed}`;
+  // A colon then a port is not a scheme, though `example.com:8080` parses as one.
+  const withScheme = /^[a-z][a-z0-9+.-]*:(?!\d+(?:[/?#]|$))/i.test(trimmed) ? trimmed : `https://${trimmed}`;
   try {
     const url = new URL(withScheme);
     if (url.protocol !== 'http:' && url.protocol !== 'https:' || !url.hostname) return null;
