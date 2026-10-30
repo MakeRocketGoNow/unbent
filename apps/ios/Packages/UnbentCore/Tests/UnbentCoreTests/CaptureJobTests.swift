@@ -249,10 +249,11 @@ final class CaptureJobTests: XCTestCase {
         XCTAssertNotNil(job.clip)
     }
 
-    /// The page could not be read: the plain note goes out at once, under the same id,
-    /// and the refusal is not one of the capture's four tries.
+    /// The page could not be read, or the instance has no clipper (404: switched off, or
+    /// from before the route): the plain note goes out at once, under the same id, and
+    /// the refusal is not one of the capture's four tries.
     func testAPageTheServerCannotReadFallsBackToTheNoteWithItsLink() {
-        for status in [400, 413, 415, 502] {
+        for status in [400, 404, 413, 415, 502] {
             var job = clipJob(title: "My name")
             XCTAssertEqual(.send([.create]), job.handle(.create, CaptureOutcome(status: status)), "\(status)")
             XCTAssertNil(job.clip)

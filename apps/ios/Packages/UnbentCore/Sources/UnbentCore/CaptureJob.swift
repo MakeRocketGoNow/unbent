@@ -229,16 +229,23 @@ public struct CaptureJob: Codable, Equatable, Sendable {
     /// and 400 an address it does not fetch (a private network, a loopback). Each is the
     /// server saying it cannot have this page, and the link is still worth keeping.
     ///
+    /// 404 is the server saying it has no clipper at all: an instance whose operator has
+    /// not switched it on (`WEB_CLIP`, answered as `CLIP_OFF`) and an instance deployed
+    /// before the route existed, which answers a missing route the same way. Both are the
+    /// plain note this capture always made, so the app does not read `/api/config` first
+    /// to find out: that is a request on every share to save one on the rare instance
+    /// without the clipper, and the 404 says the same thing.
+    ///
     /// A 400 can also be the request itself (a title too long), which the create then
     /// repeats and is refused the same way: one request more, in a rare case. A
     /// background session hands this the status and no body, so the `code` that would
-    /// tell the two apart is nothing it could read; Android can, and uses the same four
+    /// tell the two apart is nothing it could read; Android can, and uses the same five
     /// statuses all the same, so that two phones never fall back on different answers to
     /// the same page. Not a 402, which is the plan and refuses the fallback the same
     /// way, and nothing `handle` already decides (401, a 503 with `Retry-After`).
     public static func clipFallsBack(_ outcome: CaptureOutcome) -> Bool {
         guard let status = outcome.status else { return false }
-        return [400, 413, 415, 502].contains(status)
+        return [400, 404, 413, 415, 502].contains(status)
     }
 
     /// Thirty seconds, doubling: WorkManager's backoff, which Android's worker runs on.
