@@ -239,10 +239,12 @@ export async function clipUrl(
      unless it is under `waitUntil`, and stopped here the note would keep dead links with
      nothing left to repair them from. So the rest runs under it.
 
-     That covers a dropped connection, not the isolate ending, which would need the web
-     addresses written first and swapped once each file is in: a second write, a feed row
-     and a copy in the note's history on every clip with pictures, to cover something
-     rarer. Not taken unless it shows up.
+     That covers a dropped connection for as long as `waitUntil` lasts (about thirty
+     seconds by Cloudflare's documentation, which a clip of slow pictures can outlive, at
+     twenty seconds a hop), and not the isolate ending. Both would need the web addresses
+     written first and swapped once each file is in: a second write, a feed row and a copy
+     in the note's history on every clip with pictures, to cover something rarer. Not
+     taken unless it shows up.
   */
   const finishing = finishClip(env, ctx, repos, created.note, clip, page.url, opts);
   ctx.waitUntil(finishing.catch(() => {}));
