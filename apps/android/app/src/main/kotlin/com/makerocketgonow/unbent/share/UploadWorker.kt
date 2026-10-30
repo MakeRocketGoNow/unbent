@@ -91,7 +91,7 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
              * Written to the staging dir as soon as the server answers, so a process
              * death between create and the first PUT still finds the same note.
              */
-            val pageUrl = if (names.isEmpty()) lonePageUrl(body) else null
+            val pageUrl = if (names.isEmpty() && clipsOnAttempt(attemptsSpent())) lonePageUrl(body) else null
             // Whether the note is the clipped page. Known only on the attempt that made
             // it, which is the one that posts "Saved"; a retry that finds the note made
             // says "Saved" like any other, since it cannot tell.
@@ -263,6 +263,21 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
          */
         internal fun clipFallsBack(e: ApiException): Boolean = e.status in CLIP_FALLBACK_STATUSES
 
+        /**
+         * Whether this attempt asks for the page or settles for the plain note. The two
+         * tries after [CLIP_ATTEMPTS] are the plain create, because the failures
+         * [clipFallsBack] cannot see are often about the page too: a site that hangs past
+         * every timeout, or an article that ends the Worker for its CPU, which the edge
+         * answers with a bare 5xx. Those fail the same way on every try, and giving up after
+         * four would delete a link that a one-row create would have kept, which is what this
+         * capture made before the route existed. The same chosen id on all of them, so a
+         * clip that landed unheard and a create that follows meet at one note.
+         *
+         * It also bounds a clip the plan refuses (402, which the store answers only after
+         * the page is read) at two reads of the page.
+         */
+        internal fun clipsOnAttempt(attemptsSpent: Int): Boolean = attemptsSpent < CLIP_ATTEMPTS
+
         private val CLIP_FALLBACK_STATUSES = setOf(400, 404, 413, 415, 502)
 
         const val KEY_JOB_ID = "jobId"
@@ -280,6 +295,9 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
         /** Output: false when the server extracted every PDF's text itself. */
         const val KEY_NEEDS_INDEX = "needsIndex"
         private const val MAX_ATTEMPTS = 4
+
+        /** How many of [MAX_ATTEMPTS] may be spent on the page; see [clipsOnAttempt]. */
+        private const val CLIP_ATTEMPTS = 2
 
         /**
          * How many 503s a capture waits through before it gives up: about 28 hours.

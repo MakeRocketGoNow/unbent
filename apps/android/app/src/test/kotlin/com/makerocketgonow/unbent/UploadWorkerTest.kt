@@ -69,6 +69,15 @@ class UploadWorkerTest {
         assertTrue(UploadWorker.clipFallsBack(ApiException(400, "bad url", """{"error":"Not an address this server fetches","code":"BAD_URL"}""")))
     }
 
+    /* A page that hangs or kills the Worker never gets an answer `clipFallsBack` can read. */
+    @Test
+    fun `the last two tries make the plain note rather than lose the link`() {
+        assertTrue(UploadWorker.clipsOnAttempt(0))
+        assertTrue(UploadWorker.clipsOnAttempt(1))
+        assertFalse(UploadWorker.clipsOnAttempt(2))
+        assertFalse(UploadWorker.clipsOnAttempt(3))
+    }
+
     @Test
     fun `an instance with no clipper, switched off or from before the route, gets the note too`() {
         assertTrue(UploadWorker.clipFallsBack(ApiException(404, "off", """{"error":"This instance does not clip web pages","code":"CLIP_OFF"}""")))
