@@ -1,4 +1,4 @@
-import { clipPage, withoutScriptsAndStyles, type Clip, type ClipImage } from '@unbent/clip';
+import type { Clip, ClipImage } from '@unbent/clip';
 import {
   InvalidFieldValue,
   MAX_BODY_BYTES,
@@ -40,7 +40,13 @@ import type { Env } from '../types.js';
  *     With `CLIP_MAX_IMAGES` at ten that is 2 + 1 + 1 + 1 + 40 = 45, and one more for the
  *     body's repair when a picture failed, which leaves four for redirects. Twelve, the
  *     clip package's own default, would be 53 before a redirect, past the limit, which is
- *     why the server asks for fewer. Do not raise it without counting again.
+ *     why the server asks for fewer. Do not raise it without counting again. That count
+ *     is the page's: a picture can follow five redirects of its own, a page's redirects
+ *     can use up the spare four, and a tool call spends more before the clip (its auth,
+ *     and `notebookByName` when it names fields). So it is a count without redirects, not
+ *     a guarantee. Fifty is the Free plan's number and the switch below is what keeps a
+ *     Free instance from running this at all; the count is kept honest so that the cap
+ *     stays near what a Free plan could afford if that ever changes.
  *   - CPU. Readability over a DOM is real work. Measured in Node with vitest on
  *     2026-10-30, warm, on invented article pages carrying the scripts, styles and
  *     navigation a real one does: a 200 KB page with a dozen paragraphs took 10 ms, a
@@ -168,6 +174,11 @@ export async function clipUrl(
   const page = await fetchPage(checked.url, opts);
   if (!page.ok) return page;
 
+  // Loaded here, not at the top of the file. linkedom and Readability are a few hundred
+  // kilobytes run on every isolate's start otherwise, for a rare action, and on the forks
+  // where the switch is off they would never be used at all. Wrangler bundles this into
+  // the one Worker file, so it costs no fetch: only their running waits until a clip.
+  const { clipPage, withoutScriptsAndStyles } = await import('@unbent/clip');
   const html = withoutScriptsAndStyles(page.html);
   if (html.length > CLIP_MAX_PARSED_CHARS) {
     return {
