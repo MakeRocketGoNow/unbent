@@ -117,6 +117,11 @@ jobs:
       # previews of store changes fill themselves with, and checked nowhere else between
       # real loads.
       - run: pnpm --filter @unbent/seed test
+      # The converters the import and the clipper are built on, two seconds between them.
+      # Neither ran here before the clip package was split out of enex (2026-10-30), so a
+      # change to the HTML-to-Markdown pipeline reached main on typecheck alone.
+      - run: pnpm --filter @unbent/clip test
+      - run: pnpm --filter @unbent/enex test
       - run: pnpm build
 
   # The longest of the suites, split three ways so the other jobs are no longer waiting on
