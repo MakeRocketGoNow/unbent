@@ -170,6 +170,15 @@ public struct CaptureJob: Codable, Equatable, Sendable {
     /// Four tries of a request before the capture is given up on. Android's number.
     static let maxAttempts = 4
 
+    /// How many of `maxAttempts` may be spent asking for the page. The rest make the plain
+    /// note, because the failures `clipFallsBack` cannot see are often about the page too:
+    /// a site that hangs past every timeout, or an article that ends the Worker for its
+    /// CPU, which the edge answers with a bare 5xx. Those fail the same way on every try,
+    /// and giving up after four would lose a link a one-row create would have kept. The
+    /// same id on all of them, so a clip that landed unheard meets the create at one note.
+    /// Android's half is `UploadWorker.clipsOnAttempt`.
+    static let clipAttempts = 2
+
     /// How many times a request waits for a server that asked it to: fourteen, Android's
     /// number, though it buys more here. WorkManager's backoff tops out at five hours,
     /// so fourteen there is about a day; here each wait is as long as the server asked
@@ -284,7 +293,7 @@ public struct CaptureJob: Codable, Equatable, Sendable {
             // The page could not be read; the link is still worth a note, which is what
             // this capture made before the route existed. Sent at once and not counted
             // as a try: it is the server's decision about the page, not a failure of the
-            // request, and the plain note has its four tries ahead of it.
+            // request, and the plain note has what is left of its four tries.
             clip = nil
             return .send([.create])
         }
@@ -314,6 +323,7 @@ public struct CaptureJob: Codable, Equatable, Sendable {
                 return remaining.isEmpty ? .saved : .wait
             }
         }
+        if step == .create, clip != nil, progress.attempts >= Self.clipAttempts { clip = nil }
         // A 401 for a session that has since been replaced goes again at once, with the
         // new one; everything else backs off.
         let delay = outcome.status == 401 ? 0 : Self.backoff(attempts: progress.attempts)

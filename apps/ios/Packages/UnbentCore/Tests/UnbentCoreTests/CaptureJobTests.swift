@@ -280,6 +280,19 @@ final class CaptureJobTests: XCTestCase {
         XCTAssertNotNil(broken.clip)
     }
 
+    /// A page that hangs or kills the Worker never gets an answer `clipFallsBack` can
+    /// read. Two tries ask for it, and the last two make the note, so the link is kept.
+    func testAClipThatKeepsFailingBecomesThePlainNoteBeforeTheTriesRunOut() throws {
+        var job = clipJob()
+        XCTAssertEqual(.retry(.create, after: 30, unavailable: false), job.handle(.create, CaptureOutcome(status: 500)))
+        XCTAssertNotNil(job.clip)
+        XCTAssertEqual(.retry(.create, after: 60, unavailable: false), job.handle(.create, CaptureOutcome(status: 500)))
+        XCTAssertNil(job.clip)
+        XCTAssertEqual("/api/notes", try CaptureRequests.create(job, bearer: "sess.sig").request.url?.path)
+        XCTAssertEqual(.retry(.create, after: 120, unavailable: false), job.handle(.create, CaptureOutcome(status: 500)))
+        XCTAssertEqual(.saved, job.handle(.create, CaptureOutcome(status: 200)))
+    }
+
     /// A plain capture's 415 is still the final refusal it was.
     func testAPlainNoteRefusedWithA415IsNotRetried() {
         var job = job(files: [])
