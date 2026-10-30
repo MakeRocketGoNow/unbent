@@ -491,6 +491,19 @@ describe('paste from a page', () => {
     view.destroy();
   });
 
+  it('drops a link with nothing to click', async () => {
+    const view = mount('', { noteId: HERE });
+    await pasteInto(view, clipboard({ 'text/html': '<h2><a href="https://example.com/#care"></a>Care</h2><p>Body</p>', 'text/plain': 'Care\nBody' }));
+    expect(view.state.doc.toString()).toBe('## Care\n\nBody');
+    view.destroy();
+
+    const dropped = mount('', { noteId: HERE });
+    const html = '<p>Before <a href="https://example.com/a"><img src="data:image/png;base64,AAAA"></a> after</p>';
+    await pasteInto(dropped, clipboard({ 'text/html': html, 'text/plain': 'Before  after' }));
+    expect(dropped.state.doc.toString()).toBe('Before after');
+    dropped.destroy();
+  });
+
   it('holds video to what a link is held to', async () => {
     const view = mount('', { noteId: HERE });
     const html =

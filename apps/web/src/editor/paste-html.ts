@@ -1,6 +1,7 @@
 import {
   BLOCK_TAGS,
   dropComments,
+  dropEmptyLinks,
   fromHtml,
   htmlToMarkdown,
   isElement,
@@ -44,7 +45,7 @@ export function markdownFromClipboardHtml(html: string): { markdown: string; inl
   // `htmlToMarkdown` already tidies what it writes: no trailing spaces, no run of more
   // than one blank line, nothing blank at either end. Not done again here.
   const markdown = htmlToMarkdown(tree, {
-    transforms: [dropComments, googleDocsStyles, resolveAddresses(base)],
+    transforms: [dropComments, googleDocsStyles, resolveAddresses(base), dropEmptyLinks],
   });
   if (!markdown) return null;
   return { markdown, inline: isInline(tree) && !markdown.includes('\n\n') };

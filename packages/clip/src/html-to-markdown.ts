@@ -178,6 +178,29 @@ export const dropComments: Transform = (tree) => {
   });
 };
 
+const holdsContent = (node: Node): boolean =>
+  node.type === 'text'
+    ? (node.value ?? '').trim() !== ''
+    : node.type === 'element' &&
+      (['img', 'video', 'audio'].includes(node.tagName ?? '') ||
+        (node.tagName !== 'svg' && (node.children ?? []).some(holdsContent)));
+
+/**
+ * A link with nothing to click goes, keeping any text it holds (a space between two words,
+ * say). The converter writes one as `[](url)`, which is how a heading's permalink, a `<a>`
+ * around an icon or around a picture a caller has dropped would land in a note: `## [](url)Care`
+ * in every heading of a page marked up that way. Run it after whatever removes pictures.
+ * Opted into, like `dropComments`, for the same reason: the ENEX import's dedupe hash.
+ */
+export const dropEmptyLinks: Transform = (tree) => {
+  if (!tree.children) return;
+  tree.children = tree.children.flatMap((child) => {
+    dropEmptyLinks(child);
+    if (!isElement(child, 'a') || holdsContent(child)) return [child];
+    return (child.children ?? []).filter((c) => c.type === 'text');
+  });
+};
+
 /**
  * Serialises an already-cleaned hast tree to Markdown.
  *

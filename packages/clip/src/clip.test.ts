@@ -243,6 +243,17 @@ describe('clipFragment', () => {
     );
   });
 
+  it('drops a link with nothing to click, keeping the words around it apart', () => {
+    expect(article(fragment('<h2><a href="#care"></a>Care</h2>').markdown)).toBe('## Care');
+    expect(article(fragment('<h2><a href="#care"><svg><path d="M0 0"/></svg></a>Care</h2>').markdown)).toBe('## Care');
+    expect(article(fragment('<p>Before <a href="/a"><img src="data:image/png;base64,AAAA"></a> after</p>').markdown)).toBe(
+      'Before after',
+    );
+    expect(article(fragment('<p><a href="/a"><img src="pic.png" alt="p"></a></p>').markdown)).toBe(
+      '[![p](files/pic.png)](https://example.com/a)',
+    );
+  });
+
   it('leaves the site’s markup behind', () => {
     expect(article(fragment('<div class="x" style="color:red"><span>one</span></div><div>two</div>').markdown)).toBe(
       'one\n\ntwo',

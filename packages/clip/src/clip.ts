@@ -3,7 +3,7 @@ import { toMarkdown } from 'mdast-util-to-markdown';
 import { visit } from 'unist-util-visit';
 import { nextAvailableFilename, splitExt } from '@unbent/shared/filenames';
 import { extractArticle } from './extract.js';
-import { dropComments, htmlToMarkdown, isElement, type Node, type Transform } from './html-to-markdown.js';
+import { dropComments, dropEmptyLinks, htmlToMarkdown, isElement, type Node, type Transform } from './html-to-markdown.js';
 import { clean, hostName, withoutSiteName } from './site.js';
 
 /**
@@ -154,7 +154,7 @@ function clipTree(tree: Node, pageUrl: URL, base: URL, meta: ClipMeta, opts: Cli
   dropTitleHeading(tree, meta.title);
 
   const article = htmlToMarkdown(tree, {
-    transforms: [dropComments, rewriteLinksAndImages(base, images, opts.maxImages ?? DEFAULT_MAX_IMAGES)],
+    transforms: [dropComments, rewriteLinksAndImages(base, images, opts.maxImages ?? DEFAULT_MAX_IMAGES), dropEmptyLinks],
   });
 
   const source = sourceLine(pageUrl.href, meta.siteName ?? pageUrl.host, meta.byline);
