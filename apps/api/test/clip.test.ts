@@ -14,6 +14,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import { gzipSync } from 'node:zlib';
 import { FREE_NOTES } from '@unbent/shared';
 
 const BASE = process.env['API_URL'] ?? 'http://localhost:8787';
@@ -79,6 +80,15 @@ beforeAll(async () => {
       case '/guides/anvil':
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         return res.end(GUIDE);
+      case '/guides/squeezed': {
+        const squeezed = gzipSync(GUIDE);
+        res.writeHead(200, {
+          'Content-Type': 'text/html; charset=utf-8',
+          'Content-Encoding': 'gzip',
+          'Content-Length': squeezed.length,
+        });
+        return res.end(squeezed);
+      }
       case '/pics/anvil.png':
         res.writeHead(200, { 'Content-Type': 'image/png', 'Content-Length': PICTURE.length });
         return res.end(Buffer.from(PICTURE));
@@ -148,6 +158,17 @@ describe('POST /api/clip', () => {
     // picture is: the first request stored what it could.
     expect(hits['/pics/anvil.png']).toBe(before.picture);
     expect(hits['/guides/anvil']).toBe((before.page ?? 0) + 1);
+  });
+
+  // Here rather than only in the unit test because it is the runtime's own behaviour: Node
+  // has no `FixedLengthStream`, and workerd's fails on the first byte past a compressed
+  // length. Most pages on the web arrive this way.
+  it('reads a compressed page that declares its compressed length', async () => {
+    const res = await call(alice, 'POST', '/api/clip', { url: `${origin}/guides/squeezed` });
+    expect(res.status).toBe(201);
+    const note = (await res.json()) as { title: string; body: string };
+    expect(note.title).toBe('Caring for your anvil');
+    expect(note.body).toContain(PARAGRAPH);
   });
 
   it('takes the title, notebook and tags it is given', async () => {
