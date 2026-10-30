@@ -213,6 +213,20 @@ describe('clipUrl', () => {
     expect(body).toContain('(https://example.com/media/step-7.png)');
   });
 
+  it('reads a page whose weight is its scripts, and refuses one too large to parse', async () => {
+    const bulky = articlePage([]).replace('</head>', `<script>${'var a = 1;'.repeat(200_000)}</script></head>`);
+    stubWeb({ [PAGE_URL]: html(bulky) });
+    const first = fakeStore();
+    expect((await clipUrl(first.env, ctx, first.repos, { url: PAGE_URL }, options)).ok).toBe(true);
+
+    const long = articlePage([]).replace('</article>', `${`<p>${PARAGRAPH}</p>`.repeat(5000)}</article>`);
+    stubWeb({ [PAGE_URL]: html(long) });
+    const store = fakeStore();
+    const result = await clipUrl(store.env, ctx, store.repos, { url: PAGE_URL }, options);
+    expect(result).toMatchObject({ ok: false, status: 413, code: 'TOO_LARGE' });
+    expect(store.created).toEqual([]);
+  });
+
   it('answers a replayed clip with the note it made, without fetching its pictures again', async () => {
     const asked = stubWeb({
       [PAGE_URL]: html(articlePage(['/media/coke-bed.png'])),

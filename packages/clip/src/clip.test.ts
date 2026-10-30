@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { clipFragment, clipPage } from './clip.js';
+import { clipFragment, clipPage, withoutScriptsAndStyles } from './clip.js';
 import { ARTICLE_PAGE, LINKS_PAGE, PARAGRAPHS, RELATIVE_PAGE } from './test-pages.js';
 
 const PAGE_URL = 'https://www.example.com/guides/anvil-care';
@@ -88,6 +88,34 @@ describe('clipPage', () => {
       'Clipped from [Acme Workshop](https://example.com/visit)\n\n' +
         'Tuesday to Saturday, [all week](https://example.com/shop/hours.html).',
     );
+  });
+});
+
+describe('withoutScriptsAndStyles', () => {
+  it('takes out scripts and styles with what is in them, and leaves the rest', () => {
+    expect(
+      withoutScriptsAndStyles('<p>a</p><SCRIPT src="x.js">var s = "<p>no</p>";</SCRIPT ><style>p{}</style><p>b</p>'),
+    ).toBe('<p>a</p><p>b</p>');
+  });
+
+  it('keeps the structured data Readability reads a title and byline from', () => {
+    const data = '<script type="application/ld+json">{"headline":"Forge"}</script>';
+    expect(withoutScriptsAndStyles(`${data}<script>x()</script><p>a</p>`)).toBe(`${data}<p>a</p>`);
+  });
+
+  it('reads an unclosed element as running to the end of the page', () => {
+    expect(withoutScriptsAndStyles('<p>a</p><script>never closed <p>b</p>')).toBe('<p>a</p>');
+    expect(withoutScriptsAndStyles('<p>a</p><script never finished')).toBe('<p>a</p>');
+  });
+
+  it('does not take a longer tag name for one', () => {
+    expect(withoutScriptsAndStyles('<styled-box>a</styled-box>')).toBe('<styled-box>a</styled-box>');
+  });
+
+  it('stays quick on a page of nothing but unclosed openings', () => {
+    const started = performance.now();
+    withoutScriptsAndStyles('<script '.repeat(500_000));
+    expect(performance.now() - started).toBeLessThan(2000);
   });
 });
 

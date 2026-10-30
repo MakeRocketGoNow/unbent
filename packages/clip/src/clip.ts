@@ -185,6 +185,41 @@ function sourceLine(url: string, site: string, byline: string | null): string {
 }
 
 /**
+ * The page with its scripts and styles taken out, before anything parses it.
+ *
+ * Much of a modern page's weight is inline framework data and CSS that never becomes
+ * content, and every kilobyte handed to a parser becomes many more on the heap, so what
+ * a caller limits is what is left after this. A `<script type="application/ld+json">`
+ * stays: it is where Readability reads a page's title and byline.
+ *
+ * By scanning, not one pattern over the page: this runs on HTML from anywhere, and a
+ * lazy pattern looking for each closing tag rereads the rest of the page for every
+ * unclosed opening one. Each search here starts where the last ended. An element never
+ * closed runs to the end of the page, which is how an HTML parser reads one too.
+ */
+export function withoutScriptsAndStyles(html: string): string {
+  const opening = /<(script|style)\b/gi;
+  let out = '';
+  let from = 0;
+  for (let match = opening.exec(html); match; match = opening.exec(html)) {
+    const tagEnd = html.indexOf('>', match.index);
+    if (tagEnd === -1) return out + html.slice(from, match.index);
+    if (/type\s*=\s*["']?application\/ld\+json/i.test(html.slice(match.index, tagEnd))) {
+      opening.lastIndex = tagEnd;
+      continue;
+    }
+    const closing = new RegExp(`</${match[1]}\\b[^>]*>`, 'gi');
+    closing.lastIndex = tagEnd;
+    const close = closing.exec(html);
+    out += html.slice(from, match.index);
+    if (!close) return out;
+    from = closing.lastIndex;
+    opening.lastIndex = from;
+  }
+  return out + html.slice(from);
+}
+
+/**
  * Makes every link absolute, and every picture either a `files/` path the caller will
  * fill or, past the cap, an absolute address.
  *

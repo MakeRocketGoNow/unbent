@@ -1,4 +1,4 @@
-import { clipPage, type Clip, type ClipImage } from '@unbent/clip';
+import { clipPage, withoutScriptsAndStyles, type Clip, type ClipImage } from '@unbent/clip';
 import {
   InvalidFieldValue,
   MAX_BODY_BYTES,
@@ -54,8 +54,22 @@ import type { Env } from '../types.js';
  *     long again as the clip on the same page, and only when a picture failed.
  */
 
-/** A page larger than this is not read. An article's HTML is a few hundred kilobytes; five megabytes is a page that is mostly something else. */
+/** A page larger than this is not fetched whole. It is more than `CLIP_MAX_PARSED_CHARS` because much of a page's weight is the scripts and styles taken out before the parse. */
 export const CLIP_MAX_PAGE_BYTES = 5 * 1024 * 1024;
+
+/**
+ * The most HTML handed to the parser, in characters, once scripts and styles are out.
+ *
+ * This is the limit that protects the isolate, not a limit on what is useful: every
+ * byte of a page becomes many on the heap as a DOM, running past the Worker's 128 MB ends
+ * the isolate where no `catch` can see it, and an isolate is shared, so other people's
+ * saves in flight go with it. Measured in Node with a 128 MB heap on 2026-10-30, on
+ * invented pages, whole clips: an article of paragraphs ran out of memory at 5 MB and
+ * passed at 2 MB (126 MB of heap, 2.2 s); a page of small elements (a `div`, a `span` and
+ * a link per row) ran out at 2 MB and passed at 1 MB (107 MB, 1.9 s). So one megabyte,
+ * which is still several times a long article.
+ */
+export const CLIP_MAX_PARSED_CHARS = 1024 * 1024;
 
 /** The most pictures a server-side clip stores; the rest stay links to the site. See the budget above. */
 export const CLIP_MAX_IMAGES = 10;
@@ -147,9 +161,19 @@ export async function clipUrl(
   const page = await fetchPage(checked.url, opts);
   if (!page.ok) return page;
 
+  const html = withoutScriptsAndStyles(page.html);
+  if (html.length > CLIP_MAX_PARSED_CHARS) {
+    return {
+      ok: false,
+      status: 413,
+      code: 'TOO_LARGE',
+      error: `The page at ${page.url.host} holds more than a clip reads (${CLIP_MAX_PARSED_CHARS / 1024 / 1024} MB of HTML, leaving out its scripts and styles).`,
+    };
+  }
+
   let clip: Clip;
   try {
-    clip = clipPage(page.html, page.url.href, { maxImages: CLIP_MAX_IMAGES });
+    clip = clipPage(html, page.url.href, { maxImages: CLIP_MAX_IMAGES });
   } catch (err) {
     // Readability on a page nobody tested it on; the address itself was checked above.
     console.error('clip: reading the page failed:', (err as Error).message);
