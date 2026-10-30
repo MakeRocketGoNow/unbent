@@ -395,6 +395,20 @@ describe('Clip a link beside New', () => {
     });
   });
 
+  /* Pressed with a search result open beside the list: the form was all that was asked for. */
+  it('leaves a note open beside the results open when it clears the search', async () => {
+    vi.mocked(api.getConfig).mockResolvedValue({ providers: [], webClip: true } as unknown as Awaited<ReturnType<typeof api.getConfig>>);
+    lib = installTestLibrary({ notes: [note('a', { title: 'Alpha' })] });
+    vi.mocked(api.searchNotes).mockResolvedValue([] as never);
+    const { router } = mount('/notes/a?q=alpha');
+    (await screen.findByRole('button', { name: 'Clip a link' })).click();
+    await waitFor(() => {
+      const { search } = router.state.location;
+      expect((search as Record<string, unknown>).q).toBeUndefined();
+    });
+    expect(router.state.location.pathname).toBe('/notes/a');
+  });
+
   it('is not drawn where the instance does not', async () => {
     lib = installTestLibrary({ notes: [note('a', { title: 'Alpha' })] });
     mount('/notes');

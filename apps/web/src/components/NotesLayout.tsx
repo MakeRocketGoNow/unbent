@@ -1270,7 +1270,8 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   const clipRef = useRef<HTMLButtonElement>(null);
   const openClip = () => {
     setSearchOpen(false);
-    if (q) setQuery('');
+    // Not `setQuery`, which goes to the list: a note open beside the results stays open.
+    if (q) void navigate({ to: '.', search: (prev) => ({ ...prev, q: undefined }), replace: true });
     setClipping(true);
   };
   const closeClip = () => {
