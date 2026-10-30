@@ -131,10 +131,9 @@ public enum CaptureNaming {
     /// "2 photos · 1 PDF", "Web page" or "Text": what the sheet says was
     /// shared.
     ///
-    /// - Parameter link: the text is a web address and nothing else, which the server
-    ///   will read and keep as the page (`CaptureJob.Clip`). A page shared from a
-    ///   browser was reading "Text", which is not what anyone thinks they shared, and
-    ///   then "Link", which promised a note holding the address and nothing more.
+    /// - Parameter link: the text is a web address and nothing else, which an instance
+    ///   with the clipper reads and keeps as the page (`CaptureJob.Clip`). A page shared
+    ///   from a browser was reading "Text", which is not what anyone thinks they shared.
     public static func summary(contentTypes: [String], hasText: Bool, link: Bool = false) -> String {
         let photos = contentTypes.filter { $0.hasPrefix("image/") }.count
         let pdfs = contentTypes.filter { $0 == "application/pdf" }.count
