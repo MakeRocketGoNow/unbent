@@ -103,6 +103,13 @@ describe('withoutScriptsAndStyles', () => {
     expect(withoutScriptsAndStyles(`${data}<script>x()</script><p>a</p>`)).toBe(`${data}<p>a</p>`);
   });
 
+  it('steps over structured data whole, whatever its JSON mentions', () => {
+    const style = '<script type="application/ld+json">{"articleBody":"Use the <style> tag"}</script>';
+    expect(withoutScriptsAndStyles(`${style}<p>a</p>`)).toBe(`${style}<p>a</p>`);
+    const script = '<script type="application/ld+json">{"code":"<script src=x>"}</script>';
+    expect(withoutScriptsAndStyles(`${script}<script>x()</script><p>a</p>`)).toBe(`${script}<p>a</p>`);
+  });
+
   it('reads an unclosed element as running to the end of the page', () => {
     expect(withoutScriptsAndStyles('<p>a</p><script>never closed <p>b</p>')).toBe('<p>a</p>');
     expect(withoutScriptsAndStyles('<p>a</p><script never finished')).toBe('<p>a</p>');
@@ -110,6 +117,8 @@ describe('withoutScriptsAndStyles', () => {
 
   it('does not take a longer tag name for one', () => {
     expect(withoutScriptsAndStyles('<styled-box>a</styled-box>')).toBe('<styled-box>a</styled-box>');
+    expect(withoutScriptsAndStyles('<style-guide>a</style-guide>')).toBe('<style-guide>a</style-guide>');
+    expect(withoutScriptsAndStyles('<style>p{}</style-x></style>b')).toBe('b');
   });
 
   it('stays quick on a page of nothing but unclosed openings', () => {

@@ -198,19 +198,24 @@ function sourceLine(url: string, site: string, byline: string | null): string {
  * closed runs to the end of the page, which is how an HTML parser reads one too.
  */
 export function withoutScriptsAndStyles(html: string): string {
-  const opening = /<(script|style)\b/gi;
+  // A lookahead rather than `\b`, which matches at a hyphen and would take a custom
+  // element such as `<style-guide>` for a style, contents and all.
+  const opening = /<(script|style)(?=[\s/>])/gi;
   let out = '';
   let from = 0;
   for (let match = opening.exec(html); match; match = opening.exec(html)) {
     const tagEnd = html.indexOf('>', match.index);
     if (tagEnd === -1) return out + html.slice(from, match.index);
-    if (/type\s*=\s*["']?application\/ld\+json/i.test(html.slice(match.index, tagEnd))) {
-      opening.lastIndex = tagEnd;
-      continue;
-    }
-    const closing = new RegExp(`</${match[1]}\\b[^>]*>`, 'gi');
+    const closing = new RegExp(`</${match[1]}(?=[\\s/>])[^>]*>`, 'gi');
     closing.lastIndex = tagEnd;
     const close = closing.exec(html);
+    // A kept script is stepped over whole: its JSON is free to mention `<style>`, and read
+    // as a tag that would cut the page from there on.
+    if (/type\s*=\s*["']?application\/ld\+json/i.test(html.slice(match.index, tagEnd))) {
+      if (!close) return out + html.slice(from);
+      opening.lastIndex = closing.lastIndex;
+      continue;
+    }
     out += html.slice(from, match.index);
     if (!close) return out;
     from = closing.lastIndex;
