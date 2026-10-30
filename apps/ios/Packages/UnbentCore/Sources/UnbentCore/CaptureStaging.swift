@@ -149,8 +149,9 @@ public enum CaptureNaming {
 
     /// Whether `text` is one web address and nothing else: http or https, a host, and no
     /// whitespace, after the newlines a browser's share puts around it. The same rule as
-    /// `UploadWorker.lonePageUrl` on Android, so a share the one phone clips the other
-    /// clips too.
+    /// `UploadWorker.lonePageUrl` on Android, though the platforms' parsers differ on odd
+    /// addresses (a `|` in a query, an underscore in a host), where one phone may clip what
+    /// the other files as the link. Either way the link is kept.
     public static func isLonePageUrl(_ text: String) -> Bool {
         let one = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !one.isEmpty, one.rangeOfCharacter(from: .whitespacesAndNewlines) == nil else { return false }
