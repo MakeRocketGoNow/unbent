@@ -506,8 +506,8 @@ describe('paste from a page', () => {
 
   it('keeps the words of a javascript: link, and not the link', async () => {
     const view = mount('', { noteId: HERE });
-    await pasteInto(view, clipboard({ 'text/html': '<h2>Head</h2><p><a href="javascript:void(0)">Go</a></p>', 'text/plain': 'Head\nGo' }));
-    expect(view.state.doc.toString()).toBe('## Head\n\nGo');
+    await pasteInto(view, clipboard({ 'text/html': '<h2>Head</h2><p><a href="javascript:void(0)">Go</a> <a href="java&#9;script:x()">on</a></p>', 'text/plain': 'Head\nGo on' }));
+    expect(view.state.doc.toString()).toBe('## Head\n\nGo on');
     view.destroy();
   });
 

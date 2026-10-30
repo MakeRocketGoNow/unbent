@@ -291,6 +291,10 @@ describe('clipFragment', () => {
     expect(article(fragment('<a href="/x"><video src="/m.mp4"></video></a>').markdown)).toBe('[Video](https://example.com/x)');
   });
 
+  it('knows a javascript: link however it is spelled', () => {
+    expect(article(fragment('<p><a href="java&#9;script:alert(1)">Go</a> and <a href="&#1;javascript:alert(1)">on</a></p>').markdown)).toBe('Go and on');
+  });
+
   it('leaves the site’s markup behind', () => {
     expect(article(fragment('<div class="x" style="color:red"><span>one</span></div><div>two</div>').markdown)).toBe(
       'one\n\ntwo',

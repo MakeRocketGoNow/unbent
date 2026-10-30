@@ -294,12 +294,14 @@ function rewriteLinksAndImages(base: URL, images: ClipImage[], maxImages: number
       if (node.tagName === 'a' && typeof props['href'] === 'string') {
         const href = props['href'].trim();
         // A `javascript:` link does something on the page and nothing in a note. Its
-        // text stays; the link goes.
-        if (/^javascript:/i.test(href)) {
+        // text stays; the link goes. Asked of the parsed address, since a URL parser takes
+        // a tab inside the word or a control character before it for the same scheme.
+        const resolved = resolve(href, base);
+        if (resolved?.protocol === 'javascript:') {
           parent.children!.splice(index, 1, ...(node.children ?? []));
           return index;
         }
-        props['href'] = resolve(href, base)?.href ?? href;
+        props['href'] = resolved?.href ?? href;
         return undefined;
       }
 
