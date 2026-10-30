@@ -192,36 +192,77 @@ function sourceLine(url: string, site: string, byline: string | null): string {
  * a caller limits is what is left after this. A `<script type="application/ld+json">`
  * stays: it is where Readability reads a page's title and byline.
  *
- * By scanning, not one pattern over the page: this runs on HTML from anywhere, and a
- * lazy pattern looking for each closing tag rereads the rest of the page for every
- * unclosed opening one. Each search here starts where the last ended. An element never
- * closed runs to the end of the page, which is how an HTML parser reads one too.
+ * A small tokenizer rather than a pattern for the two elements, for two reasons. HTML
+ * allows a literal `<style>` where it is not a tag (in a comment, an attribute's value,
+ * a `<title>`, a script's JSON), and a pattern taking one for a tag cut the article out
+ * of the note with no error, on exactly the pages about HTML that mention it. And this
+ * runs on pages from anywhere before any size limit on the parse: a pattern looking for
+ * each closing tag rereads the page, which took 87 s on 720 KB of unclosed ones. Here
+ * every search starts where the last ended.
+ *
+ * What it cannot read it leaves for the parser: a tag, a comment or a `<title>` with no
+ * end keeps the rest of the page. The only cut is an unclosed script or style, which an
+ * HTML parser reads as running to the end of the page too.
  */
 export function withoutScriptsAndStyles(html: string): string {
-  // A lookahead rather than `\b`, which matches at a hyphen and would take a custom
-  // element such as `<style-guide>` for a style, contents and all.
-  const opening = /<(script|style)(?=[\s/>])/gi;
+  const token = /<!--|<\/?[a-z][^\s/>]*/gi;
   let out = '';
   let from = 0;
-  for (let match = opening.exec(html); match; match = opening.exec(html)) {
-    const tagEnd = html.indexOf('>', match.index);
-    if (tagEnd === -1) return out + html.slice(from, match.index);
-    const closing = new RegExp(`</${match[1]}(?=[\\s/>])[^>]*>`, 'gi');
-    closing.lastIndex = tagEnd;
+  for (let match = token.exec(html); match; match = token.exec(html)) {
+    if (match[0] === '<!--') {
+      const end = html.indexOf('-->', token.lastIndex);
+      if (end === -1) break;
+      token.lastIndex = end + 3;
+      continue;
+    }
+    const tagEnd = endOfTag(html, token.lastIndex);
+    if (tagEnd === -1) break;
+    token.lastIndex = tagEnd + 1;
+    const name = match[0].slice(1).toLowerCase();
+    if (name !== 'script' && name !== 'style' && name !== 'title' && name !== 'textarea') continue;
+
+    // The element's text is not markup, whatever it mentions, so it is stepped over whole.
+    const closing = new RegExp(`</${name}(?=[\\s/>])`, 'gi');
+    closing.lastIndex = tagEnd + 1;
     const close = closing.exec(html);
-    // A kept script is stepped over whole: its JSON is free to mention `<style>`, and read
-    // as a tag that would cut the page from there on.
-    if (/type\s*=\s*["']?application\/ld\+json/i.test(html.slice(match.index, tagEnd))) {
-      if (!close) return out + html.slice(from);
-      opening.lastIndex = closing.lastIndex;
+    const closeEnd = close ? html.indexOf('>', closing.lastIndex) : -1;
+    const kept =
+      name === 'title' || name === 'textarea' || /type\s*=\s*["']?application\/ld\+json/i.test(html.slice(match.index, tagEnd));
+    if (kept) {
+      if (closeEnd === -1) break;
+      token.lastIndex = closeEnd + 1;
       continue;
     }
     out += html.slice(from, match.index);
-    if (!close) return out;
-    from = closing.lastIndex;
-    opening.lastIndex = from;
+    if (closeEnd === -1) return out;
+    from = closeEnd + 1;
+    token.lastIndex = from;
   }
   return out + html.slice(from);
+}
+
+/**
+ * Where the tag whose attributes start at `at` ends, or -1. A `>` inside a quoted value
+ * does not end it, and a quote counts only where a value starts, after its `=`, so the
+ * apostrophe in `title=it's` is not one. Reading one wrong can only leave a script in
+ * for the parser, which reads it properly, so a mistake here costs bytes and not words.
+ */
+function endOfTag(html: string, at: number): number {
+  let afterEquals = false;
+  for (let i = at; i < html.length; i += 1) {
+    const ch = html[i]!;
+    if (ch === '>') return i;
+    if (afterEquals && (ch === '"' || ch === "'")) {
+      i = html.indexOf(ch, i + 1);
+      if (i === -1) return -1;
+      afterEquals = false;
+    } else if (ch === '=') {
+      afterEquals = true;
+    } else if (ch !== ' ' && ch !== '\t' && ch !== '\n' && ch !== '\r' && ch !== '\f') {
+      afterEquals = false;
+    }
+  }
+  return -1;
 }
 
 /**

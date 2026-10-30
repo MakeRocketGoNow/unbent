@@ -110,9 +110,32 @@ describe('withoutScriptsAndStyles', () => {
     expect(withoutScriptsAndStyles(`${script}<script>x()</script><p>a</p>`)).toBe(`${script}<p>a</p>`);
   });
 
-  it('reads an unclosed element as running to the end of the page', () => {
+  it('reads an unclosed script as running to the end of the page', () => {
     expect(withoutScriptsAndStyles('<p>a</p><script>never closed <p>b</p>')).toBe('<p>a</p>');
-    expect(withoutScriptsAndStyles('<p>a</p><script never finished')).toBe('<p>a</p>');
+  });
+
+  it('leaves what it cannot read for the parser, rather than cutting the page', () => {
+    for (const page of ['<p>a</p><script never finished', '<p>a</p><!-- never closed <p>b</p>', '<title>never closed<p>b</p>', '<a href="never closed>b']) {
+      expect(withoutScriptsAndStyles(page)).toBe(page);
+    }
+  });
+
+  it('does not take a mention of a tag for one', () => {
+    for (const page of [
+      '<!-- old <style> --><p>article</p>',
+      '<!-- old <style> --><p>article</p><!-- </style> --><p>more</p>',
+      '<meta name="description" content="The <style> tag"><p>article</p>',
+      "<a title='<script>'>go</a><p>article</p>",
+      '<title>The <script> tag</title><p>article</p>',
+      '<textarea><style></textarea><p>article</p>',
+    ]) {
+      expect(withoutScriptsAndStyles(page)).toBe(page);
+    }
+  });
+
+  it('reads a tag past a closing bracket in a value, and past an apostrophe outside one', () => {
+    expect(withoutScriptsAndStyles('<script data-x=">">x()</script><p>a</p>')).toBe('<p>a</p>');
+    expect(withoutScriptsAndStyles("<a title=it's><script>x()</script><p>a's</p>")).toBe("<a title=it's><p>a's</p>");
   });
 
   it('does not take a longer tag name for one', () => {
@@ -124,6 +147,10 @@ describe('withoutScriptsAndStyles', () => {
   it('stays quick on a page of nothing but unclosed openings', () => {
     const started = performance.now();
     withoutScriptsAndStyles('<script '.repeat(500_000));
+    withoutScriptsAndStyles(`<script>${'</script '.repeat(500_000)}`);
+    withoutScriptsAndStyles('<!-- <!-- '.repeat(500_000));
+    withoutScriptsAndStyles('<a b="'.repeat(500_000));
+    withoutScriptsAndStyles('<title>'.repeat(500_000));
     expect(performance.now() - started).toBeLessThan(2000);
   });
 });
