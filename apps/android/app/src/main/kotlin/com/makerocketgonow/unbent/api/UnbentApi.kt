@@ -106,9 +106,18 @@ class UnbentApi(
             }
         }.build()
 
+    /**
+     * The client a clip goes through: the only request here that waits on someone else's
+     * site. The server gives the page sixty seconds a hop and its pictures about as long
+     * again, with nothing sent back meanwhile. The shared client's sixty-second read
+     * started first, so it always gave up before the server's 502 for a site that hung,
+     * and a clip with slow pictures that was about to succeed looked like a dead radio.
+     */
+    private val clipClient by lazy { client.newBuilder().readTimeout(3, TimeUnit.MINUTES).build() }
+
     /** Runs a request and returns its body, or throws [ApiException] carrying the status. */
-    private fun call(request: Request, what: String): String =
-        client.newCall(request).execute().use { res ->
+    private fun call(request: Request, what: String, via: OkHttpClient = client): String =
+        via.newCall(request).execute().use { res ->
             val text = res.body.string()
             if (!res.isSuccessful) {
                 throw ApiException(res.code, "$what failed: ${res.code}", text, res.header("Retry-After"))
@@ -119,9 +128,9 @@ class UnbentApi(
     private inline fun <reified T> get(what: String, url: HttpUrl): T =
         ApiJson.decodeFromString(call(Request.Builder().url(url).auth().get().build(), what))
 
-    private inline fun <reified T> send(what: String, url: HttpUrl, method: String, body: JsonObject): T =
+    private inline fun <reified T> send(what: String, url: HttpUrl, method: String, body: JsonObject, via: OkHttpClient = client): T =
         ApiJson.decodeFromString(
-            call(Request.Builder().url(url).auth().method(method, body.asBody()).build(), what),
+            call(Request.Builder().url(url).auth().method(method, body.asBody()).build(), what, via),
         )
 
     private fun JsonObject.asBody(): RequestBody = toString().toRequestBody(JSON)
@@ -188,7 +197,7 @@ class UnbentApi(
             if (tags.isNotEmpty()) putJsonArray("tags") { tags.forEach { add(it) } }
             if (notebook != null) put("notebook", notebook)
         }
-        return send("Clip page", url("/api/clip"), "POST", payload)
+        return send("Clip page", url("/api/clip"), "POST", payload, via = clipClient)
     }
 
     fun listNotebooks(): NotebookList = get("List notebooks", url("/api/notebooks"))
