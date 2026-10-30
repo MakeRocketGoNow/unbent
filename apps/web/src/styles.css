@@ -8315,6 +8315,9 @@ button.settings-nav-item {
 */
 .list-clip { align-items: flex-start; }
 
+/* The toolbar caps its field at a width a query needs; an address beside two buttons needs more. */
+.list-head-toolbar .list-clip { flex-basis: 28rem; }
+
 .list-clip > .icon-btn + .clip-link .clip-link-row { min-height: 2.75rem; }
 
 .clip-link-field { flex: 1; min-width: 0; }
