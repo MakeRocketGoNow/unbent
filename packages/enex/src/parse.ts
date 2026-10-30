@@ -159,7 +159,6 @@ export function uniqueResourceFilenames(resources: EnexResource[]): EnexResource
   });
 }
 
-
 interface PendingResource {
   base64: string[];
   mime: string;

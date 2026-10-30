@@ -149,4 +149,3 @@ export function enmlToMarkdown(enml: string, resources: EnexResource[]): Convert
   // that has not been made for this one.
   return { markdown: htmlToMarkdown(tree, { tidyInsideCode: true }), usedMd5 };
 }
-

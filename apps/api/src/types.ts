@@ -124,7 +124,7 @@ export interface Env {
    */
   ALLOW_TEST_CREDENTIALS?: string;
   /**
-   * The User-Agent `add_attachment` sends when it fetches a file. Unset, it is
+   * The User-Agent `add_attachment` and the web clip send when they fetch from a site. Unset, it is
    * `DEFAULT_FETCH_USER_AGENT` in lib/fetch-attachment.ts, a desktop Chrome; set it to
    * bring that up to date without a release.
    */

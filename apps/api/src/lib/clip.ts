@@ -339,7 +339,7 @@ async function fetchPage(url: URL, opts: ClipOptions): Promise<FetchedPage> {
       status: 415,
       code: 'NOT_A_PAGE',
       error:
-        `That address is ${type ? `a ${type} file` : 'a file of no stated type'}, not a web page. ` +
+        `That address is ${type ? `a file of type ${type}` : 'a file of no stated type'}, not a web page. ` +
         'Clipping is for web pages; a file such as a PDF or a picture is attached to a note ' +
         'instead (uploaded, or passed to add_attachment by an assistant).',
     };
