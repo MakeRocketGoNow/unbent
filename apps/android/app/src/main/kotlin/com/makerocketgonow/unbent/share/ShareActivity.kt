@@ -119,8 +119,11 @@ class ShareActivity : ComponentActivity() {
         signedIn = Prefs(this).isSignedIn
     }
 
-    private fun save(title: String, notebook: String?, tags: List<String>) {
+    private fun save(typed: String, notebook: String?, tags: List<String>) {
         val files = staged ?: return
+        // A title cleared by hand gets the derived one back, as the iOS sheet does: otherwise
+        // an empty title counts as typed, and it beats the page's own on a clip.
+        val title = typed.ifEmpty { this.title }
         Prefs(this).lastNotebook = notebook
 
         val request = OneTimeWorkRequestBuilder<UploadWorker>()
