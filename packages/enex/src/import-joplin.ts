@@ -1,4 +1,4 @@
-import { MAX_TAG_LENGTH, MAX_TITLE_LENGTH } from '@unbent/shared';
+import { MAX_TAG_LENGTH, MAX_TITLE_LENGTH, nextAvailableFilename } from '@unbent/shared';
 import { guessContentType } from './content-type-guess.js';
 import { enmlToMarkdown } from './enml-to-markdown.js';
 import type { ArchiveSource } from './import-archive.js';
@@ -13,7 +13,7 @@ import {
 } from './import-run.js';
 import { JoplinType, joplinTime, parseJoplinItem } from './joplin-item.js';
 import { contentHash, fileDestination, withSourceLink } from './note-body.js';
-import { nextAvailableFilename, sanitizeLabel, truncate } from './parse.js';
+import { sanitizeLabel, truncate } from './parse.js';
 import { BlobWindow, listTar, type TarEntry } from './tar.js';
 
 /**
