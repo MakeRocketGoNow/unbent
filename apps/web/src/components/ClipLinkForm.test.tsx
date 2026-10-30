@@ -78,7 +78,7 @@ describe('ClipLinkForm', () => {
     fireEvent.click(getByRole('button', { name: 'Clip' }));
 
     await waitFor(() => expect(onClipped).toHaveBeenCalledWith(expect.objectContaining({ id: 'n1' })));
-    expect(actions.clipLink).toHaveBeenCalledWith({ url: 'https://example.com/a-slug', tags: ['read'], notebook: 'Reading' });
+    expect(actions.clipLink).toHaveBeenCalledWith(expect.objectContaining({ url: 'https://example.com/a-slug', tags: ['read'], notebook: 'Reading' }));
   });
 
   it('clips on Enter and leaves on Escape', async () => {
@@ -127,6 +127,29 @@ describe('ClipLinkForm', () => {
     expect(field.value).toBe('https://example.com/article');
     expect(field.disabled).toBe(false);
     expect(field.getAttribute('aria-invalid')).toBe('true');
+  });
+
+  /* An answer lost on the way back: the server may hold the note already, so a second
+     press asks for that note, and a changed address is a new one. */
+  it('sends the same id when pressed again, and a new one for a new address', async () => {
+    vi.mocked(actions.clipLink).mockRejectedValue(new ApiError(0, 'offline'));
+    const { getByLabelText, getByRole } = render(
+      <Form filing={filing} offline={false} onClipped={() => {}} onCancel={() => {}} />,
+    );
+    const press = async (times: number) => {
+      fireEvent.click(getByRole('button', { name: 'Clip' }));
+      await waitFor(() => expect(actions.clipLink).toHaveBeenCalledTimes(times));
+      await waitFor(() => expect(getByRole('button', { name: 'Clip' })).toBeTruthy());
+    };
+    fireEvent.change(getByLabelText('Link to clip'), { target: { value: 'https://example.com/a' } });
+    await press(1);
+    await press(2);
+    fireEvent.change(getByLabelText('Link to clip'), { target: { value: 'https://example.com/b' } });
+    await press(3);
+    const ids = vi.mocked(actions.clipLink).mock.calls.map(([input]) => input.id);
+    expect(ids[0]).toBeTruthy();
+    expect(ids[1]).toBe(ids[0]);
+    expect(ids[2]).not.toBe(ids[0]);
   });
 
   /* The route's sentence for a file names the assistant's tool; the form has its own. */

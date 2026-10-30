@@ -76,6 +76,10 @@ export function useClipLink({ filing, offline, onClipped, onCancel }: ClipLinkOp
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const focusNext = useRef(true);
+  // One id for one address, kept across presses: an answer lost on the way back leaves the
+  // address in the field and invites another press, and a server that already made the
+  // note answers that id with it rather than fetching the page and its pictures again.
+  const attempt = useRef<string | null>(null);
 
   // A clip outlives the notes layout if someone goes to Settings while it runs. The note
   // still lands, and shows up in the list; it does not pull them back to open it.
@@ -91,6 +95,7 @@ export function useClipLink({ filing, offline, onClipped, onCancel }: ClipLinkOp
     setValue('');
     setBusy(false);
     setError(null);
+    attempt.current = null;
     focusNext.current = true;
   }
 
@@ -104,7 +109,8 @@ export function useClipLink({ filing, offline, onClipped, onCancel }: ClipLinkOp
     setBusy(true);
     setError(null);
     try {
-      const note = await actions.clipLink({ url, tags: filing.tags, notebook: filing.notebook });
+      attempt.current ??= crypto.randomUUID();
+      const note = await actions.clipLink({ id: attempt.current, url, tags: filing.tags, notebook: filing.notebook });
       if (!live.current) return;
       reset();
       onClipped(note);
@@ -125,6 +131,7 @@ export function useClipLink({ filing, offline, onClipped, onCancel }: ClipLinkOp
 
   function change(next: string) {
     setValue(next);
+    attempt.current = null;
     if (error) setError(null);
   }
 
