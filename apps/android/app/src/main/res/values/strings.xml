@@ -86,11 +86,11 @@
     <string name="capture_title">Save to Unbent</string>
     <string name="capture_text">Text</string>
     <!--
-      A share that is one web address and nothing else. The server reads the page and
-      keeps it as the note (POST /api/clip); the line says so, since "Text" promised a
-      note holding the address and nothing more.
+      A share that is one web address and nothing else: what was shared, and no promise of
+      what becomes of it, since an instance with the clipper off keeps the link rather than
+      the page. The notification says which landed.
     -->
-    <string name="capture_link">Link, saved as the page</string>
+    <string name="capture_link">Web page</string>
     <string name="capture_sign_in">Sign in to save this to Unbent. What you shared is kept while you do.</string>
     <string name="capture_save">Save</string>
     <string name="title_label">Title</string>

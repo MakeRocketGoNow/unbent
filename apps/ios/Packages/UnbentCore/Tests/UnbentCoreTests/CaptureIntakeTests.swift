@@ -153,8 +153,7 @@ final class CaptureIntakeTests: XCTestCase {
 
         XCTAssertEqual("https://www.example.com/a-slug", intake.text)
         XCTAssertEqual("An Example Page", intake.title)
-        // The server will read it as the page, and the sheet says so.
-        XCTAssertEqual("Link, saved as the page", intake.summary)
+        XCTAssertEqual("Web page", intake.summary)
         XCTAssertEqual("https://www.example.com/a-slug", intake.pageUrl)
     }
 

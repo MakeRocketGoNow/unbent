@@ -81,7 +81,7 @@ fun CaptureSheet(
     /** Null until the shared files have been copied into the app's cache. */
     staged: List<StagedFile>?,
     hasText: Boolean,
-    /** The text is one web address and nothing else, which the server will keep as the page. */
+    /** The text is one web address and nothing else: a page, whatever the instance does with it. */
     isLink: Boolean = false,
     initialTitle: String,
     lastNotebook: String?,
@@ -288,8 +288,7 @@ private fun summaryOf(staged: List<StagedFile>?, hasText: Boolean, isLink: Boole
         if (photos > 0) add(pluralStringResource(R.plurals.capture_photos, photos, photos))
         if (pdfs > 0) add(pluralStringResource(R.plurals.capture_pdfs, pdfs, pdfs))
         if (others > 0) add(pluralStringResource(R.plurals.capture_files, others, others))
-        // A page shared from a browser read "Text", which is not what anyone thinks they
-        // shared, and said nothing of the page being read on the server (UploadWorker).
+        // A page shared from a browser read "Text", which is not what anyone thinks they shared.
         if (hasText && staged.isEmpty()) add(stringResource(if (isLink) R.string.capture_link else R.string.capture_text))
     }
     return parts.joinToString(" · ")

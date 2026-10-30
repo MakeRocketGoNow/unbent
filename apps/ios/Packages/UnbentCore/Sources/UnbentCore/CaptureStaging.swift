@@ -143,7 +143,7 @@ public enum CaptureNaming {
         if photos > 0 { parts.append(photos == 1 ? "1 photo" : "\(photos) photos") }
         if pdfs > 0 { parts.append(pdfs == 1 ? "1 PDF" : "\(pdfs) PDFs") }
         if others > 0 { parts.append(others == 1 ? "1 file" : "\(others) files") }
-        if hasText && contentTypes.isEmpty { parts.append(link ? "Link, saved as the page" : "Text") }
+        if hasText && contentTypes.isEmpty { parts.append(link ? "Web page" : "Text") }
         return parts.joined(separator: " · ")
     }
 
