@@ -417,8 +417,17 @@ export async function fetchSource(
   const contentType = res.headers.get('content-type');
   const contentDisposition = res.headers.get('content-disposition');
   const finalUrl = new URL(res.url || current.href);
+  // A compressed answer has no usable length. The runtime hands over the body decoded and
+  // leaves the header at the compressed size, so `FixedLengthStream` below would fail on
+  // the first byte past it, and `maxBytes` would be compared with the wrong number. HTML
+  // is what hosts compress most, which is how the web clip met it (a gzipped page with a
+  // declared length came back "Attempt to write too many bytes"); files rarely are, which
+  // is how `add_attachment` had not. The counted read below caps the decoded bytes, so a
+  // small download that decodes to something enormous stops there as well.
+  const encoding = res.headers.get('content-encoding')?.trim().toLowerCase();
+  const encoded = Boolean(encoding) && encoding !== 'identity';
   const declared = res.headers.get('content-length');
-  const length = declared === null ? Number.NaN : Number(declared);
+  const length = declared === null || encoded ? Number.NaN : Number(declared);
 
   if (Number.isInteger(length) && length >= 0) {
     if (length === 0) {

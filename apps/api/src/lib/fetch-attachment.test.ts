@@ -1,10 +1,11 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   DEFAULT_FETCH_USER_AGENT,
   checkReferer,
   checkSourceUrl,
   chooseContentType,
   chooseFilename,
+  fetchSource,
   filenameFromContentDisposition,
   filenameFromUrl,
   requestHeaders,
@@ -194,6 +195,33 @@ describe('chooseContentType', () => {
    serves a picture to its own pages and refuses everyone else, so the Referer has to name
    one of them, and nothing more of the page than a browser would say.
 */
+describe('fetchSource', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  const body = 'x'.repeat(5000);
+  const compressed = (extra: Record<string, string> = {}) =>
+    new Response(body, { headers: { 'content-type': 'text/html', 'content-encoding': 'gzip', 'content-length': '40', ...extra } });
+
+  it('reads a compressed answer by counting, since its length is the compressed size', async () => {
+    vi.stubGlobal('fetch', async () => compressed());
+    // The runtime's class, absent in Node: reaching for it at all is the failure.
+    vi.stubGlobal('FixedLengthStream', class {
+      constructor() {
+        throw new Error('Attempt to write too many bytes through a FixedLengthStream.');
+      }
+    });
+    const source = await fetchSource(new URL('https://example.com/page'), { maxBytes: 100_000 });
+    expect(source.ok).toBe(true);
+    if (source.ok) expect(source.size).toBe(5000);
+  });
+
+  it('holds a compressed answer to the limit by what it decodes to', async () => {
+    vi.stubGlobal('fetch', async () => compressed());
+    const source = await fetchSource(new URL('https://example.com/page'), { maxBytes: 1000 });
+    expect(source).toMatchObject({ ok: false, tooLarge: true });
+  });
+});
+
 describe('requestHeaders', () => {
   const picture = new URL('https://cdn.example.com/images/large/shoe.jpg?sw=800');
 
