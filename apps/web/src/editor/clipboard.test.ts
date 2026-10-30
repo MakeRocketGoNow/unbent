@@ -484,6 +484,13 @@ describe('paste from a page', () => {
     view.destroy();
   });
 
+  it('keeps the words of an anchor with no address, and no empty link', async () => {
+    const view = mount('', { noteId: HERE });
+    await pasteInto(view, clipboard({ 'text/html': '<h2><a id="sec"></a>Section</h2><p>Body</p>', 'text/plain': 'Section\nBody' }));
+    expect(view.state.doc.toString()).toBe('## Section\n\nBody');
+    view.destroy();
+  });
+
   it('declines on a read-only note', async () => {
     const view = mount('', { noteId: HERE }, undefined, [EditorState.readOnly.of(true)]);
     await pasteInto(view, clipboard({ 'text/html': PAGE, 'text/plain': 'flat' }));

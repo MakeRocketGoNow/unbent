@@ -238,6 +238,13 @@ function rewriteLinksAndImages(base: URL, images: ClipImage[], maxImages: number
       if (!parent || index === undefined) return undefined;
       const props = node.properties ?? {};
 
+      // A named anchor, `<h2><a id="x"></a>Title</h2>` above all: the converter would write
+      // an empty link, `## []()Title`, in every heading of a page marked up that way.
+      if (node.tagName === 'a' && typeof props['href'] !== 'string') {
+        parent.children!.splice(index, 1, ...(node.children ?? []));
+        return index;
+      }
+
       if (node.tagName === 'a' && typeof props['href'] === 'string') {
         const href = props['href'].trim();
         // A `javascript:` link does something on the page and nothing in a note. Its

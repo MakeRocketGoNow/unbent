@@ -153,6 +153,8 @@ function resolveAddresses(base: string | null): Transform {
     rewrite(tree, (child) => {
       if (child.type !== 'element') return [child];
       const props = child.properties ?? {};
+      // A named anchor: the converter would write an empty link.
+      if (child.tagName === 'a' && typeof props.href !== 'string') return child.children ?? [];
       if (child.tagName === 'a' && typeof props.href === 'string') {
         const href = absolute(props.href, base);
         if (href === null) return child.children ?? [];

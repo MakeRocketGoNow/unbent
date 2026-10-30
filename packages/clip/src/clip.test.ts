@@ -219,6 +219,12 @@ describe('clipFragment', () => {
     );
   });
 
+  it('keeps the words of an anchor with no address, and no empty link', () => {
+    expect(article(fragment('<h2><a id="sec" name="sec"></a>Section</h2><p><a id="y">some words</a> more</p>').markdown)).toBe(
+      '## Section\n\nsome words more',
+    );
+  });
+
   it('leaves the site’s markup behind', () => {
     expect(article(fragment('<div class="x" style="color:red"><span>one</span></div><div>two</div>').markdown)).toBe(
       'one\n\ntwo',
