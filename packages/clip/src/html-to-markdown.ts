@@ -163,6 +163,22 @@ export function divsToParagraphs(): Transform {
 }
 
 /**
+ * HTML comments go. Pages carry them (a CMS's markers, a template's notes) and a browser
+ * marks a copied range with `<!--StartFragment-->`, and the converter writes a comment
+ * through as raw HTML, which Unbent neither renders nor edits well: a note would hold
+ * `<!-- -->` lines nobody wrote. A transform a caller opts into rather than part of
+ * `htmlToMarkdown`, because the ENEX import's dedupe hash covers that converter's output,
+ * so a change there would stop a re-import recognising notes already imported.
+ */
+export const dropComments: Transform = (tree) => {
+  visit(tree as never, 'comment', (_node: Node, index: number | undefined, parent: Node | undefined) => {
+    if (!parent || index === undefined) return undefined;
+    parent.children!.splice(index, 1);
+    return index;
+  });
+};
+
+/**
  * Serialises an already-cleaned hast tree to Markdown.
  *
  * The options are the house style every imported note has been written in since the

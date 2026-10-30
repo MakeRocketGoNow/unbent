@@ -3,7 +3,7 @@ import { toMarkdown } from 'mdast-util-to-markdown';
 import { visit } from 'unist-util-visit';
 import { nextAvailableFilename, splitExt } from '@unbent/shared/filenames';
 import { extractArticle } from './extract.js';
-import { htmlToMarkdown, isElement, type Node, type Transform } from './html-to-markdown.js';
+import { dropComments, htmlToMarkdown, isElement, type Node, type Transform } from './html-to-markdown.js';
 import { clean, hostName, withoutSiteName } from './site.js';
 
 /**
@@ -425,23 +425,6 @@ function dropTitleHeading(tree: Node, title: string): void {
     parent = first;
   }
 }
-
-/**
- * HTML comments go. Pages carry them (a CMS's markers, a template's notes, a
- * `<!--StartFragment-->` from a clipboard), and the converter writes a comment through as
- * raw HTML, which Unbent neither renders nor edits well: a note would hold `<!-- -->`
- * lines nobody wrote. Done here rather than in `htmlToMarkdown` because the ENEX
- * import's dedupe hash covers that converter's output, so a change there would stop a
- * re-import from recognising notes already imported; the editor's paste drops them for
- * itself the same way.
- */
-const dropComments: Transform = (tree) => {
-  visit(tree as never, 'comment', (_node: Node, index: number | undefined, parent: Node | undefined) => {
-    if (!parent || index === undefined) return undefined;
-    parent.children!.splice(index, 1);
-    return index;
-  });
-};
 
 /** Removes every element named in `tags`, contents included. */
 function removeTags(tree: Node, tags: Set<string>): void {

@@ -1,4 +1,12 @@
-import { BLOCK_TAGS, fromHtml, htmlToMarkdown, isElement, type Node as HtmlNode, type Transform } from '@unbent/clip';
+import {
+  BLOCK_TAGS,
+  dropComments,
+  fromHtml,
+  htmlToMarkdown,
+  isElement,
+  type Node as HtmlNode,
+  type Transform,
+} from '@unbent/clip/html-to-markdown';
 
 /**
  * HTML from the clipboard as the Markdown a person would have typed for it.
@@ -78,15 +86,6 @@ function withoutCfHtmlHeader(html: string): { body: string; source: string | nul
   const source = /^SourceURL:(\S+)/m.exec(header)?.[1] ?? null;
   return { body: start === -1 ? '' : html.slice(start), source };
 }
-
-/**
- * Comments go. A browser marks the copied range with `<!--StartFragment-->` and
- * `<!--EndFragment-->`, and the converter writes a comment through as raw HTML, so
- * without this every paste from Chrome on Windows would carry the two markers into the
- * note. (A candidate for `@unbent/clip` itself; kept here until the clipper needs it,
- * since the ENEX import's output is pinned and goes through the same converter.)
- */
-const dropComments: Transform = (tree) => rewrite(tree, (child) => (child.type === 'comment' ? [] : [child]));
 
 /**
  * Google Docs, a common source of a formatted paste, says everything with inline
