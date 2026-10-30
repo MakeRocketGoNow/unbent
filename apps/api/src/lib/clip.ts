@@ -76,11 +76,18 @@ export const CLIP_MAX_IMAGES = 10;
 
 /**
  * Pictures fetched and stored at once. Enough that a clip of ten pictures is a few round
- * trips rather than ten, and few enough that the bytes in memory at once stay a fraction
- * of the isolate's 128 MB even at `MAX_WEB_IMAGE_BYTES` each, which no article's
- * pictures come near.
+ * trips rather than ten, and few enough that the bytes held at once are bounded with
+ * `CLIP_MAX_IMAGE_BYTES`.
  */
 const IMAGE_CONCURRENCY = 4;
+
+/**
+ * The largest picture a clip stores; a larger one stays a link to the site. Smaller than
+ * `MAX_WEB_IMAGE_BYTES`, which is for a picture someone chose: here the page's HTML picks
+ * the addresses, and four at that limit would be 120 of the isolate's 128 MB. Four at
+ * this one are 40, which leaves room for the page, and no article's pictures come near it.
+ */
+export const CLIP_MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 
 export interface ClipInput {
   url: string;
@@ -417,7 +424,7 @@ async function storeImages(
         fail(index, image, refusal);
         continue;
       }
-      const fetched = await fetchWebImage(image.url, { allowLoopback: opts.allowLoopback });
+      const fetched = await fetchWebImage(image.url, { allowLoopback: opts.allowLoopback, maxBytes: CLIP_MAX_IMAGE_BYTES });
       if (!fetched.ok) {
         fail(index, image, fetched.error);
         continue;

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { attachmentFilenamesInMarkdown, type Note } from '@unbent/shared';
-import { clipUrl, decodeHtml, relink } from './clip.js';
+import { CLIP_MAX_IMAGE_BYTES, clipUrl, decodeHtml, relink } from './clip.js';
 import { StorageFull } from './quota.js';
 import type { AttachmentsRepo } from './attachments-repo.js';
 import type { NotesRepo } from './notes-repo.js';
@@ -230,6 +230,32 @@ describe('clipUrl', () => {
 
     expect(result).toMatchObject({ ok: true, existing: false });
     if (result.ok) expect(result.images.failed).toHaveLength(1);
+  });
+
+  it('stops reading a picture that declares nothing at the limit, and leaves it a link', async () => {
+    let pulled = 0;
+    const chunk = new Uint8Array(1024 * 1024);
+    stubWeb({
+      [PAGE_URL]: html(articlePage(['/endless.png'])),
+      'https://example.com/endless.png': () =>
+        new Response(
+          new ReadableStream({
+            pull(controller) {
+              pulled += chunk.byteLength;
+              controller.enqueue(chunk);
+            },
+          }),
+          { headers: { 'content-type': 'image/png' } },
+        ),
+    });
+    const store = fakeStore();
+
+    const result = await clipUrl(store.env, ctx, store.repos, { url: PAGE_URL }, options);
+
+    if (result.ok) expect(result.images.failed[0]!.error).toBe('Image too large');
+    expect(result.ok).toBe(true);
+    expect(pulled).toBeLessThan(CLIP_MAX_IMAGE_BYTES * 2);
+    expect(store.puts).toEqual([]);
   });
 
   it('says a host refused this server, so the caller can read the page itself', async () => {

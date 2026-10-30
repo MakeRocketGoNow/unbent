@@ -129,8 +129,9 @@ export type WebImageResult =
  */
 export async function fetchWebImage(
   raw: string,
-  opts: { allowLoopback: boolean },
+  opts: { allowLoopback: boolean; maxBytes?: number },
 ): Promise<WebImageResult> {
+  const maxBytes = opts.maxBytes ?? MAX_WEB_IMAGE_BYTES;
   let current = raw;
   for (let hop = 0; hop <= MAX_REDIRECTS; hop += 1) {
     const rejected = rejectWebImageUrl(current, opts);
@@ -165,20 +166,49 @@ export async function fetchWebImage(
     }
 
     const declared = Number(res.headers.get('Content-Length') ?? '0');
-    if (declared > MAX_WEB_IMAGE_BYTES) return { ok: false, status: 413, error: 'Image too large' };
+    if (declared > maxBytes) return { ok: false, status: 413, error: 'Image too large' };
 
-    let bytes: ArrayBuffer;
+    let bytes: ArrayBuffer | null;
     try {
-      bytes = await res.arrayBuffer();
+      bytes = await readUpTo(res, maxBytes);
     } catch (err) {
       // A connection reset, or the timeout running out, part way through the body.
       return { ok: false, status: 502, error: `Reading the image failed: ${(err as Error).message}` };
     }
-    if (bytes.byteLength > MAX_WEB_IMAGE_BYTES) return { ok: false, status: 413, error: 'Image too large' };
+    if (bytes === null) return { ok: false, status: 413, error: 'Image too large' };
     if (bytes.byteLength === 0) return { ok: false, status: 502, error: 'The site sent an empty image' };
 
     const filename = filenameForWebImage(new URL(current), contentType, res.headers.get('Content-Disposition'));
     return { ok: true, bytes, contentType, filename };
   }
   return { ok: false, status: 502, error: 'Too many redirects' };
+}
+
+/**
+ * The body, counted as it arrives, or null at the first byte past `limit`. A source need
+ * not declare its size, and may declare a false one, so reading it whole and looking
+ * afterwards would spend the memory the limit is there to save.
+ */
+async function readUpTo(res: Response, limit: number): Promise<ArrayBuffer | null> {
+  if (!res.body) return new ArrayBuffer(0);
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > limit) {
+      await reader.cancel().catch(() => {});
+      return null;
+    }
+    chunks.push(value);
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return bytes.buffer;
 }
