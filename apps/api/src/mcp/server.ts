@@ -10,6 +10,7 @@ import { UploadGrantsRepo } from '../lib/upload-grants.js';
 import type { Env } from '../types.js';
 import { INACTIVE_TOOL_MESSAGE, gatedRegistrar, type PlanGate } from './plan-gate.js';
 import { registerAttachmentTools } from './tools/attachments.js';
+import { registerClipTool } from './tools/clip.js';
 import { registerFeedbackTool } from './tools/feedback.js';
 import { registerReadTools } from './tools/read.js';
 import { registerWriteTools } from './tools/write.js';
@@ -68,6 +69,16 @@ export function createUnbentMcpHandler(
       env,
       ctx,
       { notes, attachments, uploads },
+      links,
+      async () => quotaOf(env, await plan()),
+      async () => refuseIfPastFree(env, attachments, await plan()),
+    );
+    // A web page kept as a note, fetched here: the same function as `POST /api/clip`.
+    registerClipTool(
+      gated,
+      env,
+      ctx,
+      { notes, attachments },
       links,
       async () => quotaOf(env, await plan()),
       async () => refuseIfPastFree(env, attachments, await plan()),

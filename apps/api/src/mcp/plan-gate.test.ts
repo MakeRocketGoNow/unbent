@@ -5,6 +5,7 @@ import { appLinks } from '../lib/app-links.js';
 import { PlanRefused } from '../lib/free-plan.js';
 import { ALLOWED_INACTIVE, HELD_IN_STORE_TOOLS, gatedRegistrar } from './plan-gate.js';
 import { registerAttachmentTools } from './tools/attachments.js';
+import { registerClipTool } from './tools/clip.js';
 import { registerFeedbackTool } from './tools/feedback.js';
 import { registerWriteTools } from './tools/write.js';
 
@@ -75,6 +76,7 @@ describe('gatedRegistrar', () => {
     const links = appLinks('https://example.com');
     registerWriteTools(recorder, {} as never, links);
     registerAttachmentTools(recorder, {} as never, { waitUntil: () => {} }, {} as never, links, async () => null);
+    registerClipTool(recorder, {} as never, { waitUntil: () => {} }, {} as never, links, async () => null);
     registerFeedbackTool(recorder, {} as never, { userId: 'u1', clientId: 'c1' });
     expect(writes.length).toBeGreaterThan(10);
     expect(writes.filter((t) => !HELD_IN_STORE_TOOLS.has(t) && !ALLOWED_INACTIVE.has(t)), 'write tools on neither list').toEqual([]);

@@ -298,6 +298,7 @@ describe('mcp endpoint', () => {
     expect(names).toContain('edit_note');
     expect(names).toContain('update_notebook');
     expect(names).toContain('send_feedback');
+    expect(names).toContain('clip_web_page');
   });
 
   it('sets a notebook purpose through update_notebook and reads it back from list_notebooks', async () => {

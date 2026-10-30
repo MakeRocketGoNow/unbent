@@ -7,12 +7,12 @@ anything else that speaks the protocol can work with your notes directly. The se
 Connecting runs the ordinary OAuth flow: the client registers itself, a browser opens on the
 consent screen, and approving it hands the client a token of its own. The tools cover
 search and list, reading a note in full, create, edit, tag, move, trash and restore (create
-and the last four for several notes at once), attaching a file, and notebook management. Note bodies are Markdown and pass whole in both
+and the last four for several notes at once), attaching a file, clipping a web page, and notebook management. Note bodies are Markdown and pass whole in both
 directions, so an assistant writes a complete note in one call. Once it is connected,
 [standing instructions](#standing-instructions) tell it when to use Unbent without being
 asked by name.
 
-Three are worth knowing about:
+Four are worth knowing about:
 
 - **`edit_note`** takes `append`, `prepend`, or `replace` with an exact `find` string, so
   changing one line of a long note does not mean resending it. A `find` matching more than
@@ -56,6 +56,17 @@ Three are worth knowing about:
   that restricts where it connects needs the instance's domain allowed. There is still
   deliberately no tool that takes the bytes as an argument: it would work only for files
   small enough not to matter, and fail silently above that.
+- **`clip_web_page`** takes a page's address and keeps the page as a note, read on the
+  server the way a browser's reader view reads it: the article as Markdown, without the
+  navigation, sidebars and footer, under a "Clipped from" line that links the page. Its
+  pictures, up to ten, are fetched and attached, so they outlast the site; any past that
+  or any that could not be fetched stay as links to it, and the reply says which. The page
+  never passes through the conversation, which for a long article is most of what reading
+  it and writing it out with `create_note` would cost. It takes `create_note`'s title,
+  tags, notebook and fields, and `POST /api/clip` is the same thing for the apps. Where a
+  site will not serve this server (a 401, 403 or 429, or a page that needs a sign-in or
+  JavaScript to show its text), the assistant reads the page itself and writes the note
+  with `create_note`; a file at an address, a PDF say, is `add_attachment`'s.
 
 **Filling a notebook's fields in bulk is an assistant's job, on the assistant's own
 model.** Pressing Auto-fill fills one note's empty fields, and there is deliberately no

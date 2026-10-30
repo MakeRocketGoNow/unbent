@@ -48,7 +48,7 @@ import {
  * Custom field values by field *name*, the way list_notebooks reports them and get_note
  * shows them. Ids never reach a model: a name is what it read, and what it will say back.
  */
-const fieldsSchema = z
+export const fieldsSchema = z
   .record(
     z.string().min(1),
     z.union([
@@ -79,7 +79,7 @@ const fieldsSchema = z
  * cleared. Case-insensitive, own notebook first. An unknown name is an error that lists
  * the real ones, since the likeliest cause is a misremembered name.
  */
-function resolveFieldNames(
+export function resolveFieldNames(
   byName: Record<string, FieldValue | null>,
   defs: FieldDef[],
   existing: NoteFieldValue[],
@@ -147,7 +147,7 @@ const bodySchema = z
   .max(MAX_BODY_BYTES)
   .describe('Markdown. Headings, lists, tables, task lists and links all render.');
 
-const tagsSchema = z
+export const tagsSchema = z
   .array(tagNameSchema)
   .max(50)
   .describe(
@@ -163,11 +163,11 @@ const tagsSchema = z
  * as null rather than creating a notebook with that literal name is the difference between
  * doing what was meant and quietly making a mess.
  */
-const notebookSchema = z
+export const notebookSchema = z
   .union([notebookNameSchema, z.null()])
   .describe(`Notebook name, or null for none. "${UNFILED}" also means none.`);
 
-function normalizeNotebook(value: string | null | undefined): string | null | undefined {
+export function normalizeNotebook(value: string | null | undefined): string | null | undefined {
   if (value === undefined) return undefined;
   if (value === null || value === UNFILED) return null;
   return value;
