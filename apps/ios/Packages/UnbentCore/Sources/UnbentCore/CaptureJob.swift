@@ -438,6 +438,11 @@ public enum CaptureRequests {
         var request = authorized(url, origin: job.origin, bearer: bearer)
         request.httpMethod = "POST"
         request.setValue("application/json; charset=utf-8", forHTTPHeaderField: "Content-Type")
+        // The only request here that waits on someone else's site: the server gives the page
+        // sixty seconds a hop and its pictures about as long again, with nothing sent back
+        // meanwhile. The default sixty seconds ended first, so the 502 for a site that hung
+        // was never heard. Android's is `UnbentApi.clipClient`.
+        if job.clip != nil { request.timeoutInterval = 180 }
         return (request, try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys]))
     }
 

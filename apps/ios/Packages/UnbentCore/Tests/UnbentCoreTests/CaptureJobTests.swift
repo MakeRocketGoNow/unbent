@@ -299,6 +299,12 @@ final class CaptureJobTests: XCTestCase {
         XCTAssertEqual(.failed, job.handle(.create, CaptureOutcome(status: 415)))
     }
 
+    /// Longer than the server's own wait on the page, so its answer is what is heard.
+    func testAClipWaitsLongerThanTheServerDoesForThePage() throws {
+        XCTAssertEqual(180, try CaptureRequests.create(clipJob(), bearer: "sess.sig").request.timeoutInterval)
+        XCTAssertEqual(60, try CaptureRequests.create(job(files: []), bearer: "sess.sig").request.timeoutInterval)
+    }
+
     func testAClipAsksTheServerToReadThePageUnderTheIdTheCaptureChose() throws {
         let (request, body) = try CaptureRequests.create(clipJob(), bearer: "sess.sig")
 
