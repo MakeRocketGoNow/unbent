@@ -206,6 +206,7 @@ vi.mock('../notes-api.js', async (importOriginal) => ({
   clearRevisions: vi.fn(),
   importNotebook: vi.fn(),
   createView: vi.fn(),
+  clipLink: vi.fn(),
   updateView: vi.fn(),
   deleteView: vi.fn(),
   purgeNotes: vi.fn(),
@@ -2369,6 +2370,42 @@ describe('applying a notebook template', () => {
 });
 
 /*
+ * A clip is a request and the feed is the only way its row arrives. The caller opens the
+ * note straight after, and an id a whole library does not hold reads as no such note.
+ */
+describe('clipping a link', () => {
+  const clipped = { id: 'n1', title: 'A page', clip: { images: { stored: 0, failed: [] } } } as unknown as api.ClippedNote;
+  afterEach(() => actions.provideMirrorWait(async () => {}));
+
+  it('answers once the pull has run, in the tab that holds the library', async () => {
+    vi.mocked(api.clipLink).mockResolvedValueOnce(clipped);
+    const { engine, landPull } = library([]);
+    let answered = false;
+    const done = actions.clipLink({ url: 'https://example.com/' }).then(() => (answered = true));
+    await tick();
+    await tick();
+    expect(engine.pull).toHaveBeenCalled();
+    expect(answered).toBe(false);
+    landPull();
+    await done;
+    expect(answered).toBe(true);
+  });
+
+  it('in a client tab, waits for the holder to bring the row', async () => {
+    provideLibrary(async () => null);
+    const notes = new Set<string>();
+    const waits: Array<() => boolean> = [];
+    actions.provideMirrorWait(async (until) => void waits.push(() => until({ views: new Map() as never, notes })));
+    vi.mocked(api.clipLink).mockResolvedValueOnce(clipped);
+    await actions.clipLink({ url: 'https://example.com/' });
+    expect(waits).toHaveLength(1);
+    expect(waits[0]!()).toBe(false);
+    notes.add('n1');
+    expect(waits[0]!()).toBe(true);
+  });
+});
+
+/*
  * Saved views are requests, like a notebook's management, and the caller opens the
  * view's address straight after: the action answers once this tab's library holds it.
  */
@@ -2427,7 +2464,7 @@ describe('saving a view', () => {
     const views = new Map<string, typeof saved>();
     const rows = { values: () => views.values(), get: (id: string) => views.get(id), has: (id: string) => views.has(id), preload: async () => {}, size: 0 };
     const waits: Array<{ ms: number; held: () => boolean }> = [];
-    actions.provideMirrorWait(async (until, ms) => void waits.push({ ms, held: () => until(rows) }));
+    actions.provideMirrorWait(async (until, ms) => void waits.push({ ms, held: () => until({ views: rows, notes: new Set() }) }));
     vi.mocked(api.updateView).mockResolvedValueOnce(saved);
     await actions.updateView('v1', { name: 'Business' });
     expect(waits.map((w) => w.ms)).toEqual([actions.VIEW_LANDED_MS]);
