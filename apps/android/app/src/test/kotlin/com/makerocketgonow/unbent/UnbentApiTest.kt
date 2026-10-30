@@ -76,6 +76,63 @@ class UnbentApiTest {
     }
 
     @Test
+    fun `createNote sends the id the caller chose, so a retry finds the same note`() {
+        server.enqueue(MockResponse().setResponseCode(200).setBody(note))
+
+        api.createNote("Receipt", id = "11111111-1111-4111-8111-111111111111")
+
+        assertTrue(server.takeRequest().body.readUtf8().contains("\"id\":\"11111111-1111-4111-8111-111111111111\""))
+    }
+
+    @Test
+    fun `clipLink asks the server to read the page, filed where the capture was`() {
+        server.enqueue(
+            MockResponse().setResponseCode(201)
+                .setBody("""{"id":"note-2","title":"An article","body":"Clipped from…","updatedAt":1,"createdAt":1,"tags":["read"],"notebook":"Reading","clip":{"images":{"stored":2,"failed":[]}}}"""),
+        )
+
+        val note = api.clipLink("https://example.com/a-slug", tags = listOf("read"), notebook = "Reading", id = "22222222-2222-4222-8222-222222222222")
+        // The page's title is the note's; `clip.images` beside the note is left unread.
+        assertEquals("An article", note.title)
+        assertEquals("note-2", note.id)
+
+        val req = server.takeRequest()
+        assertEquals("POST", req.method)
+        assertEquals("/api/clip", req.path)
+        assertEquals("Bearer test-token", req.getHeader("Authorization"))
+        val body = req.body.readUtf8()
+        assertTrue(body.contains("\"url\":\"https://example.com/a-slug\""))
+        assertTrue(body.contains("\"id\":\"22222222-2222-4222-8222-222222222222\""))
+        assertTrue(body.contains("\"tags\":[\"read\"]"))
+        assertTrue(body.contains("\"notebook\":\"Reading\""))
+        // No title: the page's own is wanted unless the person typed one.
+        assertFalse(body.contains("title"))
+    }
+
+    @Test
+    fun `clipLink sends a title only when given one`() {
+        server.enqueue(MockResponse().setResponseCode(201).setBody(note))
+        api.clipLink("https://example.com/", title = "My name for it")
+        assertTrue(server.takeRequest().body.readUtf8().contains("\"title\":\"My name for it\""))
+    }
+
+    @Test
+    fun `a clip the server refused carries its status and code`() {
+        server.enqueue(
+            MockResponse().setResponseCode(415)
+                .setBody("""{"error":"That address is a PDF, not a page","code":"NOT_A_PAGE"}"""),
+        )
+        try {
+            api.clipLink("https://example.com/file.pdf")
+            fail("expected ApiException")
+        } catch (e: ApiException) {
+            assertEquals(415, e.status)
+            assertEquals("NOT_A_PAGE", e.code())
+            assertEquals("That address is a PDF, not a page", e.serverMessage())
+        }
+    }
+
+    @Test
     fun `a field the server adds later does not break decoding`() {
         server.enqueue(
             MockResponse().setResponseCode(200)

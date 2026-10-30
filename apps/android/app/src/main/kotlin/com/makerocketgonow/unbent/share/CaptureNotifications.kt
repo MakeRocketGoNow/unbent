@@ -79,12 +79,18 @@ object CaptureNotifications {
         )
     }
 
-    fun saved(context: Context, jobId: String, title: String, noteId: String) {
+    /**
+     * [clipped] says the note is the shared page itself, read on the server, rather than
+     * a note holding its link: the one word that tells a person which of the two they got
+     * is the one the notification leads with. A link that fell back to the plain note is
+     * "Saved", as before, and honestly so.
+     */
+    fun saved(context: Context, jobId: String, title: String, noteId: String, clipped: Boolean = false) {
         post(
             context, jobId,
             builder(context, title)
                 .setSmallIcon(android.R.drawable.stat_sys_upload_done)
-                .setContentTitle(context.getString(R.string.saved))
+                .setContentTitle(context.getString(if (clipped) R.string.clipped else R.string.saved))
                 .setContentIntent(openNote(context, noteId))
                 .setAutoCancel(true),
         )

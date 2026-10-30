@@ -37,6 +37,19 @@ class CaptureResumeTest {
         assertEquals("note-xyz", CaptureResume.readNoteId(dir))
     }
 
+    /** The id a note will have is picked once and sent on every attempt; see [CaptureResume.chosenNoteId]. */
+    @Test
+    fun `the id chosen for the note is the same on every attempt, and is not a note that exists`() {
+        val dir = File(temp.root, "shares/job-2")
+        val first = CaptureResume.chosenNoteId(dir)
+        assertEquals(first, CaptureResume.chosenNoteId(dir))
+        // A lowercase UUID, the form the server's check accepts.
+        assertEquals(first, first.lowercase())
+        assertEquals(36, first.length)
+        // Choosing an id says nothing about the note being on the server.
+        assertNull(CaptureResume.readNoteId(dir))
+    }
+
     @Test
     fun `blank sidecar is treated as missing rather than as an id`() {
         File(temp.root, ".note-id").writeText("  \n")

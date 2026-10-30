@@ -85,12 +85,20 @@
 
     <string name="capture_title">Save to Unbent</string>
     <string name="capture_text">Text</string>
+    <!--
+      A share that is one web address and nothing else. The server reads the page and
+      keeps it as the note (POST /api/clip); the line says so, since "Text" promised a
+      note holding the address and nothing more.
+    -->
+    <string name="capture_link">Link, saved as the page</string>
     <string name="capture_sign_in">Sign in to save this to Unbent. What you shared is kept while you do.</string>
     <string name="capture_save">Save</string>
     <string name="title_label">Title</string>
     <string name="saving">Saving to Unbent…</string>
     <string name="save_waiting">Unbent is busy. Will try again later</string>
     <string name="saved">Saved to Unbent</string>
+    <!-- The page itself was read and kept, as against a note holding its link ("Saved"). -->
+    <string name="clipped">Page clipped to Unbent</string>
     <string name="save_failed">Could not save to Unbent</string>
     <string name="sign_in_needed">Sign in to Unbent, then share again</string>
     <string name="nothing_to_share">Nothing to share</string>

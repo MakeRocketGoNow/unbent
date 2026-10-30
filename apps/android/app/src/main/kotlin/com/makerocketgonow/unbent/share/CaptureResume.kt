@@ -1,6 +1,7 @@
 package com.makerocketgonow.unbent.share
 
 import java.io.File
+import java.util.UUID
 
 /**
  * Makes a capture's WorkManager retries safe to run again.
@@ -22,6 +23,7 @@ import java.io.File
 object CaptureResume {
 
     private const val NOTE_ID_FILE = ".note-id"
+    private const val CHOSEN_ID_FILE = ".chosen-id"
     private const val UNAVAILABLE_FILE = ".unavailable"
 
     fun readNoteId(dir: File): String? =
@@ -30,6 +32,27 @@ object CaptureResume {
     fun writeNoteId(dir: File, noteId: String) {
         dir.mkdirs()
         File(dir, NOTE_ID_FILE).writeText(noteId)
+    }
+
+    /**
+     * The id a capture's note will have, chosen here before the request that makes it and
+     * kept so every attempt sends the same one.
+     *
+     * Apart from [readNoteId] on purpose: that sidecar means the note exists on the server,
+     * and a retry that finds it skips the create. This one means only that an id was
+     * picked. The server answers a create or a clip carrying an id it already holds with
+     * that note, so an attempt whose answer was lost finds the note the first one made
+     * instead of making a second. The clip needs it most: without it a lost answer fetched
+     * the page again and left two copies, pictures and all. A lowercase UUID, which is the
+     * form the server's `uuid()` check accepts.
+     */
+    fun chosenNoteId(dir: File): String {
+        val file = File(dir, CHOSEN_ID_FILE)
+        file.takeIf { it.isFile }?.readText()?.trim()?.takeIf { it.isNotEmpty() }?.let { return it }
+        val id = UUID.randomUUID().toString()
+        dir.mkdirs()
+        file.writeText(id)
+        return id
     }
 
     /**

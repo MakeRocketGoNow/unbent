@@ -79,10 +79,15 @@ who is signed out sign in and come back to find the share still there. Save enqu
 WorkManager job that creates one note, filed and tagged as the sheet said, and streams
 each file to `PUT /api/notes/:id/files?link=1`. The `link=1` flag is what makes the server
 append the markdown link to the note body, since the sheet has no cursor and no copy of
-the body. Several files shared together become one note. A toast says "Saving" as the sheet
+the body. Several files shared together become one note. A web page shared on its own (one
+address and nothing else, which is what a browser's Share sends) is kept as the page rather
+than as a note holding its link: the job calls `POST /api/clip`, and the server fetches the
+page and writes the article as the note with up to ten of its pictures as files. A page the
+server cannot read (not HTML, too large, a site that refused it) falls back to the note with
+the link, so the share lands either way. A toast says "Saving" as the sheet
 closes, and the capture's progress is a notification, since a toast cannot change or be
-tapped: "Saving" with the note's title, then "Saved", which peeks over the screen and opens
-the note in the app. HEIC images are transcoded to JPEG on the phone, because the server's inline-safe
+tapped: "Saving" with the note's title, then "Saved" (or "Page clipped"), which peeks over
+the screen and opens the note in the app. HEIC images are transcoded to JPEG on the phone, because the server's inline-safe
 allowlist excludes HEIC and browsers other than Safari cannot render it.
 
 **How a capture becomes searchable.** A PDF gets a second job, chained after the upload:

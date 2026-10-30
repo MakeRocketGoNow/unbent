@@ -23,12 +23,22 @@ import kotlinx.coroutines.withContext
  * staging directory as soon as the note exists, and files already on it are skipped:
  * otherwise a dropped radio after `createNote` would leave a second, empty note beside
  * the first. See [CaptureResume].
+ *
+ * A share that is one web address and nothing else is the page, not the address: the
+ * server fetches it and keeps the article as the note, pictures and all (`POST /api/clip`,
+ * [UnbentApi.clipLink]). That is what sharing a page from a browser means to the person
+ * doing it, and a note holding a bare link was the only thing this could make before the
+ * route existed. When the server cannot read the page (not HTML, too large, a site that
+ * refused it, an address it will not fetch) the capture falls back to that note, so a
+ * share never fails for a page's sake: the link is kept either way, and the notification
+ * says which of the two landed.
  */
 class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         val jobId = inputData.getString(KEY_JOB_ID) ?: return@withContext Result.failure()
         val title = inputData.getString(KEY_TITLE).orEmpty()
+        val titleTyped = inputData.getBoolean(KEY_TITLE_TYPED, false)
         val body = inputData.getString(KEY_BODY).orEmpty()
         val names = inputData.getStringArray(KEY_FILENAMES).orEmpty()
         val types = inputData.getStringArray(KEY_TYPES).orEmpty()
@@ -80,8 +90,37 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
              * Written to the staging dir as soon as the server answers, so a process
              * death between create and the first PUT still finds the same note.
              */
-            val noteId = CaptureResume.readNoteId(dir) ?: api.createNote(title, body, tags, notebook).id.also {
-                CaptureResume.writeNoteId(dir, it)
+            val pageUrl = if (names.isEmpty()) lonePageUrl(body) else null
+            // Whether the note is the clipped page. Known only on the attempt that made
+            // it, which is the one that posts "Saved"; a retry that finds the note made
+            // says "Saved" like any other, since it cannot tell.
+            var clipped = false
+            var noteTitle = title
+            val noteId = CaptureResume.readNoteId(dir) ?: run {
+                /*
+                 * The same id on every attempt, for both requests. A clip is a fetch of
+                 * the page and a note made from it, and an answer lost on the radio would
+                 * otherwise clip the page twice; the server answers an id it already
+                 * holds with that note. The fallback's create carries it too, so a clip
+                 * that landed unheard and a retry that then fell back still meet at one
+                 * note.
+                 */
+                val chosen = CaptureResume.chosenNoteId(dir)
+                val note = if (pageUrl == null) {
+                    api.createNote(title, body, tags, notebook, id = chosen)
+                } else {
+                    try {
+                        api.clipLink(pageUrl, title.takeIf { titleTyped }, tags, notebook, id = chosen).also { clipped = true }
+                    } catch (e: ApiException) {
+                        if (!clipFallsBack(e)) throw e
+                        // The page could not be read; the link is still worth a note,
+                        // which is what this capture made before the route existed.
+                        api.createNote(title, body, tags, notebook, id = chosen)
+                    }
+                }
+                noteTitle = note.title
+                CaptureResume.writeNoteId(dir, note.id)
+                note.id
             }
 
             val already = if (names.isEmpty()) {
@@ -113,7 +152,8 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
 
             Staging.clear(context, jobId)
 
-            CaptureNotifications.saved(context, jobId, title, noteId)
+            // The page's own title where the server chose it: "Saved" names what landed.
+            CaptureNotifications.saved(context, jobId, noteTitle, noteId, clipped)
             // This job's output is the indexing job's input: which note, and whether there
             // is anything left for it to do.
             Result.success(workDataOf(KEY_NOTE_ID to noteId, KEY_NEEDS_INDEX to needsIndex))
@@ -178,8 +218,49 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
          */
         internal fun waitsOut(e: ApiException): Boolean = e.status == 503 && e.retryAfter != null
 
+        /**
+         * The address a share is, when it is one web address and nothing else: what the
+         * server is asked to read as a page. Anything more (a sentence around the link, two
+         * links, a link under a line of text) is text someone wrote and stays a note's
+         * body as it was shared; anything that is not http(s) is not a page. A subject
+         * beside the address (the page's title, which browsers send) does not count
+         * against it: it travels as the title, not the text.
+         *
+         * The trailing punctuation a sentence leaves on a pasted link is not stripped,
+         * since a lone address was not pasted into a sentence.
+         */
+        fun lonePageUrl(text: String): String? {
+            val one = text.trim()
+            if (one.isEmpty() || one.any { it.isWhitespace() }) return null
+            if (!one.startsWith("http://", ignoreCase = true) && !one.startsWith("https://", ignoreCase = true)) return null
+            return runCatching { java.net.URI(one) }.getOrNull()?.takeIf { !it.host.isNullOrEmpty() }?.let { one }
+        }
+
+        /**
+         * Whether a clip the server refused is one to make the plain note for instead: the
+         * answers `clipUrl` gives about the page. 413 is a page larger than it will read,
+         * 415 a reply that is not HTML (a PDF, an image), 502 a site that refused or failed,
+         * and 400 an address it does not fetch (a private network, a loopback; `BAD_URL`).
+         * Each is the server saying it cannot have this page, and the link is still worth
+         * keeping.
+         *
+         * A 400 can also be the request itself (a title too long), which the create then
+         * repeats and is refused by the same way: one request more, in a rare case, for a
+         * rule the iOS app can share. Its answers arrive through a background session that
+         * hands it the status and no body, so a code is nothing it could read, and two
+         * phones that fall back on different answers to the same page would be a bug
+         * report nobody could reproduce. Not a 402, which is the plan and refuses the
+         * fallback the same way, and nothing the handler every capture has already
+         * decides (401, 503 with `Retry-After`).
+         */
+        internal fun clipFallsBack(e: ApiException): Boolean = e.status in CLIP_FALLBACK_STATUSES
+
+        private val CLIP_FALLBACK_STATUSES = setOf(400, 413, 415, 502)
+
         const val KEY_JOB_ID = "jobId"
         const val KEY_TITLE = "title"
+        /** Whether [KEY_TITLE] is one the person typed, rather than the one staging derived. */
+        const val KEY_TITLE_TYPED = "titleTyped"
         const val KEY_BODY = "body"
         const val KEY_FILENAMES = "filenames"
         const val KEY_TYPES = "types"

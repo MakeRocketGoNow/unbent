@@ -1,3 +1,5 @@
 Signing in now checks that a phone is asking, not a script, before a code is emailed or a Google account is used. It passes almost everyone without a tap; if it needs one, it appears on the sign-in screen.
 
-A refused sign-in says why. Tags in the share sheet wear their colours. An import no longer stops at a row it skipped, and a link to your Unbent opens in the app instead of replacing it. Evernote code blocks import on their own lines. Pasted web pages keep their headings, links and lists.
+A refused sign-in says why. Tags in the share sheet wear their colours. An import no longer stops at a row it skipped, and a link to your Unbent opens in the app instead of replacing it. Evernote code blocks import on their own lines.
+
+Share a web page and the page becomes the note, pictures and all. Paste one and it keeps its headings, links and lists.
