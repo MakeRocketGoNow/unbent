@@ -101,6 +101,12 @@ describe('clipFragment', () => {
     );
   });
 
+  it('drops HTML comments rather than writing them through as raw HTML', () => {
+    expect(
+      article(fragment('<!--StartFragment--><p>Hi<!-- a template note --></p><!--EndFragment-->').markdown),
+    ).toBe('Hi');
+  });
+
   it('drops a leading heading that repeats the title, and only that one', () => {
     expect(article(fragment('<div><h1>Forge  welding</h1><p>Body</p></div>').markdown)).toBe('Body');
     expect(article(fragment('<h1>Forge welding, part two</h1><p>Body</p>').markdown)).toBe(

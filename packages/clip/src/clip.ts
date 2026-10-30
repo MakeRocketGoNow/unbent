@@ -154,7 +154,7 @@ function clipTree(tree: Node, pageUrl: URL, base: URL, meta: ClipMeta, opts: Cli
   dropTitleHeading(tree, meta.title);
 
   const article = htmlToMarkdown(tree, {
-    transforms: [rewriteLinksAndImages(base, images, opts.maxImages ?? DEFAULT_MAX_IMAGES)],
+    transforms: [dropComments, rewriteLinksAndImages(base, images, opts.maxImages ?? DEFAULT_MAX_IMAGES)],
   });
 
   const source = sourceLine(pageUrl.href, meta.siteName ?? pageUrl.host, meta.byline);
@@ -383,6 +383,23 @@ function dropTitleHeading(tree: Node, title: string): void {
     parent = first;
   }
 }
+
+/**
+ * HTML comments go. Pages carry them (a CMS's markers, a template's notes, a
+ * `<!--StartFragment-->` from a clipboard), and the converter writes a comment through as
+ * raw HTML, which Unbent neither renders nor edits well: a note would hold `<!-- -->`
+ * lines nobody wrote. Done here rather than in `htmlToMarkdown` because the ENEX
+ * import's dedupe hash covers that converter's output, so a change there would stop a
+ * re-import from recognising notes already imported; the editor's paste drops them for
+ * itself the same way.
+ */
+const dropComments: Transform = (tree) => {
+  visit(tree as never, 'comment', (_node: Node, index: number | undefined, parent: Node | undefined) => {
+    if (!parent || index === undefined) return undefined;
+    parent.children!.splice(index, 1);
+    return index;
+  });
+};
 
 /** Removes every element named in `tags`, contents included. */
 function removeTags(tree: Node, tags: Set<string>): void {
