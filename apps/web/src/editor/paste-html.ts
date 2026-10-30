@@ -159,6 +159,20 @@ function resolveAddresses(base: string | null): Transform {
         if (href === null) return child.children ?? [];
         props.href = href;
       }
+      // Written by the converter as links to their files, so held to what a link is held
+      // to: an address with nothing to resolve against goes, and an element with no address
+      // left keeps its words rather than becoming an empty link.
+      if (child.tagName === 'video' || child.tagName === 'audio' || child.tagName === 'source') {
+        for (const key of ['src', 'poster']) {
+          if (typeof props[key] !== 'string') continue;
+          const address = absolute(props[key], base);
+          if (address === null) delete props[key];
+          else props[key] = address;
+        }
+        const sources = (child.children ?? []).some((c) => c.type === 'element' && c.tagName === 'source');
+        if (child.tagName !== 'source' && !props.src && !props.poster && !sources) return child.children ?? [];
+        if (child.tagName === 'source' && !props.src) return [];
+      }
       if (child.tagName === 'img') {
         const src = typeof props.src === 'string' ? absolute(props.src, base) : null;
         if (src === null || !/^https?:/i.test(src)) return [];

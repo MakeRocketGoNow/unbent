@@ -491,6 +491,20 @@ describe('paste from a page', () => {
     view.destroy();
   });
 
+  it('holds video to what a link is held to', async () => {
+    const view = mount('', { noteId: HERE });
+    const html =
+      'Version:0.9\r\nSourceURL:https://example.com/docs/page\r\n<h2>Clip</h2><video src="v.mp4" poster="p.jpg"></video>';
+    await pasteInto(view, clipboard({ 'text/html': html, 'text/plain': 'Clip' }));
+    expect(view.state.doc.toString()).toBe('## Clip\n\n[![](https://example.com/docs/p.jpg)](https://example.com/docs/v.mp4)');
+    view.destroy();
+
+    const unresolved = mount('', { noteId: HERE });
+    await pasteInto(unresolved, clipboard({ 'text/html': '<h2>Clip</h2><video src="v.mp4"></video>', 'text/plain': 'Clip' }));
+    expect(unresolved.state.doc.toString()).toBe('## Clip');
+    unresolved.destroy();
+  });
+
   it('declines on a read-only note', async () => {
     const view = mount('', { noteId: HERE }, undefined, [EditorState.readOnly.of(true)]);
     await pasteInto(view, clipboard({ 'text/html': PAGE, 'text/plain': 'flat' }));

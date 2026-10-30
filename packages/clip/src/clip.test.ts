@@ -225,6 +225,15 @@ describe('clipFragment', () => {
     );
   });
 
+  it('makes the addresses of video and audio absolute', () => {
+    expect(article(fragment('<video src="/v.mp4" poster="/p.jpg"></video>').markdown)).toBe(
+      '[![](https://example.com/p.jpg)](https://example.com/v.mp4)',
+    );
+    expect(article(fragment('<audio><source src="a.mp3"></audio>').markdown)).toContain(
+      '(https://example.com/guides/welding/a.mp3)',
+    );
+  });
+
   it('leaves the site’s markup behind', () => {
     expect(article(fragment('<div class="x" style="color:red"><span>one</span></div><div>two</div>').markdown)).toBe(
       'one\n\ntwo',

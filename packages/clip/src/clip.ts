@@ -257,6 +257,16 @@ function rewriteLinksAndImages(base: URL, images: ClipImage[], maxImages: number
         return undefined;
       }
 
+      // The converter writes these as links to their files, and Readability's own path has
+      // made them absolute already; the whole-page fallback has not, and a relative one
+      // in a note would resolve against Unbent rather than the site.
+      if (node.tagName === 'video' || node.tagName === 'audio' || node.tagName === 'source') {
+        for (const key of ['src', 'poster']) {
+          if (typeof props[key] === 'string') props[key] = resolve(props[key], base)?.href ?? props[key];
+        }
+        return undefined;
+      }
+
       if (node.tagName !== 'img') return undefined;
 
       const src = pictureUrl(props, base);
