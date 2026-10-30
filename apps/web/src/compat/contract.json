@@ -19,6 +19,87 @@
         "ids"
       ]
     },
+    "clipRequestSchema": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 8192
+        },
+        "id": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "tags": {
+          "default": [],
+          "maxItems": 100,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          }
+        },
+        "notebook": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "fields": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 1000
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "maxItems": 100,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 1000
+                    }
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "required": [
+        "url"
+      ]
+    },
     "copyAttachmentsSchema": {
       "type": "object",
       "properties": {
@@ -1807,6 +1888,7 @@
       "packages/shared/src/schemas.ts › AuthProvider": "3f515100bbaba9c2",
       "packages/shared/src/schemas.ts › AutofillSuggestion": "b076982f94208da6|1f50c12073|285633a55c|64b2a62639|8a30fdbc14|8f95f548e1|de5604a9e5",
       "packages/shared/src/schemas.ts › AutofillUsage": "b44fbf625b2f8cc1|15b1975a7d|354cfa2710|cb90dfbcfa|cef716aa47|d48ae02086|e1d7820965|ff86109a5a",
+      "packages/shared/src/schemas.ts › ClipRequest": "902db517c3e92670",
       "packages/shared/src/schemas.ts › CreateNoteInput": "74ead43e7ff1c3c2",
       "packages/shared/src/schemas.ts › FieldDef": "eeb129de12992dfc",
       "packages/shared/src/schemas.ts › FieldValue": "ea6fecde1bd176fc",

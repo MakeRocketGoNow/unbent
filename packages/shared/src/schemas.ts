@@ -576,6 +576,29 @@ export const createNoteSchema = z.object({
   fields: noteFieldsPatchSchema.optional(),
 });
 
+/**
+ * `POST /clip`'s body: a web page to keep as a note, which the server fetches itself.
+ *
+ * What a note's own create takes, less the body, which is the page, and with the page's
+ * address in its place. The title is optional rather than defaulted: absent, the note
+ * takes the page's own (the article's headline, as Reader View finds it), where `''`
+ * would be a note with no title at all. The address is as long as `add_attachment`
+ * takes, because a page reached from a search or a mail is often a long tracking link
+ * that redirects; the server checks it, and every hop after it, before fetching.
+ *
+ * `id` is the note's, for the same reason as `createNoteSchema.id`: a phone that shared
+ * a page while its answer was lost sends the same request again, and the note it made
+ * the first time is the answer, rather than a second clip of the same page.
+ */
+export const clipRequestSchema = z.object({
+  url: z.string().min(1).max(8192),
+  id: z.string().uuid().optional(),
+  title: z.string().max(MAX_TITLE_LENGTH).optional(),
+  tags: z.array(tagNameSchema).max(100).default([]),
+  notebook: notebookNameSchema.nullable().optional(),
+  fields: noteFieldsPatchSchema.optional(),
+});
+
 /** `POST /notes/:id/duplicate`'s body, which may be absent: the copy's id, for the same reason as `createNoteSchema.id`. */
 export const duplicateNoteSchema = z.object({
   id: z.string().uuid().optional(),
@@ -891,6 +914,7 @@ export const importEnmlSchema = z.object({
 export type ImportEnmlInput = z.infer<typeof importEnmlSchema>;
 
 export type CreateNoteInput = z.infer<typeof createNoteSchema>;
+export type ClipRequest = z.infer<typeof clipRequestSchema>;
 export type UpdateNoteInput = z.infer<typeof updateNoteSchema>;
 export type UpdateNotesInput = z.infer<typeof updateNotesSchema>;
 export type ListNotesQuery = z.infer<typeof listNotesQuerySchema>;

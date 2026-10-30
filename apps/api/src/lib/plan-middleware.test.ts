@@ -55,6 +55,7 @@ const HELD: Array<[string, string]> = [
   ['PUT', '/api/notes/:id/files'],
   ['POST', '/api/notes/:id/files/copy'],
   ['POST', '/api/notes/:id/files/fetch'],
+  ['POST', '/api/clip'],
   ['POST', '/api/import/note'],
   ['POST', '/api/import/notebook'],
   ['POST', '/api/import/enml'],
