@@ -41,6 +41,15 @@ export type Node = {
  */
 export type HastRoot = ReturnType<typeof fromHtml>;
 
+/**
+ * The parser `htmlToMarkdown` uses, for a caller that reads the tree before converting
+ * it (the editor's paste looks in it for a `<base href>` to resolve addresses against)
+ * and then hands the same tree on. Re-exported rather than depended on by that caller, so the
+ * parser and the converter are always one version, and an app that converts HTML has
+ * one package to declare.
+ */
+export { fromHtml };
+
 /** A transform over the parsed tree, run in place. */
 export type Transform = (tree: Node) => void;
 
