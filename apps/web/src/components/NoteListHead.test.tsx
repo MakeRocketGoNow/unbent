@@ -129,6 +129,46 @@ describe('NoteListHead', () => {
     expect(queryByText('New')).toBeNull();
   });
 
+  /* Clip a link is the other way a note is made from this row, so it sits with New: after
+     the controls about what is on screen, before the one word the row is for. */
+  it('draws the clip control after the view menu and before New', () => {
+    const { container } = render(
+      <NoteListHead
+        {...props}
+        onOpenMenu={undefined}
+        view={<span>view</span>}
+        clip={<button>clip</button>}
+        action={<button>New</button>}
+      />,
+    );
+    const actions = container.querySelector('.list-head-actions')!;
+    expect([...actions.children].map((el) => el.textContent).slice(-4)).toEqual(['more', 'view', 'clip', 'New']);
+  });
+
+  /* The form takes the search field's place, so nothing moves while it is open: on a
+     phone the whole row with an arrow that closes it, on a desktop the search's own row. */
+  it('puts the clip form where the search field was', () => {
+    const onCloseClip = vi.fn();
+    const phone = render(
+      <NoteListHead {...props} clipping={<input aria-label="Link to clip" />} onCloseClip={onCloseClip} />,
+    );
+    expect(phone.getByLabelText('Link to clip')).toBeTruthy();
+    expect(phone.queryByLabelText('Search notes')).toBeNull();
+    expect(phone.queryByText('All notes')).toBeNull();
+    fireEvent.click(phone.getByLabelText('Close without clipping'));
+    expect(onCloseClip).toHaveBeenCalledOnce();
+    cleanup();
+
+    const desktop = render(
+      <NoteListHead {...props} onOpenMenu={undefined} onOpenSearch={undefined} clipping={<input aria-label="Link to clip" />} />,
+    );
+    // The head stays; the row under it holds the form instead of the field.
+    expect(desktop.getByText('All notes')).toBeTruthy();
+    expect(desktop.container.querySelector('.list-head + .list-search.list-clip')).toBeTruthy();
+    expect(desktop.queryByLabelText('Search notes')).toBeNull();
+    expect(desktop.queryByLabelText('Close without clipping')).toBeNull();
+  });
+
   it('says in its name that the list is already narrowed', () => {
     const { getByLabelText, container } = render(<NoteListHead {...props} filtered />);
     expect(getByLabelText('Filter notes, filters are active')).toBeTruthy();

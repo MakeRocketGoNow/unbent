@@ -310,6 +310,37 @@ export async function createNote(input: {
   );
 }
 
+/** `POST /api/clip`'s answer: the note, and how many of the page's pictures were kept. */
+export interface ClippedNote extends Note {
+  clip: { images: { stored: number; failed: Array<{ url: string; error: string }> } };
+}
+
+/**
+ * A web page kept as a note, fetched and read on the server (`routes/clip.ts`): the
+ * article as Markdown under a "Clipped from" line, with up to ten of its pictures as
+ * files. A request made now and never queued, since the server does the fetching and
+ * the answer is the page as it is at this moment; `store/actions.ts`'s `clipLink` is the
+ * caller. A page the server cannot read comes back as a 400, 413, 415 or 502 whose
+ * sentence is written to be shown as is (`errorText`).
+ */
+export async function clipLink(input: {
+  url: string;
+  /** The note's title; absent, the page's own. */
+  title?: string;
+  tags?: string[];
+  notebook?: string | null;
+  /** An id chosen here, so a request sent twice finds one note; see `clipRequestSchema`. */
+  id?: string;
+}): Promise<ClippedNote> {
+  return json<ClippedNote>(
+    await request('/api/clip', {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify(input),
+    }),
+  );
+}
+
 /** How long a save may go unanswered before it counts as offline. */
 export const SAVE_TIMEOUT = 10_000;
 

@@ -1795,6 +1795,22 @@ export async function duplicateNote(sourceId: string, copyId: string = crypto.ra
   return { id: copyId };
 }
 
+/**
+ * Keeps a web page as a note: `POST /api/clip`, which fetches the page on the server and
+ * writes the article with its pictures (`lib/clip.ts`). A request, never an outbox entry,
+ * on purpose: the server does the fetching, so there is nothing a device could do with
+ * the address offline but hold it, and a page clipped hours after it was asked for is a
+ * different page. The control that calls this follows `offline` as Auto-fill does, faded
+ * with the reason. The row reaches the local copy the way a duplicate's does: the feed
+ * brings it, and `pulled` asks for the pull at once so the note is there to open.
+ *
+ * Not forwarded to the holding tab: any tab can make the request, and the holder's feed
+ * hears the answer as it would a write from another device.
+ */
+export async function clipLink(input: Parameters<typeof api.clipLink>[0]): Promise<api.ClippedNote> {
+  return pulled(api.clipLink(input), { ids: [], refiles: true });
+}
+
 /** How long `restoreRevision` and `clearHistory` wait for a note's own queued writes to reach the server. */
 const RESTORE_DRAIN_MS = 5000;
 

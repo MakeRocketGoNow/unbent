@@ -291,6 +291,15 @@ export function SearchIcon() {
 }
 
 /**
+ * Clip a link, in the note list's head beside New: a chain link, since what is pasted is
+ * a link and the note is made from it. Not scissors, which say "cut" to anyone who has
+ * not met a clipper, and not a paperclip, which is the attachments' glyph here already.
+ */
+export function ClipLinkIcon() {
+  return <HeaderIcon icon={LinkGlyph} />;
+}
+
+/**
  * The three ways the note list is drawn, for the view menu beside the filter and sort
  * icons: rows of entries, a gallery of cards, or a table of a notebook's fields. The
  * cards are a grid of squares and the table a grid of cells, which is why the table is
