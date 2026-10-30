@@ -196,15 +196,34 @@ const holdsContent = (node: Node): boolean =>
  * around an icon or around a picture a caller has dropped would land in a note: `## [](url)Care`
  * in every heading of a page marked up that way. Run it after whatever removes pictures.
  * Opted into, like `dropComments`, for the same reason: the ENEX import's dedupe hash.
+ *
+ * The converter writes `<video>` and `<audio>` as links too, so one with no poster and no
+ * words of its own would be the same `[](url)`, or `[]()` for a player whose address a
+ * script fills in. It goes if it has no address; with one it becomes a link that says
+ * what it is, since the address is the one thing of it worth keeping. Inside a link of
+ * its own it gives up its address, as a link cannot hold a link.
  */
 export const dropEmptyLinks: Transform = (tree) => {
   if (!tree.children) return;
   tree.children = tree.children.flatMap((child) => {
     dropEmptyLinks(child);
-    if (!isElement(child, 'a') || holdsContent(child)) return [child];
-    return (child.children ?? []).filter((c) => c.type === 'text');
+    if (isElement(child, 'video') || isElement(child, 'audio')) return mediaOrLink(child);
+    if (!isElement(child, 'a')) return [child];
+    if (!holdsContent(child)) return (child.children ?? []).filter((c) => c.type === 'text');
+    child.children = (child.children ?? []).flatMap((c) => (isElement(c, 'a') ? (c.children ?? []) : [c]));
+    return [child];
   });
 };
+
+function mediaOrLink(media: Node): Node[] {
+  const props = media.properties ?? {};
+  if (props['poster'] || (media.children ?? []).some(holdsContent)) return [media];
+  const source = (media.children ?? []).find((c) => isElement(c, 'source'))?.properties?.['src'];
+  const href = props['src'] ?? source;
+  if (typeof href !== 'string' || !href) return [];
+  const words = media.tagName === 'video' ? 'Video' : 'Audio';
+  return [{ type: 'element', tagName: 'a', properties: { href }, children: [{ type: 'text', value: words }] }];
+}
 
 /**
  * Serialises an already-cleaned hast tree to Markdown.

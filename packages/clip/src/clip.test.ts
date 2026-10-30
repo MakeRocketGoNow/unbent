@@ -265,8 +265,8 @@ describe('clipFragment', () => {
     expect(article(fragment('<video src="/v.mp4" poster="/p.jpg"></video>').markdown)).toBe(
       '[![](https://example.com/p.jpg)](https://example.com/v.mp4)',
     );
-    expect(article(fragment('<audio><source src="a.mp3"></audio>').markdown)).toContain(
-      '(https://example.com/guides/welding/a.mp3)',
+    expect(article(fragment('<audio><source src="a.mp3"></audio>').markdown)).toBe(
+      '[Audio](https://example.com/guides/welding/a.mp3)',
     );
   });
 
@@ -279,6 +279,16 @@ describe('clipFragment', () => {
     expect(article(fragment('<p><a href="/a"><img src="pic.png" alt="p"></a></p>').markdown)).toBe(
       '[![p](files/pic.png)](https://example.com/a)',
     );
+  });
+
+  it('gives a player with nothing of its own words, or drops it with no address', () => {
+    expect(article(fragment('<video src="https://x.example/m.mp4"></video>').markdown)).toBe('[Video](https://x.example/m.mp4)');
+    expect(article(fragment('<audio controls src="https://x.example/a.mp3"></audio>').markdown)).toBe(
+      '[Audio](https://x.example/a.mp3)',
+    );
+    expect(article(fragment('<p>Before</p><video></video><p>after</p>').markdown)).toBe('Before\n\nafter');
+    expect(article(fragment('<p>Before</p><a href="/x"><video></video></a><p>after</p>').markdown)).toBe('Before\n\nafter');
+    expect(article(fragment('<a href="/x"><video src="/m.mp4"></video></a>').markdown)).toBe('[Video](https://example.com/x)');
   });
 
   it('leaves the site’s markup behind', () => {

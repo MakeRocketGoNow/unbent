@@ -511,6 +511,13 @@ describe('paste from a page', () => {
     view.destroy();
   });
 
+  it('gives a video with nothing of its own words', async () => {
+    const view = mount('', { noteId: HERE });
+    await pasteInto(view, clipboard({ 'text/html': '<h2>Clip</h2><video src="https://example.com/v.mp4"></video>', 'text/plain': 'Clip' }));
+    expect(view.state.doc.toString()).toBe('## Clip\n\n[Video](https://example.com/v.mp4)');
+    view.destroy();
+  });
+
   it('holds video to what a link is held to', async () => {
     const view = mount('', { noteId: HERE });
     const html =
