@@ -128,7 +128,7 @@ public enum CaptureNaming {
         return host.isEmpty ? nil : host
     }
 
-    /// "2 photos · 1 PDF", "Link, saved as the page" or "Text": what the sheet says was
+    /// "2 photos · 1 PDF", "Web page" or "Text": what the sheet says was
     /// shared.
     ///
     /// - Parameter link: the text is a web address and nothing else, which the server
