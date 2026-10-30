@@ -97,7 +97,7 @@ export function attachmentClipboard(config: ClipboardConfig): Extension {
         return true;
       }
       // Asked second, so nothing that carries a note's file ever reaches the converter.
-      return pasteHtml(event, view, data);
+      return pasteHtml(event, view, data, config);
     },
   });
 }
@@ -139,7 +139,7 @@ export function attachmentClipboard(config: ClipboardConfig): Extension {
  * mounted before this one and takes it. A browser's Copy Image puts the picture's bytes
  * beside an `<img>` naming it, and the bytes are the better copy.
  */
-function pasteHtml(event: ClipboardEvent, view: EditorView, data: DataTransfer): boolean {
+function pasteHtml(event: ClipboardEvent, view: EditorView, data: DataTransfer, config: ClipboardConfig): boolean {
   const { state } = view;
   if (state.readOnly || data.getData(CUT_FLAVOUR)) return false;
   const html = data.getData('text/html');
@@ -147,7 +147,7 @@ function pasteHtml(event: ClipboardEvent, view: EditorView, data: DataTransfer):
   if (state.selection.ranges.some((range) => inCode(state, range.from))) return false;
 
   event.preventDefault();
-  void insertConverted(view, html, data.getData('text/plain'));
+  void insertConverted(view, html, data.getData('text/plain'), config);
   return true;
 }
 
@@ -160,19 +160,26 @@ function pasteHtml(event: ClipboardEvent, view: EditorView, data: DataTransfer):
  * chunk cannot be had at all (a page left open across deploys, its build gone from the
  * cache) inserts the plain text, which is what it would have been before this existed:
  * the event is claimed, and nothing at all would be worse.
+ *
+ * Into the editor open when the converter answers (`liveView`), as every other late write
+ * in this file does: flipping between rich and source during that first wait rebuilds the
+ * view, and the event being claimed, nothing else would insert the paste. No view at all
+ * means the note has closed.
  */
-async function insertConverted(view: EditorView, html: string, plain: string): Promise<void> {
+async function insertConverted(view: EditorView, html: string, plain: string, config: ClipboardConfig): Promise<void> {
   let converted: { markdown: string; inline: boolean } | null = null;
   try {
     converted = (await loadConverter()).markdownFromClipboardHtml(html);
   } catch {
     converted = null;
   }
-  const { state } = view;
+  const target = config.liveView ? config.liveView() : view;
+  if (!target) return;
+  const { state } = target;
   if (state.readOnly) return;
   const { markdown, inline } = converted ?? { markdown: plain, inline: true };
   if (!markdown) return;
-  view.dispatch(
+  target.dispatch(
     state.changeByRange((range) => {
       const [lead, tail] = inline ? ['', ''] : apart(state.doc, range.from, range.to);
       const insert = lead + markdown + tail;

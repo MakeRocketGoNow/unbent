@@ -505,6 +505,32 @@ describe('paste from a page', () => {
     unresolved.destroy();
   });
 
+  it('lands in the editor open when the converter answers, not the one pasted into', async () => {
+    const views = { current: null as EditorView | null };
+    const config: ClipboardConfig = { noteId: HERE, liveView: () => views.current };
+    const pressed = mount('', config);
+    views.current = pressed;
+    fire(pressed, 'paste', clipboard({ 'text/html': PAGE, 'text/plain': 'flat' }));
+
+    pressed.destroy();
+    const live = mount('', config);
+    views.current = live;
+    await settle();
+    expect(live.state.doc.toString()).toBe(PAGE_MD);
+    live.destroy();
+  });
+
+  it('inserts nothing when the note has closed by the time the converter answers', async () => {
+    const views = { current: null as EditorView | null };
+    const pressed = mount('', { noteId: HERE, liveView: () => views.current });
+    views.current = pressed;
+    fire(pressed, 'paste', clipboard({ 'text/html': PAGE, 'text/plain': 'flat' }));
+    views.current = null;
+    await settle();
+    expect(pressed.state.doc.toString()).toBe('');
+    pressed.destroy();
+  });
+
   it('declines on a read-only note', async () => {
     const view = mount('', { noteId: HERE }, undefined, [EditorState.readOnly.of(true)]);
     await pasteInto(view, clipboard({ 'text/html': PAGE, 'text/plain': 'flat' }));
