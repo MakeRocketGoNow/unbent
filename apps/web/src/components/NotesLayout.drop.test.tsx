@@ -379,6 +379,18 @@ describe('Clip a link beside New', () => {
     expect(await screen.findByRole('button', { name: 'Clip a link' })).toBeTruthy();
   });
 
+  /* The form takes the search field's place, so the field's query would be a filter with
+     nothing on screen to show it: the rule the phone's search closes by. */
+  it('clears the search when it opens', async () => {
+    vi.mocked(api.getConfig).mockResolvedValue({ providers: [], webClip: true } as unknown as Awaited<ReturnType<typeof api.getConfig>>);
+    lib = installTestLibrary({ notes: [note('a', { title: 'Alpha' }), note('b', { title: 'Beta' })] });
+    vi.mocked(api.searchNotes).mockResolvedValue([] as never);
+    const { router } = mount('/notes?q=alpha');
+    (await screen.findByRole('button', { name: 'Clip a link' })).click();
+    expect(await screen.findByLabelText('Link to clip')).toBeTruthy();
+    await waitFor(() => expect((router.state.location.search as Record<string, unknown>).q).toBeUndefined());
+  });
+
   it('is not drawn where the instance does not', async () => {
     lib = installTestLibrary({ notes: [note('a', { title: 'Alpha' })] });
     mount('/notes');

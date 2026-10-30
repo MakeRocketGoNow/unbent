@@ -1249,8 +1249,10 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   /*
    * Clip a link: the other way a note is made from this list. The form takes the search
    * field's place while it is open (`NoteListHead`'s `clipping`), and the note it makes
-   * is filed as New files one and opened the same way, with the list's search kept
-   * beside it. The control fades offline with the reason, as Auto-fill does, since the
+   * is filed as New files one and opened the same way. Opening it clears the query: the
+   * field that shows one is what the form replaces, and a list narrowed by something with
+   * nothing on screen to say so is the failure `onCloseSearch` below exists to prevent. The
+   * control fades offline with the reason, as Auto-fill does, since the
    * server does the fetching (`actions.clipLink`); and while the plan has ended, as New
    * does, since the server refuses the note. Focus goes back to the control when the form
    * closes without a note, since the field that had it is gone by then; when a note is
@@ -1268,6 +1270,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   const clipRef = useRef<HTMLButtonElement>(null);
   const openClip = () => {
     setSearchOpen(false);
+    if (q) setQuery('');
     setClipping(true);
   };
   const closeClip = () => {
