@@ -2,7 +2,7 @@ import { fromHtml } from 'hast-util-from-html';
 import { toMdast } from 'hast-util-to-mdast';
 import { toMarkdown } from 'mdast-util-to-markdown';
 import { gfmToMarkdown } from 'mdast-util-gfm';
-import { visit } from 'unist-util-visit';
+import { SKIP, visit } from 'unist-util-visit';
 
 /**
  * HTML to Markdown, without a DOM.
@@ -152,12 +152,17 @@ export const BLOCK_TAGS: ReadonlySet<string> = new Set([
  * shorter list of its own until 2026-10-30, because the import's dedupe hash covers its
  * output; `enmlToMarkdown` says what that cost and why it went.
  */
-export function divsToParagraphs(): Transform {
+export function divsToParagraphs(opts: { insideCode?: boolean } = {}): Transform {
   return (tree: Node) => {
     visit(tree as never, 'element', (node: Node) => {
-      if (node.tagName !== 'div') return;
+      // Some highlighters write a code sample as a div a line, where a div is a line of
+      // code and not a paragraph: as paragraphs, the sample came out double-spaced. The
+      // ENEX import still walks in (`insideCode`), since its dedupe hash covers this output.
+      if (node.tagName === 'pre' && !opts.insideCode) return SKIP;
+      if (node.tagName !== 'div') return undefined;
       const hasBlockChild = (node.children ?? []).some((c) => isElement(c) && BLOCK_TAGS.has(c.tagName ?? ''));
       if (!hasBlockChild) node.tagName = 'p';
+      return undefined;
     });
   };
 }
@@ -235,7 +240,8 @@ export interface HtmlToMarkdownOptions {
    */
   transforms?: Transform[];
   /**
-   * Run the text clean-up over code blocks too, which damages them; see `tidyOutsideCode`.
+   * Clean up inside code blocks too, which damages them; see `tidyOutsideCode` and
+   * `divsToParagraphs`.
    * For the ENEX import alone, whose dedupe hash covers this output.
    */
   tidyInsideCode?: boolean;
@@ -253,7 +259,7 @@ export function htmlToMarkdown(input: string | HastRoot | Node, opts: HtmlToMark
 
   for (const transform of opts.transforms ?? []) transform(tree);
   stripPresentation()(tree);
-  divsToParagraphs()(tree);
+  divsToParagraphs({ insideCode: opts.tidyInsideCode ?? false })(tree);
 
   return hastToMarkdown(tree, { tidyInsideCode: opts.tidyInsideCode ?? false });
 }

@@ -41,6 +41,14 @@ describe('htmlToMarkdown', () => {
     expect(htmlToMarkdown('<pre><code>x</code></pre><p>1</p>\n\n<p></p><p>2</p>')).toBe('```\nx\n```\n\n1\n\n2');
   });
 
+  it('reads a div a line inside a code block as lines, not paragraphs', () => {
+    expect(htmlToMarkdown('<pre><code><div>a = 1</div><div>b = 2</div></code></pre>')).toBe('```\na = 1\nb = 2\n```');
+    // The ENEX import's output is pinned.
+    expect(htmlToMarkdown('<pre><code><div>a = 1</div><div>b = 2</div></code></pre>', { tidyInsideCode: true })).toBe(
+      '```\na = 1\n\nb = 2\n```',
+    );
+  });
+
   it('takes a fence longer than the code holds for the one that closes it', () => {
     expect(htmlToMarkdown('<pre><code>```\na  \n```</code></pre><p>after\u00a0it</p>')).toBe(
       '````\n```\na  \n```\n````\n\nafter it',
