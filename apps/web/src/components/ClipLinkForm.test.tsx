@@ -181,9 +181,12 @@ describe('ClipLinkForm', () => {
   /* The server does the fetching, so offline the button fades with the reason rather
      than queueing the address: the rule Auto-fill follows. */
   it('fades Clip offline and says why', () => {
-    const { getByRole } = render(
+    const { getByRole, getByLabelText } = render(
       <Form filing={filing} offline onClipped={() => {}} onCancel={() => {}} />,
     );
+    fireEvent.keyDown(getByLabelText('Link to clip'), { key: 'Enter' });
+    expect(getByRole('alert').textContent).toBe('Clipping needs a connection.');
+    expect(actions.clipLink).not.toHaveBeenCalled();
     const clip = getByRole('button', { name: 'Clip' });
     expect(clip.hasAttribute('disabled')).toBe(true);
     expect(clip.getAttribute('data-tip')).toBe('Clipping needs a connection');

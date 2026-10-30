@@ -100,7 +100,12 @@ export function useClipLink({ filing, offline, onClipped, onCancel }: ClipLinkOp
   }
 
   async function commit() {
-    if (busy || offline) return;
+    if (busy) return;
+    // Enter reaches here with the button faded, and a phone never draws that button's tip.
+    if (offline) {
+      setError('Clipping needs a connection.');
+      return;
+    }
     const url = asPageUrl(value);
     if (!url) {
       setError(value.trim() === '' ? 'Paste the address of a web page.' : "That isn't a web address.");
