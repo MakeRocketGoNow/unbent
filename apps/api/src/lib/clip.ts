@@ -193,8 +193,9 @@ export async function clipUrl(
   const title = input.title ?? Array.from(clip.title).slice(0, MAX_TITLE_LENGTH).join('');
 
   // As `POST /notes` creates one: an id already held answers with the note that holds
-  // it, so a replayed clip makes no second note. Its pictures are not fetched again:
-  // the first request stored what it could, and a replay is the same request.
+  // it, so a replayed clip makes no second note. Its pictures are not fetched again: the
+  // first request stored what it could, under `waitUntil` so that a lost answer does not
+  // stop it (see below), and a replay is the same request.
   let created: { note: Note; existing: boolean };
   try {
     created = await repos.notes.createOrFind({
@@ -213,10 +214,35 @@ export async function clipUrl(
   }
   if (created.existing) return { ok: true, note: created.note, existing: true, images: { stored: 0, failed: [] } };
 
-  const note = created.note;
+  /*
+     From here the note exists and its body names `files/` paths, while the pictures'
+     own addresses are only in this invocation's memory. A client that goes away (a phone
+     losing signal is the case a clip's id exists for) cancels what a request is doing
+     unless it is under `waitUntil`, and stopped here the note would keep dead links with
+     nothing left to repair them from. So the rest runs under it.
+
+     That covers a dropped connection, not the isolate ending, which would need the web
+     addresses written first and swapped once each file is in: a second write, a feed row
+     and a copy in the note's history on every clip with pictures, to cover something
+     rarer. Not taken unless it shows up.
+  */
+  const finishing = finishClip(env, ctx, repos, created.note, clip, opts);
+  ctx.waitUntil(finishing.catch(() => {}));
+  return { ok: true, existing: false, ...(await finishing) };
+}
+
+/** Stores the note's pictures, then repairs its body if any of them needs it. */
+async function finishClip(
+  env: Pick<Env, 'BLOBS' | 'AI'>,
+  ctx: { waitUntil(promise: Promise<unknown>): void },
+  repos: { notes: NotesRepo; attachments: AttachmentsRepo },
+  note: Note,
+  clip: Clip,
+  opts: ClipOptions,
+): Promise<{ note: Note; images: ClipImages }> {
   const outcome = await storeImages(env, ctx, repos, note.id, clip.images, opts);
   const images = { stored: outcome.stored, failed: outcome.failed };
-  if (outcome.relinks.size === 0) return { ok: true, note, existing: false, images };
+  if (outcome.relinks.size === 0) return { note, images };
 
   /*
      The one case with a second write. The body was written before the pictures were
@@ -239,8 +265,7 @@ export async function clipUrl(
     ifUpdatedAt: note.updatedAt,
     ...(opts.by ? { by: opts.by } : {}),
   });
-  const final = updated && !('stale' in updated) ? updated : note;
-  return { ok: true, note: final, existing: false, images };
+  return { note: updated && !('stale' in updated) ? updated : note, images };
 }
 
 type FetchedPage = { ok: true; html: string; url: URL } | Extract<ClipResult, { ok: false }>;

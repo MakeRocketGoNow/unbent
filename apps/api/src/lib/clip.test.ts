@@ -205,6 +205,19 @@ describe('clipUrl', () => {
     expect(store.updates[0]!.patch.body).toContain('(files/good.png)');
   });
 
+  it('finishes the pictures under waitUntil, so a lost answer does not leave dead links', async () => {
+    stubWeb({ [PAGE_URL]: html(articlePage(['/a.png'])), 'https://example.com/a.png': png });
+    const store = fakeStore();
+    const waited: Array<Promise<unknown>> = [];
+
+    await clipUrl(store.env, { waitUntil: (p) => void waited.push(p) }, store.repos, { url: PAGE_URL }, options);
+
+    // storeAttachment may wait on work of its own; the clip's is the first one asked for.
+    expect(waited.length).toBeGreaterThan(0);
+    await Promise.all(waited);
+    expect(store.puts).toHaveLength(1);
+  });
+
   it('says a host refused this server, so the caller can read the page itself', async () => {
     stubWeb({ [PAGE_URL]: () => new Response('denied', { status: 403 }) });
     const store = fakeStore();
