@@ -29,9 +29,10 @@ import kotlinx.coroutines.withContext
  * [UnbentApi.clipLink]). That is what sharing a page from a browser means to the person
  * doing it, and a note holding a bare link was the only thing this could make before the
  * route existed. When the server cannot read the page (not HTML, too large, a site that
- * refused it, an address it will not fetch) the capture falls back to that note, so a
- * share never fails for a page's sake: the link is kept either way, and the notification
- * says which of the two landed.
+ * refused it, an address it will not fetch), or has no clipper (an instance whose operator
+ * has not switched it on, or one from before the route), the capture falls back to that
+ * note, so a share never fails for a page's sake: the link is kept either way, and the
+ * notification says which of the two landed.
  */
 class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
 
@@ -244,6 +245,13 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
          * Each is the server saying it cannot have this page, and the link is still worth
          * keeping.
          *
+         * 404 is the server saying it has no clipper at all: an instance whose operator has
+         * not switched it on (`WEB_CLIP`, answered as `CLIP_OFF`) and an instance deployed
+         * before the route existed, which answers a missing route the same way, with no
+         * code. Both are the plain note this capture always made, so the app does not read
+         * `/api/config` first to find out: that is a request on every share to save one on
+         * the rare instance without the clipper, and the 404 says the same thing.
+         *
          * A 400 can also be the request itself (a title too long), which the create then
          * repeats and is refused by the same way: one request more, in a rare case, for a
          * rule the iOS app can share. Its answers arrive through a background session that
@@ -255,7 +263,7 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
          */
         internal fun clipFallsBack(e: ApiException): Boolean = e.status in CLIP_FALLBACK_STATUSES
 
-        private val CLIP_FALLBACK_STATUSES = setOf(400, 413, 415, 502)
+        private val CLIP_FALLBACK_STATUSES = setOf(400, 404, 413, 415, 502)
 
         const val KEY_JOB_ID = "jobId"
         const val KEY_TITLE = "title"

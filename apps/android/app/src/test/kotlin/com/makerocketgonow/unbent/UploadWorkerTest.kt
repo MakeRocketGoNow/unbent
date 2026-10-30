@@ -70,6 +70,13 @@ class UploadWorkerTest {
     }
 
     @Test
+    fun `an instance with no clipper, switched off or from before the route, gets the note too`() {
+        assertTrue(UploadWorker.clipFallsBack(ApiException(404, "off", """{"error":"This instance does not clip web pages","code":"CLIP_OFF"}""")))
+        // An instance from before the route answers a missing path with no code at all.
+        assertTrue(UploadWorker.clipFallsBack(ApiException(404, "not found")))
+    }
+
+    @Test
     fun `a refusal every capture already handles is not a reason to make the note instead`() {
         // The plan: the create would be refused the same way.
         assertFalse(UploadWorker.clipFallsBack(ApiException(402, "plan", """{"error":"Your plan has ended","code":"PLAN_INACTIVE"}""")))
