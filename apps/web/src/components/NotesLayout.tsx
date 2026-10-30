@@ -65,7 +65,7 @@ import {
 } from './icons.js';
 import { Sheet } from './Sheet.js';
 import { NoteListHead } from './NoteListHead.js';
-import { ClipLinkForm } from './ClipLinkForm.js';
+import { ClipLinkForm, useClipLink } from './ClipLinkForm.js';
 import { NotesSort } from './NotesSort.js';
 import { NotesViewMenu } from './NotesViewMenu.js';
 import { NoteTable } from './NoteTable.js';
@@ -1254,7 +1254,9 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    * server does the fetching (`actions.clipLink`); and while the plan has ended, as New
    * does, since the server refuses the note. Focus goes back to the control when the form
    * closes without a note, since the field that had it is gone by then; when a note is
-   * made the note takes it.
+   * made the note takes it. The two controls that would close it are disabled while it
+   * clips, as its Cancel is: nothing here can stop a request the server is already acting
+   * on, and "Close without clipping" would be untrue, with the note opening seconds later.
    *
    * Drawn only where the instance offers the clipper (`config.webClip`, the operator's
    * `WEB_CLIP` switch), as the editor draws Auto-fill only on `config.autofill`: hidden,
@@ -1270,6 +1272,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   };
   const closeClip = () => {
     setClipping(false);
+    clipLink.reset();
     requestAnimationFrame(() => clipRef.current?.focus());
   };
   const clipped = async (note: Note) => {
@@ -1278,6 +1281,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
     invalidateNoteMembership(queryClient);
     await navigate({ to: '/notes/$noteId', params: { noteId: note.id }, search: (p) => p });
   };
+  const clipLink = useClipLink({ filing, offline, onClipped: (note) => void clipped(note), onCancel: closeClip });
   const noClip = planInactive ? READ_ONLY_TIP : offline ? 'Clipping needs a connection' : undefined;
   const clipControl = (
     <button
@@ -1286,7 +1290,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
       className="icon-btn"
       aria-label="Clip a link"
       aria-pressed={clipping}
-      disabled={planInactive || offline}
+      disabled={planInactive || offline || clipLink.busy}
       data-tip={noClip ?? 'Clip a link'}
       aria-description={noClip}
       onClick={() => (clipping ? closeClip() : openClip())}
@@ -1295,7 +1299,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
     </button>
   );
   const clipForm = clipping ? (
-    <ClipLinkForm filing={filing} offline={offline} compact={isMobile} onClipped={(note) => void clipped(note)} onCancel={closeClip} />
+    <ClipLinkForm clip={clipLink} offline={offline} compact={isMobile} onCancel={closeClip} />
   ) : undefined;
   const webClip = config.data?.webClip === true;
 
@@ -1379,6 +1383,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
           clip={webClip ? clipControl : undefined}
           clipping={webClip ? clipForm : undefined}
           onCloseClip={closeClip}
+          clipBusy={clipLink.busy}
           headingRef={headingRef}
           query={q}
           onQuery={setQuery}

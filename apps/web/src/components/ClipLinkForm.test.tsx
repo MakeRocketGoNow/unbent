@@ -3,7 +3,7 @@ import { render, cleanup, fireEvent, waitFor, act } from '@testing-library/react
 import type { Note } from '@unbent/shared';
 import { ApiError } from '../notes-api.js';
 import * as actions from '../store/actions.js';
-import { ClipLinkForm, asPageUrl } from './ClipLinkForm.js';
+import { ClipLinkForm, asPageUrl, useClipLink } from './ClipLinkForm.js';
 
 vi.mock('../store/actions.js', () => ({ clipLink: vi.fn() }));
 
@@ -23,6 +23,22 @@ const note = {
 } as unknown as Note;
 
 const filing = { tags: ['read'], notebook: 'Reading' };
+
+interface FormProps {
+  filing: typeof filing;
+  offline: boolean;
+  compact?: boolean;
+  onClipped: (note: Note) => void;
+  onCancel: () => void;
+  /** Draws the form as a new element, as a change of the head's layout does. */
+  place?: string;
+}
+
+/** The form with its state held above it, as `NotesLayout` holds it. */
+function Form({ place = 'a', compact, ...options }: FormProps) {
+  const clip = useClipLink(options);
+  return <ClipLinkForm key={place} clip={clip} offline={options.offline} compact={compact} onCancel={options.onCancel} />;
+}
 
 describe('asPageUrl', () => {
   it('takes a web address as pasted, and supplies the scheme a typed one lacks', () => {
@@ -50,7 +66,7 @@ describe('ClipLinkForm', () => {
     vi.mocked(actions.clipLink).mockResolvedValue({ ...note, clip: { images: { stored: 2, failed: [] } } });
     const onClipped = vi.fn();
     const { getByLabelText, getByRole } = render(
-      <ClipLinkForm filing={filing} offline={false} onClipped={onClipped} onCancel={() => {}} />,
+      <Form filing={filing} offline={false} onClipped={onClipped} onCancel={() => {}} />,
     );
     const field = getByLabelText('Link to clip');
     // Focus arrives with the form: the field is the point of opening it.
@@ -68,7 +84,7 @@ describe('ClipLinkForm', () => {
     const onClipped = vi.fn();
     const onCancel = vi.fn();
     const { getByLabelText } = render(
-      <ClipLinkForm filing={filing} offline={false} onClipped={onClipped} onCancel={onCancel} />,
+      <Form filing={filing} offline={false} onClipped={onClipped} onCancel={onCancel} />,
     );
     const field = getByLabelText('Link to clip');
     fireEvent.change(field, { target: { value: 'https://example.com/' } });
@@ -81,7 +97,7 @@ describe('ClipLinkForm', () => {
 
   it('says what is wrong with the address before asking the server', () => {
     const { getByLabelText, getByRole } = render(
-      <ClipLinkForm filing={filing} offline={false} onClipped={() => {}} onCancel={() => {}} />,
+      <Form filing={filing} offline={false} onClipped={() => {}} onCancel={() => {}} />,
     );
     fireEvent.click(getByRole('button', { name: 'Clip' }));
     expect(getByRole('alert').textContent).toBe('Paste the address of a web page.');
@@ -99,7 +115,7 @@ describe('ClipLinkForm', () => {
       new ApiError(502, '502: The site refused to serve the page.', 'HOST_REFUSED'),
     );
     const { getByLabelText, getByRole } = render(
-      <ClipLinkForm filing={filing} offline={false} onClipped={() => {}} onCancel={() => {}} />,
+      <Form filing={filing} offline={false} onClipped={() => {}} onCancel={() => {}} />,
     );
     const field = getByLabelText('Link to clip') as HTMLInputElement;
     fireEvent.change(field, { target: { value: 'https://example.com/article' } });
@@ -117,7 +133,7 @@ describe('ClipLinkForm', () => {
       new ApiError(415, '415: That address is a application/pdf file, not a web page. Clipping is for web pages; a file such as a PDF is attached to a note instead (uploaded, or passed to add_attachment by an assistant).', 'NOT_A_PAGE'),
     );
     const { getByLabelText, getByRole } = render(
-      <ClipLinkForm filing={filing} offline={false} onClipped={() => {}} onCancel={() => {}} />,
+      <Form filing={filing} offline={false} onClipped={() => {}} onCancel={() => {}} />,
     );
     fireEvent.change(getByLabelText('Link to clip'), { target: { value: 'https://example.com/file.pdf' } });
     fireEvent.click(getByRole('button', { name: 'Clip' }));
@@ -128,7 +144,7 @@ describe('ClipLinkForm', () => {
     let settle: (n: typeof note & { clip: { images: { stored: number; failed: [] } } }) => void = () => {};
     vi.mocked(actions.clipLink).mockReturnValue(new Promise((resolve) => (settle = resolve)));
     const { getByLabelText, getByRole } = render(
-      <ClipLinkForm filing={filing} offline={false} onClipped={() => {}} onCancel={() => {}} />,
+      <Form filing={filing} offline={false} onClipped={() => {}} onCancel={() => {}} />,
     );
     fireEvent.change(getByLabelText('Link to clip'), { target: { value: 'https://example.com/' } });
     fireEvent.click(getByRole('button', { name: 'Clip' }));
@@ -141,7 +157,7 @@ describe('ClipLinkForm', () => {
      than queueing the address: the rule Auto-fill follows. */
   it('fades Clip offline and says why', () => {
     const { getByRole } = render(
-      <ClipLinkForm filing={filing} offline onClipped={() => {}} onCancel={() => {}} />,
+      <Form filing={filing} offline onClipped={() => {}} onCancel={() => {}} />,
     );
     const clip = getByRole('button', { name: 'Clip' });
     expect(clip.hasAttribute('disabled')).toBe(true);
@@ -149,9 +165,48 @@ describe('ClipLinkForm', () => {
     expect(clip.getAttribute('aria-description')).toBe('Clipping needs a connection');
   });
 
+  /* The head draws the form in another place when its layout changes, and a table row
+     opening beside it is enough. It is the same form, and the note keeps the focus. */
+  it('keeps the address and leaves focus alone when the layout moves it', () => {
+    const props = { filing, offline: false, onClipped: () => {}, onCancel: () => {} };
+    const { getByLabelText, rerender } = render(<Form {...props} place="a" />);
+    fireEvent.change(getByLabelText('Link to clip'), { target: { value: 'https://example.com/' } });
+    (document.activeElement as HTMLElement).blur();
+    rerender(<Form {...props} place="b" />);
+    const field = getByLabelText('Link to clip') as HTMLInputElement;
+    expect(field.value).toBe('https://example.com/');
+    expect(document.activeElement).not.toBe(field);
+  });
+
+  it('still says it is clipping when the layout moves it mid-clip, and cannot be sent twice', async () => {
+    vi.mocked(actions.clipLink).mockReturnValue(new Promise(() => {}));
+    const props = { filing, offline: false, onClipped: () => {}, onCancel: () => {} };
+    const { getByLabelText, getByRole, rerender } = render(<Form {...props} place="a" />);
+    fireEvent.change(getByLabelText('Link to clip'), { target: { value: 'https://example.com/' } });
+    fireEvent.click(getByRole('button', { name: 'Clip' }));
+    rerender(<Form {...props} place="b" />);
+    expect((getByRole('button', { name: 'Clipping…' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(actions.clipLink).toHaveBeenCalledOnce();
+  });
+
+  /* Gone to Settings while it ran: the note lands, and nobody is pulled back to it. */
+  it('does not open the note once the caller has gone', async () => {
+    let settle: (n: typeof note & { clip: { images: { stored: number; failed: [] } } }) => void = () => {};
+    vi.mocked(actions.clipLink).mockReturnValue(new Promise((resolve) => (settle = resolve)));
+    const onClipped = vi.fn();
+    const { getByLabelText, getByRole, unmount } = render(
+      <Form filing={filing} offline={false} onClipped={onClipped} onCancel={() => {}} />,
+    );
+    fireEvent.change(getByLabelText('Link to clip'), { target: { value: 'https://example.com/' } });
+    fireEvent.click(getByRole('button', { name: 'Clip' }));
+    unmount();
+    await act(async () => settle({ ...note, clip: { images: { stored: 0, failed: [] } } }));
+    expect(onClipped).not.toHaveBeenCalled();
+  });
+
   it('leaves Cancel to the back arrow in the compact row', () => {
     const { queryByRole } = render(
-      <ClipLinkForm filing={filing} offline={false} compact onClipped={() => {}} onCancel={() => {}} />,
+      <Form filing={filing} offline={false} compact onClipped={() => {}} onCancel={() => {}} />,
     );
     expect(queryByRole('button', { name: 'Cancel' })).toBeNull();
   });

@@ -1,24 +1,9 @@
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState, type RefObject } from 'react';
 import type { Note } from '@unbent/shared';
 import * as actions from '../store/actions.js';
 import { ApiError, errorText } from '../notes-api.js';
 import { isFreeNotesFull, showFreeNotesFull } from '../free-notes.js';
 import { Button } from './Button';
-
-interface ClipLinkFormProps {
-  /** Where the note goes: the list's own filing, as New files a note (`NotesLayout`'s `filing`). */
-  filing: { tags: string[]; notebook: string | null };
-  /** Faded with the reason while the server is out of reach: the server does the fetching. */
-  offline: boolean;
-  /**
-   * Without the Cancel button: the phone's row, where the head draws the back arrow that
-   * closes the form, as it does for the search (see `NoteListHead`'s `clipping`).
-   */
-  compact?: boolean;
-  /** The note is made and in the local copy; the caller opens it. */
-  onClipped: (note: Note) => void;
-  onCancel: () => void;
-}
 
 /**
  * What a web address pasted into the field may lack: a scheme. Someone copying from a
@@ -55,6 +40,107 @@ export function whatWentWrong(err: unknown): string {
   return errorText(err);
 }
 
+interface ClipLinkOptions {
+  /** Where the note goes: the list's own filing, as New files a note (`NotesLayout`'s `filing`). */
+  filing: { tags: string[]; notebook: string | null };
+  /** Faded with the reason while the server is out of reach: the server does the fetching. */
+  offline: boolean;
+  /** The library holds the note; the caller opens it. Not called once the caller has gone. */
+  onClipped: (note: Note) => void;
+  /** The form has nothing more to say: the free plan's notice has taken over. */
+  onCancel: () => void;
+}
+
+export interface ClipLinkState {
+  value: string;
+  busy: boolean;
+  error: string | null;
+  /** Whether the field takes focus the next time it can: on opening, and after a failure. */
+  focusNext: RefObject<boolean>;
+  change: (value: string) => void;
+  commit: () => Promise<void>;
+  /** Back to an empty form, for the next time it opens. */
+  reset: () => void;
+}
+
+/**
+ * What the form holds, kept by the caller rather than the form because the form moves.
+ * `NoteListHead` draws it in a different place for a toolbar, a stacked head and a phone,
+ * and a table row opening beside it is enough to change which, so a form that held its own
+ * state came back empty and enabled while its clip was still running, one press from a
+ * second note. Held here the address, the wait and the error survive that.
+ */
+export function useClipLink({ filing, offline, onClipped, onCancel }: ClipLinkOptions): ClipLinkState {
+  const [value, setValue] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const focusNext = useRef(true);
+
+  // A clip outlives the notes layout if someone goes to Settings while it runs. The note
+  // still lands, and shows up in the list; it does not pull them back to open it.
+  const live = useRef(true);
+  useEffect(() => {
+    live.current = true;
+    return () => {
+      live.current = false;
+    };
+  }, []);
+
+  function reset() {
+    setValue('');
+    setBusy(false);
+    setError(null);
+    focusNext.current = true;
+  }
+
+  async function commit() {
+    if (busy || offline) return;
+    const url = asPageUrl(value);
+    if (!url) {
+      setError(value.trim() === '' ? 'Paste the address of a web page.' : "That isn't a web address.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const note = await actions.clipLink({ url, tags: filing.tags, notebook: filing.notebook });
+      if (!live.current) return;
+      reset();
+      onClipped(note);
+    } catch (err) {
+      // The free plan full is an answer, not a fault, and its notice says it (as New's
+      // does); the form closes, since there is nothing to fix in the field.
+      if (isFreeNotesFull(err)) {
+        showFreeNotesFull();
+        if (live.current) onCancel();
+        return;
+      }
+      if (!live.current) return;
+      setError(whatWentWrong(err));
+      setBusy(false);
+      focusNext.current = true;
+    }
+  }
+
+  function change(next: string) {
+    setValue(next);
+    if (error) setError(null);
+  }
+
+  return { value, busy, error, focusNext, change, commit, reset };
+}
+
+interface ClipLinkFormProps {
+  clip: ClipLinkState;
+  offline: boolean;
+  /**
+   * Without the Cancel button: the phone's row, where the head draws the back arrow that
+   * closes the form, as it does for the search (see `NoteListHead`'s `clipping`).
+   */
+  compact?: boolean;
+  onCancel: () => void;
+}
+
 /**
  * The inline form a link is clipped from: one field, Clip, and Cancel.
  *
@@ -70,44 +156,19 @@ export function whatWentWrong(err: unknown): string {
  * with no connection the button fades with the reason rather than taking the address
  * into the outbox for later, which would clip whatever the page says by then.
  */
-export function ClipLinkForm({ filing, offline, compact = false, onClipped, onCancel }: ClipLinkFormProps) {
-  const [value, setValue] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+export function ClipLinkForm({ clip, offline, compact = false, onCancel }: ClipLinkFormProps) {
+  const { value, busy, error } = clip;
   const ref = useRef<HTMLInputElement>(null);
   const errorId = useId();
 
-  // Focus on arrival: the field is the whole point of opening the form.
+  // On arrival, and back to the field after a failure, once it is enabled again: a disabled
+  // input does not take focus. Not on every arrival: when the head's layout changes under
+  // an open form this is a new element, and the note just opened beside it keeps the focus.
   useEffect(() => {
+    if (busy || !clip.focusNext.current) return;
+    clip.focusNext.current = false;
     ref.current?.focus();
-  }, []);
-
-  async function commit() {
-    if (busy || offline) return;
-    const url = asPageUrl(value);
-    if (!url) {
-      setError(value.trim() === '' ? 'Paste the address of a web page.' : "That isn't a web address.");
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    try {
-      const note = await actions.clipLink({ url, tags: filing.tags, notebook: filing.notebook });
-      onClipped(note);
-    } catch (err) {
-      // The free plan full is an answer, not a fault, and its notice says it (as New's
-      // does); the form closes, since there is nothing to fix in the field.
-      if (isFreeNotesFull(err)) {
-        showFreeNotesFull();
-        onCancel();
-        return;
-      }
-      setError(whatWentWrong(err));
-      setBusy(false);
-      // Back to the field, once it is enabled again: a disabled input does not take focus.
-      requestAnimationFrame(() => ref.current?.focus());
-    }
-  }
+  }, [busy, clip.focusNext]);
 
   const clipTip = offline ? 'Clipping needs a connection' : undefined;
 
@@ -127,14 +188,11 @@ export function ClipLinkForm({ filing, offline, compact = false, onClipped, onCa
           aria-invalid={error !== null || undefined}
           aria-describedby={error ? errorId : undefined}
           disabled={busy}
-          onChange={(e) => {
-            setValue(e.target.value);
-            if (error) setError(null);
-          }}
+          onChange={(e) => clip.change(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
               e.preventDefault();
-              void commit();
+              void clip.commit();
             }
             if (e.key === 'Escape') {
               e.preventDefault();
@@ -149,7 +207,7 @@ export function ClipLinkForm({ filing, offline, compact = false, onClipped, onCa
           disabled={busy || offline}
           tip={clipTip}
           aria-busy={busy || undefined}
-          onClick={() => void commit()}
+          onClick={() => void clip.commit()}
         >
           {busy ? 'Clipping…' : 'Clip'}
         </Button>

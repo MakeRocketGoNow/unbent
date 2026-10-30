@@ -159,6 +159,11 @@ describe('NoteListHead', () => {
     expect(onCloseClip).toHaveBeenCalledOnce();
     cleanup();
 
+    // A running clip cannot be stopped from here, so the arrow does not say it can.
+    const busy = render(<NoteListHead {...props} clipping={<input aria-label="Link to clip" />} onCloseClip={onCloseClip} clipBusy />);
+    expect((busy.getByLabelText('Close without clipping') as HTMLButtonElement).disabled).toBe(true);
+    cleanup();
+
     const desktop = render(
       <NoteListHead {...props} onOpenMenu={undefined} onOpenSearch={undefined} clipping={<input aria-label="Link to clip" />} />,
     );
