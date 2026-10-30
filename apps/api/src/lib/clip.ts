@@ -10,7 +10,7 @@ import {
   type NoteFieldsPatch,
 } from '@unbent/shared';
 import type { AttachmentsRepo } from './attachments-repo.js';
-import { checkSourceUrl, fetchSource } from './fetch-attachment.js';
+import { checkSourceUrl, fetchSource, requestHeaders } from './fetch-attachment.js';
 import { PlanRefused } from './free-plan.js';
 import type { NotesRepo } from './notes-repo.js';
 import { StorageFull } from './quota.js';
@@ -233,7 +233,7 @@ export async function clipUrl(
      and a copy in the note's history on every clip with pictures, to cover something
      rarer. Not taken unless it shows up.
   */
-  const finishing = finishClip(env, ctx, repos, created.note, clip, opts);
+  const finishing = finishClip(env, ctx, repos, created.note, clip, page.url, opts);
   ctx.waitUntil(finishing.catch(() => {}));
   return { ok: true, existing: false, ...(await finishing) };
 }
@@ -245,9 +245,10 @@ async function finishClip(
   repos: { notes: NotesRepo; attachments: AttachmentsRepo },
   note: Note,
   clip: Clip,
+  pageUrl: URL,
   opts: ClipOptions,
 ): Promise<{ note: Note; images: ClipImages }> {
-  const outcome = await storeImages(env, ctx, repos, note.id, clip.images, opts);
+  const outcome = await storeImages(env, ctx, repos, note.id, clip.images, pageUrl, opts);
   const images = { stored: outcome.stored, failed: outcome.failed };
   if (outcome.relinks.size === 0) return { note, images };
 
@@ -396,6 +397,11 @@ interface StoredImages extends ClipImages {
  * the fetching: every picture after it would be refused for the same reason, and each
  * would be a fetch and an R2 put spent to learn it. The ones not yet fetched are failed
  * with that reason, so the answer says why.
+ *
+ * Each is asked for as the page was, and as a browser showing the page would ask: the
+ * same User-Agent, with the page as the Referer. A host that gave this server the page
+ * would otherwise be asked for its pictures by something else entirely, and hotlink
+ * protection refuses a picture with no Referer, which would leave it a link to the site.
  */
 async function storeImages(
   env: Pick<Env, 'BLOBS' | 'AI'>,
@@ -403,6 +409,7 @@ async function storeImages(
   repos: { notes: NotesRepo; attachments: AttachmentsRepo },
   noteId: string,
   images: ClipImage[],
+  pageUrl: URL,
   opts: ClipOptions,
 ): Promise<StoredImages> {
   const failed: Array<{ index: number; url: string; error: string }> = [];
@@ -424,7 +431,11 @@ async function storeImages(
         fail(index, image, refusal);
         continue;
       }
-      const fetched = await fetchWebImage(image.url, { allowLoopback: opts.allowLoopback, maxBytes: CLIP_MAX_IMAGE_BYTES });
+      const fetched = await fetchWebImage(image.url, {
+        allowLoopback: opts.allowLoopback,
+        maxBytes: CLIP_MAX_IMAGE_BYTES,
+        headersFor: (url) => requestHeaders(url, { referer: pageUrl, userAgent: opts.userAgent }),
+      });
       if (!fetched.ok) {
         fail(index, image, fetched.error);
         continue;

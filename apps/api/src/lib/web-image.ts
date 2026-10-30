@@ -129,7 +129,17 @@ export type WebImageResult =
  */
 export async function fetchWebImage(
   raw: string,
-  opts: { allowLoopback: boolean; maxBytes?: number },
+  opts: {
+    allowLoopback: boolean;
+    maxBytes?: number;
+    /**
+     * The request's headers for each hop, for a caller that knows more than the address.
+     * A function because they can differ per hop: `requestHeaders` tells each host only
+     * what a browser would, and a redirect can cross origins. Absent, the request says
+     * plainly that it is Unbent, which suits a picture someone asked for by address.
+     */
+    headersFor?: (url: URL) => Record<string, string>;
+  },
 ): Promise<WebImageResult> {
   const maxBytes = opts.maxBytes ?? MAX_WEB_IMAGE_BYTES;
   let current = raw;
@@ -142,7 +152,10 @@ export async function fetchWebImage(
       res = await fetch(current, {
         redirect: 'manual',
         signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-        headers: { Accept: 'image/*,*/*;q=0.5', 'User-Agent': 'Unbent (+https://unbent.app)' },
+        headers: {
+          ...(opts.headersFor?.(new URL(current)) ?? { 'User-Agent': 'Unbent (+https://unbent.app)' }),
+          Accept: 'image/*,*/*;q=0.5',
+        },
       });
     } catch (err) {
       return { ok: false, status: 502, error: `Could not reach the site: ${(err as Error).message}` };

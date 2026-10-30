@@ -258,6 +258,22 @@ describe('clipUrl', () => {
     expect(store.puts).toEqual([]);
   });
 
+  it('asks for a picture as a browser showing the page would', async () => {
+    const seen: Headers[] = [];
+    vi.stubGlobal('fetch', async (input: string | URL, init?: RequestInit) => {
+      if (String(input) === PAGE_URL) return html(articlePage(['https://cdn.example.com/a.png']))();
+      seen.push(new Headers(init?.headers));
+      return png();
+    });
+    const store = fakeStore();
+
+    await clipUrl(store.env, ctx, store.repos, { url: PAGE_URL }, { ...options, userAgent: 'Acme Browser' });
+
+    expect(seen[0]!.get('user-agent')).toBe('Acme Browser');
+    expect(seen[0]!.get('referer')).toBe('https://example.com/');
+    expect(seen[0]!.get('accept')).toContain('image/');
+  });
+
   it('says a host refused this server, so the caller can read the page itself', async () => {
     stubWeb({ [PAGE_URL]: () => new Response('denied', { status: 403 }) });
     const store = fakeStore();
