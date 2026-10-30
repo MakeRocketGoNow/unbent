@@ -127,7 +127,13 @@ so every request is handed to a background `URLSession`, which the system sends 
 not anything of the app's is running, launching the app in the background to hear each
 result (`CaptureQueue`). A background session promises no order, so the requests go a stage
 at a time: Save sends `POST /api/notes` and closes the sheet, and the files follow once
-the note is known to exist. Each result is applied to the capture's record, `.job.json`
+the note is known to exist. A web page shared on its own (one address and nothing else,
+which is what Safari's Share sends) is kept as the page rather than as a note holding its
+link: that first request is `POST /api/clip`, and the server fetches the page and writes
+the article as the note with up to ten of its pictures as files (`CaptureJob.Clip`). A
+page the server cannot read (not HTML, too large, a site that refused it, an address it
+will not fetch: 400, 413, 415 or 502) falls back to the plain note under the same id, and
+the notification says "Saved" rather than "Page clipped", so the share lands either way. Each result is applied to the capture's record, `.job.json`
 beside its files, by a pure function with the rules in it (`CaptureJob.handle`): four
 tries with a backoff, and none for a 4xx that will be the same next time; a file given up
 on is left out of a capture that is otherwise saved; a 503 with `Retry-After` waited

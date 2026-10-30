@@ -18,11 +18,21 @@ public struct CaptureIntake: Equatable, Sendable {
         CaptureNaming.deriveTitle(subject: subject, filenames: files.map(\.name), text: text)
     }
 
+    /// The address of a page the server is asked to read, when the share is one web address
+    /// and nothing else: what a browser's Share sends. Anything more (a sentence around the
+    /// link, two links, a file beside it) is a note's body as it was shared, and nothing
+    /// that is not http(s) is a page. The page's title travels as `subject`, not as text,
+    /// so it does not count against the link. See `CaptureJob.Clip`.
+    public var pageUrl: String? {
+        guard files.isEmpty, CaptureNaming.isLonePageUrl(text) else { return nil }
+        return text
+    }
+
     public var summary: String {
         CaptureNaming.summary(
             contentTypes: files.map(\.contentType),
             hasText: !text.isEmpty,
-            link: text.range(of: #"^https?://\S+$"#, options: .regularExpression) != nil
+            link: pageUrl != nil
         )
     }
 }

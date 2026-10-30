@@ -153,7 +153,37 @@ final class CaptureIntakeTests: XCTestCase {
 
         XCTAssertEqual("https://www.example.com/a-slug", intake.text)
         XCTAssertEqual("An Example Page", intake.title)
-        XCTAssertEqual("Link", intake.summary)
+        // The server will read it as the page, and the sheet says so.
+        XCTAssertEqual("Link, saved as the page", intake.summary)
+        XCTAssertEqual("https://www.example.com/a-slug", intake.pageUrl)
+    }
+
+    /// Which shares are a page for the server to read: one web address and nothing else.
+    /// The same rule as the Android worker's `lonePageUrl`.
+    func testOnlyALoneWebAddressIsAPageToClip() {
+        XCTAssertTrue(CaptureNaming.isLonePageUrl("https://example.com/a-slug?x=1"))
+        // A browser's share arrives with a newline or two around it.
+        XCTAssertTrue(CaptureNaming.isLonePageUrl("\nhttp://example.com/\n"))
+        XCTAssertTrue(CaptureNaming.isLonePageUrl("HTTPS://Example.com/"))
+
+        XCTAssertFalse(CaptureNaming.isLonePageUrl("Look at this https://example.com/"))
+        XCTAssertFalse(CaptureNaming.isLonePageUrl("https://example.com/a\nhttps://example.com/b"))
+        XCTAssertFalse(CaptureNaming.isLonePageUrl("Pick up prescription"))
+        XCTAssertFalse(CaptureNaming.isLonePageUrl(""))
+        XCTAssertFalse(CaptureNaming.isLonePageUrl("mailto:someone@example.com"))
+        XCTAssertFalse(CaptureNaming.isLonePageUrl("ftp://example.com/file"))
+        XCTAssertFalse(CaptureNaming.isLonePageUrl("https://"))
+    }
+
+    /// A link beside a file is a note with a file, as before: the file is the content.
+    func testALinkBesideAFileIsNotAPageToClip() async throws {
+        let link = NSItemProvider(object: try XCTUnwrap(NSURL(string: "https://www.example.com/a-slug")))
+        let file = provider([.pdf])
+
+        let intake = await CaptureStager(directory: directory).stage([link, file], contentText: nil)
+
+        XCTAssertNil(intake.pageUrl)
+        XCTAssertEqual(1, intake.files.count)
     }
 
     func testALinkSharedWithNothingBesideItIsTitledByItsHost() async throws {
