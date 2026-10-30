@@ -88,23 +88,64 @@ export function stripPresentation(): Transform {
 }
 
 /**
+ * Elements that make a `<div>` holding one a container rather than a line; see
+ * `divsToParagraphs`. Every element a browser lays out as a block of its own.
+ */
+export const BLOCK_TAGS: ReadonlySet<string> = new Set([
+  'address',
+  'article',
+  'aside',
+  'blockquote',
+  'details',
+  'dialog',
+  'dd',
+  'div',
+  'dl',
+  'dt',
+  'fieldset',
+  'figcaption',
+  'figure',
+  'footer',
+  'form',
+  'h1',
+  'h2',
+  'h3',
+  'h4',
+  'h5',
+  'h6',
+  'header',
+  'hgroup',
+  'hr',
+  'li',
+  'main',
+  'menu',
+  'nav',
+  'ol',
+  'p',
+  'pre',
+  'section',
+  'summary',
+  'table',
+  'ul',
+]);
+
+/**
  * `<div>` is Evernote's line separator, and plenty of web pages use it the same way;
  * Markdown has no equivalent, and to-mdast would otherwise run adjacent divs together
  * into one paragraph. Converting them to `<p>` preserves the visual line structure the
  * text was written with.
+ *
+ * A div wrapping block content is a container and is left alone: made a `<p>`, it would
+ * fold everything inside it into one paragraph. `blockTags` says which children make it
+ * one. It defaults to every block element (`BLOCK_TAGS`), which a web page needs: an
+ * article Readability hands back is an `<article>` and a code sample is a `<pre>`, each
+ * inside a div. The ENML converter passes its own, shorter list; see `enmlToMarkdown`.
  */
-export function divsToParagraphs(): Transform {
+export function divsToParagraphs(blockTags: ReadonlySet<string> = BLOCK_TAGS): Transform {
   return (tree: Node) => {
     visit(tree as never, 'element', (node: Node) => {
       if (node.tagName !== 'div') return;
-      // A div wrapping block content is a container; only leaf-ish divs are lines.
-      const hasBlockChild = (node.children ?? []).some(
-        (c) =>
-          isElement(c) &&
-          ['div', 'p', 'ul', 'ol', 'table', 'blockquote', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(
-            c.tagName ?? '',
-          ),
-      );
+      const hasBlockChild = (node.children ?? []).some((c) => isElement(c) && blockTags.has(c.tagName ?? ''));
       if (!hasBlockChild) node.tagName = 'p';
     });
   };
@@ -143,6 +184,8 @@ export interface HtmlToMarkdownOptions {
    * on.
    */
   transforms?: Transform[];
+  /** Children that keep a `<div>` a container; see `divsToParagraphs`. */
+  blockTags?: ReadonlySet<string>;
 }
 
 /**
@@ -157,7 +200,7 @@ export function htmlToMarkdown(input: string | HastRoot | Node, opts: HtmlToMark
 
   for (const transform of opts.transforms ?? []) transform(tree);
   stripPresentation()(tree);
-  divsToParagraphs()(tree);
+  divsToParagraphs(opts.blockTags)(tree);
 
   return hastToMarkdown(tree);
 }

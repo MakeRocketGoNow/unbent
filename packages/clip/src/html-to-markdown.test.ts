@@ -20,6 +20,20 @@ describe('htmlToMarkdown', () => {
     ).toBe('one\n\ntwo');
   });
 
+  it('keeps a div holding a block element a container', () => {
+    expect(htmlToMarkdown('<div><article><p>one</p><p>two</p></article></div>')).toBe('one\n\ntwo');
+    expect(htmlToMarkdown('<div><pre><code>x = 1</code></pre></div><div>after</div>')).toBe(
+      '```\nx = 1\n```\n\nafter',
+    );
+  });
+
+  it('takes a narrower list of block elements when asked', () => {
+    // What the ENML converter does: there, a div holding an <hr> is still a line, as it
+    // always was, which runs the rule into the text either side of it.
+    expect(htmlToMarkdown('<div>a<hr>b</div>', { blockTags: new Set(['p']) })).toBe('a---b');
+    expect(htmlToMarkdown('<div>a<hr>b</div>')).toBe('a\n\n---\n\nb');
+  });
+
   it('runs the caller’s transforms before the cleaning ones', () => {
     const seen: string[] = [];
     const out = htmlToMarkdown('<a class="keep" href="https://example.com/">Acme</a>', {
