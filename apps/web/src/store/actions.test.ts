@@ -662,6 +662,10 @@ describe('a replayed write', () => {
     vi.mocked(api.createNote).mockRejectedValueOnce(new ApiError(402, '402: This account is past the free plan.', 'PLAN_INACTIVE'));
     expect(await fake.replayOne()).toBe('kept');
     expect(planLapsed()).toBe(true);
+    // The page has read the plan, as `usePlanRefresh` does after the 402, and it says
+    // inactive. Held here the create never reached `unmadeNow`, and sat at the head
+    // for as long as the account stayed read-only.
+    planIs(true);
     await actions.trashNote(made.id);
     await actions.purgeNote(made.id);
     await tick();
