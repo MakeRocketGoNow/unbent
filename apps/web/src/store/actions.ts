@@ -430,6 +430,19 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
    */
   /** The queued writes that delete for good, after which a read-only account may be free again; see `planFreed`. */
   const PURGES: ReadonlySet<string> = new Set(['purgeNote', 'purgeNotes']);
+  /**
+   * A create or copy the person has already purged: `unmadeNow` must still run, or
+   * `planHeld` keeps the entry at the head for as long as the account stays read-only
+   * and every later write waits with it. The free plan's count is not this: its
+   * refusal is `storeRefused`, so `planHeld` is false and `unmake` nudges via
+   * `storeFreed`.
+   */
+  const endingUnmade = (name: string, params: Parameters<MutationFn>[0]): boolean => {
+    if (name !== 'createNote' && name !== 'duplicateNote') return false;
+    const meta = (params as { transaction?: { metadata?: Record<string, unknown> } }).transaction?.metadata;
+    const noteId = name === 'createNote' ? meta?.id : meta?.copyId;
+    return typeof noteId === 'string' && unmade.has(noteId);
+  };
   const decided = (fns: Record<string, MutationFn>): Record<string, MutationFn> =>
     Object.fromEntries(
       Object.entries(fns).map(([name, fn]) => [
@@ -438,8 +451,9 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
           try {
             // The plan has been read since the refusal and says inactive: the answer would
             // be the same 402, so the entry waits without asking (`planHeld`). It is let
-            // go the moment the plan reads otherwise; see `connectivityDetector`.
-            if (planHeld()) throw new PlanHeld();
+            // go the moment the plan reads otherwise; see `connectivityDetector`. A
+            // create the person has already purged still runs, so `unmadeNow` can end it.
+            if (planHeld() && !endingUnmade(name, params)) throw new PlanHeld();
             // Refused while this page is behind the deploy: the answer would be the same
             // until the reload, whose build sends it again (`refusal`).
             if (staleHeld && behindDeploy()) throw new BuildHeld();
