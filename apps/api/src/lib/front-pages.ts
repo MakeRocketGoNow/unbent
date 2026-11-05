@@ -141,8 +141,10 @@ export function hasSessionCookie(request: Request): boolean {
  * no such header and do ask (Googlebot's `Accept` leads with `text/html`), and so does a
  * page load in Safari before 16.4, which sent none of the `Sec-Fetch-*` headers; a
  * script's `fetch()` there accepts any type without naming HTML and gets the shell. So
- * does an unfurler that asks the same way, which is what every load of `/` got before
- * the copy, and its card reads the same picture and description.
+ * does a crawler or an unfurler that asks the same way, which is what every load of `/`
+ * got before the copy: no worse than it was, and a card reads the same picture and
+ * description. Marking the shell fill's own request instead would let those have the
+ * copy, but that is a change to the service worker, and this was not worth one.
  */
 function isDocumentLoad(request: Request): boolean {
   const dest = request.headers.get('Sec-Fetch-Dest');
