@@ -308,12 +308,18 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
    * moved on since), and put "This note changed on another device" in front of a person
    * who had one tab open. Pasting pictures made it likely: each paste changes the body
    * twice, a placeholder and then the link once the upload answers, a request's length
-   * apart. Rebasing on the answer is sound because one save per note waits, and each
-   * draft queued holds the one it replaced (the cross-tab rule in `saveNote` sees to it
-   * for a second tab).
+   * apart. Rebasing on the answer is sound because each save queued for a note holds
+   * every draft queued before it: one editor's drafts grow, and the cross-tab rule in
+   * `saveNote` refuses a second tab's that does not.
    *
-   * In memory only. An entry restored after a reload that fell exactly between the two
-   * goes against its stored base, as before.
+   * Kept until the save that uses it is over, not merely tried: an attempt the outbox
+   * keeps for a retry (`refusal`) needs it again, and a save retired unsent hands it to
+   * the one that replaced it. Taking it off the map when it was read is what the retry
+   * once undid. See the `finally` of `saveNote` below.
+   *
+   * In memory, and the holding tab's alone. An entry restored after a reload that fell
+   * between the two, or taken over by another tab through Open here, goes against its
+   * stored base, as it did before this existed.
    */
   const landed = new Map<string, Note>();
 
