@@ -9,6 +9,7 @@ import {
   RouterProvider,
 } from '@tanstack/react-router';
 import { keys } from './queries.js';
+import { FrontPage, FRONT_META } from './components/FrontPage.js';
 import { WhyPage, WHY_META } from './components/WhyPage.js';
 import { FeaturesPage, FEATURES_META } from './components/FeaturesPage.js';
 import {
@@ -32,11 +33,18 @@ import type { PageMeta } from './page-meta.js';
  * its head (`apps/api/src/lib/front-pages.ts`); the app then takes over in the browser,
  * as `main.tsx` describes.
  *
- * Only the pages for people who are not signed in belong here, and not all of those:
- * `/` is served as `index.html`, which is the shell for every route of the app, so a
- * copy of the front page written there would be drawn for a moment on every page load
- * of the notes. The pricing page could join the list; the story, the comparisons and
- * the features page are the ones a search lands on, so they went first.
+ * Only the pages for people who are not signed in belong here, and not all of those.
+ * The pricing page could join the list; the story, the comparisons, the features page
+ * and the front page are the ones a search lands on, so they went first.
+ *
+ * The front page is written to a file of its own, never into `index.html`: that is the
+ * shell for every route of the app, so a copy of the front page there would be drawn for
+ * a moment on every page load of the notes. The Worker hands the copy over for `/` only
+ * to a request with no session cookie (`hasSessionCookie` in `front-pages.ts`), which is
+ * a crawler, a link preview and a first visit; anyone signed in gets the shell, and the
+ * router sends them on to their notes as before. It was left out until 2026-11-05 for
+ * that reason, and the result was the one page a search for the name lands on reaching
+ * Google as an empty `#root`.
  *
  * What the page is rendered with is the least the shell needs: a config that says there
  * is a front page, and nothing of the operator (`legal`, `operator`), which the build
@@ -54,9 +62,11 @@ export interface PrerenderedPage {
 /**
  * Each page's file is flat, `compare-joplin.html` rather than `compare/joplin.html`, so no
  * address the asset layer resolves on its own lands on one. The Worker's `PRERENDERED`
- * (`apps/api/src/lib/front-pages.ts`) names the same files and must be kept in step.
+ * (`apps/api/src/lib/front-pages.ts`) names the same files and must be kept in step, and
+ * its `FRONT_FILE` the front page's.
  */
 export const PAGES: Record<string, PrerenderedPage> = {
+  '/': { component: FrontPage, meta: FRONT_META, file: 'front-page.html' },
   '/why': { component: WhyPage, meta: WHY_META, file: 'why.html' },
   '/features': { component: FeaturesPage, meta: FEATURES_META, file: 'features.html' },
   '/compare': { component: CompareIndexPage, meta: COMPARE_META, file: 'compare.html' },

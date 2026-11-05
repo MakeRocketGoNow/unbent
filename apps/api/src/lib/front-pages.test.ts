@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { PRERENDERED, serveFrontPage } from './front-pages.js';
+import { PRERENDERED, hasSessionCookie, serveFrontPage } from './front-pages.js';
 
 /**
  * The story's static copy as the build writes it: site-relative addresses in the head,
@@ -32,10 +32,14 @@ const assets = (files: Record<string, string>) =>
 
 const COMPARE_HTML = WHY_HTML.replace(/Why Unbent exists/g, 'Unbent and Joplin').replace(/"\/why"/g, '"/compare/joplin"');
 
-const built = assets({ '/why.html': WHY_HTML, '/compare-joplin.html': COMPARE_HTML });
+const FRONT_HTML = WHY_HTML.replace(/Why Unbent exists/g, 'Unbent').replace(/"\/why"/g, '"/"');
 
-const get = (path: string, env: Parameters<typeof serveFrontPage>[1]) =>
-  serveFrontPage(new Request(`https://notes.example.com${path}`), env);
+const built = assets({ '/why.html': WHY_HTML, '/compare-joplin.html': COMPARE_HTML, '/front-page.html': FRONT_HTML });
+
+const get = (path: string, env: Parameters<typeof serveFrontPage>[1], headers?: HeadersInit) =>
+  serveFrontPage(new Request(`https://notes.example.com${path}`, { headers }), env);
+
+const SIGNED_IN = { Cookie: 'theme=dark; __Secure-better-auth.session_token=abc.def' };
 
 describe('PRERENDERED', () => {
   /*
@@ -96,18 +100,40 @@ describe('serveFrontPage', () => {
     expect(await response!.text()).toBe(SHELL.replace('"/front/', '"https://notes.example.com/front/'));
   });
 
-  /** A link to the front page is unfurled from the shell, and a card's picture must be a whole address. */
+  /**
+   * A link to pricing is unfurled from the shell, and a card's picture must be a whole
+   * address. The front page is the shell only for a signed-in request, hence the cookie.
+   */
   it('completes the shell’s addresses for the front routes that are the shell, with a front page or not', async () => {
     for (const path of ['/', '/pricing', '/support']) {
       for (const env of [
         { ASSETS: built, FRONT_PAGE: '1', APP_URL: 'https://unbent.example' },
         { ASSETS: built, APP_URL: 'https://unbent.example' },
       ]) {
-        const response = await get(path, env);
+        const response = await get(path, env, SIGNED_IN);
         expect(response?.headers.get('Content-Type')).toBe('text/html; charset=utf-8');
         expect(await response!.text()).toContain('<meta property="og:image" content="https://unbent.example/front/card.png" />');
       }
     }
+  });
+
+  /** What Google ranks for the name: the page itself, not an empty `#root`. */
+  it('hands the front page’s static copy to a request with no session, and the shell to one with', async () => {
+    const env = { ASSETS: built, FRONT_PAGE: '1', APP_URL: 'https://unbent.example' };
+    const visitor = await get('/', env);
+    expect(visitor?.headers.get('Vary')).toBe('Cookie');
+    const html = await visitor!.text();
+    expect(html).toContain('<h1>Unbent</h1>');
+    expect(html).toContain('<link rel="canonical" href="https://unbent.example/" />');
+    const member = await get('/', env, SIGNED_IN);
+    expect(member?.headers.get('Vary')).toBe('Cookie');
+    expect(await member!.text()).toBe(SHELL.replace('"/front/', '"https://unbent.example/front/'));
+  });
+
+  /** A fork deployed unchanged publishes nobody's offer, signed in or not. */
+  it('serves the shell for / on an instance with no front page', async () => {
+    const response = await get('/', { ASSETS: built, APP_URL: 'https://notes.example.com' });
+    expect(await response!.text()).toBe(SHELL.replace('"/front/', '"https://notes.example.com/front/'));
   });
 
   it('answers nothing for every other path, and for a write', () => {
@@ -150,5 +176,23 @@ describe('serveFrontPage', () => {
       expect(await (await get('/robots.txt', env))!.text()).toBe('User-agent: *\nDisallow: /\n');
       expect((await get('/sitemap.xml', env))?.status).toBe(404);
     }
+  });
+});
+
+describe('hasSessionCookie', () => {
+  const carries = (cookie: string) => hasSessionCookie(new Request('https://notes.example.com/', { headers: { Cookie: cookie } }));
+
+  it('finds the session cookie under either name, anywhere in the header', () => {
+    expect(carries('__Secure-better-auth.session_token=abc')).toBe(true);
+    expect(carries('better-auth.session_token=abc')).toBe(true);
+    expect(carries('ph_id=1; better-auth.session_token=abc; theme=dark')).toBe(true);
+  });
+
+  it('is not fooled by an empty value, a lookalike name or no header at all', () => {
+    expect(carries('better-auth.session_token=')).toBe(false);
+    expect(carries('better-auth.session_token=; theme=dark')).toBe(false);
+    expect(carries('notbetter-auth.session_token=abc')).toBe(false);
+    expect(carries('better-auth.session_data=abc')).toBe(false);
+    expect(hasSessionCookie(new Request('https://notes.example.com/'))).toBe(false);
   });
 });

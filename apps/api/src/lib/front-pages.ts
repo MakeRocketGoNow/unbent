@@ -4,8 +4,8 @@ import type { RawEnv } from '../types.js';
 
 /**
  * The pages for people who are not signed in, as a crawler and a link preview see them
- * (MAK-240): the static copies of the story, the features page and the comparisons, the
- * front page's shell, `robots.txt` and the sitemap.
+ * (MAK-240): the static copies of the front page, the story, the features page and the
+ * comparisons, the shell that pricing and support are, `robots.txt` and the sitemap.
  *
  * Every other path is the web app's shell, which the `ASSETS` binding serves for any
  * address without a file, and which says "Unbent" and the front page's sentence whatever
@@ -49,6 +49,14 @@ export const PRERENDERED: Readonly<Record<string, string>> = {
   '/compare/paperless-ngx': '/compare-paperless-ngx.html',
 };
 
+/**
+ * The front page's static copy (`PAGES['/']` in the web app's `prerender.tsx`). Not in
+ * `PRERENDERED`, because `/` is also the way into the notes, and a signed-in load of it
+ * must be the shell rather than the front page drawn for a moment before the router
+ * moves on: see `hasSessionCookie`.
+ */
+export const FRONT_FILE = '/front-page.html';
+
 /** The pages under the front page's shell, in the order the sitemap lists them. */
 export const FRONT_ROUTES = ['/', ...Object.keys(PRERENDERED), '/pricing', '/support'] as const;
 
@@ -57,6 +65,7 @@ export const FRONT_ROUTES = ['/', ...Object.keys(PRERENDERED), '/pricing', '/sup
  * through here only so the card's picture in the shell's head is a whole address: left to
  * the asset layer, a link to the front page unfurled in Slack with no picture, because
  * the shell names it as `/front/…` and a card is drawn by something that resolves nothing.
+ * The front page is one of them for a request that carries a session (`FRONT_FILE`).
  * The rest of the app's routes stay with the asset layer: they are behind the sign-in,
  * and a card for one of them has nothing to show anyway.
  */
@@ -83,10 +92,44 @@ export function serveFrontPage(request: Request, env: FrontEnv): Promise<Respons
   if (url.pathname === '/sitemap.xml') {
     return indexable ? text(sitemapXml(origin), 'application/xml') : new Response('Not found', { status: 404 });
   }
+  if (url.pathname === '/') {
+    return varyOnCookie(
+      hasSessionCookie(request) ? serveShell(request, env, origin) : servePrerendered(request, env, origin, FRONT_FILE),
+    );
+  }
   const file = PRERENDERED[url.pathname];
   if (file) return servePrerendered(request, env, origin, file);
   if (SHELL_ROUTES.has(url.pathname)) return serveShell(request, env, origin);
   return null;
+}
+
+/**
+ * Whether the request carries a session cookie: Better Auth's `session_token`, which is
+ * `__Secure-better-auth.session_token` over https and `better-auth.session_token` on
+ * localhost (`useSecureCookies` in `auth.ts`).
+ *
+ * Its presence only, never its validity: looking the session up would cost the front
+ * page a D1 read on every load, for a choice between two pages that are both right. A
+ * cookie whose session has lapsed gets the shell, which draws the front page once the
+ * router has asked, as every load of `/` did before the static copy. A crawler, a link
+ * preview and a first visit carry no cookie and get the copy. Signing out clears the
+ * cookie, so the next load of `/` is the copy too.
+ */
+export function hasSessionCookie(request: Request): boolean {
+  const cookie = request.headers.get('Cookie');
+  return Boolean(cookie && /(?:^|;)\s*(?:__Secure-)?better-auth\.session_token=[^;\s]/.test(cookie));
+}
+
+/**
+ * The answer for `/`, marked as depending on the cookie, so nothing between here and the
+ * browser hands one visitor's page to the other. The asset layer's own answer (a failed
+ * read) has headers that cannot be changed, hence the copy.
+ */
+async function varyOnCookie(answer: Promise<Response>): Promise<Response> {
+  const settled = await answer;
+  const response = new Response(settled.body, settled);
+  response.headers.append('Vary', 'Cookie');
+  return response;
 }
 
 /**

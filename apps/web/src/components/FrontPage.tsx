@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { Link, useLocation } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { configQuery } from '../queries.js';
+import { DEFAULT_META, type PageMeta } from '../page-meta.js';
 import { useSession } from '../auth-client.js';
 import { FEATURES, FRONT, HOME, LOGIN, PRICING, SUPPORT, WHY } from '../auth-gate.js';
 import { EnexHelp, JoplinHelp, NotionHelp } from './ImportHelp.js';
@@ -32,6 +33,12 @@ export const SOURCE_URL = 'https://github.com/MakeRocketGoNow/unbent';
 /** The two places the page sends a reader who wants the detail behind a claim. */
 const ASSISTANTS_DOC_URL = `${SOURCE_URL}/blob/main/docs/assistants.md`;
 const FILES_README_URL = `${SOURCE_URL}#your-notes-are-files`;
+
+/**
+ * What a search result and a link's card say the front page is. Exported for the build,
+ * which writes the same into the page's static copy (`prerender.tsx`).
+ */
+export const FRONT_META: PageMeta = DEFAULT_META;
 
 /**
  * unbent.app's front page, for someone who is not signed in.

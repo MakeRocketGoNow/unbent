@@ -302,6 +302,13 @@ export default defineConfig({
            */
           'features.html',
           /*
+           * The front page's static copy, which only a visitor with no session is handed
+           * (`FRONT_FILE` in the Worker's `front-pages.ts`). Offline, `/` is the shell,
+           * which draws the same page; every install would download a copy nobody using
+           * the app is ever served.
+           */
+          'front-page.html',
+          /*
            * The link-preview card (`CARD_IMAGE` in `src/page-meta.ts`), the one PNG under
            * `front/`. It is read by Slack and the like, never by the app, so every install
            * would download it for nothing.
