@@ -144,8 +144,9 @@ run_worker_first = [
   # comparison by name rather than `/compare/*`: a path the Worker is handed first and
   # does not know is Hono's JSON 404, where the asset layer would give the app's own
   # not-found.
-  # See src/lib/front-pages.ts. The front page, pricing and support are the shell, passed
-  # through only so the link-preview picture in its head is a whole address.
+  # See src/lib/front-pages.ts. The front page is a static copy too (front-page.html), for
+  # a page load with no session; with one it is the shell, as pricing and support always
+  # are, passed through only so the link-preview picture in its head is a whole address.
   "/why",
   "/features",
   "/compare",
