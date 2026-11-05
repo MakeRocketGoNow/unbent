@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { RESTORE_WINDOW_DAYS, type AccountDumps, type OperatorAccount as Account, type StoreRestore, type StoreRestores } from '@unbent/shared';
@@ -39,6 +39,16 @@ const api = await import('../notes-api.js');
 const { OperatorAccount } = await import('./OperatorAccount.js');
 
 const now = Date.parse('2026-10-06T12:00:00Z');
+
+// The component asks the real clock whether a restore's undo is still inside its window
+// (`undoable` against `RESTORE_WINDOW_DAYS`), so the clock is pinned to the fixtures'
+// `now`: left real, every fixture drifted out of the window thirty days after it was
+// written and the Undo the tests press stopped being drawn. Only `Date` is faked, so
+// `waitFor` and the component's own timers still run on the real ones.
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(now);
+});
 
 const account: Account = {
   userId: 'u1',
@@ -107,6 +117,7 @@ function harness(
 const flush = () => act(async () => {});
 
 afterEach(() => {
+  vi.useRealTimers();
   cleanup();
   vi.clearAllMocks();
   signedInAs = 'op1';
