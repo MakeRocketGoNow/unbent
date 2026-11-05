@@ -121,13 +121,26 @@ describe('serveFrontPage', () => {
   it('hands the front page’s static copy to a request with no session, and the shell to one with', async () => {
     const env = { ASSETS: built, FRONT_PAGE: '1', APP_URL: 'https://unbent.example' };
     const visitor = await get('/', env);
-    expect(visitor?.headers.get('Vary')).toBe('Cookie');
+    expect(visitor?.headers.get('Vary')).toBe('Cookie, Sec-Fetch-Dest');
     const html = await visitor!.text();
     expect(html).toContain('<h1>Unbent</h1>');
     expect(html).toContain('<link rel="canonical" href="https://unbent.example/" />');
     const member = await get('/', env, SIGNED_IN);
-    expect(member?.headers.get('Vary')).toBe('Cookie');
+    expect(member?.headers.get('Vary')).toBe('Cookie, Sec-Fetch-Dest');
     expect(await member!.text()).toBe(SHELL.replace('"/front/', '"https://unbent.example/front/'));
+  });
+
+  /**
+   * The service worker's shell fill asks for `/index.html`, is redirected to `/`, and from a
+   * signed-out visitor carries no cookie. What it stores is the offline answer for every
+   * route, so it must be the shell, never the front page.
+   */
+  it('hands the shell to a script’s fetch of /, and the copy to a page load or a crawler', async () => {
+    const env = { ASSETS: built, FRONT_PAGE: '1', APP_URL: 'https://unbent.example' };
+    const shell = SHELL.replace('"/front/', '"https://unbent.example/front/');
+    expect(await (await get('/', env, { 'Sec-Fetch-Dest': 'empty' }))!.text()).toBe(shell);
+    expect(await (await get('/', env, { 'Sec-Fetch-Dest': 'document' }))!.text()).toContain('<h1>Unbent</h1>');
+    expect(await (await get('/', env))!.text()).toContain('<h1>Unbent</h1>');
   });
 
   /** The site's name and logo, as data, with whole addresses, on the front page alone. */

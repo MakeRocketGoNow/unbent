@@ -93,8 +93,8 @@ export function serveFrontPage(request: Request, env: FrontEnv): Promise<Respons
     return indexable ? text(sitemapXml(origin), 'application/xml') : new Response('Not found', { status: 404 });
   }
   if (url.pathname === '/') {
-    return varyOnCookie(
-      hasSessionCookie(request)
+    return varyOnRequester(
+      hasSessionCookie(request) || !isDocumentLoad(request)
         ? serveShell(request, env, origin)
         : servePrerendered(request, env, origin, FRONT_FILE, structuredData(origin)),
     );
@@ -123,14 +123,29 @@ export function hasSessionCookie(request: Request): boolean {
 }
 
 /**
- * The answer for `/`, marked as depending on the cookie, so nothing between here and the
- * browser hands one visitor's page to the other. The asset layer's own answer (a failed
- * read) has headers that cannot be changed, hence the copy.
+ * Whether the request could be a page load: a browser says `document` for one, and a
+ * crawler or an unfurler may say nothing at all. Anything else is a script's `fetch()`,
+ * and the one that matters is the service worker's shell fill (`fillShell` in
+ * `sw/sw.ts`): it asks for `/index.html`, which the asset layer redirects here, and a
+ * signed-out visitor's worker carries no session cookie. Without this check the fill
+ * stored the front page's copy as the offline shell of every route, and a signed-in
+ * person offline was shown the front page in place of their notes until the next
+ * deploy.
  */
-async function varyOnCookie(answer: Promise<Response>): Promise<Response> {
+function isDocumentLoad(request: Request): boolean {
+  const dest = request.headers.get('Sec-Fetch-Dest');
+  return dest === null || dest === 'document';
+}
+
+/**
+ * The answer for `/`, marked as depending on the cookie and on what asked, so nothing
+ * between here and the browser hands one requester's page to another. The asset layer's
+ * own answer (a failed read) has headers that cannot be changed, hence the copy.
+ */
+async function varyOnRequester(answer: Promise<Response>): Promise<Response> {
   const settled = await answer;
   const response = new Response(settled.body, settled);
-  response.headers.append('Vary', 'Cookie');
+  response.headers.append('Vary', 'Cookie, Sec-Fetch-Dest');
   return response;
 }
 
