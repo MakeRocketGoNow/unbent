@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { Link, useLocation } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { configQuery } from '../queries.js';
-import { DEFAULT_META, type PageMeta } from '../page-meta.js';
+import { DEFAULT_META, SITE_NAME, usePageMeta, type PageMeta } from '../page-meta.js';
 import { useSession } from '../auth-client.js';
 import { FEATURES, FRONT, HOME, LOGIN, PRICING, SUPPORT, WHY } from '../auth-gate.js';
 import { EnexHelp, JoplinHelp, NotionHelp } from './ImportHelp.js';
@@ -35,10 +35,20 @@ const ASSISTANTS_DOC_URL = `${SOURCE_URL}/blob/main/docs/assistants.md`;
 const FILES_README_URL = `${SOURCE_URL}#your-notes-are-files`;
 
 /**
- * What a search result and a link's card say the front page is. Exported for the build,
- * which writes the same into the page's static copy (`prerender.tsx`).
+ * What the tab, a search result and a link's card say the front page is. Exported for
+ * the build, which writes the same into the page's static copy (`prerender.tsx`).
+ *
+ * The title says what the product is after its name, because the name alone is an
+ * English word: a search for it lists two dictionaries around this page, and the bare
+ * "Unbent" the whole app uses (`DEFAULT_META`) gave Google nothing to tell them apart
+ * by. The name comes first, so a result cut short still starts with it. Not "an Evernote
+ * alternative": the story and the comparison say that, to the people searching for it,
+ * and the front page is for someone who may never have used Evernote.
  */
-export const FRONT_META: PageMeta = DEFAULT_META;
+export const FRONT_META: PageMeta = {
+  ...DEFAULT_META,
+  title: `${SITE_NAME}: searchable notes, receipts and scans`,
+};
 
 /**
  * unbent.app's front page, for someone who is not signed in.
@@ -72,6 +82,7 @@ export const FRONT_META: PageMeta = DEFAULT_META;
  * for the app icons): every visit to the app would otherwise download pictures of the app.
  */
 export function FrontPage() {
+  usePageMeta(FRONT_META);
   return (
     <FrontShell>
       <section className="front-hero front-width">
