@@ -36,8 +36,14 @@ export const WHY_PATH = '/why';
 /**
  * Every page the build writes a static copy of, and the file it wrote it to: the story,
  * the features page and the comparisons (`PAGES` in the web app's `prerender.tsx`, which this must match).
- * Flat file names rather than a `compare/` directory, so no path the asset layer would
- * resolve on its own ever lands on one of them.
+ *
+ * Flat file names rather than a `compare/` directory keep each copy off its page's own
+ * address. They do not keep the asset layer away from it: that answers the file's name
+ * without `.html` (`/compare-joplin`, `/front-page`) on its own, raw, before the Worker
+ * runs, so every copy is reachable there on every instance, a fork with no front page
+ * included. Left so on 2026-11-05: nothing links to those addresses, the copy names its
+ * real address as canonical, and sending them through the Worker means `run_worker_first`
+ * entries, which the service worker's lists and the compat contract are tied to.
  */
 export const PRERENDERED: Readonly<Record<string, string>> = {
   [WHY_PATH]: '/why.html',

@@ -60,10 +60,10 @@ export interface PrerenderedPage {
 }
 
 /**
- * Each page's file is flat, `compare-joplin.html` rather than `compare/joplin.html`, so no
- * address the asset layer resolves on its own lands on one. The Worker's `PRERENDERED`
- * (`apps/api/src/lib/front-pages.ts`) names the same files and must be kept in step, and
- * its `FRONT_FILE` the front page's.
+ * Each page's file is flat, `compare-joplin.html` rather than `compare/joplin.html`. The
+ * asset layer still serves each at its name without `.html`, raw; why that is left so is
+ * on the Worker's `PRERENDERED` (`apps/api/src/lib/front-pages.ts`), which names the
+ * same files and must be kept in step, as its `FRONT_FILE` must with the front page's.
  */
 export const PAGES: Record<string, PrerenderedPage> = {
   '/': { component: FrontPage, meta: FRONT_META, file: 'front-page.html' },
