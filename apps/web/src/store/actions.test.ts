@@ -1423,9 +1423,12 @@ describe('saves of one note', () => {
   function preconditioned(start: Note) {
     let held = start;
     const gates: Array<() => void> = [];
+    const failures: Error[] = [];
     vi.mocked(api.updateNote).mockImplementation(async (_id, patch) => {
       // Held on the wire until `answer`, so a save can be queued behind it meanwhile.
       await new Promise<void>((r) => gates.push(r));
+      const failure = failures.shift();
+      if (failure) throw failure;
       const { ifUpdatedAt, ...change } = patch as { ifUpdatedAt?: number } & Partial<Note>;
       if (ifUpdatedAt !== held.updatedAt) throw new NoteChangedError(held);
       held = { ...held, ...change, updatedAt: held.updatedAt + 1 };
@@ -1439,6 +1442,8 @@ describe('saves of one note', () => {
         gates.shift()!();
         await tick();
       },
+      /** The next request answered gets no answer at all, as a dropped connection does. */
+      dropNext: () => void failures.push(new OfflineError()),
       /** A write from another device, which the server takes at once. */
       elsewhere: (change: Partial<Note>) => void (held = { ...held, ...change, updatedAt: held.updatedAt + 1 }),
     };
@@ -1499,6 +1504,76 @@ describe('saves of one note', () => {
     landPull();
     await third;
     expect(lib.outbox.status().conflicts.get('n1')).toBeUndefined();
+    expect(server.held()).toMatchObject({ body: 'abcd', updatedAt: 103 });
+  });
+
+  it('keeps going against that answer when its first attempt gets no answer and is tried again', async () => {
+    const { lib, fake, landPull, note } = library([row('n1', { body: 'a', updatedAt: 100 })]);
+    await lib.outbox.ready;
+    const base = note('n1');
+    await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), body: 'ab' }, base });
+    await tick();
+    const server = preconditioned(base);
+    const first = fake.replayOne();
+    await tick();
+    await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), body: 'abc' }, base });
+    await tick();
+    await server.answer();
+    landPull();
+    await first;
+    // The second save's request is lost, and the entry is kept for another attempt.
+    server.dropNext();
+    const lost = fake.replayOne();
+    await server.answer();
+    expect(await lost).toBe('kept');
+    const again = fake.replayOne();
+    await server.answer();
+    landPull();
+    expect(await again).toBe('done');
+    expect(lib.outbox.status().conflicts.get('n1')).toBeUndefined();
+    expect(vi.mocked(api.updateNote).mock.calls.slice(1)).toEqual([
+      ['n1', { body: 'abc', ifUpdatedAt: 101 }],
+      ['n1', { body: 'abc', ifUpdatedAt: 101 }],
+    ]);
+    expect(server.held()).toMatchObject({ body: 'abc', updatedAt: 102 });
+  });
+
+  it('hands each answer on to a save typed while the kept one waits', async () => {
+    const { lib, fake, landPull, note } = library([row('n1', { body: 'a', updatedAt: 100 })]);
+    await lib.outbox.ready;
+    const base = note('n1');
+    await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), body: 'ab' }, base });
+    await tick();
+    const server = preconditioned(base);
+    const first = fake.replayOne();
+    await tick();
+    await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), body: 'abc' }, base });
+    await tick();
+    await server.answer();
+    landPull();
+    await first;
+    server.dropNext();
+    const lost = fake.replayOne();
+    await server.answer();
+    expect(await lost).toBe('kept');
+    // Typed on while the kept save waits. A save that has been tried is past retiring, so
+    // the new one queues behind it, on the same old base, and each goes against the
+    // answer the one before it left.
+    await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), body: 'abcd' }, base });
+    await tick();
+    const again = fake.replayOne();
+    await server.answer();
+    landPull();
+    expect(await again).toBe('done');
+    const last = fake.replayOne();
+    await server.answer();
+    landPull();
+    expect(await last).toBe('done');
+    expect(lib.outbox.status().conflicts.get('n1')).toBeUndefined();
+    expect(vi.mocked(api.updateNote).mock.calls.slice(-2)).toEqual([
+      ['n1', { body: 'abc', ifUpdatedAt: 101 }],
+      ['n1', { body: 'abcd', ifUpdatedAt: 102 }],
+    ]);
     expect(server.held()).toMatchObject({ body: 'abcd', updatedAt: 103 });
   });
 

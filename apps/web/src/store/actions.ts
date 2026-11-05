@@ -541,17 +541,22 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
         const saved = transaction.metadata as unknown as Save;
         const { noteId, value } = saved;
         let { base, against } = saved;
+        // An earlier save of ours landed after this one took over its precondition: go
+        // against the copy it left; see `landed`, and the `finally` for when it is let go.
+        const ours = landed.get(noteId);
+        /** Retired by a later save, which takes `ours` over. */
+        let retired = false;
+        /** Kept for another attempt (`refusal`), which needs `ours` as much as this one. */
+        let kept = false;
         try {
           // A later save of this note carries the whole draft, this one included.
           if (superseded.has(transaction.id)) {
+            retired = true;
             ended(transaction.id);
             return;
           }
-          // An earlier save of ours landed after this one took over its precondition: go
-          // against the copy it left; see `landed`. Only a newer copy, so a base the
-          // workspace already moved onto the answer is left as it is.
-          const ours = landed.get(noteId);
-          landed.delete(noteId);
+          // Only a newer copy, so a base the workspace already moved onto the answer is
+          // left as it is.
           if (ours && ours.updatedAt > (against ?? base.updatedAt)) {
             base = ours;
             against = undefined;
@@ -594,11 +599,17 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
           if (!took(updated)) await settled();
           ended(transaction.id);
         } catch (err) {
+          kept = !(err instanceof NonRetriableError);
           ended(transaction.id, err);
           throw err;
         } finally {
           superseded.delete(transaction.id);
           if (waitingSaves.get(noteId)?.id === transaction.id) waitingSaves.delete(noteId);
+          // The answer this save went against is spent once the save is over: taken,
+          // refused for good, or found to have nothing to send. Not while it is kept for a
+          // retry, nor when it was retired unsent, since its successor still needs it. And
+          // not when this save left a newer answer there for the one behind it.
+          if (!retired && !kept && landed.get(noteId) === ours) landed.delete(noteId);
           touch();
         }
       },
