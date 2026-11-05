@@ -6,9 +6,9 @@
     <!-- The stylesheet has a dark theme; this lets the browser's own controls follow it,
          and it is what a WebView reads to decide which scheme the page supports. -->
     <meta name="color-scheme" content="light dark" />
-    <!-- The front page's title and description, and what the whole app shows until a page
-         says otherwise: `src/page-meta.ts` rewrites these per route and `prerender.tsx`
-         writes a page's own into its static copy. The card's picture is a site-relative
+    <!-- What the whole app shows until a page says otherwise: `src/page-meta.ts` rewrites
+         these per route and `prerender.tsx` writes a page's own into its static copy, the
+         front page's longer title (`FRONT_META`) included. The card's picture is a site-relative
          path, which the Worker makes absolute for a prerendered page (`lib/front-pages.ts`)
          and the page itself makes absolute once it runs; a crawler reading this shell
          alone is one the Worker has already answered. -->

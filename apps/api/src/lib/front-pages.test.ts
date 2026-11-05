@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { PRERENDERED, serveFrontPage } from './front-pages.js';
+import { PRERENDERED, hasSessionCookie, serveFrontPage } from './front-pages.js';
 
 /**
  * The story's static copy as the build writes it: site-relative addresses in the head,
@@ -32,10 +32,17 @@ const assets = (files: Record<string, string>) =>
 
 const COMPARE_HTML = WHY_HTML.replace(/Why Unbent exists/g, 'Unbent and Joplin').replace(/"\/why"/g, '"/compare/joplin"');
 
-const built = assets({ '/why.html': WHY_HTML, '/compare-joplin.html': COMPARE_HTML });
+const FRONT_HTML = WHY_HTML.replace(/Why Unbent exists/g, 'Unbent').replace(/"\/why"/g, '"/"');
 
-const get = (path: string, env: Parameters<typeof serveFrontPage>[1]) =>
-  serveFrontPage(new Request(`https://notes.example.com${path}`), env);
+const built = assets({ '/why.html': WHY_HTML, '/compare-joplin.html': COMPARE_HTML, '/front-page.html': FRONT_HTML });
+
+const get = (path: string, env: Parameters<typeof serveFrontPage>[1], headers?: HeadersInit) =>
+  serveFrontPage(new Request(`https://notes.example.com${path}`, { headers }), env);
+
+const SIGNED_IN = { Cookie: 'theme=dark; __Secure-better-auth.session_token=abc.def' };
+
+/** A crawler's request: no `Sec-Fetch-Dest`, and an `Accept` that asks for HTML first. */
+const CRAWLER = { Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8' };
 
 describe('PRERENDERED', () => {
   /*
@@ -96,18 +103,74 @@ describe('serveFrontPage', () => {
     expect(await response!.text()).toBe(SHELL.replace('"/front/', '"https://notes.example.com/front/'));
   });
 
-  /** A link to the front page is unfurled from the shell, and a card's picture must be a whole address. */
+  /**
+   * A link to pricing is unfurled from the shell, and a card's picture must be a whole
+   * address. The front page is the shell only for a signed-in request, hence the cookie.
+   */
   it('completes the shell’s addresses for the front routes that are the shell, with a front page or not', async () => {
     for (const path of ['/', '/pricing', '/support']) {
       for (const env of [
         { ASSETS: built, FRONT_PAGE: '1', APP_URL: 'https://unbent.example' },
         { ASSETS: built, APP_URL: 'https://unbent.example' },
       ]) {
-        const response = await get(path, env);
+        const response = await get(path, env, SIGNED_IN);
         expect(response?.headers.get('Content-Type')).toBe('text/html; charset=utf-8');
         expect(await response!.text()).toContain('<meta property="og:image" content="https://unbent.example/front/card.png" />');
       }
     }
+  });
+
+  /** What Google ranks for the name: the page itself, not an empty `#root`. */
+  it('hands the front page’s static copy to a request with no session, and the shell to one with', async () => {
+    const env = { ASSETS: built, FRONT_PAGE: '1', APP_URL: 'https://unbent.example' };
+    const visitor = await get('/', env, CRAWLER);
+    expect(visitor?.headers.get('Vary')).toBe('Cookie, Sec-Fetch-Dest, Accept');
+    const html = await visitor!.text();
+    expect(html).toContain('<h1>Unbent</h1>');
+    expect(html).toContain('<link rel="canonical" href="https://unbent.example/" />');
+    const member = await get('/', env, SIGNED_IN);
+    expect(member?.headers.get('Vary')).toBe('Cookie, Sec-Fetch-Dest, Accept');
+    expect(await member!.text()).toBe(SHELL.replace('"/front/', '"https://unbent.example/front/'));
+  });
+
+  /**
+   * The service worker's shell fill asks for `/index.html`, is redirected to `/`, and from a
+   * signed-out visitor carries no cookie. What it stores is the offline answer for every
+   * route, so it must be the shell, never the front page.
+   */
+  it('hands the shell to a script’s fetch of /, and the copy to a page load or a crawler', async () => {
+    const env = { ASSETS: built, FRONT_PAGE: '1', APP_URL: 'https://unbent.example' };
+    const shell = SHELL.replace('"/front/', '"https://unbent.example/front/');
+    expect(await (await get('/', env, { 'Sec-Fetch-Dest': 'empty' }))!.text()).toBe(shell);
+    expect(await (await get('/', env, { 'Sec-Fetch-Dest': 'document' }))!.text()).toContain('<h1>Unbent</h1>');
+    expect(await (await get('/', env, CRAWLER))!.text()).toContain('<h1>Unbent</h1>');
+    // Safari before 16.4 sends no Sec-Fetch-Dest, so a script there is told apart by what it accepts.
+    expect(await (await get('/', env, { Accept: '*/*' }))!.text()).toBe(shell);
+    expect(await (await get('/', env))!.text()).toBe(shell);
+  });
+
+  /** The site's name and logo, as data, with whole addresses, on the front page alone. */
+  it('adds the site’s structured data to the front page’s copy and nowhere else', async () => {
+    const env = { ASSETS: built, FRONT_PAGE: '1', APP_URL: 'https://unbent.example' };
+    const html = await (await get('/', env, CRAWLER))!.text();
+    const json = html.match(/<script type="application\/ld\+json">(.*?)<\/script>\n  <\/head>/)?.[1];
+    expect(json).toBeDefined();
+    const graph = JSON.parse(json!)['@graph'] as Record<string, unknown>[];
+    expect(graph.find((node) => node['@type'] === 'WebSite')).toMatchObject({ name: 'Unbent', url: 'https://unbent.example/' });
+    expect(graph.find((node) => node['@type'] === 'Organization')).toMatchObject({
+      logo: 'https://unbent.example/icons/icon-512.png',
+    });
+    for (const [path, headers] of [['/', SIGNED_IN], ['/why', undefined]] as const) {
+      expect(await (await get(path, env, headers))!.text()).not.toContain('application/ld+json');
+    }
+    const fork = await get('/', { ASSETS: built, APP_URL: 'https://notes.example.com' });
+    expect(await fork!.text()).not.toContain('application/ld+json');
+  });
+
+  /** A fork deployed unchanged publishes nobody's offer, signed in or not. */
+  it('serves the shell for / on an instance with no front page', async () => {
+    const response = await get('/', { ASSETS: built, APP_URL: 'https://notes.example.com' });
+    expect(await response!.text()).toBe(SHELL.replace('"/front/', '"https://notes.example.com/front/'));
   });
 
   it('answers nothing for every other path, and for a write', () => {
@@ -150,5 +213,23 @@ describe('serveFrontPage', () => {
       expect(await (await get('/robots.txt', env))!.text()).toBe('User-agent: *\nDisallow: /\n');
       expect((await get('/sitemap.xml', env))?.status).toBe(404);
     }
+  });
+});
+
+describe('hasSessionCookie', () => {
+  const carries = (cookie: string) => hasSessionCookie(new Request('https://notes.example.com/', { headers: { Cookie: cookie } }));
+
+  it('finds the session cookie under either name, anywhere in the header', () => {
+    expect(carries('__Secure-better-auth.session_token=abc')).toBe(true);
+    expect(carries('better-auth.session_token=abc')).toBe(true);
+    expect(carries('ph_id=1; better-auth.session_token=abc; theme=dark')).toBe(true);
+  });
+
+  it('is not fooled by an empty value, a lookalike name or no header at all', () => {
+    expect(carries('better-auth.session_token=')).toBe(false);
+    expect(carries('better-auth.session_token=; theme=dark')).toBe(false);
+    expect(carries('notbetter-auth.session_token=abc')).toBe(false);
+    expect(carries('better-auth.session_data=abc')).toBe(false);
+    expect(hasSessionCookie(new Request('https://notes.example.com/'))).toBe(false);
   });
 });

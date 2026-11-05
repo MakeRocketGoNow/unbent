@@ -46,7 +46,10 @@ export const SITE_NAME = 'Unbent';
  */
 export const CARD_IMAGE = '/front/card.png';
 
-/** The front page's, and the whole app's until a page says otherwise; `index.html` carries the same. */
+/**
+ * The whole app's until a page says otherwise; `index.html` carries the same. The front
+ * page starts from it and gives itself a longer title (`FRONT_META`).
+ */
 export const DEFAULT_META: PageMeta = {
   title: SITE_NAME,
   description: 'Notes, receipts and scans you can search, and take with you whenever you like.',
