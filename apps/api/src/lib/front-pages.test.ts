@@ -41,6 +41,9 @@ const get = (path: string, env: Parameters<typeof serveFrontPage>[1], headers?: 
 
 const SIGNED_IN = { Cookie: 'theme=dark; __Secure-better-auth.session_token=abc.def' };
 
+/** A crawler's request: no `Sec-Fetch-Dest`, and an `Accept` that asks for HTML first. */
+const CRAWLER = { Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8' };
+
 describe('PRERENDERED', () => {
   /*
    * A page in the table reaches this module only if `run_worker_first` names it: for any
@@ -120,13 +123,13 @@ describe('serveFrontPage', () => {
   /** What Google ranks for the name: the page itself, not an empty `#root`. */
   it('hands the front page’s static copy to a request with no session, and the shell to one with', async () => {
     const env = { ASSETS: built, FRONT_PAGE: '1', APP_URL: 'https://unbent.example' };
-    const visitor = await get('/', env);
-    expect(visitor?.headers.get('Vary')).toBe('Cookie, Sec-Fetch-Dest');
+    const visitor = await get('/', env, CRAWLER);
+    expect(visitor?.headers.get('Vary')).toBe('Cookie, Sec-Fetch-Dest, Accept');
     const html = await visitor!.text();
     expect(html).toContain('<h1>Unbent</h1>');
     expect(html).toContain('<link rel="canonical" href="https://unbent.example/" />');
     const member = await get('/', env, SIGNED_IN);
-    expect(member?.headers.get('Vary')).toBe('Cookie, Sec-Fetch-Dest');
+    expect(member?.headers.get('Vary')).toBe('Cookie, Sec-Fetch-Dest, Accept');
     expect(await member!.text()).toBe(SHELL.replace('"/front/', '"https://unbent.example/front/'));
   });
 
@@ -140,13 +143,16 @@ describe('serveFrontPage', () => {
     const shell = SHELL.replace('"/front/', '"https://unbent.example/front/');
     expect(await (await get('/', env, { 'Sec-Fetch-Dest': 'empty' }))!.text()).toBe(shell);
     expect(await (await get('/', env, { 'Sec-Fetch-Dest': 'document' }))!.text()).toContain('<h1>Unbent</h1>');
-    expect(await (await get('/', env))!.text()).toContain('<h1>Unbent</h1>');
+    expect(await (await get('/', env, CRAWLER))!.text()).toContain('<h1>Unbent</h1>');
+    // Safari before 16.4 sends no Sec-Fetch-Dest, so a script there is told apart by what it accepts.
+    expect(await (await get('/', env, { Accept: '*/*' }))!.text()).toBe(shell);
+    expect(await (await get('/', env))!.text()).toBe(shell);
   });
 
   /** The site's name and logo, as data, with whole addresses, on the front page alone. */
   it('adds the site’s structured data to the front page’s copy and nowhere else', async () => {
     const env = { ASSETS: built, FRONT_PAGE: '1', APP_URL: 'https://unbent.example' };
-    const html = await (await get('/', env))!.text();
+    const html = await (await get('/', env, CRAWLER))!.text();
     const json = html.match(/<script type="application\/ld\+json">(.*?)<\/script>\n  <\/head>/)?.[1];
     expect(json).toBeDefined();
     const graph = JSON.parse(json!)['@graph'] as Record<string, unknown>[];

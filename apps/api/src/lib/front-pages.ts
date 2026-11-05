@@ -123,18 +123,25 @@ export function hasSessionCookie(request: Request): boolean {
 }
 
 /**
- * Whether the request could be a page load: a browser says `document` for one, and a
- * crawler or an unfurler may say nothing at all. Anything else is a script's `fetch()`,
- * and the one that matters is the service worker's shell fill (`fillShell` in
- * `sw/sw.ts`): it asks for `/index.html`, which the asset layer redirects here, and a
- * signed-out visitor's worker carries no session cookie. Without this check the fill
- * stored the front page's copy as the offline shell of every route, and a signed-in
- * person offline was shown the front page in place of their notes until the next
- * deploy.
+ * Whether the request could be a page load: a browser says `document` for one. Anything
+ * else is a script's `fetch()`, and the one that matters is the service worker's shell
+ * fill (`fillShell` in `sw/sw.ts`): it asks for `/index.html`, which the asset layer
+ * redirects here, and a signed-out visitor's worker carries no session cookie. Without
+ * this check the fill stored the front page's copy as the offline shell of every route,
+ * and a signed-in person offline was shown the front page in place of their notes until
+ * the next deploy.
+ *
+ * With no `Sec-Fetch-Dest` at all it is a page load if it asks for HTML. Crawlers send
+ * no such header and do ask (Googlebot's `Accept` leads with `text/html`), and so does a
+ * page load in Safari before 16.4, which sent none of the `Sec-Fetch-*` headers; a
+ * script's `fetch()` there accepts any type without naming HTML and gets the shell. So
+ * does an unfurler that asks the same way, which is what every load of `/` got before
+ * the copy, and its card reads the same picture and description.
  */
 function isDocumentLoad(request: Request): boolean {
   const dest = request.headers.get('Sec-Fetch-Dest');
-  return dest === null || dest === 'document';
+  if (dest !== null) return dest === 'document';
+  return /text\/html/i.test(request.headers.get('Accept') ?? '');
 }
 
 /**
@@ -145,7 +152,7 @@ function isDocumentLoad(request: Request): boolean {
 async function varyOnRequester(answer: Promise<Response>): Promise<Response> {
   const settled = await answer;
   const response = new Response(settled.body, settled);
-  response.headers.append('Vary', 'Cookie, Sec-Fetch-Dest');
+  response.headers.append('Vary', 'Cookie, Sec-Fetch-Dest, Accept');
   return response;
 }
 
