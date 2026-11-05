@@ -1577,6 +1577,43 @@ describe('saves of one note', () => {
     expect(server.held()).toMatchObject({ body: 'abcd', updatedAt: 103 });
   });
 
+  it('does not hand that answer to another tab’s save, which could undo it', async () => {
+    const { lib, fake, landPull, note } = library([row('n1', { title: 'old', body: 'a', updatedAt: 100 })]);
+    await lib.outbox.ready;
+    const base = note('n1');
+    const server = preconditioned(base);
+    await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), body: 'ab' }, base, origin: 'A' });
+    await tick();
+    const first = fake.replayOne();
+    await server.answer();
+    landPull();
+    await first;
+    const landedAb = server.held();
+    // Tab A types a c; its request is lost, and the save is kept for a retry, which
+    // takes it out of what the cross-tab rule can see.
+    await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(landedAb), body: 'abc' }, base: landedAb, origin: 'A' });
+    await tick();
+    server.dropNext();
+    const lost = fake.replayOne();
+    await server.answer();
+    expect(await lost).toBe('kept');
+    // Tab B, whose editor never took up the c, renames the note.
+    await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(landedAb), title: 'renamed' }, base: landedAb, origin: 'B' });
+    await tick();
+    const again = fake.replayOne();
+    await server.answer();
+    landPull();
+    expect(await again).toBe('done');
+    const theirs = fake.replayOne();
+    await server.answer();
+    landPull();
+    expect(await theirs).toBe('refused');
+    // Not rebased on A's answer, where its patch would have taken the c back out: put to
+    // the person, with A's text still on the server.
+    expect(lib.outbox.status().conflicts.get('n1')).toMatchObject({ current: { body: 'abc' }, draft: { title: 'renamed', body: 'ab' } });
+    expect(server.held()).toMatchObject({ title: 'old', body: 'abc' });
+  });
+
   it('still puts a change made elsewhere to the person when a save of ours landed before it', async () => {
     const { lib, fake, landPull, note } = library([row('n1', { body: 'a', updatedAt: 100 })]);
     await lib.outbox.ready;
