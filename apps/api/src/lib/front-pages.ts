@@ -162,10 +162,9 @@ async function serveShell(request: Request, env: FrontEnv, origin: string): Prom
 
 /**
  * A page's static copy, with its addresses completed and `head` added to its head; or
- * the shell, on an instance
- * with no front page, and when the build wrote no copy (a dev Worker over a `dist` built
- * without it), so the page still draws and the app fills it in as it does every other
- * route.
+ * the shell, on an instance with no front page, and when the build wrote no copy (a dev
+ * Worker over a `dist` built without it), so the page still draws and the app fills it
+ * in as it does every other route.
  *
  * The shell is asked for as `/`, not as the request: the binding resolves `/why` to
  * `why.html` on its own, which is the file a fork must not serve, and answers
