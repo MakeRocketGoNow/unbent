@@ -295,6 +295,27 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
   /** The save of each note still waiting, by entry id, and the entries a later save retired. */
   const waitingSaves = new Map<string, { id: string; value: NoteDraft; base: Note; against?: number | undefined; origin?: string | undefined; retire: () => void }>();
   const superseded = new Set<string>();
+  /**
+   * The server's answer to a save of this device's that landed while a later save of the
+   * same note was waiting behind it: the copy that later save is to be made against.
+   *
+   * A save already on the wire cannot be retired. The next one still takes over its base
+   * and its precondition (`saveNote`), since the request may yet fail, and then the older
+   * base is the right one. But when it lands, the server's date has moved past that
+   * precondition by a write of our own, and the later save, sent as it stood, was refused
+   * as a change made elsewhere. `holdsTheirChanges` then measured the landed text against
+   * the old base, read it as someone else's edit the draft did not hold (the draft had
+   * moved on since), and put "This note changed on another device" in front of a person
+   * who had one tab open. Pasting pictures made it likely: each paste changes the body
+   * twice, a placeholder and then the link once the upload answers, a request's length
+   * apart. Rebasing on the answer is sound because one save per note waits, and each
+   * draft queued holds the one it replaced (the cross-tab rule in `saveNote` sees to it
+   * for a second tab).
+   *
+   * In memory only. An entry restored after a reload that fell exactly between the two
+   * goes against its stored base, as before.
+   */
+  const landed = new Map<string, Note>();
 
   /**
    * The uploads still waiting, by the id their file will have; the entries taken back
@@ -517,12 +538,23 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
     onLeadershipChange: () => touch(),
     mutationFns: decided({
       saveNote: async ({ transaction }) => {
-        const { noteId, value, base, against } = transaction.metadata as unknown as Save;
+        const saved = transaction.metadata as unknown as Save;
+        const { noteId, value } = saved;
+        let { base, against } = saved;
         try {
           // A later save of this note carries the whole draft, this one included.
           if (superseded.has(transaction.id)) {
             ended(transaction.id);
             return;
+          }
+          // An earlier save of ours landed after this one took over its precondition: go
+          // against the copy it left; see `landed`. Only a newer copy, so a base the
+          // workspace already moved onto the answer is left as it is.
+          const ours = landed.get(noteId);
+          landed.delete(noteId);
+          if (ours && ours.updatedAt > (against ?? base.updatedAt)) {
+            base = ours;
+            against = undefined;
           }
           const patch = buildNotePatch(value, base, defs());
           if (!patch) {
@@ -554,6 +586,10 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
               throw new NonRetriableError(`Note ${noteId} changed on another device`);
             }
           }
+          // A later save of this note is waiting: it was queued while this one was on
+          // the wire, and goes against this answer rather than this save's own base.
+          const next = waitingSaves.get(noteId);
+          if (next && next.id !== transaction.id) landed.set(noteId, updated);
           acks.forEach((l) => l(noteId, updated, value));
           if (!took(updated)) await settled();
           ended(transaction.id);

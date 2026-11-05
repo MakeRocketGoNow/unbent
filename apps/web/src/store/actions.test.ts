@@ -1416,6 +1416,116 @@ describe('saves of one note', () => {
     expect(vi.mocked(api.updateNote).mock.calls).toEqual([['n1', { title: 'mine, and more', ifUpdatedAt: 200 }]]);
   });
 
+  /**
+   * A server that refuses any save not made against its current date, as the real one
+   * does, and answers each it takes with the next date.
+   */
+  function preconditioned(start: Note) {
+    let held = start;
+    const gates: Array<() => void> = [];
+    vi.mocked(api.updateNote).mockImplementation(async (_id, patch) => {
+      // Held on the wire until `answer`, so a save can be queued behind it meanwhile.
+      await new Promise<void>((r) => gates.push(r));
+      const { ifUpdatedAt, ...change } = patch as { ifUpdatedAt?: number } & Partial<Note>;
+      if (ifUpdatedAt !== held.updatedAt) throw new NoteChangedError(held);
+      held = { ...held, ...change, updatedAt: held.updatedAt + 1 };
+      return held;
+    });
+    return {
+      held: () => held,
+      /** Lets the request on the wire through, and waits for its entry to settle. */
+      answer: async () => {
+        while (!gates.length) await tick();
+        gates.shift()!();
+        await tick();
+      },
+      /** A write from another device, which the server takes at once. */
+      elsewhere: (change: Partial<Note>) => void (held = { ...held, ...change, updatedAt: held.updatedAt + 1 }),
+    };
+  }
+
+  it('typed while the save before it is on the wire, goes against that save’s answer, not as a conflict', async () => {
+    const { lib, fake, landPull, note } = library([row('n1', { body: 'a', updatedAt: 100 })]);
+    await lib.outbox.ready;
+    const base = note('n1');
+    await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), body: 'ab' }, base });
+    await tick();
+    const server = preconditioned(base);
+    // The first save goes out, and the person types on before it has answered: the
+    // workspace's base is still the old copy, as it is until the acknowledgement.
+    const first = fake.replayOne();
+    await tick();
+    await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), body: 'abc' }, base });
+    await tick();
+    await server.answer();
+    landPull();
+    expect(await first).toBe('done');
+
+    const second = fake.replayOne();
+    await server.answer();
+    landPull();
+    expect(await second).toBe('done');
+    expect(lib.outbox.status().conflicts.get('n1')).toBeUndefined();
+    expect(vi.mocked(api.updateNote).mock.calls).toEqual([
+      ['n1', { body: 'ab', ifUpdatedAt: 100 }],
+      ['n1', { body: 'abc', ifUpdatedAt: 101 }],
+    ]);
+    expect(server.held()).toMatchObject({ body: 'abc', updatedAt: 102 });
+  });
+
+  it('goes against the latest answer when each save lands while the next waits', async () => {
+    const { lib, fake, landPull, note } = library([row('n1', { body: 'a', updatedAt: 100 })]);
+    await lib.outbox.ready;
+    const base = note('n1');
+    await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), body: 'ab' }, base });
+    await tick();
+    const server = preconditioned(base);
+    const first = fake.replayOne();
+    await tick();
+    await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), body: 'abc' }, base });
+    await tick();
+    await server.answer();
+    landPull();
+    await first;
+    const second = fake.replayOne();
+    await tick();
+    await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), body: 'abcd' }, base });
+    await tick();
+    await server.answer();
+    landPull();
+    await second;
+    const third = fake.replayOne();
+    await server.answer();
+    landPull();
+    await third;
+    expect(lib.outbox.status().conflicts.get('n1')).toBeUndefined();
+    expect(server.held()).toMatchObject({ body: 'abcd', updatedAt: 103 });
+  });
+
+  it('still puts a change made elsewhere to the person when a save of ours landed before it', async () => {
+    const { lib, fake, landPull, note } = library([row('n1', { body: 'a', updatedAt: 100 })]);
+    await lib.outbox.ready;
+    const base = note('n1');
+    await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), body: 'ab' }, base });
+    await tick();
+    const server = preconditioned(base);
+    const first = fake.replayOne();
+    await tick();
+    await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), body: 'abc' }, base });
+    await tick();
+    await server.answer();
+    landPull();
+    await first;
+    // Another device writes the body after ours landed.
+    server.elsewhere({ body: 'theirs' });
+    const second = fake.replayOne();
+    await server.answer();
+    landPull();
+    await second;
+    expect(lib.outbox.status().conflicts.get('n1')).toMatchObject({ current: { body: 'theirs' }, draft: { body: 'abc' }, base: { body: 'ab', updatedAt: 101 } });
+    expect(server.held().body).toBe('theirs');
+  });
+
   it('retires a save a reload restored when a new save of its note is queued', async () => {
     // An entry from before the reload: in storage and in the executor's queue before the
     // outbox learns what was restored.
