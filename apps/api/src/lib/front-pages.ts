@@ -71,11 +71,12 @@ export const FRONT_ROUTES = ['/', ...Object.keys(PRERENDERED), '/pricing', '/sup
  * through here only so the card's picture in the shell's head is a whole address: left to
  * the asset layer, a link to the front page unfurled in Slack with no picture, because
  * the shell names it as `/front/…` and a card is drawn by something that resolves nothing.
- * The front page is one of them for a request that carries a session (`FRONT_FILE`).
- * The rest of the app's routes stay with the asset layer: they are behind the sign-in,
- * and a card for one of them has nothing to show anyway.
+ * The front page is the shell too, for a request that carries a session, but `/` is
+ * answered before this list is read: see `FRONT_FILE`. The rest of the app's routes stay
+ * with the asset layer: they are behind the sign-in, and a card for one of them has
+ * nothing to show anyway.
  */
-const SHELL_ROUTES: ReadonlySet<string> = new Set(['/', '/pricing', '/support']);
+const SHELL_ROUTES: ReadonlySet<string> = new Set(['/pricing', '/support']);
 
 /** The app behind the sign-in, which a crawler has no business in even when it follows a link there. */
 const PRIVATE_PREFIXES = ['/api/', '/notes', '/trash', '/settings', '/import', '/login', '/connect', '/consent', '/device', '/embed/'];
