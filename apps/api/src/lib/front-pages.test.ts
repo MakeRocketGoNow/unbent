@@ -130,6 +130,24 @@ describe('serveFrontPage', () => {
     expect(await member!.text()).toBe(SHELL.replace('"/front/', '"https://unbent.example/front/'));
   });
 
+  /** The site's name and logo, as data, with whole addresses, on the front page alone. */
+  it('adds the site’s structured data to the front page’s copy and nowhere else', async () => {
+    const env = { ASSETS: built, FRONT_PAGE: '1', APP_URL: 'https://unbent.example' };
+    const html = await (await get('/', env))!.text();
+    const json = html.match(/<script type="application\/ld\+json">(.*?)<\/script>\n  <\/head>/)?.[1];
+    expect(json).toBeDefined();
+    const graph = JSON.parse(json!)['@graph'] as Record<string, unknown>[];
+    expect(graph.find((node) => node['@type'] === 'WebSite')).toMatchObject({ name: 'Unbent', url: 'https://unbent.example/' });
+    expect(graph.find((node) => node['@type'] === 'Organization')).toMatchObject({
+      logo: 'https://unbent.example/icons/icon-512.png',
+    });
+    for (const [path, headers] of [['/', SIGNED_IN], ['/why', undefined]] as const) {
+      expect(await (await get(path, env, headers))!.text()).not.toContain('application/ld+json');
+    }
+    const fork = await get('/', { ASSETS: built, APP_URL: 'https://notes.example.com' });
+    expect(await fork!.text()).not.toContain('application/ld+json');
+  });
+
   /** A fork deployed unchanged publishes nobody's offer, signed in or not. */
   it('serves the shell for / on an instance with no front page', async () => {
     const response = await get('/', { ASSETS: built, APP_URL: 'https://notes.example.com' });

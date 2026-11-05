@@ -94,7 +94,9 @@ export function serveFrontPage(request: Request, env: FrontEnv): Promise<Respons
   }
   if (url.pathname === '/') {
     return varyOnCookie(
-      hasSessionCookie(request) ? serveShell(request, env, origin) : servePrerendered(request, env, origin, FRONT_FILE),
+      hasSessionCookie(request)
+        ? serveShell(request, env, origin)
+        : servePrerendered(request, env, origin, FRONT_FILE, structuredData(origin)),
     );
   }
   const file = PRERENDERED[url.pathname];
@@ -144,7 +146,8 @@ async function serveShell(request: Request, env: FrontEnv, origin: string): Prom
 }
 
 /**
- * A page's static copy, with its addresses completed; or the shell, on an instance
+ * A page's static copy, with its addresses completed and `head` added to its head; or
+ * the shell, on an instance
  * with no front page, and when the build wrote no copy (a dev Worker over a `dist` built
  * without it), so the page still draws and the app fills it in as it does every other
  * route.
@@ -153,14 +156,15 @@ async function serveShell(request: Request, env: FrontEnv, origin: string): Prom
  * `why.html` on its own, which is the file a fork must not serve, and answers
  * `/index.html` with a redirect to `/`.
  */
-async function servePrerendered(request: Request, env: FrontEnv, origin: string, file: string): Promise<Response> {
+async function servePrerendered(request: Request, env: FrontEnv, origin: string, file: string, head = ''): Promise<Response> {
   const shell = () => serveShell(request, env, origin);
   if (!frontPageOf(env)) return shell();
   // A plain GET, not the browser's conditional one: the file's ETag describes the file,
   // not this answer with its addresses completed.
   const asset = await env.ASSETS.fetch(new Request(new URL(file, request.url)));
   if (!asset.ok) return shell();
-  return html(completeAddresses(await asset.text(), origin));
+  const page = completeAddresses(await asset.text(), origin);
+  return html(head ? page.replace('</head>', `${head}\n  </head>`) : page);
 }
 
 function html(body: string): Response {
@@ -184,6 +188,39 @@ export function completeAddresses(html: string, origin: string): string {
   return html
     .replace(/(<meta property="og:(?:image|url)" content=")(\/[^"]*)/g, `$1${origin}$2`)
     .replace(/(<link rel="canonical" href=")(\/[^"]*)/g, `$1${origin}$2`);
+}
+
+/**
+ * What the front page tells a search engine about the site as data rather than prose:
+ * that the site is called Unbent, and what its logo is. Google reads `WebSite` from the
+ * home page for the name it heads every result with, which is otherwise guessed and was
+ * "unbent.app", and `Organization` for the logo and the profiles that are the same
+ * thing (`sameAs`), the source repository today; a store listing or a social profile
+ * belongs in that list once there is a public one.
+ *
+ * Written here rather than by the build because every address in it has to be whole,
+ * and only the Worker knows the origin. Only on the front page's static copy, which only
+ * an instance with a front page serves: the name, the logo and the repository are
+ * unbent.app's, as the page's prices are, and a fork with no front page claims none of
+ * them. The `<` escape keeps a value from ever closing the script tag.
+ */
+export function structuredData(origin: string): string {
+  const site = `${origin}/`;
+  const data = {
+    '@context': 'https://schema.org',
+    '@graph': [
+      { '@type': 'WebSite', '@id': `${site}#website`, name: 'Unbent', url: site, publisher: { '@id': `${site}#organization` } },
+      {
+        '@type': 'Organization',
+        '@id': `${site}#organization`,
+        name: 'Unbent',
+        url: site,
+        logo: `${origin}/icons/icon-512.png`,
+        sameAs: ['https://github.com/MakeRocketGoNow/unbent'],
+      },
+    ],
+  };
+  return `<script type="application/ld+json">${JSON.stringify(data).replace(/</g, '\\u003c')}</script>`;
 }
 
 /** What a crawler may read here: the public pages, or nothing. */
