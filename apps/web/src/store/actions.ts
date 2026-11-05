@@ -295,6 +295,35 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
   /** The save of each note still waiting, by entry id, and the entries a later save retired. */
   const waitingSaves = new Map<string, { id: string; value: NoteDraft; base: Note; against?: number | undefined; origin?: string | undefined; retire: () => void }>();
   const superseded = new Set<string>();
+  /**
+   * The server's answer to a save of this device's that landed while a later save of the
+   * same note was waiting behind it: the copy that later save is to be made against.
+   *
+   * A save already on the wire cannot be retired. The next one still takes over its base
+   * and its precondition (`saveNote`), since the request may yet fail, and then the older
+   * base is the right one. But when it lands, the server's date has moved past that
+   * precondition by a write of our own, and the later save, sent as it stood, was refused
+   * as a change made elsewhere. `holdsTheirChanges` then measured the landed text against
+   * the old base, read it as someone else's edit the draft did not hold (the draft had
+   * moved on since), and put "This note changed on another device" in front of a person
+   * who had one tab open. Pasting pictures made it likely: each paste changes the body
+   * twice, a placeholder and then the link once the upload answers, a request's length
+   * apart. Rebasing on the answer is sound because it is handed only to a save from the
+   * same tab, whose editor's drafts grow, so the later one holds the earlier. Another
+   * tab's save is not rebased: the cross-tab rule in `saveNote` sees only a save still
+   * waiting, not one tried and kept for a retry, so such a save is not known to hold
+   * this one's change.
+   *
+   * Kept until the save that uses it is over, not merely tried: an attempt the outbox
+   * keeps for a retry (`refusal`) needs it again, and a save retired unsent hands it to
+   * the one that replaced it. Taking it off the map when it was read is what the retry
+   * once undid. See the `finally` of `saveNote` below.
+   *
+   * In memory, and the holding tab's alone. An entry restored after a reload that fell
+   * between the two, or taken over by another tab through Open here, goes against its
+   * stored base, as it did before this existed.
+   */
+  const landed = new Map<string, Note>();
 
   /**
    * The uploads still waiting, by the id their file will have; the entries taken back
@@ -517,12 +546,28 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
     onLeadershipChange: () => touch(),
     mutationFns: decided({
       saveNote: async ({ transaction }) => {
-        const { noteId, value, base, against } = transaction.metadata as unknown as Save;
+        const saved = transaction.metadata as unknown as Save;
+        const { noteId, value } = saved;
+        let { base, against } = saved;
+        // An earlier save of ours landed after this one took over its precondition: go
+        // against the copy it left; see `landed`, and the `finally` for when it is let go.
+        const ours = landed.get(noteId);
+        /** Retired by a later save, which takes `ours` over. */
+        let retired = false;
+        /** Kept for another attempt (`refusal`), which needs `ours` as much as this one. */
+        let kept = false;
         try {
           // A later save of this note carries the whole draft, this one included.
           if (superseded.has(transaction.id)) {
+            retired = true;
             ended(transaction.id);
             return;
+          }
+          // Only a newer copy, so a base the workspace already moved onto the answer is
+          // left as it is.
+          if (ours && ours.updatedAt > (against ?? base.updatedAt)) {
+            base = ours;
+            against = undefined;
           }
           const patch = buildNotePatch(value, base, defs());
           if (!patch) {
@@ -554,15 +599,33 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
               throw new NonRetriableError(`Note ${noteId} changed on another device`);
             }
           }
+          // A later save of this note is waiting: it was queued while this one was on
+          // the wire, and goes against this answer rather than this save's own base.
+          // Only one from the same tab. Another tab's save can reach the queue without
+          // the cross-tab rule in `saveNote` seeing this one (an attempt kept for a retry
+          // is out of `waitingSaves`), and rebased on this answer its patch would undo
+          // this save without a word. Sent as it stands it is refused, and goes again
+          // through `holdsTheirChanges` when it holds this save's change, or is put to
+          // the person when it does not. A save with no origin is from before saves
+          // carried one, and is taken as this tab's, as `saveNote` takes it.
+          const next = waitingSaves.get(noteId);
+          const sameTab = next?.origin === undefined || saved.origin === undefined || next.origin === saved.origin;
+          if (next && next.id !== transaction.id && sameTab) landed.set(noteId, updated);
           acks.forEach((l) => l(noteId, updated, value));
           if (!took(updated)) await settled();
           ended(transaction.id);
         } catch (err) {
+          kept = !(err instanceof NonRetriableError);
           ended(transaction.id, err);
           throw err;
         } finally {
           superseded.delete(transaction.id);
           if (waitingSaves.get(noteId)?.id === transaction.id) waitingSaves.delete(noteId);
+          // The answer this save went against is spent once the save is over: taken,
+          // refused for good, or found to have nothing to send. Not while it is kept for a
+          // retry, nor when it was retired unsent, since its successor still needs it. And
+          // not when this save left a newer answer there for the one behind it.
+          if (!retired && !kept && landed.get(noteId) === ours) landed.delete(noteId);
           touch();
         }
       },
