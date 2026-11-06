@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { MAX_CLIP_PARSED_CHARS } from '@unbent/shared';
@@ -133,6 +133,10 @@ export function ClipPage({ url: addressed }: { url: string | undefined }) {
   const offered = config.data?.webClip === true;
   const heard = useOpenerPage(offered && session !== null && !isPending);
   const [saving, setSaving] = useState<Saving>({ kind: 'idle' });
+  const page = heard.kind === 'page' ? heard.page : null;
+  // Once per page, not per render: reading a title out of the HTML parses the whole page,
+  // and the window draws again on every press and every refetch of the session.
+  const pageTitle = useMemo(() => (page ? page.title || titleIn(page.html) : ''), [page]);
   // Save fades for what Clip a link fades for in the app, with the same words: the server
   // does the clipping, and a read-only account cannot add the note.
   const offline = useOffline();
@@ -181,7 +185,6 @@ export function ClipPage({ url: addressed }: { url: string | undefined }) {
     );
   }
 
-  const page = heard.kind === 'page' ? heard.page : null;
   const url = page?.url ?? addressed;
   // Against what the server reads, not what a request may carry: the bookmarklet has
   // already taken out the scripts and styles the server would, so a page past the reading
@@ -209,7 +212,7 @@ export function ClipPage({ url: addressed }: { url: string | undefined }) {
   if (heard.kind === 'waiting' && saving.kind === 'idle') return <Waiting />;
 
   const host = hostOf(url);
-  const title = (page && (page.title || titleIn(page.html))) || host;
+  const title = pageTitle || host;
 
   async function save() {
     if (!url || saving.kind === 'busy') return;
