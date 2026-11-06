@@ -228,12 +228,12 @@ describe('the clip window', () => {
     expect(second).toBe(first);
   });
 
-  /* The page is in a message to this window: it cannot wait across a sign-in. */
-  it('asks someone signed out to sign in and press the bookmark again, and asks the tab for nothing', async () => {
+  /* The page is in a message to this window: the sign-in comes back here, with the address. */
+  it('asks someone signed out to sign in and come back with the address, and asks the tab for nothing', async () => {
     session = null;
     mount();
     expect(await screen.findByText('Sign in to clip this page.')).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Sign in' }).getAttribute('href')).toBe('/login?redirect=/clip');
+    expect(screen.getByRole('link', { name: 'Sign in' }).getAttribute('href')).toBe(`/login?redirect=/clip?url=${encodeURIComponent(ADDRESS)}`);
     expect(opener.postMessage).not.toHaveBeenCalled();
   });
 

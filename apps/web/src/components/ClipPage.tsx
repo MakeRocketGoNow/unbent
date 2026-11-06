@@ -110,8 +110,9 @@ type Saving = { kind: 'idle' } | { kind: 'busy' } | { kind: 'saved'; id: string;
  * as a pop-up beside someone's reading: the rail, the list and a note would be a whole
  * app squeezed into 480 pixels to show one button. It reads the session itself (the
  * plain shell does not ask for one) so a person who is signed out is told what to do
- * rather than sent to a sign-in screen that would lose the page on the way: the page is
- * in a message to this window, and there is nowhere it could wait across a sign-in.
+ * rather than sent to the sign-in screen at once, which would take the window away from
+ * the tab's message before a person knew why. The sign-in it offers comes back here
+ * with the page's address (see the Sign in link).
  *
  * Nothing is saved without a press of Save, which names the page and its site first.
  * That press is the guard against a site opening this window and posting it a page of
@@ -158,11 +159,14 @@ export function ClipPage({ url: addressed }: { url: string | undefined }) {
       <div className="login clip-page">
         <h1>Unbent</h1>
         <p>Sign in to clip this page.</p>
-        <p className="muted small">Then press the Clip to Unbent bookmark on the page again.</p>
+        <p className="muted small">You&apos;ll come back here to save it.</p>
         <div className="login-actions">
-          {/* The way to another page, so a link wearing the button's shape. Back to a bare
-              /clip after, which has nothing to keep and says so. */}
-          <Link to="/login" search={{ redirect: CLIP_PATH }} className="btn btn-primary">
+          {/* The way to another page, so a link wearing the button's shape. Back to this
+              /clip after, with the page's address: a sign-in that stays on this origin (an
+              emailed code) leaves the tab's bookmarklet waiting, and it sends the page once
+              this window asks again; one through a provider whose pages cut the opener
+              leaves only the address, which the server fetches. */}
+          <Link to="/login" search={{ redirect: addressed ? `${CLIP_PATH}?url=${encodeURIComponent(addressed)}` : CLIP_PATH }} className="btn btn-primary">
             Sign in
           </Link>
         </div>
