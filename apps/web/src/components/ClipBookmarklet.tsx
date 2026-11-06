@@ -2,13 +2,19 @@ import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { configQuery } from '../queries.js';
 import { bookmarkletFor } from '../bookmarklet.js';
+import { isHosted } from '../app-bridge.js';
+import { TOUCH_QUERY, useMediaQuery } from '../useMediaQuery.js';
 import { ClipLinkIcon } from './icons.js';
 
 /**
  * Where the bookmarklet is installed from: a link to drag to the bookmarks bar, built for
  * this instance's origin, so a bookmark made from a self-hosted instance clips into that
  * one. Drawn only where the instance clips (`config.webClip`); elsewhere there is nothing
- * for it to do.
+ * for it to do. And only in a desktop browser: inside the Android and iOS apps, and in a
+ * phone's or tablet's browser, there is no bookmarks bar to drag it to, and a tap would
+ * only say to do what cannot be done there. Those have the share sheet, which clips a
+ * shared page. Touch is asked of the pointer (`TOUCH_QUERY`), not the width, since a
+ * desktop window dragged narrow still has a bookmarks bar.
  *
  * A link, not a `Button`: what it is for is being dragged, and only an anchor drags into a
  * bookmarks bar as a bookmark. It is drawn as a chip so it reads as a thing to pick up
@@ -23,7 +29,8 @@ export function ClipBookmarklet() {
   const config = useQuery(configQuery());
   const ref = useRef<HTMLAnchorElement>(null);
   const [pressed, setPressed] = useState(false);
-  const offered = config.data?.webClip === true;
+  const touch = useMediaQuery(TOUCH_QUERY);
+  const offered = config.data?.webClip === true && !isHosted() && !touch;
 
   useEffect(() => {
     ref.current?.setAttribute('href', bookmarkletFor(window.location.origin));

@@ -5,6 +5,8 @@ import * as api from '../notes-api.js';
 import { bookmarkletFor } from '../bookmarklet.js';
 import { ClipBookmarklet } from './ClipBookmarklet.js';
 
+let touch = false;
+vi.mock('../useMediaQuery.js', async (importOriginal) => ({ ...(await importOriginal<typeof import('../useMediaQuery.js')>()), useMediaQuery: () => touch }));
 vi.mock('../notes-api.js', async (importOriginal) => ({ ...(await importOriginal<typeof import('../notes-api.js')>()), getConfig: vi.fn() }));
 
 /** The install link: for this instance, only where it clips, and inert when pressed here. */
@@ -18,7 +20,18 @@ function mount(webClip: boolean) {
   );
 }
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  touch = false;
+  delete window.UnbentApp;
+});
+
+/** Whether `mount` drew nothing, once the config has answered. */
+async function drawsNothing(view: ReturnType<typeof mount>) {
+  await vi.waitFor(() => expect(api.getConfig).toHaveBeenCalled());
+  await new Promise((r) => setTimeout(r, 0));
+  return view.container.textContent === '';
+}
 
 describe('the bookmarklet install link', () => {
   it('is a draggable link to this instance', async () => {
@@ -40,9 +53,16 @@ describe('the bookmarklet install link', () => {
   });
 
   it('is not drawn where the instance does not clip', async () => {
-    const { container } = mount(false);
-    await vi.waitFor(() => expect(api.getConfig).toHaveBeenCalled());
-    await new Promise((r) => setTimeout(r, 0));
-    expect(container.textContent).toBe('');
+    expect(await drawsNothing(mount(false))).toBe(true);
+  });
+
+  /* No bookmarks bar to drag it to; the share sheet clips there. */
+  it('is not drawn inside the apps or on a touch device', async () => {
+    window.UnbentApp = { postMessage: vi.fn() };
+    expect(await drawsNothing(mount(true))).toBe(true);
+    cleanup();
+    delete window.UnbentApp;
+    touch = true;
+    expect(await drawsNothing(mount(true))).toBe(true);
   });
 });
