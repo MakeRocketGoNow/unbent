@@ -123,7 +123,7 @@ type Saving = { kind: 'idle' } | { kind: 'busy' } | { kind: 'saved'; id: string;
  * reading is in the other window. "Open note" is there for the time it is not.
  *
  * Its states, in order: waiting for the tab, then the page (or the address alone when
- * the tab never answered or the page is past what a request may carry), then saving,
+ * the tab never answered or the page is past what a clip reads), then saving,
  * then saved or the reason it was not. A refusal links the page, so a site the server
  * could not read is still one click from being kept some other way.
  */
