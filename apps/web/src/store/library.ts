@@ -136,7 +136,7 @@ provideForwarder(async () => {
 });
 
 /*
- * A client tab's wait for a view it saved to reach its rows (`viewLanded` in
+ * A client tab's wait for a row it asked the server for to reach its rows (`landed` in
  * `actions.ts`): they change only when the holder's do, so the wait is on this tab's
  * change listeners, bounded by the caller. Nothing to wait for in a tab that holds the
  * library (the action pulls there) or has none.
@@ -149,7 +149,7 @@ provideMirrorWait(async (until, ms) => {
   } catch {
     return;
   }
-  if (!lib.remote || until(lib.views)) return;
+  if (!lib.remote || until(lib)) return;
   await new Promise<void>((done) => {
     const finish = () => {
       clearTimeout(timer);
@@ -158,7 +158,7 @@ provideMirrorWait(async (until, ms) => {
     };
     const timer = setTimeout(finish, ms);
     const stop = onLibraryChange(() => {
-      if (until(lib.views)) finish();
+      if (until(lib)) finish();
     });
   });
 });

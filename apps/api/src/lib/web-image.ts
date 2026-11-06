@@ -129,8 +129,25 @@ export type WebImageResult =
  */
 export async function fetchWebImage(
   raw: string,
-  opts: { allowLoopback: boolean },
+  opts: {
+    allowLoopback: boolean;
+    maxBytes?: number;
+    /**
+     * The request's headers for each hop, for a caller that knows more than the address.
+     * A function because they can differ per hop: `requestHeaders` tells each host only
+     * what a browser would, and a redirect can cross origins. Absent, the request says
+     * plainly that it is Unbent, which suits a picture someone asked for by address.
+     */
+    headersFor?: (url: URL) => Record<string, string>;
+    /**
+     * Ends the fetch early, on top of each hop's own timeout: a caller with a deadline
+     * for a whole set of pictures (a clip's) passes it, and whatever is still on its way
+     * then fails as any broken fetch does.
+     */
+    signal?: AbortSignal;
+  },
 ): Promise<WebImageResult> {
+  const maxBytes = opts.maxBytes ?? MAX_WEB_IMAGE_BYTES;
   let current = raw;
   for (let hop = 0; hop <= MAX_REDIRECTS; hop += 1) {
     const rejected = rejectWebImageUrl(current, opts);
@@ -140,8 +157,11 @@ export async function fetchWebImage(
     try {
       res = await fetch(current, {
         redirect: 'manual',
-        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-        headers: { Accept: 'image/*,*/*;q=0.5', 'User-Agent': 'Unbent (+https://unbent.app)' },
+        signal: opts.signal ? AbortSignal.any([AbortSignal.timeout(FETCH_TIMEOUT_MS), opts.signal]) : AbortSignal.timeout(FETCH_TIMEOUT_MS),
+        headers: {
+          ...(opts.headersFor?.(new URL(current)) ?? { 'User-Agent': 'Unbent (+https://unbent.app)' }),
+          Accept: 'image/*,*/*;q=0.5',
+        },
       });
     } catch (err) {
       return { ok: false, status: 502, error: `Could not reach the site: ${(err as Error).message}` };
@@ -150,7 +170,11 @@ export async function fetchWebImage(
     if (res.status >= 300 && res.status < 400) {
       const location = res.headers.get('Location');
       if (!location) return { ok: false, status: 502, error: 'The site redirected nowhere' };
-      current = new URL(location, current).toString();
+      try {
+        current = new URL(location, current).toString();
+      } catch {
+        return { ok: false, status: 502, error: 'The site redirected to an address that is not a URL' };
+      }
       continue;
     }
     if (!res.ok) return { ok: false, status: 502, error: `The site answered ${res.status}` };
@@ -161,14 +185,67 @@ export async function fetchWebImage(
     }
 
     const declared = Number(res.headers.get('Content-Length') ?? '0');
-    if (declared > MAX_WEB_IMAGE_BYTES) return { ok: false, status: 413, error: 'Image too large' };
+    if (declared > maxBytes) return { ok: false, status: 413, error: 'Image too large' };
 
-    const bytes = await res.arrayBuffer();
-    if (bytes.byteLength > MAX_WEB_IMAGE_BYTES) return { ok: false, status: 413, error: 'Image too large' };
+    let bytes: ArrayBuffer | null;
+    try {
+      // A declared length is the body's only when nothing was decoded on the way: a
+      // compressed picture's header gives the compressed size.
+      bytes = await readUpTo(res, maxBytes, res.headers.has('Content-Encoding') ? 0 : declared);
+    } catch (err) {
+      // A connection reset, or the timeout running out, part way through the body.
+      return { ok: false, status: 502, error: `Reading the image failed: ${(err as Error).message}` };
+    }
+    if (bytes === null) return { ok: false, status: 413, error: 'Image too large' };
     if (bytes.byteLength === 0) return { ok: false, status: 502, error: 'The site sent an empty image' };
 
     const filename = filenameForWebImage(new URL(current), contentType, res.headers.get('Content-Disposition'));
     return { ok: true, bytes, contentType, filename };
   }
   return { ok: false, status: 502, error: 'Too many redirects' };
+}
+
+/**
+ * The body, counted as it arrives, or null at the first byte past `limit`. A source need
+ * not declare its size, and may declare a false one, so reading it whole and looking
+ * afterwards would spend the memory the limit is there to save.
+ *
+ * A body that declared its size (`expected`) is written straight into one buffer of that
+ * size, so it is held once. Gathering chunks and joining them at the end holds it twice
+ * at that moment, which is what a body that declared nothing still costs, and what one
+ * that sends more than it declared falls back to.
+ */
+async function readUpTo(res: Response, limit: number, expected = 0): Promise<ArrayBuffer | null> {
+  if (!res.body) return new ArrayBuffer(0);
+  const reader = res.body.getReader();
+  let buffer = expected > 0 && expected <= limit ? new Uint8Array(expected) : null;
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (total + value.byteLength > limit) {
+      await reader.cancel().catch(() => {});
+      return null;
+    }
+    if (buffer && total + value.byteLength <= buffer.byteLength) {
+      buffer.set(value, total);
+    } else {
+      // More than it declared: what was written so far becomes the first chunk.
+      if (buffer) {
+        chunks.push(buffer.subarray(0, total));
+        buffer = null;
+      }
+      chunks.push(value);
+    }
+    total += value.byteLength;
+  }
+  if (buffer) return total === buffer.byteLength ? buffer.buffer : buffer.slice(0, total).buffer;
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return bytes.buffer;
 }

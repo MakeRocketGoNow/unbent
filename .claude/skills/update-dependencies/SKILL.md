@@ -88,13 +88,14 @@ as well as a pin; say so in the PR rather than making it quietly.
 
 ## 4. Verify
 
-What CI runs, all of it, before the push, plus the ENEX parser's tests, which CI does not run
-and which pdf.js and zip.js updates reach:
+What CI runs, all of it, before the push. The ENEX parser's tests are the ones pdf.js and
+zip.js updates reach, and the clip package's guard the converter, linkedom and Readability:
 
 ```bash
 pnpm typecheck
 pnpm --filter @unbent/api test:unit
 pnpm --filter @unbent/seed test
+pnpm --filter @unbent/clip test
 pnpm --filter @unbent/enex test
 pnpm build
 pnpm --filter @unbent/web test

@@ -225,6 +225,135 @@ final class CaptureJobTests: XCTestCase {
         XCTAssertEqual(1, job.progress.attempts)
     }
 
+    // MARK: - A page to clip
+
+    private func clipJob(title: String? = nil) -> CaptureJob {
+        CaptureJob(
+            id: "job-1",
+            origin: "https://notes.example.com",
+            noteId: "11111111-1111-4111-8111-111111111111",
+            title: "example.com",
+            body: "https://example.com/a-slug",
+            notebook: "Reading",
+            tags: ["read"],
+            clip: CaptureJob.Clip(url: "https://example.com/a-slug", title: title)
+        )
+    }
+
+    /// The server reads the page and makes the note; a clip has no files, so the note is
+    /// the whole capture, and it says so as a page.
+    func testAClippedPageIsSavedWhenTheServerAnswers() {
+        var job = clipJob()
+        XCTAssertEqual([.create], job.pending(live: []))
+        XCTAssertEqual(.saved, job.handle(.create, ok))
+        XCTAssertNotNil(job.clip)
+    }
+
+    /// The page could not be read, or the instance has no clipper (404: switched off, or
+    /// from before the route): the plain note goes out at once, under the same id, and
+    /// the refusal is not one of the capture's four tries.
+    func testAPageTheServerCannotReadFallsBackToTheNoteWithItsLink() {
+        for status in [400, 404, 413, 415, 502] {
+            var job = clipJob(title: "My name")
+            XCTAssertEqual(.send([.create]), job.handle(.create, CaptureOutcome(status: status)), "\(status)")
+            XCTAssertNil(job.clip)
+            XCTAssertEqual(0, job.progress.attempts)
+            XCTAssertEqual("11111111-1111-4111-8111-111111111111", job.noteId)
+            // And the fallback is an ordinary create from here: a refusal now is final.
+            XCTAssertEqual(.failed, job.handle(.create, CaptureOutcome(status: 400)), "\(status)")
+        }
+    }
+
+    /// What the server says about the account or the session is not about the page.
+    func testARefusalEveryCaptureHandlesIsNotAReasonToFallBack() {
+        var plan = clipJob()
+        XCTAssertEqual(.failed, plan.handle(.create, CaptureOutcome(status: 402)))
+        XCTAssertNotNil(plan.clip)
+        var session = clipJob()
+        XCTAssertEqual(.signInNeeded, session.handle(.create, CaptureOutcome(status: 401)))
+        XCTAssertNotNil(session.clip)
+        var busy = clipJob()
+        XCTAssertEqual(.retry(.create, after: 60, unavailable: true), busy.handle(.create, CaptureOutcome(status: 503, retryAfter: "60")))
+        XCTAssertNotNil(busy.clip)
+        var broken = clipJob()
+        XCTAssertEqual(.retry(.create, after: 30, unavailable: false), broken.handle(.create, CaptureOutcome(status: 500)))
+        XCTAssertNotNil(broken.clip)
+    }
+
+    /// A page that hangs or kills the Worker never gets an answer `clipFallsBack` can
+    /// read. Two tries ask for it, and the last two make the note, so the link is kept.
+    func testAClipThatKeepsFailingBecomesThePlainNoteBeforeTheTriesRunOut() throws {
+        var job = clipJob()
+        XCTAssertEqual(.retry(.create, after: 30, unavailable: false), job.handle(.create, CaptureOutcome(status: 500)))
+        XCTAssertNotNil(job.clip)
+        XCTAssertEqual(.retry(.create, after: 60, unavailable: false), job.handle(.create, CaptureOutcome(status: 500)))
+        XCTAssertNil(job.clip)
+        XCTAssertEqual("/api/notes", try CaptureRequests.create(job, bearer: "sess.sig").request.url?.path)
+        XCTAssertEqual(.retry(.create, after: 120, unavailable: false), job.handle(.create, CaptureOutcome(status: 500)))
+        XCTAssertEqual(.saved, job.handle(.create, CaptureOutcome(status: 200)))
+    }
+
+    /// A plain capture's 415 is still the final refusal it was.
+    func testAPlainNoteRefusedWithA415IsNotRetried() {
+        var job = job(files: [])
+        XCTAssertEqual(.failed, job.handle(.create, CaptureOutcome(status: 415)))
+    }
+
+    /// Longer than the server's own wait on the page, so its answer is what is heard.
+    func testAClipWaitsLongerThanTheServerDoesForThePage() throws {
+        XCTAssertEqual(180, try CaptureRequests.create(clipJob(), bearer: "sess.sig").request.timeoutInterval)
+        XCTAssertEqual(60, try CaptureRequests.create(job(files: []), bearer: "sess.sig").request.timeoutInterval)
+    }
+
+    func testAClipAsksTheServerToReadThePageUnderTheIdTheCaptureChose() throws {
+        let (request, body) = try CaptureRequests.create(clipJob(), bearer: "sess.sig")
+
+        XCTAssertEqual("POST", request.httpMethod)
+        XCTAssertEqual("https://notes.example.com/api/clip", request.url?.absoluteString)
+        XCTAssertEqual("Bearer sess.sig", request.value(forHTTPHeaderField: "Authorization"))
+        XCTAssertEqual("https://notes.example.com", request.value(forHTTPHeaderField: "Origin"))
+        // No title and no body: the page's own title is wanted, and the page is the body.
+        XCTAssertEqual(
+            #"{"id":"11111111-1111-4111-8111-111111111111","notebook":"Reading","tags":["read"],"url":"https:\/\/example.com\/a-slug"}"#,
+            String(decoding: body, as: UTF8.self)
+        )
+    }
+
+    func testAClipCarriesATitleOnlyWhereThePersonTypedOne() throws {
+        let (_, body) = try CaptureRequests.create(clipJob(title: "My name for it"), bearer: "b")
+        let payload = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        XCTAssertEqual("My name for it", payload["title"] as? String)
+    }
+
+    /// After the fallback the same step is the plain create, with the link as the body.
+    func testAClipThatFellBackSendsThePlainNote() throws {
+        var job = clipJob()
+        _ = job.handle(.create, CaptureOutcome(status: 415))
+        let (request, body) = try CaptureRequests.create(job, bearer: "b")
+        XCTAssertEqual("https://notes.example.com/api/notes", request.url?.absoluteString)
+        let payload = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        XCTAssertEqual("https://example.com/a-slug", payload["body"] as? String)
+        XCTAssertEqual("example.com", payload["title"] as? String)
+        XCTAssertEqual("11111111-1111-4111-8111-111111111111", payload["id"] as? String)
+    }
+
+    /// A record from before pages were clipped is a plain note.
+    func testARecordWrittenBeforeClipsExistedIsAPlainNote() throws {
+        let old = #"{"id":"j","origin":"https://notes.example.com","noteId":"n","title":"t","body":"https://example.com/","tags":[],"created":false,"progress":{"attempts":0,"unavailable":0},"files":[]}"#
+        let job = try JSONDecoder().decode(CaptureJob.self, from: Data(old.utf8))
+        XCTAssertNil(job.clip)
+        XCTAssertEqual("https://notes.example.com/api/notes", try CaptureRequests.create(job, bearer: "b").request.url?.absoluteString)
+    }
+
+    func testAClipSurvivesTheRecordOnDisk() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("unbent-job-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let job = clipJob(title: "Mine")
+        try job.save(to: directory)
+        XCTAssertEqual(job, CaptureJob.load(from: directory))
+    }
+
     // MARK: - Labels, and the record on disk
 
     func testARequestsLabelNamesItsCaptureAndStep() {

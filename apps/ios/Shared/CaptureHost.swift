@@ -75,7 +75,10 @@ extension CaptureJob {
             body: intake.text,
             notebook: notebook,
             tags: tags,
-            files: intake.files
+            files: intake.files,
+            // A lone web address is the page, read on the server. The page keeps its own
+            // title unless the person typed one over the derived one (its host).
+            clip: intake.pageUrl.map { CaptureJob.Clip(url: $0, title: title.isEmpty || title == intake.title ? nil : title) }
         )
     }
 }

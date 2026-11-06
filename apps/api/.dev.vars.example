@@ -121,6 +121,12 @@ ALLOWED_EMAILS=
 # something it does not sell. Locally, set it to see the page.
 # FRONT_PAGE=1
 
+# The web clipper (POST /api/clip, the clip_web_page tool, the apps' clip controls) is off
+# unless WEB_CLIP=1: reading an article costs more CPU than Workers Free allows, so an
+# instance has to say it is on a plan that can run it (src/types.ts). Not a line here:
+# wrangler.toml's [env.local.vars] turns it on for every local server, where no limit
+# applies, and a deployed instance sets it as a secret, as FRONT_PAGE is on production.
+
 # Resend, for password reset mail. Both must be set before any mail is sent; with either
 # missing the reset link is printed to the Worker console instead, which is what local
 # development wants: the whole flow can be exercised without signing up for anything.

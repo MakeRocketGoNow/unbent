@@ -30,10 +30,15 @@ public struct CaptureNotifications: CaptureNotifying {
     /// be hours.
     public func waiting(_ job: CaptureJob) { post(job, "Waiting for Unbent to come back") }
 
+    /// "Page clipped" for a note that is the shared page itself, read on the server,
+    /// against "Saved" for a note holding its link: the one word that says which of the
+    /// two landed. A link whose page could not be read fell back to the plain note and
+    /// says "Saved", honestly (`CaptureJob.Clip`). A clip has no files of its own to be
+    /// left out, so the count below is the plain capture's alone.
     public func saved(_ job: CaptureJob) {
         let missing = job.filesNotAdded
         let title = switch missing {
-        case 0: "Saved"
+        case 0: job.clip == nil ? "Saved" : "Page clipped"
         case 1: "Saved, but 1 file could not be added"
         default: "Saved, but \(missing) files could not be added"
         }

@@ -81,6 +81,8 @@ fun CaptureSheet(
     /** Null until the shared files have been copied into the app's cache. */
     staged: List<StagedFile>?,
     hasText: Boolean,
+    /** The text is one web address and nothing else: a page, whatever the instance does with it. */
+    isLink: Boolean = false,
     initialTitle: String,
     lastNotebook: String?,
     onSignIn: () -> Unit,
@@ -122,7 +124,7 @@ fun CaptureSheet(
                     DragHandle()
                     Text(stringResource(R.string.capture_title), style = MaterialTheme.typography.titleMedium)
                     Text(
-                        summaryOf(staged, hasText),
+                        summaryOf(staged, hasText, isLink),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -277,7 +279,7 @@ private fun CaptureForm(
 
 /** "2 photos · 1 PDF", or "Text", or an ellipsis while the files are still being copied. */
 @Composable
-private fun summaryOf(staged: List<StagedFile>?, hasText: Boolean): String {
+private fun summaryOf(staged: List<StagedFile>?, hasText: Boolean, isLink: Boolean): String {
     if (staged == null) return "…"
     val photos = staged.count { it.contentType.startsWith("image/") }
     val pdfs = staged.count { it.contentType == "application/pdf" }
@@ -286,7 +288,8 @@ private fun summaryOf(staged: List<StagedFile>?, hasText: Boolean): String {
         if (photos > 0) add(pluralStringResource(R.plurals.capture_photos, photos, photos))
         if (pdfs > 0) add(pluralStringResource(R.plurals.capture_pdfs, pdfs, pdfs))
         if (others > 0) add(pluralStringResource(R.plurals.capture_files, others, others))
-        if (hasText && staged.isEmpty()) add(stringResource(R.string.capture_text))
+        // A page shared from a browser read "Text", which is not what anyone thinks they shared.
+        if (hasText && staged.isEmpty()) add(stringResource(if (isLink) R.string.capture_link else R.string.capture_text))
     }
     return parts.joinToString(" · ")
 }

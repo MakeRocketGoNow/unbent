@@ -1795,6 +1795,30 @@ export async function duplicateNote(sourceId: string, copyId: string = crypto.ra
   return { id: copyId };
 }
 
+/**
+ * Keeps a web page as a note: `POST /api/clip`, which fetches the page on the server and
+ * writes the article with its pictures (`lib/clip.ts`). A request, never an outbox entry,
+ * on purpose: the server does the fetching, so there is nothing a device could do with
+ * the address offline but hold it, and a page clipped hours after it was asked for is a
+ * different page. The control that calls this follows `offline` as Auto-fill does, faded
+ * with the reason.
+ *
+ * Answers once the library holds the note, under the views' bound (`landed`), because the
+ * caller opens it straight after. New and Duplicate insert their row first; here the feed
+ * is the only way in, and an id a whole library does not hold reads as a note that does
+ * not exist, so opening at the server's answer drew the missing-note card over a note
+ * that had just been made. Past the bound the note opens anyway and the card gives way
+ * when the row comes.
+ *
+ * Not forwarded to the holding tab: any tab can make the request, and the holder's feed
+ * hears the answer as it would a write from another device.
+ */
+export async function clipLink(input: Parameters<typeof api.clipLink>[0]): Promise<api.ClippedNote> {
+  const note = await pulled(api.clipLink(input), { ids: [], refiles: true });
+  await landed((rows) => rows.notes.has(note.id));
+  return note;
+}
+
 /** How long `restoreRevision` and `clearHistory` wait for a note's own queued writes to reach the server. */
 const RESTORE_DRAIN_MS = 5000;
 
@@ -2439,12 +2463,18 @@ export async function applyNotebookTemplate(
   return out;
 }
 
+/** What a wait for a row that only the feed can bring looks at. */
+interface LandedRows {
+  views: Rows<FeedView>;
+  notes: { has: (id: string) => boolean };
+}
+
 /**
- * How a view saved in a tab that does not hold the library waits for its row; set by
- * `store/library.ts`. Resolves once `until` holds of the views this tab reads, or after
+ * How a row made by a request waits, in a tab that does not hold the library; set by
+ * `store/library.ts`. Resolves once `until` holds of the rows this tab reads, or after
  * `ms`, and at once in a tab with no library or one that holds it.
  */
-let mirrored: (until: (views: Rows<FeedView>) => boolean, ms: number) => Promise<void> = async () => {};
+let mirrored: (until: (rows: LandedRows) => boolean, ms: number) => Promise<void> = async () => {};
 
 export function provideMirrorWait(fn: typeof mirrored): void {
   mirrored = fn;
@@ -2478,10 +2508,15 @@ export const VIEW_LANDED_MS = 3000;
  */
 async function viewLanded(until: (views: Rows<FeedView>) => boolean): Promise<void> {
   directListeners.forEach((l) => l(VIEW_ROOTS));
+  await landed((rows) => until(rows.views));
+}
+
+/** The wait itself, for any row the feed brings: a view's, or a clipped note's. */
+async function landed(until: (rows: LandedRows) => boolean): Promise<void> {
   const lib = await resolve();
   if (!lib) return mirrored(until, VIEW_LANDED_MS);
   const pulled = lib.engine.pull();
-  if (!isWhole(lib.engine.state) || until(lib.views)) return;
+  if (!isWhole(lib.engine.state) || until(lib)) return;
   let timer: ReturnType<typeof setTimeout> | undefined;
   await Promise.race([pulled, new Promise<void>((done) => (timer = setTimeout(done, VIEW_LANDED_MS)))]);
   clearTimeout(timer);

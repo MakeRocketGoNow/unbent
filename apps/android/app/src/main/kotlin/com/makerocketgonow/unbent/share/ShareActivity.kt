@@ -102,6 +102,7 @@ class ShareActivity : ComponentActivity() {
                     api = api,
                     staged = staged,
                     hasText = text.isNotEmpty(),
+                    isLink = UploadWorker.lonePageUrl(text) != null,
                     initialTitle = title,
                     lastNotebook = prefs.lastNotebook,
                     onSignIn = { startActivity(Intent(this, SignInActivity::class.java)) },
@@ -118,8 +119,11 @@ class ShareActivity : ComponentActivity() {
         signedIn = Prefs(this).isSignedIn
     }
 
-    private fun save(title: String, notebook: String?, tags: List<String>) {
+    private fun save(typed: String, notebook: String?, tags: List<String>) {
         val files = staged ?: return
+        // A title cleared by hand gets the derived one back, as the iOS sheet does: otherwise
+        // an empty title counts as typed, and it beats the page's own on a clip.
+        val title = typed.ifEmpty { this.title }
         Prefs(this).lastNotebook = notebook
 
         val request = OneTimeWorkRequestBuilder<UploadWorker>()
@@ -131,6 +135,9 @@ class ShareActivity : ComponentActivity() {
                 Data.Builder()
                     .putString(UploadWorker.KEY_JOB_ID, jobId)
                     .putString(UploadWorker.KEY_TITLE, title)
+                    // Whether the title is the person's or the one staging derived: a
+                    // clipped page keeps its own title unless someone typed one over it.
+                    .putBoolean(UploadWorker.KEY_TITLE_TYPED, title != this.title)
                     .putString(UploadWorker.KEY_BODY, text)
                     .putString(UploadWorker.KEY_NOTEBOOK, notebook)
                     .putStringArray(UploadWorker.KEY_TAGS, tags.toTypedArray())

@@ -23,6 +23,33 @@ export { dateOnlySchema, startOfDay, endOfDay } from './dates.js';
 /** D1 rejects rows over 2MB; cap note bodies below that with room for the other columns. */
 export const MAX_BODY_BYTES = 1_800_000;
 
+/**
+ * The most HTML a clip request may carry (`clipRequestSchema.html`), in characters. A
+ * page's tab holds its scripts and styles too, which the server takes out before
+ * reading, so this is several times what is read; a client checks it before sending and
+ * says so, rather than send a page the validator refuses with a bare 400.
+ */
+export const MAX_CLIP_HTML_CHARS = 10 * 1024 * 1024;
+
+/**
+ * The most HTML a clip reads, in characters, once scripts and styles are out: a page
+ * past it is refused (413 `TOO_LARGE`) however it arrived.
+ *
+ * This is the limit that protects the isolate, not a limit on what is useful: every
+ * byte of a page becomes many on the heap as a DOM, running past the Worker's 128 MB ends
+ * the isolate where no `catch` can see it, and an isolate is shared, so other people's
+ * saves in flight go with it. Measured in Node with a 128 MB heap on 2026-10-30, on
+ * invented pages, whole clips: an article of paragraphs ran out of memory at 5 MB and
+ * passed at 2 MB (126 MB of heap, 2.2 s); a page of small elements (a `div`, a `span` and
+ * a link per row) ran out at 2 MB and passed at 1 MB (107 MB, 1.9 s). So one megabyte,
+ * which is still several times a long article.
+ *
+ * Here and not only in the API because a client that has already taken the scripts and
+ * styles out (the bookmarklet does) can tell from it that a page will be refused, and
+ * clip by the address instead of uploading a page only to hear no.
+ */
+export const MAX_CLIP_PARSED_CHARS = 1024 * 1024;
+
 /** Cloudflare caps request bodies at 100MB; leave headroom for headers and metadata. */
 export const MAX_ATTACHMENT_BYTES = 95 * 1024 * 1024;
 
@@ -364,6 +391,15 @@ export interface AppConfig {
    */
   frontPage?: boolean;
   /**
+   * This instance clips web pages on the server: `POST /api/clip` answers, and an
+   * assistant has `clip_web_page`. The web app draws its "Clip a link" control and the
+   * phones send a shared address to the route only on its presence; absent, a shared
+   * link is filed as a plain note, as before the clipper. `WEB_CLIP=1` in the API,
+   * opt-in because the reading is CPU that Workers Free does not allow (see the API's
+   * `webClipOf`). Absent on an instance from before the setting, which reads the same.
+   */
+  webClip?: boolean;
+  /**
    * This instance keeps backups of its own: a daily dump of every changed account's store
    * into a backups bucket, which unbent.app's nightly mirror then copies to a second
    * Cloudflare account (MAK-171; "Durability" in docs/architecture.md).
@@ -573,6 +609,38 @@ export const createNoteSchema = z.object({
   tags: z.array(tagNameSchema).max(100).default([]),
   notebook: notebookNameSchema.nullable().optional(),
   /** Custom field values by field id. See `noteFieldsPatchSchema`. */
+  fields: noteFieldsPatchSchema.optional(),
+});
+
+/**
+ * `POST /clip`'s body: a web page to keep as a note, which the server fetches itself.
+ *
+ * What a note's own create takes, less the body, which is the page, and with the page's
+ * address in its place. The title is optional rather than defaulted: absent, the note
+ * takes the page's own (the article's headline, as Reader View finds it), where `''`
+ * would be a note with no title at all. The address is as long as `add_attachment`
+ * takes, because a page reached from a search or a mail is often a long tracking link
+ * that redirects; the server checks it, and every hop after it, before fetching.
+ *
+ * `id` is the note's, for the same reason as `createNoteSchema.id`: a phone that shared
+ * a page while its answer was lost sends the same request again, and the note it made
+ * the first time is the answer, rather than a second clip of the same page.
+ *
+ * `html` is the page itself, for a client that has it: the bookmarklet sends what the
+ * person's tab is showing, which is the page as they see it, signed in and drawn by its
+ * scripts, where the server's own fetch would get a sign-in screen or an empty shell.
+ * With it the server fetches nothing but the pictures, and `url` is only where the page
+ * says it came from. Bounded at `MAX_CLIP_HTML_CHARS` so a request cannot hand the
+ * Worker more than it can hold; the server refuses well short of that once the scripts
+ * and styles are out (`MAX_CLIP_PARSED_CHARS`).
+ */
+export const clipRequestSchema = z.object({
+  url: z.string().min(1).max(8192),
+  html: z.string().min(1).max(MAX_CLIP_HTML_CHARS).optional(),
+  id: z.string().uuid().optional(),
+  title: z.string().max(MAX_TITLE_LENGTH).optional(),
+  tags: z.array(tagNameSchema).max(100).default([]),
+  notebook: notebookNameSchema.nullable().optional(),
   fields: noteFieldsPatchSchema.optional(),
 });
 
@@ -891,6 +959,7 @@ export const importEnmlSchema = z.object({
 export type ImportEnmlInput = z.infer<typeof importEnmlSchema>;
 
 export type CreateNoteInput = z.infer<typeof createNoteSchema>;
+export type ClipRequest = z.infer<typeof clipRequestSchema>;
 export type UpdateNoteInput = z.infer<typeof updateNoteSchema>;
 export type UpdateNotesInput = z.infer<typeof updateNotesSchema>;
 export type ListNotesQuery = z.infer<typeof listNotesQuerySchema>;

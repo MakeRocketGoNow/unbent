@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ClipRouteImport } from './routes/clip'
 import { Route as ConnectRouteImport } from './routes/connect'
 import { Route as ConsentRouteImport } from './routes/consent'
 import { Route as DeleteAccountRouteImport } from './routes/delete-account'
@@ -59,6 +60,11 @@ import { Route as SettingsOperatorUserIdRouteImport } from './routes/settings.op
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ClipRoute = ClipRouteImport.update({
+  id: '/clip',
+  path: '/clip',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ConnectRoute = ConnectRouteImport.update({
@@ -290,6 +296,7 @@ const SettingsOperatorUserIdRoute = SettingsOperatorUserIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/clip': typeof ClipRoute
   '/connect': typeof ConnectRoute
   '/consent': typeof ConsentRoute
   '/delete-account': typeof DeleteAccountRoute
@@ -338,6 +345,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/clip': typeof ClipRoute
   '/connect': typeof ConnectRoute
   '/consent': typeof ConsentRoute
   '/delete-account': typeof DeleteAccountRoute
@@ -384,6 +392,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/clip': typeof ClipRoute
   '/connect': typeof ConnectRoute
   '/consent': typeof ConsentRoute
   '/delete-account': typeof DeleteAccountRoute
@@ -434,6 +443,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/clip'
     | '/connect'
     | '/consent'
     | '/delete-account'
@@ -482,6 +492,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/clip'
     | '/connect'
     | '/consent'
     | '/delete-account'
@@ -527,6 +538,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/clip'
     | '/connect'
     | '/consent'
     | '/delete-account'
@@ -576,6 +588,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ClipRoute: typeof ClipRoute
   ConnectRoute: typeof ConnectRoute
   ConsentRoute: typeof ConsentRoute
   DeleteAccountRoute: typeof DeleteAccountRoute
@@ -612,6 +625,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/clip': {
+      id: '/clip'
+      path: '/clip'
+      fullPath: '/clip'
+      preLoaderRoute: typeof ClipRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/connect': {
@@ -996,6 +1016,7 @@ const TrashRouteWithChildren = TrashRoute._addFileChildren(TrashRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ClipRoute: ClipRoute,
   ConnectRoute: ConnectRoute,
   ConsentRoute: ConsentRoute,
   DeleteAccountRoute: DeleteAccountRoute,

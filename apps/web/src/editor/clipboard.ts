@@ -1,4 +1,4 @@
-import type { Extension } from '@codemirror/state';
+import { EditorSelection, type EditorState, type Extension, type Text } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import {
   ATTACHMENT_PREFIX,
@@ -7,7 +7,7 @@ import {
   parseAbsoluteAttachmentUrl,
   relativeAttachmentPath,
 } from '@unbent/shared';
-import { attachmentFilenameOf, linksWithin, type DocumentLink } from './links.js';
+import { attachmentFilenameOf, linksWithin, treeThrough, type DocumentLink, type SyntaxNode } from './links.js';
 
 /**
  * Attachment links across the clipboard.
@@ -91,12 +91,245 @@ export function attachmentClipboard(config: ClipboardConfig): Extension {
       // address in a code block is not a link), so this claims on the address's shape and
       // a paste that turns out to hold no link is a plain paste that cost a tree walk.
       const text = data.getData('text/plain');
-      if (!text || !mayHoldAbsoluteAttachmentLink(text)) return false;
-      event.preventDefault();
-      void pasteWithAttachments(view, text, data.getData(CUT_FLAVOUR) === '1', config);
-      return true;
+      if (text && mayHoldAbsoluteAttachmentLink(text)) {
+        event.preventDefault();
+        void pasteWithAttachments(view, text, data.getData(CUT_FLAVOUR) === '1', config);
+        return true;
+      }
+      // Asked second, so nothing that carries a note's file ever reaches the converter.
+      return pasteHtml(event, view, data, config);
     },
   });
+}
+
+/**
+ * A paste from a web page (or a mail, or a document) as Markdown rather than flat text.
+ *
+ * The clipboard carries the selection twice: `text/plain`, which CodeMirror inserts, and
+ * `text/html`. The plain form has already thrown away what made the page readable: the
+ * headings arrive as lines, the links as their words with nowhere to go, a list as lines
+ * with no bullets. The HTML still has them, and `htmlToMarkdown` (the converter the ENEX
+ * import and the web clipper share) writes them as the Markdown a person would have typed,
+ * so the paste stays an ordinary text edit, undone with one ⌘Z.
+ *
+ * The plain text is still there for whoever wants it: every browser's "Paste and Match
+ * Style" (⌘⇧V, Ctrl+Shift+V) sends no `text/html` at all, so it reaches CodeMirror's own
+ * paste untouched. That is the way to paste plain, and the reason there is no setting.
+ *
+ * Declines, leaving the paste to CodeMirror, whenever converting would not help:
+ *
+ * - The note is read-only. CodeMirror's own handler is the one that respects that, and
+ *   these handlers run before it.
+ * - The paste is Unbent's own: text cut from a note (`CUT_FLAVOUR`), or HTML naming a
+ *   note's file by its absolute address, as a copy from a rendered note does. Those keep
+ *   the path they always had, which knows how to bring a file across; converting would
+ *   turn the link into one more web address.
+ * - It lands in code; see `inCode`.
+ * - The HTML has no structure worth keeping; see `STRUCTURE`.
+ *
+ * Every one of those is decided here, in the event, because claiming the paste has to be:
+ * the browser inserts nothing once the event is claimed, and a handler that answers later
+ * cannot unclaim it. The conversion itself is in `paste-html.ts`, loaded on first use, so
+ * the HTML is read twice: once here by the browser's own parser, which costs the bundle
+ * nothing and answers the questions above, and once there into the tree the converter
+ * walks. Parsing twice costs a paste milliseconds; parsing once, here, would put the
+ * parser in front of every note's first load.
+ *
+ * A paste that carries files never gets this far: the upload handler (`attach.ts`) is
+ * mounted before this one and takes it. A browser's Copy Image puts the picture's bytes
+ * beside an `<img>` naming it, and the bytes are the better copy.
+ *
+ * Nor does HTML past `MAX_CONVERTED_HTML`, read before anything parses it.
+ */
+function pasteHtml(event: ClipboardEvent, view: EditorView, data: DataTransfer, config: ClipboardConfig): boolean {
+  const { state } = view;
+  if (state.readOnly || data.getData(CUT_FLAVOUR)) return false;
+  const html = data.getData('text/html');
+  if (!html || html.length > MAX_CONVERTED_HTML || !worthConverting(html)) return false;
+  if (state.selection.ranges.some((range) => inCode(state, range.from))) return false;
+
+  event.preventDefault();
+  void insertConverted(view, html, data.getData('text/plain'), config);
+  return true;
+}
+
+/**
+ * The most clipboard HTML converted. A spreadsheet's copy is a table with inline styles
+ * on every cell, and the conversion runs on the page's own thread: measured warm on a
+ * desktop in Node, 0.34 s at one megabyte and 2 s at five, for the converter alone, and a
+ * phone is several times slower. Past this a frozen page is the worse outcome, and the
+ * plain text goes in at once.
+ */
+const MAX_CONVERTED_HTML = 1_000_000;
+
+/**
+ * Converts and inserts, at the selection as it is when the converter answers.
+ *
+ * That is the selection of the paste in every case but the first paste of a page's life,
+ * which waits on the chunk (from the service worker's cache, so milliseconds): any later
+ * one waits only a microtask, which no keystroke can come between. A first paste whose
+ * chunk cannot be had at all (a page left open across deploys, its build gone from the
+ * cache) inserts the plain text, which is what it would have been before this existed:
+ * the event is claimed, and nothing at all would be worse.
+ *
+ * Into the editor open when the converter answers (`liveView`), as every other late write
+ * in this file does: flipping between rich and source during that first wait rebuilds the
+ * view, and the event being claimed, nothing else would insert the paste. No view at all
+ * means the note has closed.
+ */
+async function insertConverted(view: EditorView, html: string, plain: string, config: ClipboardConfig): Promise<void> {
+  let converted: { markdown: string; inline: boolean } | null = null;
+  try {
+    converted = (await loadConverter()).markdownFromClipboardHtml(html);
+  } catch {
+    converted = null;
+  }
+  const target = config.liveView ? config.liveView() : view;
+  if (!target) return;
+  const { state } = target;
+  if (state.readOnly) return;
+  const { markdown: written, inline } = converted ?? { markdown: plain, inline: true };
+  if (!written) return;
+  // The converter trims what it writes, which suits a block. A run going in mid-sentence
+  // keeps the spaces its selection had: a double-click on Windows takes the one after the
+  // word, and without it the word runs into the next.
+  const markdown = inline ? `${/^[ \t]*/.exec(plain)![0]}${written.trim()}${/[ \t]*$/.exec(plain)![0]}` : written;
+  target.dispatch(
+    state.changeByRange((range) => {
+      const [lead, tail] = inline ? ['', ''] : apart(state.doc, range.from, range.to);
+      const insert = lead + markdown + tail;
+      // The cursor ends after the pasted text, as after any paste, and before the break
+      // that sets it apart from what followed, so typing on carries on from it.
+      return {
+        changes: { from: range.from, to: range.to, insert },
+        range: EditorSelection.cursor(range.from + lead.length + markdown.length),
+      };
+    }),
+    // One transaction is one undo step, and `input.paste` is what CodeMirror's own paste
+    // says, so history never joins it to the typing either side of it.
+    { scrollIntoView: true, userEvent: 'input.paste' },
+  );
+}
+
+let converter: Promise<typeof import('./paste-html.js')> | undefined;
+
+/**
+ * The converter's module, imported once. A failed import is forgotten rather than kept,
+ * so a paste after the connection comes back tries again. Exported for the tests, which
+ * load it up front so that a paste there waits only the microtask a page's later pastes
+ * do.
+ */
+export function loadConverter(): Promise<typeof import('./paste-html.js')> {
+  converter ??= import('./paste-html.js').catch((err: unknown) => {
+    converter = undefined;
+    throw err;
+  });
+  return converter;
+}
+
+/**
+ * Elements whose presence makes HTML worth converting, as one selector.
+ *
+ * Plenty of apps put HTML on the clipboard that carries nothing Markdown can say. A code
+ * editor (VS Code) or a terminal writes its text as a `<div>` a line and a `<span>` a
+ * colour; converted, each line would become a paragraph and the indentation of every
+ * line of code would be lost. HTML with none of these elements is pasted as its plain
+ * text, which is what it really is. `a` counts only with an `href`, since an anchor with
+ * nowhere to go is text.
+ */
+const STRUCTURE = [
+  'a[href]',
+  'img',
+  'h1',
+  'h2',
+  'h3',
+  'h4',
+  'h5',
+  'h6',
+  'ul',
+  'ol',
+  'table',
+  'blockquote',
+  'pre',
+  'code',
+  'strong',
+  'b',
+  'em',
+  'i',
+  'del',
+  's',
+  'hr',
+].join(', ');
+
+/**
+ * Whether the HTML has structure (`STRUCTURE`) and names no note's file.
+ *
+ * Read with the browser's `DOMParser`, whose documents are inert: no script in the
+ * pasted HTML runs and no picture in it is fetched. The attachment check reads each
+ * address as written, so a copy from a rendered note is recognised whichever origin it
+ * was copied on.
+ */
+function worthConverting(html: string): boolean {
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  if (!doc.querySelector(STRUCTURE)) return false;
+  for (const element of doc.querySelectorAll('[href], [src]')) {
+    for (const name of ['href', 'src']) {
+      const address = element.getAttribute(name);
+      if (address && parseAbsoluteAttachmentUrl(address)) return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * The line breaks a block paste needs between `from` and `to` to stand apart from what is
+ * around it. The rule `apart` in `attach.ts` has for a dropped file, for the same reason:
+ * Markdown reads a line written straight under a paragraph, a quote or a list item as
+ * more of it, so a heading pasted after a word is not a heading, and a paragraph pasted
+ * under a list joins its last item. Only what is missing goes in, so no blank line is
+ * doubled.
+ *
+ * Unlike a dropped file, nothing goes after a paste that ends the note: a paste leaves
+ * the cursor where the text ends, with no empty line after it that nobody typed.
+ */
+function apart(doc: Text, from: number, to: number): [string, string] {
+  const first = doc.lineAt(from);
+  const last = doc.lineAt(to);
+  const blank = (n: number) => doc.line(n).text.trim() === '';
+  const lead = from > first.from ? '\n\n' : first.number === 1 || blank(first.number - 1) ? '' : '\n';
+  const tail = to < last.to ? '\n\n' : last.number === doc.lines || blank(last.number + 1) ? '' : '\n';
+  return [lead, tail];
+}
+
+/** Code, where a paste is the characters and never a conversion. */
+const CODE_NODES = new Set(['FencedCode', 'CodeBlock', 'InlineCode']);
+
+/**
+ * Whether `pos` is inside code: a fenced or indented block, or an inline span.
+ *
+ * Inside code the person wants the characters they copied, and Markdown there is not
+ * Markdown: a snippet copied from a documentation page carries `<pre>` and `<code>`, and
+ * converted it would arrive fenced inside the fence. Read from the editor's own tree, as
+ * everything here is (`links.ts` says why), and the tree is parsed through the cursor so
+ * a paste far down a long note cannot be read against a tree that stops short of it.
+ *
+ * The edges are the subtle part. Just inside the opening backtick or fence is inside.
+ * Exactly at a node's end is inside only where typing there would still be code: at the
+ * end of an indented block's last line, or anywhere in a fence that is never closed (it
+ * runs to the end of the note). After a closing fence or a closing backtick it is not.
+ */
+function inCode(state: EditorState, pos: number): boolean {
+  const tree = treeThrough(state, pos);
+  for (let node: SyntaxNode | null = tree.resolveInner(pos, -1); node; node = node.parent) {
+    if (!CODE_NODES.has(node.name) || node.from >= pos) continue;
+    if (pos < node.to) return true;
+    if (node.name === 'CodeBlock') return true;
+    // A closed fence has a second `CodeMark`, its closing one; an inline span is only
+    // ever a node once it is closed.
+    if (node.name === 'FencedCode') return node.getChildren('CodeMark').length < 2;
+    return false;
+  }
+  return false;
 }
 
 /** A link in the document that names a note's file by its absolute address. */

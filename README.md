@@ -136,6 +136,7 @@ apps/api       Hono API on Workers, and the MCP server under src/mcp
 apps/android   Kotlin app: the site in a WebView, with native sign-in, share sheet and files
 apps/ios       Swift app: the site in a web view, with native sign-in and files
 packages/shared  zod schemas, frontmatter codec, remark plugins
+packages/clip    HTML -> Markdown (shared with enex), and web pages to notes
 packages/enex    ENEX -> Markdown, runtime-agnostic
 ```
 

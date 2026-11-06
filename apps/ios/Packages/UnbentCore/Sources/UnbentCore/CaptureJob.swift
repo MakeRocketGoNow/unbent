@@ -91,6 +91,31 @@ public struct CaptureJob: Codable, Equatable, Sendable {
         }
     }
 
+    /// A shared web page the server is asked to read and keep as the note, pictures and
+    /// all (`POST /api/clip`), in place of a note holding its address.
+    ///
+    /// Set at Save for a share that is one web address and nothing else (`CaptureIntake.
+    /// pageUrl`), and cleared by `handle` when the server answers that it cannot have the
+    /// page, after which the same `.create` step makes the plain note the capture always
+    /// made. One step rather than two because the request's label, and so the result
+    /// that comes back to another process days later, names a step and not a route; and
+    /// the fallback is the same note with the same chosen id, so a clip that landed
+    /// unheard and a resend that then fell back meet at one note. Optional, so a record
+    /// written before this existed reads as a plain note.
+    ///
+    /// The Android app's half is `UploadWorker`'s `pageUrl` and `clipFallsBack`.
+    public struct Clip: Codable, Equatable, Sendable {
+        public var url: String
+        /// The title the person typed over the derived one, which the clip then keeps in
+        /// place of the page's own. Nil for the page's.
+        public var title: String?
+
+        public init(url: String, title: String? = nil) {
+            self.url = url
+            self.title = title
+        }
+    }
+
     /// The capture's own id: its directory, and its notification.
     public var id: String
     /// The instance it was shared to. Kept with the capture, so pointing a debug build
@@ -104,6 +129,8 @@ public struct CaptureJob: Codable, Equatable, Sendable {
     public var notebook: String?
     public var tags: [String]
     public var files: [File]
+    /// The page to read in place of the plain note; see `Clip`.
+    public var clip: Clip?
     /// Whether the server has answered that the note exists.
     public var created = false
     public var progress = Progress()
@@ -120,7 +147,8 @@ public struct CaptureJob: Codable, Equatable, Sendable {
         body: String = "",
         notebook: String? = nil,
         tags: [String] = [],
-        files: [File] = []
+        files: [File] = [],
+        clip: Clip? = nil
     ) {
         self.id = id
         self.origin = origin
@@ -130,6 +158,7 @@ public struct CaptureJob: Codable, Equatable, Sendable {
         self.notebook = notebook
         self.tags = tags
         self.files = files
+        self.clip = clip
     }
 
     /// Lowercase, because the API's `uuid()` check is of the form JavaScript writes and
@@ -140,6 +169,15 @@ public struct CaptureJob: Codable, Equatable, Sendable {
 
     /// Four tries of a request before the capture is given up on. Android's number.
     static let maxAttempts = 4
+
+    /// How many of `maxAttempts` may be spent asking for the page. The rest make the plain
+    /// note, because the failures `clipFallsBack` cannot see are often about the page too:
+    /// a site that hangs past every timeout, or an article that ends the Worker for its
+    /// CPU, which the edge answers with a bare 5xx. Those fail the same way on every try,
+    /// and giving up after four would lose a link a one-row create would have kept. The
+    /// same id on all of them, so a clip that landed unheard meets the create at one note.
+    /// Android's half is `UploadWorker.clipsOnAttempt`.
+    static let clipAttempts = 2
 
     /// How many times a request waits for a server that asked it to: fourteen, Android's
     /// number, though it buys more here. WorkManager's backoff tops out at five hours,
@@ -194,6 +232,31 @@ public struct CaptureJob: Codable, Equatable, Sendable {
         return ![401, 408, 429].contains(status)
     }
 
+    /// Whether a clip the server refused is one to make the plain note for instead: the
+    /// answers the server gives about the page. 413 is a page larger than it will read,
+    /// 415 a reply that is not HTML (a PDF, an image), 502 a site that refused or failed,
+    /// and 400 an address it does not fetch (a private network, a loopback). Each is the
+    /// server saying it cannot have this page, and the link is still worth keeping.
+    ///
+    /// 404 is the server saying it has no clipper at all: an instance whose operator has
+    /// not switched it on (`WEB_CLIP`, answered as `CLIP_OFF`) and an instance deployed
+    /// before the route existed, which answers a missing route the same way. Both are the
+    /// plain note this capture always made, so the app does not read `/api/config` first
+    /// to find out: that is a request on every share to save one on the rare instance
+    /// without the clipper, and the 404 says the same thing.
+    ///
+    /// A 400 can also be the request itself (a title too long), which the create then
+    /// repeats and is refused the same way: one request more, in a rare case. A
+    /// background session hands this the status and no body, so the `code` that would
+    /// tell the two apart is nothing it could read; Android can, and uses the same five
+    /// statuses all the same, so that two phones never fall back on different answers to
+    /// the same page. Not a 402, which is the plan and refuses the fallback the same
+    /// way, and nothing `handle` already decides (401, a 503 with `Retry-After`).
+    public static func clipFallsBack(_ outcome: CaptureOutcome) -> Bool {
+        guard let status = outcome.status else { return false }
+        return [400, 404, 413, 415, 502].contains(status)
+    }
+
     /// Thirty seconds, doubling: WorkManager's backoff, which Android's worker runs on.
     static func backoff(attempts: Int) -> TimeInterval {
         30 * pow(2, Double(max(attempts, 1) - 1))
@@ -226,6 +289,15 @@ public struct CaptureJob: Codable, Equatable, Sendable {
             return .signInNeeded
         }
 
+        if step == .create, clip != nil, Self.clipFallsBack(outcome) {
+            // The page could not be read; the link is still worth a note, which is what
+            // this capture made before the route existed. Sent at once and not counted
+            // as a try: it is the server's decision about the page, not a failure of the
+            // request, and the plain note has what is left of its four tries.
+            clip = nil
+            return .send([.create])
+        }
+
         var progress = self.progress(of: step)
         defer { setProgress(progress, of: step) }
 
@@ -251,6 +323,7 @@ public struct CaptureJob: Codable, Equatable, Sendable {
                 return remaining.isEmpty ? .saved : .wait
             }
         }
+        if step == .create, clip != nil, progress.attempts >= Self.clipAttempts { clip = nil }
         // A 401 for a session that has since been replaced goes again at once, with the
         // new one; everything else backs off.
         let delay = outcome.status == 401 ? 0 : Self.backoff(attempts: progress.attempts)
@@ -344,15 +417,32 @@ public extension CaptureStep {
 /// The requests a capture makes, as the system's uploader is handed them: a request and a
 /// file for its body, since a background session takes nothing else.
 public enum CaptureRequests {
-    /// `POST /api/notes`, and the JSON it carries.
+    /// `POST /api/notes`, and the JSON it carries; or, for a capture that is a page to
+    /// read (`CaptureJob.Clip`), `POST /api/clip` with the page's address in place of
+    /// the body, and a title only where the person typed one, since the page's own is
+    /// nearly always the better name. Both carry the id the note will have, which is
+    /// what lets either be sent twice, and what lets a clip that fell back find the note
+    /// the unheard clip made.
     public static func create(_ job: CaptureJob, bearer: String) throws -> (request: URLRequest, body: Data) {
-        guard let url = URL(string: job.origin + "/api/notes") else { throw URLError(.badURL) }
-        var payload: [String: Any] = ["id": job.noteId, "title": job.title, "body": job.body]
+        guard let url = URL(string: job.origin + (job.clip == nil ? "/api/notes" : "/api/clip")) else { throw URLError(.badURL) }
+        var payload: [String: Any] = ["id": job.noteId]
+        if let clip = job.clip {
+            payload["url"] = clip.url
+            if let title = clip.title { payload["title"] = title }
+        } else {
+            payload["title"] = job.title
+            payload["body"] = job.body
+        }
         if !job.tags.isEmpty { payload["tags"] = job.tags }
         if let notebook = job.notebook { payload["notebook"] = notebook }
         var request = authorized(url, origin: job.origin, bearer: bearer)
         request.httpMethod = "POST"
         request.setValue("application/json; charset=utf-8", forHTTPHeaderField: "Content-Type")
+        // The only request here that waits on someone else's site: the server gives the page
+        // sixty seconds a hop and its pictures about as long again, with nothing sent back
+        // meanwhile. The default sixty seconds ended first, so the 502 for a site that hung
+        // was never heard. Android's is `UnbentApi.clipClient`.
+        if job.clip != nil { request.timeoutInterval = 180 }
         return (request, try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys]))
     }
 

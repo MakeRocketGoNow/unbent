@@ -1,0 +1,13 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    // A Worker's globals (URL, TextEncoder, fetch) and no `document`: the API runs this
+    // on Cloudflare Workers, so a DOM global used by mistake is a type error here rather
+    // than a crash there. The one DOM is linkedom's, in extract.ts, reached by import.
+    "lib": ["ES2022", "WebWorker"],
+    "types": ["vitest/globals"]
+  },
+  "include": ["src"]
+}

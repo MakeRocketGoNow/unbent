@@ -337,15 +337,29 @@ export type FetchedSource =
       /** Where the bytes actually came from, after any redirects. */
       url: URL;
     }
-  | { ok: false; error: string };
+  | {
+      ok: false;
+      error: string;
+      /**
+       * The host's own answer, when it gave one that was not a success: for a caller
+       * whose advice differs from this module's. The web clip's does (a page refused is
+       * read by the assistant itself, not uploaded), and `refusal`'s sentence is about
+       * files.
+       */
+      status?: number;
+      /** The source is larger than `maxBytes`, declared or counted. */
+      tooLarge?: true;
+    };
 
 /**
  * Fetches a URL and hands back its body in a form `storeAttachment` can put straight
  * into R2, or a message the caller should read and act on.
  *
  * `maxBytes` refuses a source that declares more than that before a byte of it is read.
- * A source that declares nothing is read up to `MAX_UNSIZED_FETCH_BYTES` and refused
- * past it, since there is no other way to learn how large it is.
+ * A source that declares nothing is read up to `MAX_UNSIZED_FETCH_BYTES`, or `maxBytes`
+ * when that is smaller, and refused past it, since there is no other way to learn how
+ * large it is. The smaller cap is the web clip's, which reads a page of a few megabytes
+ * at most and should not hold twenty-five of one that never ends.
  *
  * Redirects are followed by hand, not by `fetch`, so that every hop's host passes the same
  * SSRF check the entry point did: a public URL that 302s to `http://127.0.0.1` is the
@@ -396,15 +410,24 @@ export async function fetchSource(
 
   if (!res.ok) {
     await res.body?.cancel().catch(() => {});
-    return { ok: false, error: refusal(current.host, res.status, res.statusText) };
+    return { ok: false, error: refusal(current.host, res.status, res.statusText), status: res.status };
   }
   if (!res.body) return { ok: false, error: `${current.host} sent no file.` };
 
   const contentType = res.headers.get('content-type');
   const contentDisposition = res.headers.get('content-disposition');
   const finalUrl = new URL(res.url || current.href);
+  // A compressed answer has no usable length. The runtime hands over the body decoded and
+  // leaves the header at the compressed size, so `FixedLengthStream` below would fail on
+  // the first byte past it, and `maxBytes` would be compared with the wrong number. HTML
+  // is what hosts compress most, which is how the web clip met it (a gzipped page with a
+  // declared length came back "Attempt to write too many bytes"); files rarely are, which
+  // is how `add_attachment` had not. The counted read below caps the decoded bytes, so a
+  // small download that decodes to something enormous stops there as well.
+  const encoding = res.headers.get('content-encoding')?.trim().toLowerCase();
+  const encoded = Boolean(encoding) && encoding !== 'identity';
   const declared = res.headers.get('content-length');
-  const length = declared === null ? Number.NaN : Number(declared);
+  const length = declared === null || encoded ? Number.NaN : Number(declared);
 
   if (Number.isInteger(length) && length >= 0) {
     if (length === 0) {
@@ -413,7 +436,7 @@ export async function fetchSource(
     }
     if (length > limits.maxBytes) {
       await res.body.cancel().catch(() => {});
-      return { ok: false, error: tooLarge(length, limits.maxBytes) };
+      return { ok: false, error: tooLarge(length, limits.maxBytes), tooLarge: true };
     }
     /**
      * R2 will only take a stream whose length it knows, and a fetched body is not
@@ -429,6 +452,7 @@ export async function fetchSource(
   }
 
   // No usable length: read it, counting, and stop the moment it is too much.
+  const unsizedCap = Math.min(MAX_UNSIZED_FETCH_BYTES, limits.maxBytes);
   const reader = res.body.getReader();
   const chunks: Uint8Array[] = [];
   let total = 0;
@@ -437,14 +461,15 @@ export async function fetchSource(
       const { done, value } = await reader.read();
       if (done) break;
       total += value.byteLength;
-      if (total > MAX_UNSIZED_FETCH_BYTES) {
+      if (total > unsizedCap) {
         await reader.cancel().catch(() => {});
         return {
           ok: false,
           error:
             `${current.host} did not say how large the file is, and it is over ` +
-            `${megabytes(MAX_UNSIZED_FETCH_BYTES)}MB, the most that can be taken from a ` +
+            `${megabytes(unsizedCap)}MB, the most that can be taken from a ` +
             'source that does not declare a length.',
+          tooLarge: true,
         };
       }
       chunks.push(value);

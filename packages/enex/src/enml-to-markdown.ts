@@ -1,37 +1,7 @@
 import { fromHtml } from 'hast-util-from-html';
-import { toMdast } from 'hast-util-to-mdast';
-import { toMarkdown } from 'mdast-util-to-markdown';
-import { gfmToMarkdown } from 'mdast-util-gfm';
 import { visit } from 'unist-util-visit';
+import { htmlToMarkdown, isElement, type Node } from '@unbent/clip/html-to-markdown';
 import type { EnexResource } from './types.js';
-
-/** Nodes carry arbitrary properties; hast/mdast types are structural enough to alias. */
-type Node = {
-  type: string;
-  tagName?: string;
-  value?: string;
-  properties?: Record<string, unknown>;
-  children?: Node[];
-  url?: string;
-  alt?: string;
-  [key: string]: unknown;
-};
-
-/**
- * Attributes Evernote's clipper sprays over everything. Dropping them is the point of
- * moving to markdown: `style` alone accounts for most of the bulk in a clipped note.
- */
-const DROP_ATTRS = new Set(['style', 'class', 'className', 'id', 'bgcolor', 'face', 'color']);
-
-/** Elements that carry no meaning once styling is gone. */
-const UNWRAP_TAGS = new Set(['span', 'font', 'center', 'basefont', 'big', 'small']);
-
-/** Elements dropped whole, contents included. */
-const DROP_TAGS = new Set(['style', 'script', 'meta', 'link', 'colgroup', 'col']);
-
-function isElement(node: Node, tag?: string): boolean {
-  return node.type === 'element' && (tag === undefined || node.tagName === tag);
-}
 
 /**
  * Rewrites `<en-media hash>` into an image or link pointing at a relative `files/` path.
@@ -114,54 +84,6 @@ function convertTodos() {
   };
 }
 
-/** Strips presentational attributes and unwraps styling-only elements. */
-function stripPresentation() {
-  return (tree: Node) => {
-    visit(tree as never, 'element', (node: Node, index: number | undefined, parent: Node | undefined) => {
-      if (node.properties) {
-        for (const attr of Object.keys(node.properties)) {
-          if (DROP_ATTRS.has(attr)) delete node.properties[attr];
-        }
-      }
-
-      if (!parent || index === undefined) return;
-
-      if (DROP_TAGS.has(node.tagName ?? '')) {
-        parent.children!.splice(index, 1);
-        return index;
-      }
-
-      if (UNWRAP_TAGS.has(node.tagName ?? '')) {
-        parent.children!.splice(index, 1, ...(node.children ?? []));
-        return index;
-      }
-      return undefined;
-    });
-  };
-}
-
-/**
- * `<div>` is Evernote's line separator; markdown has no equivalent, and to-mdast would
- * otherwise run adjacent divs together into one paragraph. Converting them to `<p>`
- * preserves the visual line structure the note was written with.
- */
-function divsToParagraphs() {
-  return (tree: Node) => {
-    visit(tree as never, 'element', (node: Node) => {
-      if (node.tagName !== 'div') return;
-      // A div wrapping block content is a container; only leaf-ish divs are lines.
-      const hasBlockChild = (node.children ?? []).some(
-        (c) =>
-          isElement(c) &&
-          ['div', 'p', 'ul', 'ol', 'table', 'blockquote', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(
-            c.tagName ?? '',
-          ),
-      );
-      if (!hasBlockChild) node.tagName = 'p';
-    });
-  };
-}
-
 export interface ConvertResult {
   markdown: string;
   /** md5s of resources actually referenced by an en-media element. */
@@ -206,49 +128,24 @@ export function enmlToMarkdown(enml: string, resources: EnexResource[]): Convert
 
   resolveMedia(byMd5, usedMd5)(tree);
   convertTodos()(tree);
-  stripPresentation()(tree);
-  divsToParagraphs()(tree);
 
-  const mdast = toMdast(tree as never);
-
-  const markdown = toMarkdown(mdast as never, {
-    extensions: [gfmToMarkdown()],
-    bullet: '-',
-    emphasis: '_',
-    strong: '*',
-    fences: true,
-    rule: '-',
-    resourceLink: false,
-    /**
-     * Leave intra-word underscores alone.
-     *
-     * The default escapes every `_`, turning a filename like `2020_02_29.pdf` into
-     * `2021\_01\_23.pdf`: unreadable in the editor and wrong if copied back out.
-     * CommonMark does not treat an underscore inside a word as emphasis, so the escape
-     * buys nothing. `handle` runs after the default escaping, so undo it there.
-     */
-  });
-
-  return { markdown: tidy(markdown), usedMd5 };
-}
-
-/**
- * Post-processing that is easier and safer on the text than in the AST.
- *
- * - Unescape intra-word underscores. mdast escapes every `_`, turning a filename like
- *   `2020_02_29.pdf` into an unreadable `2020\\_02\\_29.pdf` that is also wrong if copied
- *   back out. CommonMark does not read an underscore inside a word as emphasis, so the
- *   escape buys nothing on the filenames these notes are full of.
- * - Drop trailing-backslash hard breaks. Evernote emits stray `<br>` by the thousand and
- *   each becomes a visible line-break marker that was never meaningful.
- * - Normalize non-breaking spaces and collapse the blank-line runs clipped HTML leaves.
- */
-function tidy(markdown: string): string {
-  return markdown
-    .replace(/\u00a0/g, ' ')
-    .replace(/(?<=\w)\\_(?=\w)/g, '_')
-    .replace(/\\$/gm, '')
-    .replace(/[ \t]+$/gm, '')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
+  // The cleaning (styling stripped, divs made paragraphs) and the serialisation are the
+  // web clipper's too, and live in `@unbent/clip`; ENML only adds its own elements first.
+  //
+  // That includes which children keep a div a container (`BLOCK_TAGS`). Until 2026-10-30
+  // this passed a shorter list of its own, frozen because the import's dedupe hash
+  // (`enexNoteHash`) is taken over the converted body: a div holding a `<pre>`, an `<hr>`
+  // or a `<dl>` (all of which ENML allows) was made a paragraph, which ran a code block,
+  // a rule or a list of terms into the text beside it ("Run this:```npm install```then
+  // restart"), and fixing it moves those notes' hash. Fixed all the same: the wrong
+  // conversion was in every note that had one, for good, while the hash only matters to
+  // someone importing the same export again over a library imported before the fix,
+  // where such a note lands a second time and the rest are still skipped.
+  //
+  // `tidyInsideCode` keeps what this converter has always done to a code block, which is
+  // to take trailing backslashes and spaces and blank lines out of it. That is wrong too,
+  // and the clipper and the paste no longer do it, but fixing it here would move the
+  // dedupe hash of every imported note with a code block touched by those rules: a call
+  // that has not been made for this one.
+  return { markdown: htmlToMarkdown(tree, { tidyInsideCode: true }), usedMd5 };
 }

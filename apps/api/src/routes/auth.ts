@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { INSTANCE_KINDS, type AppConfig, type InstanceKind } from '@unbent/shared';
 import { accountDeletionOffered, getAuth, offeredProviders, turnstileOf } from '../auth.js';
-import { frontPageOf, legalLinksOf, llmOf, operatorOf, posthogOf } from '../lib/instance.js';
+import { frontPageOf, legalLinksOf, llmOf, operatorOf, posthogOf, webClipOf } from '../lib/instance.js';
 import { whoAmI } from '../lib/session.js';
 import { refuseGrantsWithoutAgreement } from './legal.js';
 import { previewRelayOrigin } from '../lib/preview-relay.js';
@@ -51,6 +51,10 @@ export const authRoutes = new Hono<AppEnv>()
    * `frontPage` is the operator's again: on only where the instance says it is the public
    * one, since the page it turns on states that instance's prices. See `frontPageOf`.
    *
+   * `webClip` is `autofill`'s shape: true only where the operator switched the clipper
+   * on, so the apps draw a clip control only where `POST /api/clip` would answer. See
+   * `webClipOf`.
+   *
    * `backups` says whether a `BACKUPS` bucket is bound, so the privacy policy and the
    * deletion page describe the daily dumps only where they are made (MAK-171, part 7).
    *
@@ -83,6 +87,7 @@ export const authRoutes = new Hono<AppEnv>()
       instanceLabel: instanceLabelOf(c.env),
       instanceKind: instanceKindOf(c.env),
       frontPage: frontPageOf(c.env),
+      webClip: webClipOf(c.env),
       backups: c.env.BACKUPS ? true : undefined,
       billing: billingOf(c.env),
     } satisfies AppConfig);

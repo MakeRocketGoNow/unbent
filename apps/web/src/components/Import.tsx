@@ -16,6 +16,7 @@ import { describeImportFile } from './import-file.js';
 import { importPercent } from './import-progress.js';
 import { formatBytes } from '../format-bytes.js';
 import { ImportSkips } from './ImportSkips.js';
+import { ClipBookmarklet } from './ClipBookmarklet.js';
 import { usePlan, READ_ONLY_TIP } from '../use-plan.js';
 import { isNoteFile, notesFromFiles, resetFileNotes, undoFileNotes, useFileNotes } from '../file-notes.js';
 import { NotebookPicker } from './FilingRows.js';
@@ -457,6 +458,10 @@ export function Import() {
       )}
 
       <ImportSkips log={skips} run={run} />
+
+      {/* Last: a way of bringing pages in that is set up once, where the rest of the page
+          is a file brought in now. */}
+      <ClipBookmarklet />
     </div>
   );
 }

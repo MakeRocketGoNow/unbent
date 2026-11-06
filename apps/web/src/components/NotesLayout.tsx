@@ -9,6 +9,7 @@ import {
   viewQueryOf,
   type FieldDef,
   type FieldValue,
+  type Note,
   type NotebookView,
 } from '@unbent/shared';
 import * as api from '../notes-api.js';
@@ -53,6 +54,7 @@ import { rangeLabel } from './format-when.js';
 import { NotebookDrawer } from './NotebookDrawer.js';
 import {
   PlusIcon,
+  ClipLinkIcon,
   TagIcon,
   CalendarIcon,
   FieldsIcon,
@@ -63,6 +65,7 @@ import {
 } from './icons.js';
 import { Sheet } from './Sheet.js';
 import { NoteListHead } from './NoteListHead.js';
+import { CLIP_OFFLINE_TIP, CLIP_RUNNING_TIP, ClipLinkForm, useClipLink } from './ClipLinkForm.js';
 import { NotesSort } from './NotesSort.js';
 import { NotesViewMenu } from './NotesViewMenu.js';
 import { NoteTable } from './NoteTable.js';
@@ -1244,6 +1247,77 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   const newNote = () => createNote(filing);
 
   /*
+   * Clip a link: the other way a note is made from this list. The form takes the search
+   * field's place while it is open (`NoteListHead`'s `clipping`), and the note it makes
+   * is filed as New files one and opened the same way. Opening it clears the query: the
+   * field that shows one is what the form replaces, and a list narrowed by something with
+   * nothing on screen to say so is the failure `onCloseSearch` below exists to prevent. The
+   * control fades offline with the reason, as Auto-fill does, since the
+   * server does the fetching (`actions.clipLink`); and while the plan has ended, as New
+   * does, since the server refuses the note. Focus goes back to the control when the form
+   * closes without a note, since the field that had it is gone by then; when a note is
+   * made the note takes it. The two controls that would close it are disabled while it
+   * clips, as its Cancel is: nothing here can stop a request the server is already acting
+   * on, and "Close without clipping" would be untrue, with the note opening seconds later.
+   *
+   * Drawn only where the instance offers the clipper (`config.webClip`, the operator's
+   * `WEB_CLIP` switch), as the editor draws Auto-fill only on `config.autofill`: hidden,
+   * not faded, since an instance without the clipper has nothing to explain and no way
+   * to get it from here. Absent from an instance deployed before the setting, which
+   * reads the same as off.
+   */
+  const [clipping, setClipping] = useState(false);
+  const clipRef = useRef<HTMLButtonElement>(null);
+  const clipPressedAt = useRef('');
+  const openClip = () => {
+    setSearchOpen(false);
+    // Not `setQuery`, which goes to the list: a note open beside the results stays open.
+    if (q) void navigate({ to: '.', search: (prev) => ({ ...prev, q: undefined }), replace: true, resetScroll: false });
+    setClipping(true);
+  };
+  const closeClip = () => {
+    setClipping(false);
+    clipLink.reset();
+    requestAnimationFrame(() => clipRef.current?.focus());
+  };
+  const clipped = async (note: Note) => {
+    setClipping(false);
+    void queryClient.invalidateQueries({ queryKey: ['notes'] });
+    invalidateNoteMembership(queryClient);
+    // A clip can take a minute, with the list live beside it. Someone who has moved on to
+    // another note stays there and finds this one in the list, as a dropped file's does.
+    if (router.state.location.href !== clipPressedAt.current) return;
+    await navigate({ to: '/notes/$noteId', params: { noteId: note.id }, search: (p) => p });
+  };
+  const clipLink = useClipLink({
+    filing,
+    offline,
+    onStart: () => (clipPressedAt.current = router.state.location.href),
+    onClipped: (note) => void clipped(note),
+    onCancel: closeClip,
+  });
+  const noClip = clipLink.busy ? CLIP_RUNNING_TIP : planInactive ? READ_ONLY_TIP : offline ? CLIP_OFFLINE_TIP : undefined;
+  const clipControl = (
+    <button
+      ref={clipRef}
+      type="button"
+      className="icon-btn"
+      aria-label="Clip a link"
+      aria-pressed={clipping}
+      disabled={planInactive || offline || clipLink.busy}
+      data-tip={noClip ?? 'Clip a link'}
+      aria-description={noClip}
+      onClick={() => (clipping ? closeClip() : openClip())}
+    >
+      <ClipLinkIcon />
+    </button>
+  );
+  const clipForm = clipping ? (
+    <ClipLinkForm clip={clipLink} offline={offline} compact={isMobile} onCancel={closeClip} />
+  ) : undefined;
+  const webClip = config.data?.webClip === true;
+
+  /*
    * Files let go on the list become one note each, filed as New would file them (see
    * `listDropZone` for the rule that the target decides, and `file-notes.ts` for the
    * writes). The zone goes on the whole column, not the list alone: the head and the
@@ -1320,6 +1394,10 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
           eyebrow={eyebrow}
           titleMenu={viewMenu}
           renaming={viewRename}
+          clip={webClip ? clipControl : undefined}
+          clipping={webClip ? clipForm : undefined}
+          onCloseClip={closeClip}
+          clipRunning={clipLink.busy ? CLIP_RUNNING_TIP : undefined}
           headingRef={headingRef}
           query={q}
           onQuery={setQuery}

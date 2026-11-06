@@ -117,6 +117,31 @@ interface NoteListHeadProps {
    */
   toolbar?: boolean;
   /**
+   * Clip a link, after the view menu and before New, at every width: the other way a
+   * note is made from this row, so it sits with New rather than among the controls that
+   * are about what is already on screen. An icon, where New is a word, because New is
+   * the one thing this row is for and two words there would compete; and on a phone,
+   * where New floats over the list, the icon is the one control that makes something in
+   * this row, and a fifth icon is what a 375px row can still hold beside its title.
+   */
+  clip?: ReactNode;
+  /**
+   * The form a link is clipped from, while it is open (`ClipLinkForm`). It takes the
+   * search field's place, so nothing moves: on a phone the whole row, as the search
+   * does, with the back arrow that closes it; on a desktop the search's own row under
+   * the head, and in the toolbar the field's slot in the row. The row the field has is
+   * the one place in this head sized for a line of typing, and a second row for a second
+   * field would push the list down for as long as the form was open.
+   */
+  clipping?: ReactNode;
+  /**
+   * Closes the clip form without clipping: the back arrow on a phone. Only read while
+   * `clipping` is set.
+   */
+  onCloseClip?: () => void;
+  /** A clip is running, which closing the form could not stop: the arrow fades, and this says why. */
+  clipRunning?: string;
+  /**
    * The last thing in the row: the desktop's New button.
    *
    * On a phone New floats over the list, so nothing is passed here. On a desktop a
@@ -180,6 +205,10 @@ export function NoteListHead({
   filtered,
   sort,
   view,
+  clip,
+  clipping,
+  onCloseClip,
+  clipRunning,
   toolbar = false,
   action,
 }: NoteListHeadProps) {
@@ -249,6 +278,22 @@ export function NoteListHead({
       }}
     />
   );
+
+  if (clipping && !fieldAlways) {
+    /*
+     * The clip form on a phone: the whole row, as the search takes it, and for the same
+     * reason: a field sharing a 375px row with the icons is one you cannot read what you
+     * pasted into. The arrow closes it; the form draws no Cancel of its own here.
+     */
+    return (
+      <div className="list-search list-clip">
+        <button type="button" className="icon-btn" aria-label="Close without clipping" data-tip={clipRunning ?? 'Close'} aria-description={clipRunning} disabled={clipRunning !== undefined} onClick={onCloseClip}>
+          <BackArrow />
+        </button>
+        {clipping}
+      </div>
+    );
+  }
 
   if (searchOpen && !fieldAlways) {
     /*
@@ -336,7 +381,7 @@ export function NoteListHead({
             <span className="count">{count}</span>
           )}
         </div>
-        {inToolbar && <div className="list-search">{input}</div>}
+        {inToolbar && <div className={clipping ? 'list-search list-clip' : 'list-search'}>{clipping ?? input}</div>}
         {!(renaming && !fieldAlways) && (
           <div className="list-head-actions">
             {onOpenSearch && (
@@ -363,11 +408,12 @@ export function NoteListHead({
             </button>
             {sort}
             {view}
+            {clip}
             {action}
           </div>
         )}
       </div>
-      {fieldAlways && !inToolbar && <div className="list-search">{input}</div>}
+      {fieldAlways && !inToolbar && <div className={clipping ? 'list-search list-clip' : 'list-search'}>{clipping ?? input}</div>}
     </>
   );
 }

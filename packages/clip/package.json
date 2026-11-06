@@ -1,0 +1,31 @@
+{
+  "name": "@unbent/clip",
+  "version": "0.0.0",
+  "private": true,
+  "license": "Elastic-2.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./extract": "./src/extract.ts",
+    "./html-to-markdown": "./src/html-to-markdown.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@mozilla/readability": "^0.6.0",
+    "@unbent/shared": "workspace:*",
+    "hast-util-from-html": "^2.0.3",
+    "hast-util-to-mdast": "^10.1.2",
+    "linkedom": "^0.18.14",
+    "mdast-util-gfm": "^3.1.0",
+    "mdast-util-to-markdown": "^2.2.0",
+    "unist-util-visit": "^5.1.0"
+  },
+  "devDependencies": {
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.3"
+  },
+  "sideEffects": false
+}

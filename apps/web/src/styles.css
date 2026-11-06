@@ -237,6 +237,54 @@ h1 {
   margin-top: 2rem;
 }
 
+/*
+   The bookmarklet's window (`ClipPage`): the sign-in card's shape, since it is the same
+   kind of page, one decision on an empty window. The page's title is someone else's text
+   and can be a paragraph or one unbroken word, so it wraps anywhere rather than widening
+   a 480px pop-up.
+*/
+.clip-page-title {
+  margin: 1rem 0 0.25rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.clip-page-host {
+  margin-top: 0;
+  overflow-wrap: anywhere;
+}
+
+.clip-page-error { margin-top: 1rem; }
+
+/*
+   The bookmarklet to drag to a bookmarks bar (`ClipBookmarklet`): a link drawn as a chip,
+   since it is a thing to pick up and not a place to go, with the hand that says so. Not a
+   button's shape, which would promise a press that does something here.
+*/
+.bookmarklet-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.25rem;
+  padding: 0.35rem 0.75rem;
+  border: 1px dashed var(--accent);
+  border-radius: 999px;
+  color: var(--accent);
+  font-weight: 600;
+  text-decoration: none;
+  cursor: grab;
+  user-select: none;
+}
+
+.bookmarklet-chip:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+
+.bookmarklet-chip:active { cursor: grabbing; }
+
+.bookmarklet-chip + p { margin-top: 0.5rem; }
+
+/* The press's status line is in the page before it says anything; empty, it takes no room. */
+.bookmarklet-chip + p:empty { margin: 0; }
+
 .provider {
   /*
      A centred row rather than centred text, so a mark sits beside the label instead of the
@@ -497,7 +545,7 @@ button.link {
    card is all buttons and the reset page navigates with one. `/goodbye` genuinely
    navigates, so it uses an anchor, which without this rendered as browser-default blue
    on the dark theme, the one look that says nobody checked. */
-.login a,
+.login a:not(.btn),
 .panel > p a,
 /* The operator page's links live in rows and lists rather than paragraphs: a download
    beside a dump, the run on GitHub under a card. Same treatment, or they are blue. */
@@ -511,7 +559,7 @@ button.link {
 .settings-section p a:hover,
 .confirm p a:hover,
 .confirm-detail a:hover,
-.login a:hover,
+.login a:not(.btn):hover,
 .panel > p a:hover,
 .operator-page a:hover {
   color: var(--fg);
@@ -2155,6 +2203,10 @@ th[aria-sort] .note-th-sort { color: var(--fg); }
 
 .overflow-trigger:hover,
 .icon-btn:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 7%, transparent); }
+
+/* An icon whose form is open (Clip a link, `aria-pressed`): the hover fill, held, so the
+   row says which control the form under it belongs to. */
+.icon-btn[aria-pressed='true'] { color: var(--fg); background: color-mix(in srgb, var(--fg) 7%, transparent); }
 
 /*
    A control that cannot be used right now fades rather than hides, so the row keeps its
@@ -8277,6 +8329,59 @@ button.settings-nav-item {
 .list-head > .icon-btn:first-child { margin-left: -0.22rem; }
 
 .list-search > .icon-btn:first-child { margin-left: -0.49rem; }
+
+/*
+   Clip a link, in the search field's row (`NoteListHead`'s `clipping`).
+
+   The field wears the search field's own clothes, since it stands exactly where that
+   field was and should read as the same kind of thing: a line to type into, in the row
+   sized for one. Clip and Cancel follow on the line, small, at the row's height. What went
+   wrong is a line under the field, in the page's error colour as text (never a fill: in
+   dark mode `--bad` is a light salmon), and it is the one thing here that makes the row
+   taller than the search's.
+*/
+.clip-link {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.clip-link-row {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+/*
+   On a phone the arrow that closes the form sits beside it, and the form can be two
+   lines (the field, then what went wrong). The arrow stays level with the field rather
+   than centring on both: the row's top is the arrow's 44px box, and the field's line is
+   given that height with the field centred in it.
+*/
+.list-clip { align-items: flex-start; }
+
+/* The toolbar caps its field at a width a query needs; an address beside two buttons needs more. */
+.list-head-toolbar .list-clip { flex-basis: 28rem; }
+
+.list-clip > .icon-btn + .clip-link .clip-link-row { min-height: 2.75rem; }
+
+.clip-link-field { flex: 1; min-width: 0; }
+
+/* Clip and Cancel at the field's height, whatever it is where the row is drawn (the
+   search field is 36px in the column and 32px in the toolbar under a mouse), so the row
+   is one height by construction rather than by two rules agreeing. */
+.clip-link-action.btn-small {
+  align-self: stretch;
+  min-height: 0;
+  height: auto;
+  padding-block: 0;
+  white-space: nowrap;
+}
+
+.clip-link-error { margin: 0 0 0.25rem 0.6rem; }
 
 /*
    The dot that says a filter is on.

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { LEGAL_BASE_VERSION, LEGAL_CHANGES, LEGAL_VERSION } from '@unbent/shared';
 import {
   frontPageOf,
+  webClipOf,
   isOperator,
   legalLinksOf,
   legalVersionOf,
@@ -268,5 +269,23 @@ describe('frontPageOf', () => {
   it('is on for exactly 1', () => {
     expect(frontPageOf({ FRONT_PAGE: '1' })).toBe(true);
     expect(frontPageOf({ FRONT_PAGE: ' 1 ' })).toBe(true);
+  });
+});
+
+/**
+ * The clipper is sized for Workers Paid, so the case that matters is the fork that set
+ * nothing and must not be offered a clip its Worker cannot finish.
+ */
+describe('webClipOf', () => {
+  it('is off unless the operator switched it on', () => {
+    expect(webClipOf({})).toBeUndefined();
+    expect(webClipOf({ WEB_CLIP: '0' })).toBeUndefined();
+    expect(webClipOf({ WEB_CLIP: 'true' })).toBeUndefined();
+    expect(webClipOf({ WEB_CLIP: '' })).toBeUndefined();
+  });
+
+  it('is on for exactly 1', () => {
+    expect(webClipOf({ WEB_CLIP: '1' })).toBe(true);
+    expect(webClipOf({ WEB_CLIP: ' 1 ' })).toBe(true);
   });
 });

@@ -31,6 +31,7 @@
     "@tanstack/react-query": "^5.104.3",
     "@tanstack/react-router": "^1.170.45",
     "@unbent/api": "workspace:*",
+    "@unbent/clip": "workspace:*",
     "@unbent/enex": "workspace:*",
     "@unbent/seed": "workspace:*",
     "@unbent/shared": "workspace:*",

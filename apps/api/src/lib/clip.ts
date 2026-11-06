@@ -1,0 +1,650 @@
+import type { Clip, ClipImage } from '@unbent/clip';
+import {
+  InvalidFieldValue,
+  MAX_BODY_BYTES,
+  MAX_CLIP_PARSED_CHARS,
+  MAX_TITLE_LENGTH,
+  inlineLinkSpans,
+  normalizeContentType,
+  relativeAttachmentPath,
+  type Note,
+  type NoteFieldsPatch,
+} from '@unbent/shared';
+import type { AttachmentsRepo } from './attachments-repo.js';
+import { checkSourceUrl, fetchSource, requestHeaders } from './fetch-attachment.js';
+import { PlanRefused } from './free-plan.js';
+import type { NotesRepo } from './notes-repo.js';
+import { StorageFull } from './quota.js';
+import { storeAttachment } from './store-attachment.js';
+import { fetchWebImage } from './web-image.js';
+import type { Env } from '../types.js';
+
+/**
+ * A web page kept as a note, fetched and read on the server: what `POST /api/clip` and
+ * the `clip_web_page` tool both are.
+ *
+ * The page becomes Markdown in `@unbent/clip` (Reader View's article, its links made
+ * absolute, a "Clipped from" line on top); this module is the part with a network and a
+ * store around it. The clip lists the pictures it kept with the `files/<name>` path the
+ * body already points at, so the note is written once, whole, and each picture is then
+ * stored under exactly that name. A picture that could not be had is the one case that
+ * writes the body twice; see `relink`.
+ *
+ * What it costs a Worker, counted against the Free plan's numbers, which a fork runs on
+ * (AGENTS.md, "Subrequests are the budget inside one invocation"):
+ *
+ *   - Subrequests. Fifty an invocation, and every fetch, store call, R2 call and D1 query
+ *     counts. Before the route runs: the session and the plan row, two D1 reads (one more
+ *     store call for an account no plan holds, `refuseIfPastFree`). Then the page (one
+ *     fetch, plus one per redirect), the note (one store call), and for each picture its
+ *     fetch, `storeAttachment`'s `availableFilename` and `record` and the R2 put: four.
+ *     With `CLIP_MAX_IMAGES` at ten that is 2 + 1 + 1 + 1 + 40 = 45, and one more for the
+ *     body's repair when a picture failed, which leaves four for redirects. Twelve, the
+ *     clip package's own default, would be 53 before a redirect, past the limit, which is
+ *     why the server asks for fewer. Do not raise it without counting again. That count
+ *     is the page's: a picture can follow five redirects of its own, a page's redirects
+ *     can use up the spare four, and a tool call spends more before the clip (its auth,
+ *     and `notebookByName` when it names fields). So it is a count without redirects, not
+ *     a guarantee. Fifty is the Free plan's number and the switch below is what keeps a
+ *     Free instance from running this at all; the count is kept honest so that the cap
+ *     stays near what a Free plan could afford if that ever changes.
+ *   - CPU. Readability over a DOM is real work. Measured in Node with vitest on
+ *     2026-10-30, warm, on invented article pages carrying the scripts, styles and
+ *     navigation a real one does: a 200 KB page with a dozen paragraphs took 10 ms, a
+ *     240 KB one with sixty (20 KB of Markdown) 23 ms, and a 330 KB one with two hundred
+ *     (67 KB of Markdown) 63 ms. A cold isolate is slower still. That is past the Free
+ *     plan's 10 ms an invocation for most pages, so on Free a clip of a long article
+ *     will be ended for its CPU; unbent.app is on Workers Paid (thirty seconds), where it
+ *     is nothing. Which is why the whole feature is behind `WEB_CLIP` (`webClipOf`): an
+ *     operator says their plan can run it, and a fork that said nothing offers no clip
+ *     its Worker would fail. The body's repair parses the Markdown once more, about as
+ *     long again as the clip on the same page, and only when a picture failed.
+ */
+
+/** A page larger than this is not fetched whole. It is more than `CLIP_MAX_PARSED_CHARS` because much of a page's weight is the scripts and styles taken out before the parse. */
+export const CLIP_MAX_PAGE_BYTES = 5 * 1024 * 1024;
+
+/** The most HTML handed to the parser; the measurement behind it is on `MAX_CLIP_PARSED_CHARS`. */
+export const CLIP_MAX_PARSED_CHARS = MAX_CLIP_PARSED_CHARS;
+
+/** The most pictures a server-side clip stores; the rest stay links to the site. See the budget above. */
+export const CLIP_MAX_IMAGES = 10;
+
+/**
+ * Pictures fetched and stored at once. Enough that a clip of ten pictures is a few round
+ * trips rather than ten, and few enough that the bytes held at once are bounded with
+ * `CLIP_MAX_IMAGE_BYTES`.
+ */
+const IMAGE_CONCURRENCY = 4;
+
+/**
+ * Every picture of a clip is fetched within this, counted from the first; one still on
+ * its way then fails, and stays a link to the site like any picture that could not be
+ * fetched.
+ *
+ * Without it the phase had no end of its own: twenty seconds a hop, six hops, ten
+ * pictures four at a time, so minutes, which the request waited on. A phone gives up on a
+ * clip at three minutes, and once its connection is gone only `waitUntil`'s thirty
+ * seconds are left: the fetches still running were cut there, the repair after them
+ * never ran, and the note kept `files/` links to nothing, with a retry finding the note
+ * and nothing to repair it from. Twenty seconds leaves the repair room inside those
+ * thirty however early the client goes, and is still several times what an article's
+ * pictures take; the web form waits no longer than this on them either.
+ */
+export const CLIP_IMAGES_MS = 20_000;
+
+/**
+ * The largest picture a clip stores; a larger one stays a link to the site. Smaller than
+ * `MAX_WEB_IMAGE_BYTES`, which is for a picture someone chose: here the page's HTML picks
+ * the addresses, and four at that limit would be 120 of the isolate's 128 MB. Four at
+ * this one are 40, which leaves room for the page, and no article's pictures come near it.
+ * That counts each once, which holds for a picture that declares its size (`readUpTo`
+ * writes it into one buffer); one that does not is held twice for a moment at the end,
+ * so four of those at the limit at once would be 80, and the page with them too much.
+ * That case is left as it is rather than paid for on every clip with fewer pictures in
+ * flight.
+ */
+export const CLIP_MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+
+export interface ClipInput {
+  url: string;
+  /**
+   * The page, when the client has it (the bookmarklet sends the tab's). The server then
+   * fetches nothing but the pictures; see `clipRequestSchema.html`.
+   */
+  html?: string | undefined;
+  /** The note's title. Absent, the page's own. */
+  title?: string | undefined;
+  notebook?: string | null | undefined;
+  tags?: string[] | undefined;
+  fields?: NoteFieldsPatch | undefined;
+  /** The note's id, when the caller chose one; see `clipRequestSchema`. */
+  id?: string | undefined;
+}
+
+export interface ClipImages {
+  stored: number;
+  failed: Array<{ url: string; error: string }>;
+}
+
+/**
+ * What became of a clip.
+ *
+ * No 402 among the failures: a note or a file the store refuses for the plan or for
+ * room throws `PlanRefused` or `StorageFull`, as every other write does, and goes to the
+ * handler that already answers those (`onAppError` over HTTP, `gatedRegistrar` for a
+ * tool) with the code and the numbers the clients switch on. A picture the store refuses
+ * after the note is made is not a failed clip: it is a picture in `failed`.
+ */
+export type ClipResult =
+  | { ok: true; note: Note; existing: boolean; images: ClipImages }
+  | { ok: false; status: 400 | 413 | 415 | 502; error: string; code: ClipErrorCode };
+
+/**
+ * What a client or an assistant can switch on. `HOST_REFUSED` above all: the page is
+ * there, and only this server cannot have it, so whoever is asking can read it
+ * themselves (the tool's description tells an assistant to).
+ */
+export type ClipErrorCode =
+  | 'BAD_URL'
+  | 'HOST_REFUSED'
+  | 'HOST_ERROR'
+  | 'UNREACHABLE'
+  | 'NOT_A_PAGE'
+  | 'TOO_LARGE'
+  | 'INVALID_FIELD';
+
+export interface ClipOptions {
+  /** Local development only, keyed on `ALLOW_TEST_CREDENTIALS` by the caller, as the other fetchers are. */
+  allowLoopback: boolean;
+  /** The plan's storage in bytes, or null for no limit; see lib/quota.ts. */
+  quota: number | null;
+  /** `ATTACHMENT_FETCH_USER_AGENT`, when the deployment set one. */
+  userAgent?: string | undefined;
+  /**
+   * Refuses an account past the free plan before anything is fetched
+   * (`refuseIfPastFree`), by throwing `PlanRefused`. The note's create would refuse it in
+   * the store anyway, but only after the page was fetched and read, which is the work a
+   * read-only account should not be able to spend; `HELD_IN_STORE` lists the route on
+   * that condition.
+   */
+  pastFree?: (() => Promise<unknown>) | undefined;
+  /** An assistant's clip: the body's repair is kept in history as its write. */
+  by?: 'assistant' | undefined;
+  /** `CLIP_IMAGES_MS`, shorter in a test. */
+  imagesWithinMs?: number | undefined;
+}
+
+export async function clipUrl(
+  env: Pick<Env, 'BLOBS' | 'AI'>,
+  ctx: { waitUntil(promise: Promise<unknown>): void },
+  repos: { notes: NotesRepo; attachments: AttachmentsRepo },
+  input: ClipInput,
+  opts: ClipOptions,
+): Promise<ClipResult> {
+  // The address first, before anything else is spent on it: http(s) only, no
+  // credentials, nothing on a loopback or private network. The same guard as every
+  // fetch this server makes for a caller, and `fetchSource` repeats it at every redirect.
+  //
+  // A page the client sent is not fetched, so its address needs only to be one a note
+  // can link to: an intranet page someone is looking at is theirs to keep, and refusing
+  // it as private would refuse the very page only their tab can see. Its pictures are
+  // still fetched here, each through `fetchWebImage`'s own guard, so one on a private
+  // host is refused there and stays a link.
+  const checked =
+    input.html !== undefined
+      ? checkPageUrl(input.url)
+      : checkSourceUrl(input.url, { allowLoopback: opts.allowLoopback });
+  if ('error' in checked) return { ok: false, status: 400, code: 'BAD_URL', error: checked.error };
+  await opts.pastFree?.();
+
+  const page: FetchedPage =
+    input.html !== undefined ? { ok: true, html: input.html, url: checked.url } : await fetchPage(checked.url, opts);
+  if (!page.ok) return page;
+
+  // Loaded here, not at the top of the file. linkedom and Readability are a few hundred
+  // kilobytes run on every isolate's start otherwise, for a rare action, and on the forks
+  // where the switch is off they would never be used at all. Wrangler bundles this into
+  // the one Worker file, so it costs no fetch: only their running waits until a clip.
+  const { clipPage, withoutScriptsAndStyles } = await import('@unbent/clip');
+  const html = withoutScriptsAndStyles(page.html);
+  if (html.length > CLIP_MAX_PARSED_CHARS) {
+    return {
+      ok: false,
+      status: 413,
+      code: 'TOO_LARGE',
+      error: `The page at ${page.url.host} holds more than a clip reads (${CLIP_MAX_PARSED_CHARS / 1024 / 1024} MB of HTML, leaving out its scripts and styles).`,
+    };
+  }
+
+  let clip: Clip;
+  try {
+    clip = clipPage(html, page.url.href, { maxImages: CLIP_MAX_IMAGES });
+  } catch (err) {
+    // Readability on a page nobody tested it on; the address itself was checked above.
+    console.error('clip: reading the page failed:', (err as Error).message);
+    return { ok: false, status: 502, code: 'NOT_A_PAGE', error: `The page at ${page.url.host} could not be read.` };
+  }
+  if (clip.markdown.length > MAX_BODY_BYTES) {
+    return {
+      ok: false,
+      status: 413,
+      code: 'TOO_LARGE',
+      error: `The article on that page is longer than a note can hold (${Math.round(MAX_BODY_BYTES / 1000)} KB of text).`,
+    };
+  }
+
+  // A page's title can be a paragraph (some sites put their whole description in it);
+  // the note's is cut to what a note may have rather than refusing the clip over it.
+  const title = input.title ?? Array.from(clip.title).slice(0, MAX_TITLE_LENGTH).join('');
+
+  // As `POST /notes` creates one: an id already held answers with the note that holds
+  // it, so a replayed clip makes no second note. Its pictures are not fetched again: the
+  // first request stored what it could, under `waitUntil` so that a lost answer does not
+  // stop it (see below), and a replay is the same request.
+  let created: { note: Note; existing: boolean };
+  try {
+    created = await repos.notes.createOrFind({
+      id: input.id ?? crypto.randomUUID(),
+      title,
+      body: clip.markdown,
+      tags: input.tags ?? [],
+      notebook: input.notebook,
+      ...(input.fields ? { fields: input.fields } : {}),
+    });
+  } catch (err) {
+    if (err instanceof InvalidFieldValue) {
+      return { ok: false, status: 400, code: 'INVALID_FIELD', error: `${err.fieldName} ${err.message}` };
+    }
+    throw err;
+  }
+  if (created.existing) return { ok: true, note: created.note, existing: true, images: { stored: 0, failed: [] } };
+
+  /*
+     From here the note exists and its body names `files/` paths, while the pictures'
+     own addresses are only in this invocation's memory. A client that goes away (a phone
+     losing signal is the case a clip's id exists for) cancels what a request is doing
+     unless it is under `waitUntil`, and stopped here the note would keep dead links with
+     nothing left to repair them from. So the rest runs under it.
+
+     That covers a dropped connection for as long as `waitUntil` lasts (about thirty
+     seconds by Cloudflare's documentation, which the pictures fit inside: see
+     `CLIP_IMAGES_MS`), and not the isolate ending. Both would need the web addresses
+     written first and swapped once each file is in: a second write, a feed row and a copy
+     in the note's history on every clip with pictures, to cover something rarer. Not
+     taken unless it shows up.
+  */
+  const finishing = finishClip(env, ctx, repos, created.note, clip, page.url, opts);
+  ctx.waitUntil(finishing.catch(() => {}));
+  return { ok: true, existing: false, ...(await finishing) };
+}
+
+/** Stores the note's pictures, then repairs its body if any of them needs it. */
+async function finishClip(
+  env: Pick<Env, 'BLOBS' | 'AI'>,
+  ctx: { waitUntil(promise: Promise<unknown>): void },
+  repos: { notes: NotesRepo; attachments: AttachmentsRepo },
+  note: Note,
+  clip: Clip,
+  pageUrl: URL,
+  opts: ClipOptions,
+): Promise<{ note: Note; images: ClipImages }> {
+  const outcome = await storeImages(env, ctx, repos, note.id, clip.images, pageUrl, opts);
+  const images = { stored: outcome.stored, failed: outcome.failed };
+  if (outcome.relinks.size === 0) return { note, images };
+
+  /*
+     The one case with a second write. The body was written before the pictures were
+     fetched, because a file needs its note to exist first, and it names every picture the
+     clip kept as `files/<name>`. A picture that did not arrive would leave a link to a
+     file that is not there: the note would show a broken image and the attachments panel
+     would never list it. So those links are pointed back at the web, where the picture
+     still is. It is a second write only on failure: on the usual path the body was
+     already right, and writing it again would cost a store call, a feed row and a copy in
+     the note's history for nothing.
+
+     `ifUpdatedAt` because the note has been visible since its create: a person who
+     opened it and typed in the seconds this took has the newer body, and theirs wins.
+     Their draft then still has the broken links, and the editor's "Save web images" is
+     not offered for them; that is the rarer failure, and better than overwriting them.
+  */
+  const body = relink(clip.markdown, clip.images, outcome.relinks);
+  try {
+    const updated = await repos.notes.update(note.id, {
+      body,
+      ifUpdatedAt: note.updatedAt,
+      ...(opts.by ? { by: opts.by } : {}),
+    });
+    return { note: updated && !('stale' in updated) ? updated : note, images };
+  } catch (err) {
+    // The store refusing the repair (out of room, or a passing unavailability). The note
+    // and its pictures are made, and a caller told the clip failed would make it again,
+    // so this is the failure the answer's `failed` already names, not a failed clip.
+    console.error('clip: repairing the body failed:', (err as Error).message);
+    return { note, images };
+  }
+}
+
+type FetchedPage = { ok: true; html: string; url: URL } | Extract<ClipResult, { ok: false }>;
+
+/**
+ * The address of a page the client sent: http or https, and no credentials in it, since
+ * the note's source line links to it and a password in a note is a password kept.
+ * `checkSourceUrl` without the private-network rule, which is about what this server
+ * fetches, and this address it does not.
+ */
+export function checkPageUrl(raw: string): { url: URL } | { error: string } {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return { error: `"${raw}" is not a URL.` };
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    return { error: `Only a web page can be clipped; this address is ${url.protocol.slice(0, -1)}.` };
+  }
+  if (url.username || url.password) return { error: 'An address with credentials in it is refused.' };
+  return { url };
+}
+
+/**
+ * The page's HTML as text, or why there is none.
+ *
+ * `fetchSource` is the fetch `add_attachment` makes, and the right one here: it dresses
+ * the request as a browser's (a page is exactly what hosts hand only to browsers), it
+ * follows redirects by hand so every hop is checked, and it has a timeout. Its messages
+ * are written about files, so the refusals are worded again here for a page.
+ */
+async function fetchPage(url: URL, opts: ClipOptions): Promise<FetchedPage> {
+  const source = await fetchSource(url, {
+    maxBytes: CLIP_MAX_PAGE_BYTES,
+    allowLoopback: opts.allowLoopback,
+    ...(opts.userAgent ? { userAgent: opts.userAgent } : {}),
+  });
+  if (!source.ok) {
+    if (source.tooLarge) {
+      return {
+        ok: false,
+        status: 413,
+        code: 'TOO_LARGE',
+        error: `That page is over ${CLIP_MAX_PAGE_BYTES / 1024 / 1024} MB, more than a clip reads.`,
+      };
+    }
+    if (source.status === 401 || source.status === 403 || source.status === 429) {
+      return {
+        ok: false,
+        status: 502,
+        code: 'HOST_REFUSED',
+        error:
+          `${url.host} answered ${source.status} and would not give this server the page. ` +
+          'Some sites serve only browsers, and some pages need a sign-in.',
+      };
+    }
+    if (source.status !== undefined) {
+      return { ok: false, status: 502, code: 'HOST_ERROR', error: `${url.host} answered ${source.status}.` };
+    }
+    return { ok: false, status: 502, code: 'UNREACHABLE', error: source.error };
+  }
+
+  /*
+     A page only. A PDF or a picture at the address is a file, and a file is attached to
+     a note (an upload, `add_attachment`), where it is stored as itself and its text is
+     read; clipping it would make a note of nothing. `application/xhtml+xml` is a page
+     written as XML, and as rare as it is, it is still a page.
+  */
+  const type = normalizeContentType(source.contentType);
+  if (type !== 'text/html' && type !== 'application/xhtml+xml') {
+    if (source.body instanceof ReadableStream) await source.body.cancel().catch(() => {});
+    return {
+      ok: false,
+      status: 415,
+      code: 'NOT_A_PAGE',
+      error:
+        `That address is ${type ? `a file of type ${type}` : 'a file of no stated type'}, not a web page. ` +
+        'Clipping is for web pages; a file such as a PDF or a picture is attached to a note ' +
+        'instead (uploaded, or passed to add_attachment by an assistant).',
+    };
+  }
+
+  let bytes: ArrayBuffer;
+  try {
+    bytes = await new Response(source.body).arrayBuffer();
+  } catch (err) {
+    return { ok: false, status: 502, code: 'UNREACHABLE', error: `Reading the page from ${url.host} failed: ${(err as Error).message}` };
+  }
+  return { ok: true, html: decodeHtml(bytes, source.contentType), url: source.url };
+}
+
+/**
+ * The page's bytes as text, in the encoding the page is in.
+ *
+ * The header's `charset` first, then a `<meta charset>` (or the older `http-equiv` form)
+ * in the first kilobyte, which is where a browser looks and where pages that predate
+ * UTF-8 declare theirs, then UTF-8. A label the runtime's `TextDecoder` does not know
+ * falls back to UTF-8 rather than failing the clip: a page in a rare encoding loses its
+ * accents, not the article.
+ */
+export function decodeHtml(bytes: ArrayBuffer, contentType: string | null): string {
+  const declared = /charset\s*=\s*["']?([\w.:-]+)/i.exec(contentType ?? '')?.[1];
+  // Read byte for byte, which is all a declaration in ASCII needs, without asking the
+  // runtime for a decoder it may not have: workerd's has fewer labels than a browser's.
+  const head = String.fromCharCode(...new Uint8Array(bytes, 0, Math.min(1024, bytes.byteLength)));
+  const meta = /<meta[^>]+charset\s*=\s*["']?([\w.:-]+)/i.exec(head)?.[1];
+  for (const label of [declared, meta]) {
+    if (!label) continue;
+    try {
+      return new TextDecoder(label).decode(bytes);
+    } catch {
+      // Not a label this runtime decodes; try the next.
+    }
+  }
+  return new TextDecoder('utf-8').decode(bytes);
+}
+
+interface StoredImages extends ClipImages {
+  /** By the clip's filename: the destination its links should have instead, as a URL. */
+  relinks: Map<string, string>;
+}
+
+/**
+ * Fetches each picture and stores it under the name the clip gave it, a few at a time.
+ *
+ * The note is brand new and the clip chose its names to be distinct, so each is stored
+ * as asked. `storeAttachment` would still suffix one that collided (it asks the store
+ * for a free name), and then the body's link is pointed at the name it got rather than
+ * the one the clip wrote.
+ *
+ * The first refusal for room (`StorageFull`, or the free plan's `PlanRefused`) stops
+ * the fetching: every picture after it would be refused for the same reason, and each
+ * would be a fetch and an R2 put spent to learn it. The ones not yet fetched are failed
+ * with that reason, so the answer says why.
+ *
+ * Each is asked for as the page was, and as a browser showing the page would ask: the
+ * same User-Agent, with the page as the Referer. A host that gave this server the page
+ * would otherwise be asked for its pictures by something else entirely, and hotlink
+ * protection refuses a picture with no Referer, which would leave it a link to the site.
+ */
+async function storeImages(
+  env: Pick<Env, 'BLOBS' | 'AI'>,
+  ctx: { waitUntil(promise: Promise<unknown>): void },
+  repos: { notes: NotesRepo; attachments: AttachmentsRepo },
+  noteId: string,
+  images: ClipImage[],
+  pageUrl: URL,
+  opts: ClipOptions,
+): Promise<StoredImages> {
+  const failed: Array<{ index: number; url: string; error: string }> = [];
+  const relinks = new Map<string, string>();
+  let stored = 0;
+  let refusal: string | null = null;
+  let next = 0;
+  const deadline = AbortSignal.timeout(opts.imagesWithinMs ?? CLIP_IMAGES_MS);
+  const late = 'Not fetched in time; it stays a link to the site.';
+
+  const fail = (index: number, image: ClipImage, error: string) => {
+    failed.push({ index, url: image.url, error });
+    relinks.set(image.filename, image.url);
+  };
+
+  const worker = async () => {
+    while (next < images.length) {
+      const index = next++;
+      const image = images[index]!;
+      if (refusal) {
+        fail(index, image, refusal);
+        continue;
+      }
+      if (deadline.aborted) {
+        fail(index, image, late);
+        continue;
+      }
+      const fetched = await fetchWebImage(image.url, {
+        allowLoopback: opts.allowLoopback,
+        maxBytes: CLIP_MAX_IMAGE_BYTES,
+        headersFor: (url) => requestHeaders(url, { referer: pageUrl, userAgent: opts.userAgent }),
+        signal: deadline,
+      });
+      if (!fetched.ok) {
+        fail(index, image, deadline.aborted ? late : fetched.error);
+        continue;
+      }
+      // Refused while this one was on its way: not worth an R2 put to be refused again.
+      if (refusal) {
+        fail(index, image, refusal);
+        continue;
+      }
+      try {
+        const file = await storeAttachment(env, ctx, repos, {
+          noteId,
+          filename: image.filename,
+          contentType: fetched.contentType,
+          body: fetched.bytes,
+          link: false,
+          quota: opts.quota,
+        });
+        stored += 1;
+        if (file.filename !== image.filename) relinks.set(image.filename, file.path);
+      } catch (err) {
+        if (err instanceof StorageFull || err instanceof PlanRefused) {
+          refusal ??= err.message;
+          fail(index, image, err.message);
+          continue;
+        }
+        fail(index, image, `Storing it failed: ${(err as Error).message}`);
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(IMAGE_CONCURRENCY, images.length) }, worker));
+
+  failed.sort((a, b) => a.index - b.index);
+  return { stored, failed: failed.map(({ url, error }) => ({ url, error })), relinks };
+}
+
+/**
+ * The clip's body with the links to each picture in `relinks` pointed at its new
+ * destination: the web address of one that failed, or the stored name of one that was
+ * renamed.
+ *
+ * By the parser, not a pattern over the body. `inlineLinkSpans` finds each picture whose
+ * destination reads as exactly the clip's `files/<name>`, so a code block quoting such
+ * a link, or a sentence that mentions the path, is left alone; then only the destination
+ * inside that span is replaced, so the alt text and any title stay as the clip wrote
+ * them. The spliced link is read back through the same parser before it is kept, and a
+ * picture whose splice does not read back as intended is written whole instead, from the
+ * clip's own alt text. Spans are replaced from the end so the earlier ones' offsets hold.
+ */
+export function relink(markdown: string, images: ClipImage[], relinks: Map<string, string>): string {
+  const byPath = new Map(images.filter((i) => relinks.has(i.filename)).map((i) => [i.path, i]));
+  if (byPath.size === 0) return markdown;
+  const spans = inlineLinkSpans(markdown)
+    .filter((l) => l.image && byPath.has(l.url))
+    .sort((a, b) => b.from - a.from);
+
+  let out = markdown;
+  for (const span of spans) {
+    const image = byPath.get(span.url)!;
+    const target = relinks.get(image.filename)!;
+    const destination = target.startsWith('files/')
+      ? relativeAttachmentPath(target.slice('files/'.length))
+      : webDestination(target);
+    const text = out.slice(span.from, span.to);
+    const spliced = spliceDestination(text, destination);
+    const replacement =
+      spliced !== null && readsAs(spliced, target) ? spliced : `![${escapeLabel(image.alt)}](${destination})`;
+    out = out.slice(0, span.from) + replacement + out.slice(span.to);
+  }
+  return out;
+}
+
+/**
+ * A web address as a link destination: in angle brackets when it holds a parenthesis,
+ * and with an ampersand that would read as a character reference escaped, as
+ * `relativeAttachmentPath` writes a file's; see `attachmentDestination` in
+ * `@unbent/shared` for why each. A URL's `href` holds no space, angle bracket or
+ * backslash, so nothing else needs it.
+ */
+function webDestination(url: string): string {
+  const escaped = url.replace(/&(?=#\d+;|#x[0-9a-f]+;|[a-z][a-z0-9]*;)/gi, '\\&');
+  return /[()]/.test(url) ? `<${escaped}>` : escaped;
+}
+
+function escapeLabel(label: string): string {
+  return label.replace(/[[\]\\]/g, '\\$&');
+}
+
+/** Whether `text` is one picture, the whole of it, whose destination reads as `url`. */
+function readsAs(text: string, url: string): boolean {
+  const links = inlineLinkSpans(text);
+  const first = links[0];
+  return links.length >= 1 && first!.image && first!.from === 0 && first!.to === text.length && first!.url === url;
+}
+
+/**
+ * `text`, one inline image as the parser found it, with its destination replaced, or null
+ * when the destination cannot be found in it. The label ends at the first `]` outside a
+ * nested pair and not escaped; the destination is the bracketed `<…>` or the bare run
+ * after the `(` that follows it, as CommonMark reads one. `readsAs` checks the answer, so
+ * a case this reads wrongly is caught there rather than written.
+ */
+function spliceDestination(text: string, destination: string): string | null {
+  let i = 2;
+  let depth = 0;
+  for (; i < text.length; i += 1) {
+    const ch = text[i];
+    if (ch === '\\') i += 1;
+    else if (ch === '[') depth += 1;
+    else if (ch === ']') {
+      if (depth === 0) break;
+      depth -= 1;
+    }
+  }
+  if (text[i + 1] !== '(') return null;
+  let start = i + 2;
+  while (start < text.length && /[ \t\n]/.test(text[start]!)) start += 1;
+
+  let end = start;
+  if (text[start] === '<') {
+    end += 1;
+    while (end < text.length && text[end] !== '>') end += text[end] === '\\' ? 2 : 1;
+    if (text[end] !== '>') return null;
+    end += 1;
+  } else {
+    let parens = 0;
+    while (end < text.length) {
+      const ch = text[end]!;
+      if (ch === '\\') {
+        end += 2;
+        continue;
+      }
+      if (/\s/.test(ch)) break;
+      if (ch === '(') parens += 1;
+      else if (ch === ')') {
+        if (parens === 0) break;
+        parens -= 1;
+      }
+      end += 1;
+    }
+  }
+  if (end === start) return null;
+  return text.slice(0, start) + destination + text.slice(end);
+}

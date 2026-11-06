@@ -328,18 +328,21 @@ export default defineConfig({
      * discover its dependencies during its initial crawl. Discovering them mid-import makes
      * Vite optimize them and reload the page, resetting the UI while uploads are in progress.
      *
-     * Keep this list aligned with runtime package imports in `packages/enex/src`. The
-     * frontmatter codec's `yaml` is not here because `@unbent/shared` is imported by the
-     * page itself, so the crawl already finds it.
+     * Keep this list aligned with runtime package imports in `packages/enex/src`, and in
+     * `packages/clip/src` for the Markdown pipeline enex takes from it. The frontmatter
+     * codec's `yaml` is not here because `@unbent/shared` is imported by the page itself,
+     * so the crawl already finds it.
      */
     include: [
       '@unbent/enex > @zip.js/zip.js',
       '@unbent/enex > hast-util-from-html',
-      '@unbent/enex > hast-util-to-mdast',
-      '@unbent/enex > mdast-util-gfm',
-      '@unbent/enex > mdast-util-to-markdown',
       '@unbent/enex > saxes',
       '@unbent/enex > unist-util-visit',
+      '@unbent/enex > @unbent/clip > hast-util-from-html',
+      '@unbent/enex > @unbent/clip > hast-util-to-mdast',
+      '@unbent/enex > @unbent/clip > mdast-util-gfm',
+      '@unbent/enex > @unbent/clip > mdast-util-to-markdown',
+      '@unbent/enex > @unbent/clip > unist-util-visit',
       'pdfjs-dist/legacy/build/pdf.mjs',
       'pdfjs-dist/legacy/build/pdf.worker.min.mjs',
     ],

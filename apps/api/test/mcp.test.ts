@@ -298,6 +298,7 @@ describe('mcp endpoint', () => {
     expect(names).toContain('edit_note');
     expect(names).toContain('update_notebook');
     expect(names).toContain('send_feedback');
+    expect(names).toContain('clip_web_page');
   });
 
   it('sets a notebook purpose through update_notebook and reads it back from list_notebooks', async () => {
@@ -1302,6 +1303,77 @@ describe('prepare_attachment_upload', () => {
     const res = await put(uploadUrl, PNG);
     expect(res.status).toBe(404);
     expect(((await res.json()) as { error: string }).error).toContain('no longer there');
+  });
+});
+
+/**
+ * clip_web_page: the page fetched by the server and kept as a note, as `POST /api/clip`
+ * keeps one (test/clip.test.ts has the route's cases). What is the tool's own: the note
+ * filed by notebook name, the answer the model reads, and a refused host answered with
+ * the way round it. The site is this process, on loopback, as add_attachment's is.
+ */
+describe('clip_web_page', () => {
+  const PICTURE = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 9, 9, 9, 9]);
+  const PARAGRAPH =
+    'Before each session, brush the face clean of scale and check the edges for chips. A small ' +
+    'chip can be dressed with a file, slowly and with the grain, rather than left to spread.';
+  let site: Server;
+  let origin: string;
+  let frank: Actor;
+
+  beforeAll(async () => {
+    site = createServer((req, res) => {
+      switch (new URL(req.url ?? '/', 'http://x').pathname) {
+        case '/guides/edges':
+          res.writeHead(200, { 'Content-Type': 'text/html' });
+          return res.end(
+            '<html><head><title>Dressing the edges | Acme Workshop</title><meta property="og:site_name" content="Acme Workshop"></head>' +
+              '<body><nav>Shop</nav>' +
+              `<article><h1>Dressing the edges</h1><p>${PARAGRAPH}</p><img src="/edge.png" alt="A dressed edge">` +
+              `<p>${PARAGRAPH}</p><p>${PARAGRAPH}</p></article></body></html>`,
+          );
+        case '/edge.png':
+          res.writeHead(200, { 'Content-Type': 'image/png', 'Content-Length': PICTURE.length });
+          return res.end(PICTURE);
+        default:
+          res.writeHead(403, { 'Content-Type': 'text/plain' });
+          return res.end('browsers only');
+      }
+    });
+    await new Promise<void>((resolve) => site.listen(0, '127.0.0.1', resolve));
+    origin = `http://127.0.0.1:${(site.address() as AddressInfo).port}`;
+    const cookie = await signUp(`mcp-frank-${Date.now()}@example.test`, 'frank-password-12', 'Frank');
+    frank = { cookie, userId: '', token: await tokenFor(cookie, await registerClient('Clipping Assistant'), RESOURCE) };
+  }, 60_000);
+
+  afterAll(async () => {
+    await new Promise<void>((resolve) => site.close(() => resolve()));
+  });
+
+  it('keeps the page as a note in the notebook named, with its picture, and answers its link', async () => {
+    const notebook = `Clipped ${Date.now()}`;
+    const { body } = await mcp(frank.token, 'tools/call', {
+      name: 'clip_web_page',
+      arguments: { url: `${origin}/guides/edges`, notebook, tags: ['forge'] },
+    });
+    expect(body.result?.isError).toBeFalsy();
+    const answer = JSON.parse(toolText(body));
+    expect(answer).toMatchObject({ title: 'Dressing the edges', notebook, tags: ['forge'], images: { stored: 1, failed: [] } });
+    expect(answer.url).toContain(answer.id);
+
+    const note = (await (await fetch(`${BASE}/api/notes/${answer.id}`, { headers: { Cookie: frank.cookie, Origin: ORIGIN } })).json()) as {
+      body: string;
+    };
+    expect(note.body).toMatch(/^Clipped from \[/);
+    expect(note.body).toContain('![A dressed edge](files/edge.png)');
+    expect(note.body).not.toContain('Shop');
+  }, 30_000);
+
+  it('answers a host that refuses the server with the way round it', async () => {
+    const { body } = await mcp(frank.token, 'tools/call', { name: 'clip_web_page', arguments: { url: `${origin}/members` } });
+    expect(body.result?.isError).toBe(true);
+    expect(toolText(body)).toContain('answered 403');
+    expect(toolText(body)).toContain('create_note');
   });
 });
 

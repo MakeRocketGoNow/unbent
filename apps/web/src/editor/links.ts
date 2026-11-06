@@ -115,8 +115,12 @@ export interface DocumentLink extends LinkParts {
  */
 const PARSE_SLICE_MS = 200;
 
-/** The tree parsed through `end`, however long that takes; see `PARSE_SLICE_MS`. */
-function treeThrough(state: EditorState, end: number) {
+/**
+ * The tree parsed through `end`, however long that takes; see `PARSE_SLICE_MS`. Also
+ * what the clipboard asks whether a paste lands in code, for the same reason: a tree that
+ * stopped short of the cursor would read code as prose.
+ */
+export function treeThrough(state: EditorState, end: number): ReturnType<typeof syntaxTree> {
   // A state with no language never answers `ensureSyntaxTree`, and the loop below would
   // never end. Every caller parses with `editorMarkdown`; this is what keeps a future
   // one that does not from freezing the tab, and it walks an empty tree instead.

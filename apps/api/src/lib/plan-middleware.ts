@@ -96,6 +96,8 @@ const EXEMPT: ReadonlyArray<[method: string, pattern: string]> = [
  *   - notes made, changed, duplicated or put back from their history, one or many;
  *   - notebooks, their fields, their saved views, and tags, made or changed;
  *   - files added to a note, copied or fetched, whose row the store records;
+ *   - a web page clipped into a note: the note's create and its pictures' rows are the
+ *     store's, and the page is not fetched for an account past the free plan;
  *   - the imports, of a note, a notebook's definition or Evernote's ENML;
  *   - an Auto-fill press, which the store counts and refuses in the call that reads
  *     the note.
@@ -119,6 +121,7 @@ const HELD_IN_STORE: ReadonlyArray<[method: string, pattern: string]> = [
   ['PUT', '/api/notes/:x/files'],
   ['POST', '/api/notes/:x/files/copy'],
   ['POST', '/api/notes/:x/files/fetch'],
+  ['POST', '/api/clip'],
   ['POST', '/api/import/note'],
   ['POST', '/api/import/notebook'],
   ['POST', '/api/import/enml'],

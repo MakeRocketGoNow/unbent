@@ -128,10 +128,12 @@ public enum CaptureNaming {
         return host.isEmpty ? nil : host
     }
 
-    /// "2 photos · 1 PDF", "Link" or "Text": what the sheet says was shared.
+    /// "2 photos · 1 PDF", "Web page" or "Text": what the sheet says was
+    /// shared.
     ///
-    /// - Parameter link: the text is a link and nothing else. A page shared from a
-    ///   browser was reading "Text", which is not what anyone thinks they shared.
+    /// - Parameter link: the text is a web address and nothing else, which an instance
+    ///   with the clipper reads and keeps as the page (`CaptureJob.Clip`). A page shared
+    ///   from a browser was reading "Text", which is not what anyone thinks they shared.
     public static func summary(contentTypes: [String], hasText: Bool, link: Bool = false) -> String {
         let photos = contentTypes.filter { $0.hasPrefix("image/") }.count
         let pdfs = contentTypes.filter { $0 == "application/pdf" }.count
@@ -140,8 +142,20 @@ public enum CaptureNaming {
         if photos > 0 { parts.append(photos == 1 ? "1 photo" : "\(photos) photos") }
         if pdfs > 0 { parts.append(pdfs == 1 ? "1 PDF" : "\(pdfs) PDFs") }
         if others > 0 { parts.append(others == 1 ? "1 file" : "\(others) files") }
-        if hasText && contentTypes.isEmpty { parts.append(link ? "Link" : "Text") }
+        if hasText && contentTypes.isEmpty { parts.append(link ? "Web page" : "Text") }
         return parts.joined(separator: " · ")
+    }
+
+    /// Whether `text` is one web address and nothing else: http or https, a host, and no
+    /// whitespace, after the newlines a browser's share puts around it. The same rule as
+    /// `UploadWorker.lonePageUrl` on Android, though the platforms' parsers differ on odd
+    /// addresses (a `|` in a query, an underscore in a host), where one phone may clip what
+    /// the other files as the link. Either way the link is kept.
+    public static func isLonePageUrl(_ text: String) -> Bool {
+        let one = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !one.isEmpty, one.rangeOfCharacter(from: .whitespacesAndNewlines) == nil else { return false }
+        guard let components = URLComponents(string: one), let scheme = components.scheme?.lowercased() else { return false }
+        return (scheme == "http" || scheme == "https") && !(components.host ?? "").isEmpty
     }
 }
 

@@ -1,4 +1,4 @@
-import { splitExt } from '@unbent/shared';
+import { nextAvailableFilename } from '@unbent/shared';
 import { SaxesParser } from 'saxes';
 import type { EnexNote, EnexResource } from './types.js';
 
@@ -157,17 +157,6 @@ export function uniqueResourceFilenames(resources: EnexResource[]): EnexResource
     assigned.add(filename);
     return { ...resource, filename };
   });
-}
-
-/** `name.ext`, else `name-2.ext`, `name-3.ext` and on: the first not in `taken`. */
-export function nextAvailableFilename(desired: string, taken: Set<string>): string {
-  if (!taken.has(desired)) return desired;
-  const [stem, ext] = splitExt(desired);
-  for (let n = 2; n < Number.MAX_SAFE_INTEGER; n += 1) {
-    const candidate = `${stem}-${n}${ext}`;
-    if (!taken.has(candidate)) return candidate;
-  }
-  return `${stem}-${taken.size}${ext}`;
 }
 
 interface PendingResource {

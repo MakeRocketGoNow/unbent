@@ -19,6 +19,92 @@
         "ids"
       ]
     },
+    "clipRequestSchema": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 8192
+        },
+        "html": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 10485760
+        },
+        "id": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "tags": {
+          "default": [],
+          "maxItems": 100,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          }
+        },
+        "notebook": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "fields": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 1000
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "maxItems": 100,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 1000
+                    }
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "required": [
+        "url"
+      ]
+    },
     "copyAttachmentsSchema": {
       "type": "object",
       "properties": {
@@ -1733,6 +1819,7 @@
   },
   "shared": {
     "answers": {
+      "apps/web/src/notes-api.ts › ClippedNote": "581fdfe8d913127c|10e23e8c68",
       "apps/web/src/notes-api.ts › CopiedAttachment": "d10242ec8faf01f3|87c9d645cd|d61dfc1fa8|ea96b3a763",
       "apps/web/src/notes-api.ts › FetchedWebImage": "b0ce4dfbc7f33002|87c9d645cd|ee16c07ba5",
       "apps/web/src/notes-api.ts › GcResult": "609221ddd41ffcbe|0b74a1492e|40f68fab05|4de667da26|7f34a69954|90e40a241d|a474c51167|fa8591e5a1",
@@ -1801,15 +1888,16 @@
       "packages/shared/src/plan.ts › HeldCounts": "d4f06fb5a96284ad|3e041963a9|ad8b4c76fa",
       "packages/shared/src/plan.ts › PlanSource": "9e6e8c836c5ce8a6",
       "packages/shared/src/plan.ts › PlanState": "c0b18497eb78933a",
-      "packages/shared/src/schemas.ts › AppConfig": "3240b34429212939|33b05c364b|4297c0093e|4e5c9e67bb|5e101fa39a|8295cd56d4|9a8a7858f3|9c2b2c3516|9d9a0890b0|b627c14bc9|c5f694d33a|d10a72a173|d540b1135f|d93bc21dd2|edb1f6de4f|f012f636b9",
+      "packages/shared/src/schemas.ts › AppConfig": "3240b34429212939|33b05c364b|4297c0093e|4e5c9e67bb|5e101fa39a|8295cd56d4|9a8a7858f3|9c2b2c3516|9d9a0890b0|b627c14bc9|c5f694d33a|c8d6a03ed4|d10a72a173|d540b1135f|d93bc21dd2|edb1f6de4f|f012f636b9",
       "packages/shared/src/schemas.ts › AttachmentInfo": "20be170377a36c52|08756509e8|659d780d8a|e5d874c2a9",
       "packages/shared/src/schemas.ts › AttachmentTexts": "30f98a978cb1c40a|af9c9c55d7|d80fc1cbfe",
       "packages/shared/src/schemas.ts › AuthProvider": "3f515100bbaba9c2",
       "packages/shared/src/schemas.ts › AutofillSuggestion": "b076982f94208da6|1f50c12073|285633a55c|64b2a62639|8a30fdbc14|8f95f548e1|de5604a9e5",
       "packages/shared/src/schemas.ts › AutofillUsage": "b44fbf625b2f8cc1|15b1975a7d|354cfa2710|cb90dfbcfa|cef716aa47|d48ae02086|e1d7820965|ff86109a5a",
+      "packages/shared/src/schemas.ts › ClipRequest": "902db517c3e92670",
       "packages/shared/src/schemas.ts › CreateNoteInput": "74ead43e7ff1c3c2",
-      "packages/shared/src/schemas.ts › FieldDef": "eeb129de12992dfc",
-      "packages/shared/src/schemas.ts › FieldValue": "ea6fecde1bd176fc",
+      "packages/shared/src/schemas.ts › FieldDef": "16f4da486f7abfe3",
+      "packages/shared/src/schemas.ts › FieldValue": "ed8860dc69dd1fab",
       "packages/shared/src/schemas.ts › ImportEnmlInput": "22c22956fd7159ba",
       "packages/shared/src/schemas.ts › ImportNoteInput": "e213c35d4a16c1bd",
       "packages/shared/src/schemas.ts › InstanceKind": "c314ad8ca11d2bb9",
@@ -1819,7 +1907,7 @@
       "packages/shared/src/schemas.ts › LlmTokens": "c4c2f3bde27868af|3a54770e5a|817933c01c|90c67617d0|9ce060046a|9d0175ad58",
       "packages/shared/src/schemas.ts › LocalMethod": "d6e23b8c699b6fc9",
       "packages/shared/src/schemas.ts › Note": "e3ee69a4115f6414|53077eb0a2",
-      "packages/shared/src/schemas.ts › NoteFieldValue": "3147c09c8e2880c7",
+      "packages/shared/src/schemas.ts › NoteFieldValue": "35fadfac9e159d17",
       "packages/shared/src/schemas.ts › NoteRevision": "43f1bca73a9d440f|0917f689e0|53077eb0a2|b4c76d4147|f9afda55de",
       "packages/shared/src/schemas.ts › NoteRevisionCause": "c06055249269b7d7",
       "packages/shared/src/schemas.ts › NoteRevisionChange": "d3c8360c67b5d700",
@@ -1842,6 +1930,7 @@
       "apps/web/src/store/actions.ts › Conflict": "2e9c00d1f1c6e58d|39cdd40d60|5d051b33b7|6fa7e51e86",
       "apps/web/src/store/actions.ts › Forward": "52769ae06fdca3e2",
       "apps/web/src/store/actions.ts › Forwardable": "faca3baf34084dd0",
+      "apps/web/src/store/actions.ts › LandedRows": "39df0981968fb106|32195608a0|d57b201e04",
       "apps/web/src/store/actions.ts › LocalWrite": "748b6f5d2d806ff7|74469c8971|cc6c2cc4d2",
       "apps/web/src/store/actions.ts › MutationFn": "ffb99680903e58b1",
       "apps/web/src/store/actions.ts › Out": "637a647dbcabe119",

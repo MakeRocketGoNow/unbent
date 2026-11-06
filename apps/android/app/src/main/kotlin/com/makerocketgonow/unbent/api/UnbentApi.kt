@@ -49,14 +49,21 @@ class ApiException(
     }.getOrNull()
 
     /**
+     * The `code` beside the message, on the few refusals a caller branches on: this API's
+     * own routes write one where the status alone does not say what to do (`ClipErrorCode`
+     * on the server), and so does Better Auth's Turnstile plugin. Null when there is none.
+     */
+    fun code(): String? = runCatching {
+        ApiJson.parseToJsonElement(body).jsonObject["code"]?.jsonPrimitive?.contentOrNull?.ifEmpty { null }
+    }.getOrNull()
+
+    /**
      * A request for a code refused because it carried no Turnstile token, which means the
      * instance turned the check on after this app read its config (`AppConfig.turnstile`).
      * The code the server's plugin answers with, beside its message.
      */
     val isMissingCaptcha: Boolean
-        get() = status == 400 && runCatching {
-            ApiJson.parseToJsonElement(body).jsonObject["code"]?.jsonPrimitive?.contentOrNull == "MISSING_RESPONSE"
-        }.getOrDefault(false)
+        get() = status == 400 && code() == "MISSING_RESPONSE"
 }
 
 /**
@@ -99,9 +106,18 @@ class UnbentApi(
             }
         }.build()
 
+    /**
+     * The client a clip goes through: the only request here that waits on someone else's
+     * site. The server gives the page sixty seconds a hop and its pictures about as long
+     * again, with nothing sent back meanwhile. The shared client's sixty-second read
+     * started first, so it always gave up before the server's 502 for a site that hung,
+     * and a clip with slow pictures that was about to succeed looked like a dead radio.
+     */
+    private val clipClient by lazy { client.newBuilder().readTimeout(3, TimeUnit.MINUTES).build() }
+
     /** Runs a request and returns its body, or throws [ApiException] carrying the status. */
-    private fun call(request: Request, what: String): String =
-        client.newCall(request).execute().use { res ->
+    private fun call(request: Request, what: String, via: OkHttpClient = client): String =
+        via.newCall(request).execute().use { res ->
             val text = res.body.string()
             if (!res.isSuccessful) {
                 throw ApiException(res.code, "$what failed: ${res.code}", text, res.header("Retry-After"))
@@ -112,9 +128,9 @@ class UnbentApi(
     private inline fun <reified T> get(what: String, url: HttpUrl): T =
         ApiJson.decodeFromString(call(Request.Builder().url(url).auth().get().build(), what))
 
-    private inline fun <reified T> send(what: String, url: HttpUrl, method: String, body: JsonObject): T =
+    private inline fun <reified T> send(what: String, url: HttpUrl, method: String, body: JsonObject, via: OkHttpClient = client): T =
         ApiJson.decodeFromString(
-            call(Request.Builder().url(url).auth().method(method, body.asBody()).build(), what),
+            call(Request.Builder().url(url).auth().method(method, body.asBody()).build(), what, via),
         )
 
     private fun JsonObject.asBody(): RequestBody = toString().toRequestBody(JSON)
@@ -124,20 +140,64 @@ class UnbentApi(
     /** Who the stored session belongs to, or null when the server no longer knows it. */
     fun me(): MeUser? = get<Me>("Session check", url("/api/me")).user
 
-    /** Creates a note. Notebook omitted means unfiled, which the UI calls the Inbox. */
+    /**
+     * Creates a note. Notebook omitted means unfiled, which the UI calls the Inbox.
+     *
+     * [id] is the note's, when the caller chose one: the server answers a second request
+     * carrying an id it already holds with that note rather than a copy, which is what
+     * lets a capture send its create again after an answer that never arrived. The
+     * capture worker uses it for the note it falls back to after a clip the server could
+     * not make (see [clipLink]); a plain create still lets the server choose.
+     */
     fun createNote(
         title: String,
         body: String = "",
         tags: List<String> = emptyList(),
         notebook: String? = null,
+        id: String? = null,
     ): Note {
         val payload = buildJsonObject {
+            if (id != null) put("id", id)
             put("title", title)
             put("body", body)
             if (tags.isNotEmpty()) putJsonArray("tags") { tags.forEach { add(it) } }
             if (notebook != null) put("notebook", notebook)
         }
         return send("Create note", url("/api/notes"), "POST", payload)
+    }
+
+    /**
+     * Keeps a web page as a note: `POST /api/clip`, which fetches the page on the server
+     * and writes the article as Markdown under a "Clipped from" line, with up to ten of its
+     * pictures stored as the note's files. The answer is the note, as a create's is; the
+     * `clip.images` beside it, saying how many pictures were kept, is left unread here,
+     * since a notification has no room for it.
+     *
+     * [title] is sent only when the person typed one; absent, the page's own title is the
+     * note's, which is nearly always better than what a browser puts in the share's
+     * subject. [id] as for [createNote]: a clip is one fetch of a page and a note, and a
+     * retry after a lost answer must find that note rather than clip the page again.
+     *
+     * The server answers 413, 415 and 502 for a page it could not read (too large, not
+     * HTML, or a site that refused or failed), and 400 with the code `BAD_URL` for an
+     * address it will not fetch (a private network, a host it refuses). The caller decides
+     * what to do with those; the capture worker makes the plain note it always made.
+     */
+    fun clipLink(
+        url: String,
+        title: String? = null,
+        tags: List<String> = emptyList(),
+        notebook: String? = null,
+        id: String? = null,
+    ): Note {
+        val payload = buildJsonObject {
+            if (id != null) put("id", id)
+            put("url", url)
+            if (title != null) put("title", title)
+            if (tags.isNotEmpty()) putJsonArray("tags") { tags.forEach { add(it) } }
+            if (notebook != null) put("notebook", notebook)
+        }
+        return send("Clip page", url("/api/clip"), "POST", payload, via = clipClient)
     }
 
     fun listNotebooks(): NotebookList = get("List notebooks", url("/api/notebooks"))

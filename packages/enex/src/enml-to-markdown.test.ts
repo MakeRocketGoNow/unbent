@@ -54,6 +54,19 @@ describe('structure', () => {
     expect(md('<div>one</div><div>two</div>')).toBe('one\n\ntwo');
   });
 
+  it('keeps a code block, a rule or a list of terms inside a div apart from the text beside it', () => {
+    // A div is Evernote's line, and a line can hold any of the three. Made a paragraph, the
+    // div ran them into its text; a frozen block list kept it so until 2026-10-30, and the
+    // comment on `enmlToMarkdown` says what the fix costs a repeated import.
+    expect(md('<div>Run this:<pre><code>npm install</code></pre>then restart</div>')).toBe(
+      'Run this:\n\n```\nnpm install\n```\n\nthen restart',
+    );
+    expect(md('<div>Above<hr>Below</div>')).toBe('Above\n\n---\n\nBelow');
+    expect(md('<div>Terms<dl><dt>Anvil</dt><dd>A block to hammer on</dd></dl></div>')).toBe(
+      'Terms\n\n- Anvil\n\n  A block to hammer on',
+    );
+  });
+
   it('decodes entities', () => {
     // `<` is escaped on the way out, which is correct: an unescaped one would be read as
     // the start of an HTML tag.
