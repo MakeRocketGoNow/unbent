@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { render, screen, cleanup, fireEvent, act, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { MAX_CLIP_HTML_CHARS } from '@unbent/shared';
+import { MAX_CLIP_PARSED_CHARS } from '@unbent/shared';
 import * as api from '../notes-api.js';
 import * as actions from '../store/actions.js';
 import { PAGE, READY } from '../bookmarklet.js';
@@ -202,12 +202,12 @@ describe('the clip window', () => {
     expect(actions.clipLink).toHaveBeenCalledWith({ id: expect.any(String), url: ADDRESS });
   });
 
-  it('says a page is too large to send from its tab, and offers its address instead', async () => {
+  it('says a page is too large to clip from its tab, and offers its address instead', async () => {
     vi.mocked(actions.clipLink).mockResolvedValue({ id: 'n1', title: 'x' } as api.ClippedNote);
     mount();
     await screen.findByRole('status');
-    post(opener, page({ html: 'x'.repeat(MAX_CLIP_HTML_CHARS + 1) }));
-    expect(screen.getByRole('note').textContent).toMatch(/too large to send from its tab \(10 MB; the most is 10 MB\)/);
+    post(opener, page({ html: 'x'.repeat(MAX_CLIP_PARSED_CHARS + 1) }));
+    expect(screen.getByRole('note').textContent).toMatch(/too large to clip from its tab \(1\.1 MB; a clip reads at most 1 MB\)/);
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await screen.findByRole('heading', { name: 'Saved' });
     expect(vi.mocked(actions.clipLink).mock.calls[0]![0]).not.toHaveProperty('html');

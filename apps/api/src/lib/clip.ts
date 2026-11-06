@@ -2,6 +2,7 @@ import type { Clip, ClipImage } from '@unbent/clip';
 import {
   InvalidFieldValue,
   MAX_BODY_BYTES,
+  MAX_CLIP_PARSED_CHARS,
   MAX_TITLE_LENGTH,
   inlineLinkSpans,
   normalizeContentType,
@@ -63,19 +64,8 @@ import type { Env } from '../types.js';
 /** A page larger than this is not fetched whole. It is more than `CLIP_MAX_PARSED_CHARS` because much of a page's weight is the scripts and styles taken out before the parse. */
 export const CLIP_MAX_PAGE_BYTES = 5 * 1024 * 1024;
 
-/**
- * The most HTML handed to the parser, in characters, once scripts and styles are out.
- *
- * This is the limit that protects the isolate, not a limit on what is useful: every
- * byte of a page becomes many on the heap as a DOM, running past the Worker's 128 MB ends
- * the isolate where no `catch` can see it, and an isolate is shared, so other people's
- * saves in flight go with it. Measured in Node with a 128 MB heap on 2026-10-30, on
- * invented pages, whole clips: an article of paragraphs ran out of memory at 5 MB and
- * passed at 2 MB (126 MB of heap, 2.2 s); a page of small elements (a `div`, a `span` and
- * a link per row) ran out at 2 MB and passed at 1 MB (107 MB, 1.9 s). So one megabyte,
- * which is still several times a long article.
- */
-export const CLIP_MAX_PARSED_CHARS = 1024 * 1024;
+/** The most HTML handed to the parser; the measurement behind it is on `MAX_CLIP_PARSED_CHARS`. */
+export const CLIP_MAX_PARSED_CHARS = MAX_CLIP_PARSED_CHARS;
 
 /** The most pictures a server-side clip stores; the rest stay links to the site. See the budget above. */
 export const CLIP_MAX_IMAGES = 10;

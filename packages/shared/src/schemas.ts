@@ -31,6 +31,25 @@ export const MAX_BODY_BYTES = 1_800_000;
  */
 export const MAX_CLIP_HTML_CHARS = 10 * 1024 * 1024;
 
+/**
+ * The most HTML a clip reads, in characters, once scripts and styles are out: a page
+ * past it is refused (413 `TOO_LARGE`) however it arrived.
+ *
+ * This is the limit that protects the isolate, not a limit on what is useful: every
+ * byte of a page becomes many on the heap as a DOM, running past the Worker's 128 MB ends
+ * the isolate where no `catch` can see it, and an isolate is shared, so other people's
+ * saves in flight go with it. Measured in Node with a 128 MB heap on 2026-10-30, on
+ * invented pages, whole clips: an article of paragraphs ran out of memory at 5 MB and
+ * passed at 2 MB (126 MB of heap, 2.2 s); a page of small elements (a `div`, a `span` and
+ * a link per row) ran out at 2 MB and passed at 1 MB (107 MB, 1.9 s). So one megabyte,
+ * which is still several times a long article.
+ *
+ * Here and not only in the API because a client that has already taken the scripts and
+ * styles out (the bookmarklet does) can tell from it that a page will be refused, and
+ * clip by the address instead of uploading a page only to hear no.
+ */
+export const MAX_CLIP_PARSED_CHARS = 1024 * 1024;
+
 /** Cloudflare caps request bodies at 100MB; leave headroom for headers and metadata. */
 export const MAX_ATTACHMENT_BYTES = 95 * 1024 * 1024;
 
@@ -613,7 +632,7 @@ export const createNoteSchema = z.object({
  * With it the server fetches nothing but the pictures, and `url` is only where the page
  * says it came from. Bounded at `MAX_CLIP_HTML_CHARS` so a request cannot hand the
  * Worker more than it can hold; the server refuses well short of that once the scripts
- * and styles are out (`CLIP_MAX_PARSED_CHARS` in the API).
+ * and styles are out (`MAX_CLIP_PARSED_CHARS`).
  */
 export const clipRequestSchema = z.object({
   url: z.string().min(1).max(8192),

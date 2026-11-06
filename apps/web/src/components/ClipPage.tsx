@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
-import { MAX_CLIP_HTML_CHARS } from '@unbent/shared';
+import { MAX_CLIP_PARSED_CHARS } from '@unbent/shared';
 import { configQuery } from '../queries.js';
 import { useAppSession } from '../useAppSession.js';
 import * as actions from '../store/actions.js';
@@ -96,8 +96,9 @@ function titleIn(html: string): string {
   }
 }
 
+/** Characters as megabytes, to a tenth, rounded up: a page just past a limit never reads as the limit. */
 function megabytes(chars: number): string {
-  return `${Math.round((chars / (1024 * 1024)) * 10) / 10} MB`;
+  return `${Math.ceil((chars / (1024 * 1024)) * 10) / 10} MB`;
 }
 
 type Saving = { kind: 'idle' } | { kind: 'busy' } | { kind: 'saved'; id: string; title: string } | { kind: 'failed'; error: string };
@@ -171,7 +172,11 @@ export function ClipPage({ url: addressed }: { url: string | undefined }) {
 
   const page = heard.kind === 'page' ? heard.page : null;
   const url = page?.url ?? addressed;
-  const tooLarge = page !== null && page.html.length > MAX_CLIP_HTML_CHARS;
+  // Against what the server reads, not what a request may carry: the bookmarklet has
+  // already taken out the scripts and styles the server would, so a page past the reading
+  // limit here is a page the server is certain to refuse, and its address is the better
+  // bet (what a site serves is often far smaller than its tab after its scripts ran).
+  const tooLarge = page !== null && page.html.length > MAX_CLIP_PARSED_CHARS;
   // The page from the tab when there is one that fits; otherwise the server reads the
   // address, as "Clip a link" does.
   const html = page && !tooLarge ? page.html : undefined;
@@ -246,7 +251,7 @@ export function ClipPage({ url: addressed }: { url: string | undefined }) {
       {!html && (
         <p className="muted small clip-page-how" role="note">
           {tooLarge
-            ? `This page is too large to send from its tab (${megabytes(page.html.length)}; the most is ${megabytes(MAX_CLIP_HTML_CHARS)}). Unbent will fetch it from ${host} instead, as someone who isn't signed in there would see it.`
+            ? `This page is too large to clip from its tab (${megabytes(page.html.length)}; a clip reads at most ${megabytes(MAX_CLIP_PARSED_CHARS)}). Unbent will fetch it from ${host} instead, as someone who isn't signed in there would see it.`
             : `The page didn't answer from its tab, so Unbent will fetch it from ${host} instead, as someone who isn't signed in there would see it.`}
         </p>
       )}

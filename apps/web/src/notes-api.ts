@@ -333,7 +333,8 @@ export async function clipLink(input: {
   id?: string;
   /**
    * The page itself, from the person's tab (the bookmarklet's `/clip`): the server then
-   * fetches only its pictures. At most `MAX_CLIP_HTML_CHARS`, which the caller checks.
+   * fetches only its pictures. At most `MAX_CLIP_HTML_CHARS`; the caller sends
+   * none past `MAX_CLIP_PARSED_CHARS`, which the server would refuse.
    */
   html?: string;
 }): Promise<ClippedNote> {
