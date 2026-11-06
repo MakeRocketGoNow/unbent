@@ -67,6 +67,8 @@ export function extractArticle(html: string, url: string): Article | null {
 
   if (!isProbablyReaderable(document as never)) return null;
 
+  joinSplitArticle(document as unknown as Root);
+
   // parse() rewrites the document as it scores it, so everything read from the page
   // itself is read above, before this.
   const parsed = new Readability(document as never).parse();
@@ -107,5 +109,119 @@ function absoluteBase(document: { querySelector(selector: string): BaseElement |
 interface BaseElement {
   getAttribute(name: string): string | null;
   setAttribute(name: string, value: string): void;
+  remove(): void;
+}
+
+/** A paragraph counts towards a box only at this length: a caption or a dateline does not. */
+const BODY_PARAGRAPH_CHARS = 80;
+
+/** Names a box is never joined under, whatever it holds: Readability's own unlikely list. */
+const NOT_THE_ARTICLE = /comment|sidebar|related|recommend|promo|teaser|card|footer|newsletter|share|social|widget/i;
+
+/**
+ * Puts an article the site split into separate boxes back into one, before Readability
+ * picks the box it keeps.
+ *
+ * Some sites cut the body of a story in two (or more) to put a video, an ad or a "most
+ * read" block in the middle, and wrap each part in its own layout column, so the parts are
+ * cousins in the page rather than neighbours. Readability keeps one block and joins only
+ * that block's siblings, so it kept one part: on a news site found on 2026-11-06, the
+ * second third of the story with none of its pictures, or the first two thirds without the
+ * ending, depending on how the ads around them scored. A paste of the same story was whole,
+ * because a selection runs from the first sentence to the last.
+ *
+ * The parts are told by what they share: the same tag and class, each holding at least two
+ * body paragraphs with few links among them, under different parents, and together most of
+ * the page's body text. Every one of those is a guard against joining something that is not
+ * an article. Siblings are left to Readability, which already joins them. A row of story
+ * cards fails on paragraphs (a card has one excerpt) or on links (its title is one), and a
+ * thread of comments on the name. The parts go into the first one in page order and the
+ * others are removed, so what stood between them (the video, the ad) stays out, where it
+ * was. Pages that fail any test are left exactly as they came.
+ */
+function joinSplitArticle(document: Root): void {
+  // Each body paragraph's length, added to every box above it: one walk up per paragraph
+  // rather than a count of paragraphs inside every element on the page.
+  const textIn = new Map<Element, number>();
+  const paragraphsIn = new Map<Element, number>();
+  let pageText = 0;
+  for (const p of document.querySelectorAll('p')) {
+    const length = squash(p.textContent).length;
+    if (length < BODY_PARAGRAPH_CHARS) continue;
+    pageText += length;
+    for (let box = p.parentElement; box; box = box.parentElement) {
+      textIn.set(box, (textIn.get(box) ?? 0) + length);
+      paragraphsIn.set(box, (paragraphsIn.get(box) ?? 0) + 1);
+    }
+  }
+  if (pageText === 0) return;
+
+  const groups = new Map<string, Element[]>();
+  for (const box of textIn.keys()) {
+    const className = squash(box.getAttribute('class'));
+    if (!className || (paragraphsIn.get(box) ?? 0) < 2) continue;
+    if (NOT_THE_ARTICLE.test(className) || NOT_THE_ARTICLE.test(box.getAttribute('id') ?? '')) continue;
+    if (linkShare(box) > 0.25) continue;
+    const key = `${box.tagName} ${className}`;
+    groups.set(key, [...(groups.get(key) ?? []), box]);
+  }
+
+  let best: Element[] | null = null;
+  let bestText = 0;
+  for (const parts of groups.values()) {
+    if (parts.length < 2) continue;
+    if (parts.some((part) => parts.some((other) => other !== part && part.contains(other)))) continue;
+    if (new Set(parts.map((part) => part.parentElement)).size < parts.length) continue;
+    const total = parts.reduce((sum, part) => sum + (textIn.get(part) ?? 0), 0);
+    if (total * 2 < pageText) continue;
+    // The layout columns around the parts often share a class too, and hold the same text
+    // and more. The innermost group is the article's own; a column's would bring the
+    // author's box and the share buttons beside the story into it.
+    if (best) {
+      const inner = best[0]!.contains(parts[0]!);
+      if (!inner && (parts[0]!.contains(best[0]!) || total <= bestText)) continue;
+    }
+    best = parts;
+    bestText = total;
+  }
+  if (!best) return;
+
+  // `querySelectorAll` and so the map walk the page in order, so the first part is first.
+  const [first, ...rest] = best;
+  for (const part of rest) {
+    first!.append(...Array.from(part.childNodes));
+    part.remove();
+  }
+}
+
+/** The share of a box's text that sits inside links. */
+function linkShare(box: Element): number {
+  const all = squash(box.textContent).length;
+  if (all === 0) return 0;
+  let linked = 0;
+  for (const link of box.querySelectorAll('a')) linked += squash(link.textContent).length;
+  return linked / all;
+}
+
+function squash(text: string | null | undefined): string {
+  return (text ?? '').replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * The little of linkedom's DOM these passes use. The package is typed without the DOM's
+ * own types (see its tsconfig), so they are named here as `BaseElement` is above.
+ */
+interface Root {
+  querySelectorAll(selector: string): Iterable<Element>;
+}
+
+interface Element extends Root {
+  readonly tagName: string;
+  readonly textContent: string | null;
+  readonly parentElement: Element | null;
+  readonly childNodes: ArrayLike<object>;
+  getAttribute(name: string): string | null;
+  contains(other: Element): boolean;
+  append(...nodes: object[]): void;
   remove(): void;
 }

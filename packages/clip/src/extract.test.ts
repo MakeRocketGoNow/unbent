@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { extractArticle } from './extract.js';
-import { ARTICLE_PAGE, LINKS_PAGE, PARAGRAPHS, RELATIVE_PAGE } from './test-pages.js';
+import { ARTICLE_PAGE, LAST_PARAGRAPH, LINKS_PAGE, PARAGRAPHS, RELATIVE_PAGE, SPLIT_PAGE } from './test-pages.js';
 
 const URL_ = 'https://www.example.com/guides/anvil-care';
 
@@ -37,6 +37,24 @@ describe('extractArticle', () => {
     expect(article.siteName).toBe('example.com');
     expect(article.byline).toBeNull();
     expect(article.lang).toBeNull();
+  });
+
+  it('keeps the whole of a story the site cut in two, and nothing that stood between', () => {
+    const { contentHtml } = extractArticle(SPLIT_PAGE, URL_)!;
+    const at = [PARAGRAPHS[0], PARAGRAPHS[1], PARAGRAPHS[2], LAST_PARAGRAPH].map((p) => contentHtml.indexOf(p!.slice(0, 60)));
+    expect(at.every((i) => i >= 0)).toBe(true);
+    expect(at).toEqual([...at].sort((a, b) => a - b));
+    expect(contentHtml).toContain('src="https://www.example.com/media/anvil.jpg"');
+    for (const between of ['Workshop video', 'tempering a chisel', 'Choosing your first tongs', 'Coal burns hotter']) {
+      expect(contentHtml).not.toContain(between);
+    }
+  });
+
+  it('leaves a story that is in one box as Readability finds it', () => {
+    const whole = SPLIT_PAGE.replace(/<\/div>\s*<\/div><\/div>\s*<div class="video-block">[\s\S]*?<div class="story-body">/, '');
+    const { contentHtml } = extractArticle(whole, URL_)!;
+    for (const p of [PARAGRAPHS[0], PARAGRAPHS[2], LAST_PARAGRAPH]) expect(contentHtml).toContain(p!.slice(0, 60));
+    expect(contentHtml).not.toContain('Choosing your first tongs');
   });
 
   it('answers null for a page with no article', () => {

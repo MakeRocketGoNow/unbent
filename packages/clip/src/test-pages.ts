@@ -85,6 +85,63 @@ export const RELATIVE_PAGE = `<!doctype html>
 </body>
 </html>`;
 
+/** A fourth paragraph, for the story that is cut in two. */
+export const LAST_PARAGRAPH =
+  'When the anvil is moved, lift it by the horn and the heel together with a strap, never by the horn alone, which can snap at its root. Set it down on the stand gently, check that it sits flat with a straightedge, and only then bolt it back down for the next day of work.';
+
+/** A credited picture caption, with the lightbox's hidden copy of it beside the `<figcaption>`. */
+export const CAPTION = 'A well-kept anvil face.';
+
+const STORY_TILES = `
+  <div class="band"><div class="column">
+    <div class="story-tile"><h3><a href="/guides/tongs">Choosing your first tongs</a></h3>
+      <p>Tongs are the second tool a smith buys and the one they replace most often, so it is worth knowing what to look for.</p></div>
+  </div></div>
+  <div class="band"><div class="column">
+    <div class="story-tile"><h3><a href="/guides/coal">Coal or gas for the forge</a></h3>
+      <p>Coal burns hotter and dirtier, and gas is cleaner and quieter; which suits a workshop depends on its neighbours.</p></div>
+  </div></div>`;
+
+/**
+ * A story the site cut in two around a video, each part in its own layout column, so the
+ * parts are cousins in the page and not neighbours. Below it, tiles for other stories laid
+ * out the same way, which must not be joined to it.
+ */
+export const SPLIT_PAGE = `<!doctype html>
+<html lang="en">
+<head><title>Caring for your anvil</title></head>
+<body>
+  ${CHROME_HEAD}
+  <main>
+    <div class="band"><div class="column">
+      <h1>Caring for your anvil</h1>
+      <div class="story-body">
+        <p>${PARAGRAPHS[0]}</p>
+        <figure>
+          <div><a href="/media/anvil-full.jpg"><img src="/media/anvil.jpg" alt=""></a>
+            <div class="viewer-caption">${CAPTION} <div>Credit: Acme</div></div></div>
+          <figcaption><div class="caption-text">${CAPTION} <span>Credit: Acme</span></div></figcaption>
+        </figure>
+        <p>${PARAGRAPHS[1]}</p>
+      </div>
+    </div></div>
+    <div class="video-block">
+      <h3>Workshop video</h3>
+      <a href="/video/tempering">Watch: tempering a chisel in four minutes</a>
+    </div>
+    <div class="band"><div class="column">
+      <div class="story-body">
+        <p>${PARAGRAPHS[2]}</p>
+        <p>${LAST_PARAGRAPH}</p>
+      </div>
+      <div class="author-box"><p>Pat Example writes about the forge, the anvil and the tools around them for Acme Workshop.</p></div>
+    </div></div>
+    ${STORY_TILES}
+  </main>
+  ${CHROME_FOOT}
+</body>
+</html>`;
+
 /** A front page: headlines and links, nothing anyone would call an article. */
 export const LINKS_PAGE = `<!doctype html>
 <html lang="en">
