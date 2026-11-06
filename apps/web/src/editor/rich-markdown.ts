@@ -726,8 +726,15 @@ function saveButton(
  * it kept would be stale. The widget sits at one end of its node (an image replaces it,
  * or follows it while the line is revealed; a PDF page always follows its link), so the
  * node is looked for on both sides.
+ *
+ * Only valid at click time, before anything is awaited. A widget scrolled out of the
+ * viewport is detached, and `posAtDOM` on it answers the start or the end of the document
+ * rather than throwing, so a caller that asked after a fetch would act on whichever node
+ * sits there (Save to note did, and rewrote the wrong picture). A detached host finds
+ * nothing instead.
  */
 function findWidgetNode(view: EditorView, host: HTMLElement, source: 'Image' | 'Link') {
+  if (!view.contentDOM.contains(host)) return null;
   const pos = view.posAtDOM(host);
   const tree = syntaxTree(view.state);
   const find = (side: -1 | 1) => {
