@@ -256,6 +256,32 @@ h1 {
 
 .clip-page-error { margin-top: 1rem; }
 
+/*
+   The bookmarklet to drag to a bookmarks bar (`ClipBookmarklet`): a link drawn as a chip,
+   since it is a thing to pick up and not a place to go, with the hand that says so. Not a
+   button's shape, which would promise a press that does something here.
+*/
+.bookmarklet-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.25rem;
+  padding: 0.35rem 0.75rem;
+  border: 1px dashed var(--accent);
+  border-radius: 999px;
+  color: var(--accent);
+  font-weight: 600;
+  text-decoration: none;
+  cursor: grab;
+  user-select: none;
+}
+
+.bookmarklet-chip:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+
+.bookmarklet-chip:active { cursor: grabbing; }
+
+.bookmarklet-chip + p { margin-top: 0.5rem; }
+
 .provider {
   /*
      A centred row rather than centred text, so a mark sits beside the label instead of the
