@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { filenameForWebImage, rejectWebImageUrl } from './web-image.js';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { fetchWebImage, filenameForWebImage, rejectWebImageUrl } from './web-image.js';
 
 /**
  * The address policy is the security property of fetching web images; the filename rules
@@ -75,5 +75,48 @@ describe('filenameForWebImage', () => {
     expect(filenameForWebImage(url('https://x.example/a'), 'image/png', 'attachment; filename="../.hidden"')).toBe(
       'hidden.png',
     );
+  });
+});
+
+describe('fetchWebImage', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  /** A picture sent in chunks, declaring `length` (none when null), with `encoding` if any. */
+  function serve(chunks: number[][], length: number | null, encoding?: string) {
+    vi.stubGlobal('fetch', async () => {
+      const body = new ReadableStream({
+        start(controller) {
+          for (const chunk of chunks) controller.enqueue(new Uint8Array(chunk));
+          controller.close();
+        },
+      });
+      const headers: Record<string, string> = { 'content-type': 'image/png' };
+      if (length !== null) headers['content-length'] = String(length);
+      if (encoding) headers['content-encoding'] = encoding;
+      return new Response(body, { headers });
+    });
+  }
+
+  async function bytesOf(): Promise<number[]> {
+    const result = await fetchWebImage('https://example.com/a.png', { allowLoopback: false });
+    if (!result.ok) throw new Error(result.error);
+    return Array.from(new Uint8Array(result.bytes));
+  }
+
+  /* One buffer when the size is declared; the bytes the same whichever way they were read. */
+  it('reads the bytes whole, whether the size was declared, short, long or not at all', async () => {
+    const chunks = [[1, 2, 3], [4, 5], [6]];
+    for (const length of [6, null, 4, 9]) {
+      serve(chunks, length);
+      expect(await bytesOf()).toEqual([1, 2, 3, 4, 5, 6]);
+    }
+    serve(chunks, 2, 'gzip');
+    expect(await bytesOf()).toEqual([1, 2, 3, 4, 5, 6]);
+  });
+
+  it('stops at the limit however the size was declared', async () => {
+    serve([[1, 2, 3], [4, 5, 6]], 3);
+    const result = await fetchWebImage('https://example.com/a.png', { allowLoopback: false, maxBytes: 5 });
+    expect(result).toMatchObject({ ok: false, status: 413 });
   });
 });

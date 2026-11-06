@@ -98,6 +98,11 @@ export const CLIP_IMAGES_MS = 20_000;
  * `MAX_WEB_IMAGE_BYTES`, which is for a picture someone chose: here the page's HTML picks
  * the addresses, and four at that limit would be 120 of the isolate's 128 MB. Four at
  * this one are 40, which leaves room for the page, and no article's pictures come near it.
+ * That counts each once, which holds for a picture that declares its size (`readUpTo`
+ * writes it into one buffer); one that does not is held twice for a moment at the end,
+ * so four of those at the limit at once would be 80, and the page with them too much.
+ * That case is left as it is rather than paid for on every clip with fewer pictures in
+ * flight.
  */
 export const CLIP_MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 

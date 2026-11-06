@@ -189,7 +189,9 @@ export async function fetchWebImage(
 
     let bytes: ArrayBuffer | null;
     try {
-      bytes = await readUpTo(res, maxBytes);
+      // A declared length is the body's only when nothing was decoded on the way: a
+      // compressed picture's header gives the compressed size.
+      bytes = await readUpTo(res, maxBytes, res.headers.has('Content-Encoding') ? 0 : declared);
     } catch (err) {
       // A connection reset, or the timeout running out, part way through the body.
       return { ok: false, status: 502, error: `Reading the image failed: ${(err as Error).message}` };
@@ -207,22 +209,38 @@ export async function fetchWebImage(
  * The body, counted as it arrives, or null at the first byte past `limit`. A source need
  * not declare its size, and may declare a false one, so reading it whole and looking
  * afterwards would spend the memory the limit is there to save.
+ *
+ * A body that declared its size (`expected`) is written straight into one buffer of that
+ * size, so it is held once. Gathering chunks and joining them at the end holds it twice
+ * at that moment, which is what a body that declared nothing still costs, and what one
+ * that sends more than it declared falls back to.
  */
-async function readUpTo(res: Response, limit: number): Promise<ArrayBuffer | null> {
+async function readUpTo(res: Response, limit: number, expected = 0): Promise<ArrayBuffer | null> {
   if (!res.body) return new ArrayBuffer(0);
   const reader = res.body.getReader();
+  let buffer = expected > 0 && expected <= limit ? new Uint8Array(expected) : null;
   const chunks: Uint8Array[] = [];
   let total = 0;
   for (;;) {
     const { done, value } = await reader.read();
     if (done) break;
-    total += value.byteLength;
-    if (total > limit) {
+    if (total + value.byteLength > limit) {
       await reader.cancel().catch(() => {});
       return null;
     }
-    chunks.push(value);
+    if (buffer && total + value.byteLength <= buffer.byteLength) {
+      buffer.set(value, total);
+    } else {
+      // More than it declared: what was written so far becomes the first chunk.
+      if (buffer) {
+        chunks.push(buffer.subarray(0, total));
+        buffer = null;
+      }
+      chunks.push(value);
+    }
+    total += value.byteLength;
   }
+  if (buffer) return total === buffer.byteLength ? buffer.buffer : buffer.slice(0, total).buffer;
   const bytes = new Uint8Array(total);
   let offset = 0;
   for (const chunk of chunks) {
