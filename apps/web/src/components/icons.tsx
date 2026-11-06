@@ -299,6 +299,11 @@ export function ClipLinkIcon() {
   return <HeaderIcon icon={LinkGlyph} />;
 }
 
+/** The same chain on the bookmarklet's chip in Settings, sized to the chip's words rather than a lone target. */
+export function ClipChipIcon() {
+  return <RowIcon icon={LinkGlyph} />;
+}
+
 /**
  * The three ways the note list is drawn, for the view menu beside the filter and sort
  * icons: rows of entries, a gallery of cards, or a table of a notebook's fields. The

@@ -4,7 +4,7 @@ import { configQuery } from '../queries.js';
 import { bookmarkletFor } from '../bookmarklet.js';
 import { isHosted } from '../app-bridge.js';
 import { TOUCH_QUERY, useMediaQuery } from '../useMediaQuery.js';
-import { ClipLinkIcon } from './icons.js';
+import { ClipChipIcon } from './icons.js';
 
 /**
  * Where the bookmarklet is installed from: a link to drag to the bookmarks bar, built for
@@ -53,7 +53,7 @@ export function ClipBookmarklet() {
           setPressed(true);
         }}
       >
-        <ClipLinkIcon />
+        <ClipChipIcon />
         Clip to Unbent
       </a>
       {pressed && (
