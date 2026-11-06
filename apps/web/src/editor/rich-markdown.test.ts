@@ -935,6 +935,9 @@ describe('inline images', () => {
     // off-screen does, and the host is then gone from the view.
     vi.spyOn(v, 'visibleRanges', 'get').mockReturnValue([]);
     v.dispatch({ effects: pdfNamesChanged.of(null) });
+    // The bug needs the host detached; if faking the viewport stops doing that, the old
+    // lookup would find the right picture and this test would pass on the bug.
+    expect(host.isConnected).toBe(false);
     finish('saved.png');
     await new Promise((r) => setTimeout(r, 0));
     expect(v.state.doc.toString()).toBe(
