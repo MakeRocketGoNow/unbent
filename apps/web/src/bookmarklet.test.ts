@@ -12,6 +12,7 @@ describe('the bookmarklet', () => {
   afterEach(() => {
     vi.restoreAllMocks();
     document.body.innerHTML = '';
+    delete (window as { __unbentClip?: unknown }).__unbentClip;
   });
 
   /** Runs it here, as a click on the bookmark would, with the pop-up and its messages faked. */
@@ -50,6 +51,14 @@ describe('the bookmarklet', () => {
     handler({ source: popup as unknown as Window, origin: 'https://elsewhere.example', data: { type: READY } });
     handler({ source: popup as unknown as Window, origin: ORIGIN, data: { type: 'something-else' } });
     expect(popup.postMessage).not.toHaveBeenCalled();
+  });
+
+  /* A second press reopens the same window, which would otherwise be sent the page twice. */
+  it('keeps one listener when pressed again before the window asks', () => {
+    const first = press().handler;
+    const remove = vi.spyOn(window, 'removeEventListener');
+    press();
+    expect(remove).toHaveBeenCalledWith('message', first);
   });
 
   it('says so when the pop-up is blocked', () => {

@@ -78,6 +78,12 @@ export function readPage(data: unknown): ClippedPage | null {
  *
  * A blocked pop-up is said in an alert, since there is no other place to say it on
  * someone else's page.
+ *
+ * One listener per page, kept on the page's window under `__unbentClip`: a second press
+ * while the window is open reopens the same window, and a listener left from the first
+ * would answer its `READY` too, copying and sending the page twice. A listener whose
+ * window never asked stays until the page goes or the next press, which is what lets a
+ * sign-in in the window by emailed code still receive the page when it asks again.
  */
 export function bookmarkletFor(origin: string): string {
   const o = JSON.stringify(origin);
@@ -85,13 +91,15 @@ export function bookmarkletFor(origin: string): string {
     `var o=${o},u=location.href;`,
     `var w=window.open(o+${JSON.stringify(`${CLIP_PATH}?url=`)}+encodeURIComponent(u),"unbent-clip","width=480,height=620");`,
     `if(!w){alert("Allow pop-ups for this site to clip it with Unbent.");return;}`,
+    `var k="__unbentClip";`,
     `function h(e){`,
     `if(e.source!==w||e.origin!==o||!e.data||e.data.type!==${JSON.stringify(READY)})return;`,
-    `removeEventListener("message",h);`,
+    `removeEventListener("message",h);window[k]=null;`,
     `var d=document.documentElement.cloneNode(true),n=d.querySelectorAll("script,style,noscript"),i;`,
     `for(i=0;i<n.length;i++)n[i].parentNode.removeChild(n[i]);`,
     `w.postMessage({type:${JSON.stringify(PAGE)},url:u,title:document.title,html:d.outerHTML},o);`,
     `}`,
+    `if(window[k])removeEventListener("message",window[k]);window[k]=h;`,
     `addEventListener("message",h);`,
   ].join('');
   return `javascript:(function(){${body}})();void 0`;
