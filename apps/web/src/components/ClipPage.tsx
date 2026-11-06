@@ -207,6 +207,7 @@ export function ClipPage({ url: addressed }: { url: string | undefined }) {
     // A window the bookmarklet opened can close itself; a /clip someone typed into a tab
     // cannot, and a Close that does nothing is worse than none.
     const closable = window.opener !== null || window.history.length === 1;
+    const href = `/notes/${encodeURIComponent(saving.id)}`;
     return (
       <div className="login clip-page">
         <h1>Saved</h1>
@@ -217,9 +218,16 @@ export function ClipPage({ url: addressed }: { url: string | undefined }) {
               Close
             </Button>
           )}
-          <Link to="/notes/$noteId" params={{ noteId: saving.id }} className={closable ? 'btn btn-secondary' : 'btn btn-primary'}>
-            Open note
-          </Link>
+          {closable ? (
+            // A plain link, not the router's: see `openInTab`.
+            <a href={href} className="btn btn-secondary" onClick={openInTab}>
+              Open note
+            </a>
+          ) : (
+            <Link to="/notes/$noteId" params={{ noteId: saving.id }} className="btn btn-primary">
+              Open note
+            </Link>
+          )}
         </div>
       </div>
     );
@@ -254,6 +262,37 @@ export function ClipPage({ url: addressed }: { url: string | undefined }) {
       )}
     </div>
   );
+}
+
+/**
+ * "Open note" from the pop-up: the note in a tab of its own, and the pop-up closed.
+ *
+ * The router's link moved this window from `/clip` to the note, which put the whole app
+ * in a 480-pixel pop-up, and on 2026-11-06 it drew wrong there: the frame came out taller
+ * than the window, so the document scrolled and the note's own scroller had nothing to
+ * scroll (its `overscroll-behavior: contain` swallowed the wheel), leaving the scrollbar
+ * as the only way down. A fresh load of the same note in the same pop-up drew fine, and it
+ * has not been seen since, so the cause is a guess (the note drawn inside the plain
+ * shell's frame on a route change). It does not matter which: the pop-up is for Save or
+ * not, and a note belongs in a tab. Chrome puts the new tab in the browser window used
+ * last, which is the one the person was reading in.
+ *
+ * A modified click (a middle click, Cmd or Ctrl, Shift, Alt) is left to the browser, which
+ * opens the link as asked and keeps this window. A new tab the browser refuses is a full
+ * load of the note here, not a route change, so it draws as a page of its own would.
+ */
+function openInTab(event: React.MouseEvent<HTMLAnchorElement>) {
+  if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+  event.preventDefault();
+  const href = event.currentTarget.getAttribute('href')!;
+  const tab = window.open(href, '_blank');
+  if (!tab) {
+    window.location.assign(href);
+    return;
+  }
+  // The note's tab has no business with this window, and this window is about to go.
+  tab.opener = null;
+  window.close();
 }
 
 function Waiting() {

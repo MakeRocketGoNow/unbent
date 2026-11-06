@@ -50,6 +50,16 @@ function post(source: Window, data: unknown) {
   });
 }
 
+/** A pop-up whose page has been saved as note `n1`. */
+async function saved() {
+  vi.mocked(actions.clipLink).mockResolvedValue({ id: 'n1', title: 'An article' } as api.ClippedNote);
+  mount();
+  await screen.findByRole('status');
+  post(opener, page());
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+  await screen.findByRole('heading', { name: 'Saved' });
+}
+
 const page = (over: Record<string, unknown> = {}) => ({ type: PAGE, url: ADDRESS, title: 'An article', html: '<p>The article</p>', ...over });
 
 beforeEach(() => {
@@ -67,6 +77,7 @@ afterEach(() => {
   frame.remove();
   setOpener(null);
   vi.useRealTimers();
+  vi.restoreAllMocks();
 });
 
 describe('the clip window', () => {
@@ -84,6 +95,75 @@ describe('the clip window', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await screen.findByRole('heading', { name: 'Saved' });
     expect(actions.clipLink).toHaveBeenCalledWith({ id: expect.any(String), url: ADDRESS, html: '<p>The article</p>' });
+    expect(screen.getByRole('link', { name: 'Open note' }).getAttribute('href')).toBe('/notes/n1');
+  });
+
+  /* The whole app in a 480-pixel pop-up drew wrong once; the note belongs in a tab. */
+  it('opens the note in a tab of its own and closes the pop-up', async () => {
+    const tab = { opener: window } as unknown as Window;
+    const open = vi.spyOn(window, 'open').mockReturnValue(tab);
+    const close = vi.spyOn(window, 'close').mockImplementation(() => {});
+    await saved();
+    fireEvent.click(screen.getByRole('link', { name: 'Open note' }));
+    expect(open).toHaveBeenCalledWith('/notes/n1', '_blank');
+    expect(tab.opener).toBeNull();
+    expect(close).toHaveBeenCalled();
+  });
+
+  it('leaves a modified click to the browser, and the pop-up open', async () => {
+    const open = vi.spyOn(window, 'open');
+    const close = vi.spyOn(window, 'close').mockImplementation(() => {});
+    await saved();
+    const link = screen.getByRole('link', { name: 'Open note' });
+    // Whether the page left the click to the browser, read as it reaches the document;
+    // then stopped there, since jsdom cannot follow a link.
+    const left: boolean[] = [];
+    const record = (event: MouseEvent) => {
+      left.push(!event.defaultPrevented);
+      event.preventDefault();
+    };
+    document.addEventListener('click', record);
+    document.addEventListener('auxclick', record);
+    try {
+      fireEvent.click(link, { metaKey: true });
+      fireEvent.click(link, { ctrlKey: true });
+      fireEvent.click(link, { button: 1 });
+    } finally {
+      document.removeEventListener('click', record);
+      document.removeEventListener('auxclick', record);
+    }
+    expect(left).toEqual([true, true, true]);
+    expect(open).not.toHaveBeenCalled();
+    expect(close).not.toHaveBeenCalled();
+  });
+
+  it('goes to the note in this window when the new tab is refused', async () => {
+    vi.spyOn(window, 'open').mockReturnValue(null);
+    const close = vi.spyOn(window, 'close').mockImplementation(() => {});
+    await saved();
+    // jsdom's window.location is read-only; a plain object makes the assignment observable.
+    const original = window.location;
+    const location = { assign: vi.fn() };
+    Object.defineProperty(window, 'location', { value: location, configurable: true, writable: true });
+    try {
+      fireEvent.click(screen.getByRole('link', { name: 'Open note' }));
+      expect(location.assign).toHaveBeenCalledWith('/notes/n1');
+      expect(close).not.toHaveBeenCalled();
+    } finally {
+      Object.defineProperty(window, 'location', { value: original, configurable: true, writable: true });
+    }
+  });
+
+  /* A /clip typed into a tab of its own: no Close, and the note opens where it is. */
+  it('keeps the router link and no Close in an ordinary tab', async () => {
+    setOpener(null);
+    // A tab with somewhere to go back to, which a window can't close itself out of.
+    vi.spyOn(window.history, 'length', 'get').mockReturnValue(2);
+    vi.mocked(actions.clipLink).mockResolvedValue({ id: 'n1', title: 'An article' } as api.ClippedNote);
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Save' }));
+    await screen.findByRole('heading', { name: 'Saved' });
+    expect(screen.queryByRole('button', { name: 'Close' })).toBeNull();
     expect(screen.getByRole('link', { name: 'Open note' }).getAttribute('href')).toBe('/notes/$noteId');
   });
 
