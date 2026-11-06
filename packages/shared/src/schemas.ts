@@ -23,6 +23,14 @@ export { dateOnlySchema, startOfDay, endOfDay } from './dates.js';
 /** D1 rejects rows over 2MB; cap note bodies below that with room for the other columns. */
 export const MAX_BODY_BYTES = 1_800_000;
 
+/**
+ * The most HTML a clip request may carry (`clipRequestSchema.html`), in characters. A
+ * page's tab holds its scripts and styles too, which the server takes out before
+ * reading, so this is several times what is read; a client checks it before sending and
+ * says so, rather than send a page the validator refuses with a bare 400.
+ */
+export const MAX_CLIP_HTML_CHARS = 10 * 1024 * 1024;
+
 /** Cloudflare caps request bodies at 100MB; leave headroom for headers and metadata. */
 export const MAX_ATTACHMENT_BYTES = 95 * 1024 * 1024;
 
@@ -598,9 +606,18 @@ export const createNoteSchema = z.object({
  * `id` is the note's, for the same reason as `createNoteSchema.id`: a phone that shared
  * a page while its answer was lost sends the same request again, and the note it made
  * the first time is the answer, rather than a second clip of the same page.
+ *
+ * `html` is the page itself, for a client that has it: the bookmarklet sends what the
+ * person's tab is showing, which is the page as they see it, signed in and drawn by its
+ * scripts, where the server's own fetch would get a sign-in screen or an empty shell.
+ * With it the server fetches nothing but the pictures, and `url` is only where the page
+ * says it came from. Bounded at `MAX_CLIP_HTML_CHARS` so a request cannot hand the
+ * Worker more than it can hold; the server refuses well short of that once the scripts
+ * and styles are out (`CLIP_MAX_PARSED_CHARS` in the API).
  */
 export const clipRequestSchema = z.object({
   url: z.string().min(1).max(8192),
+  html: z.string().min(1).max(MAX_CLIP_HTML_CHARS).optional(),
   id: z.string().uuid().optional(),
   title: z.string().max(MAX_TITLE_LENGTH).optional(),
   tags: z.array(tagNameSchema).max(100).default([]),

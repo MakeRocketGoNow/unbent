@@ -194,6 +194,32 @@ describe('POST /api/clip', () => {
     expect((await call(alice, 'POST', '/api/clip', { url: '' })).status).toBe(400);
   });
 
+  it('keeps a page the client sent without fetching it, pictures and all', async () => {
+    // What the bookmarklet does: the tab's own HTML, here a members' page the site refuses
+    // to this server, with an address the server would not fetch either.
+    const page = GUIDE.replace('<img src="/pics/anvil.png"', `<img src="${origin}/pics/anvil.png"`);
+    const before = { members: hits['/members'] ?? 0, picture: hits['/pics/anvil.png'] ?? 0 };
+    const res = await call(alice, 'POST', '/api/clip', { url: `${origin}/members`, html: page });
+    expect(res.status).toBe(201);
+    const note = (await res.json()) as { title: string; body: string; clip: { images: { stored: number } } };
+    expect(note.title).toBe('Caring for your anvil');
+    expect(note.body.startsWith(`Clipped from [Acme Workshop](${origin}/members)`)).toBe(true);
+    expect(note.body).toContain(PARAGRAPH);
+    expect(note.clip.images.stored).toBe(1);
+    expect(hits['/members'] ?? 0).toBe(before.members);
+    expect(hits['/pics/anvil.png']).toBe(before.picture + 1);
+  }, 30_000);
+
+  it('keeps a sent page on a private address, and refuses one that is not a web page', async () => {
+    const inside = await call(alice, 'POST', '/api/clip', { url: 'http://10.0.0.1/wiki/anvils', html: GUIDE });
+    expect(inside.status).toBe(201);
+    expect(((await inside.json()) as { body: string }).body).toContain('Clipped from [Acme Workshop](http://10.0.0.1/wiki/anvils)');
+
+    const local = await call(alice, 'POST', '/api/clip', { url: 'file:///Users/pat/anvils.html', html: GUIDE });
+    expect(local.status).toBe(400);
+    expect(await local.json()).toMatchObject({ code: 'BAD_URL' });
+  }, 30_000);
+
   it('needs a session', async () => {
     expect((await call(null, 'POST', '/api/clip', { url: `${origin}/guides/anvil` })).status).toBe(401);
   });

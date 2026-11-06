@@ -97,6 +97,11 @@ export const CLIP_MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 
 export interface ClipInput {
   url: string;
+  /**
+   * The page, when the client has it (the bookmarklet sends the tab's). The server then
+   * fetches nothing but the pictures; see `clipRequestSchema.html`.
+   */
+  html?: string | undefined;
   /** The note's title. Absent, the page's own. */
   title?: string | undefined;
   notebook?: string | null | undefined;
@@ -167,11 +172,21 @@ export async function clipUrl(
   // The address first, before anything else is spent on it: http(s) only, no
   // credentials, nothing on a loopback or private network. The same guard as every
   // fetch this server makes for a caller, and `fetchSource` repeats it at every redirect.
-  const checked = checkSourceUrl(input.url, { allowLoopback: opts.allowLoopback });
+  //
+  // A page the client sent is not fetched, so its address needs only to be one a note
+  // can link to: an intranet page someone is looking at is theirs to keep, and refusing
+  // it as private would refuse the very page only their tab can see. Its pictures are
+  // still fetched here, each through `fetchWebImage`'s own guard, so one on a private
+  // host is refused there and stays a link.
+  const checked =
+    input.html !== undefined
+      ? checkPageUrl(input.url)
+      : checkSourceUrl(input.url, { allowLoopback: opts.allowLoopback });
   if ('error' in checked) return { ok: false, status: 400, code: 'BAD_URL', error: checked.error };
   await opts.pastFree?.();
 
-  const page = await fetchPage(checked.url, opts);
+  const page: FetchedPage =
+    input.html !== undefined ? { ok: true, html: input.html, url: checked.url } : await fetchPage(checked.url, opts);
   if (!page.ok) return page;
 
   // Loaded here, not at the top of the file. linkedom and Readability are a few hundred
@@ -298,6 +313,26 @@ async function finishClip(
 }
 
 type FetchedPage = { ok: true; html: string; url: URL } | Extract<ClipResult, { ok: false }>;
+
+/**
+ * The address of a page the client sent: http or https, and no credentials in it, since
+ * the note's source line links to it and a password in a note is a password kept.
+ * `checkSourceUrl` without the private-network rule, which is about what this server
+ * fetches, and this address it does not.
+ */
+export function checkPageUrl(raw: string): { url: URL } | { error: string } {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return { error: `"${raw}" is not a URL.` };
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    return { error: `Only a web page can be clipped; this address is ${url.protocol.slice(0, -1)}.` };
+  }
+  if (url.username || url.password) return { error: 'An address with credentials in it is refused.' };
+  return { url };
+}
 
 /**
  * The page's HTML as text, or why there is none.

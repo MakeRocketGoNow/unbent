@@ -10,10 +10,12 @@ import { withRepos } from '../lib/repos-middleware.js';
 import type { AppEnv } from '../types.js';
 
 /**
- * `POST /clip`: a web page kept as a note, fetched and read here. For the clients that
- * hold only an address (a phone's share sheet, a bookmarklet, the web app's own "clip a
- * link") rather than the page; an assistant reaches the same function through the
- * `clip_web_page` tool. Everything it does is `lib/clip.ts`'s.
+ * `POST /clip`: a web page kept as a note, read here. Given only an address (a phone's
+ * share sheet, the web app's own "clip a link"), the page is fetched here too; given the
+ * page as well (`html`, which the bookmarklet sends from the person's tab), only its
+ * pictures are, so a page behind a sign-in or drawn by script clips as they see it. An
+ * assistant reaches the same function through the `clip_web_page` tool, by address.
+ * Everything it does is `lib/clip.ts`'s.
  *
  * A router of its own at `/clip`, not a verb under `/notes`: it makes a note, but what it
  * is given is a page, and the note's id is an option in the body like every create's.

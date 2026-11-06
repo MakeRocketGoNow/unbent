@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { attachmentFilenamesInMarkdown, type Note } from '@unbent/shared';
-import { CLIP_MAX_IMAGE_BYTES, clipUrl, decodeHtml, relink } from './clip.js';
+import { CLIP_MAX_IMAGE_BYTES, checkPageUrl, clipUrl, decodeHtml, relink } from './clip.js';
 import { StorageFull } from './quota.js';
 import type { AttachmentsRepo } from './attachments-repo.js';
 import type { NotesRepo } from './notes-repo.js';
@@ -385,6 +385,20 @@ describe('relink', () => {
   it('points a renamed picture at the name it was stored under', () => {
     const out = relink(body, images, new Map([['kept.png', 'files/kept (2).png']]));
     expect(out).toContain('![Kept](<files/kept (2).png>)');
+  });
+});
+
+describe('checkPageUrl', () => {
+  it('takes any web address, private ones included, since nothing fetches it', () => {
+    for (const raw of ['https://example.com/a', 'http://10.0.0.1/wiki', 'http://localhost:3000/']) {
+      expect(checkPageUrl(raw)).toHaveProperty('url');
+    }
+  });
+
+  it('refuses what is not a web page, and an address with credentials in it', () => {
+    for (const raw of ['file:///tmp/a.html', 'javascript:alert(1)', 'not a url', 'https://pat:secret@example.com/']) {
+      expect(checkPageUrl(raw)).toHaveProperty('error');
+    }
   });
 });
 
