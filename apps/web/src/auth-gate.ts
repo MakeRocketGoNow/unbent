@@ -161,10 +161,10 @@ const PUBLIC: ReadonlySet<string> = new Set([
   // establish one), so gating it would redirect the token to /login and lose it. See
   // routes/preview-signin.tsx.
   '/preview-signin',
-  // The bookmarklet's window. Public so that someone signed out is told to sign in and
-  // press the bookmarklet again, rather than redirected: the page it was sent is in a
-  // message to this window and cannot survive a sign-in. It reads the session itself and
-  // saves nothing without one. See components/ClipPage.tsx.
+  // The bookmarklet's window. Public so that someone signed out is told why before being
+  // sent to sign in, rather than redirected at once: the page is in a message to this
+  // window, and its Sign in link comes back here with the page's address. It reads the
+  // session itself and saves nothing without one. See components/ClipPage.tsx.
   CLIP_PATH,
 ]);
 
