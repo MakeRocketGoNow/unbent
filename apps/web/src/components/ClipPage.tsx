@@ -137,11 +137,6 @@ export function ClipPage({ url: addressed }: { url: string | undefined }) {
   // Once per page, not per render: reading a title out of the HTML parses the whole page,
   // and the window draws again on every press and every refetch of the session.
   const pageTitle = useMemo(() => (page ? page.title || titleIn(page.html) : ''), [page]);
-  // Save fades for what Clip a link fades for in the app, with the same words: the server
-  // does the clipping, and a read-only account cannot add the note.
-  const offline = useOffline();
-  const { inactive } = usePlan();
-  const noSave = inactive ? READ_ONLY_TIP : offline ? CLIP_OFFLINE_TIP : undefined;
   // One id for this window's clip, so a second press after a lost answer finds the note
   // the first one made rather than clipping the page again.
   const id = useRef<string | null>(null);
@@ -270,9 +265,7 @@ export function ClipPage({ url: addressed }: { url: string | undefined }) {
         </p>
       )}
       <div className="login-actions">
-        <Button variant="primary" size="large" disabled={saving.kind === 'busy' || noSave !== undefined} tip={noSave} aria-busy={saving.kind === 'busy' || undefined} onClick={() => void save()}>
-          {saving.kind === 'busy' ? 'Saving…' : 'Save'}
-        </Button>
+        <SaveButton busy={saving.kind === 'busy'} onSave={() => void save()} />
       </div>
       {saving.kind === 'failed' && (
         <p className="bad small clip-page-error" role="alert">
@@ -316,6 +309,23 @@ function openInTab(event: React.MouseEvent<HTMLAnchorElement>) {
   // The note's tab has no business with this window, and this window is about to go.
   tab.opener = null;
   window.close();
+}
+
+/**
+ * Save, faded for what Clip a link fades for in the app, with the same words: the server
+ * does the clipping, and a read-only account cannot add the note. Its own component so the
+ * plan is read only once there is a session to read it for: at the top of `ClipPage` it
+ * was asked for in a signed-out window too, where it can only be refused.
+ */
+function SaveButton({ busy, onSave }: { busy: boolean; onSave: () => void }) {
+  const offline = useOffline();
+  const { inactive } = usePlan();
+  const noSave = inactive ? READ_ONLY_TIP : offline ? CLIP_OFFLINE_TIP : undefined;
+  return (
+    <Button variant="primary" size="large" disabled={busy || noSave !== undefined} tip={noSave} aria-busy={busy || undefined} onClick={onSave}>
+      {busy ? 'Saving…' : 'Save'}
+    </Button>
+  );
 }
 
 function Waiting() {
