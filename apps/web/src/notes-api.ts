@@ -331,6 +331,11 @@ export async function clipLink(input: {
   notebook?: string | null;
   /** An id chosen here, so a request sent twice finds one note; see `clipRequestSchema`. */
   id?: string;
+  /**
+   * The page itself, from the person's tab (the bookmarklet's `/clip`): the server then
+   * fetches only its pictures. At most `MAX_CLIP_HTML_CHARS`, which the caller checks.
+   */
+  html?: string;
 }): Promise<ClippedNote> {
   return json<ClippedNote>(
     await request('/api/clip', {

@@ -1,6 +1,7 @@
 import { redirect, useRouterState, type ParsedLocation } from '@tanstack/react-router';
 import { ensureSession, type Session } from './auth-client.js';
 import { postToApp } from './app-bridge.js';
+import { CLIP_PATH } from './bookmarklet.js';
 
 /** Where the app lands when there is nowhere better to send someone. */
 export const HOME = '/notes';
@@ -160,6 +161,11 @@ const PUBLIC: ReadonlySet<string> = new Set([
   // establish one), so gating it would redirect the token to /login and lose it. See
   // routes/preview-signin.tsx.
   '/preview-signin',
+  // The bookmarklet's window. Public so that someone signed out is told to sign in and
+  // press the bookmarklet again, rather than redirected: the page it was sent is in a
+  // message to this window and cannot survive a sign-in. It reads the session itself and
+  // saves nothing without one. See components/ClipPage.tsx.
+  CLIP_PATH,
 ]);
 
 export function shellFor(pathname: string): Shell {

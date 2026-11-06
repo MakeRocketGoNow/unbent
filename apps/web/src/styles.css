@@ -237,6 +237,25 @@ h1 {
   margin-top: 2rem;
 }
 
+/*
+   The bookmarklet's window (`ClipPage`): the sign-in card's shape, since it is the same
+   kind of page, one decision on an empty window. The page's title is someone else's text
+   and can be a paragraph or one unbroken word, so it wraps anywhere rather than widening
+   a 480px pop-up.
+*/
+.clip-page-title {
+  margin: 1rem 0 0.25rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.clip-page-host {
+  margin-top: 0;
+  overflow-wrap: anywhere;
+}
+
+.clip-page-error { margin-top: 1rem; }
+
 .provider {
   /*
      A centred row rather than centred text, so a mark sits beside the label instead of the
@@ -497,7 +516,7 @@ button.link {
    card is all buttons and the reset page navigates with one. `/goodbye` genuinely
    navigates, so it uses an anchor, which without this rendered as browser-default blue
    on the dark theme, the one look that says nobody checked. */
-.login a,
+.login a:not(.btn),
 .panel > p a,
 /* The operator page's links live in rows and lists rather than paragraphs: a download
    beside a dump, the run on GitHub under a card. Same treatment, or they are blue. */
@@ -511,7 +530,7 @@ button.link {
 .settings-section p a:hover,
 .confirm p a:hover,
 .confirm-detail a:hover,
-.login a:hover,
+.login a:not(.btn):hover,
 .panel > p a:hover,
 .operator-page a:hover {
   color: var(--fg);
