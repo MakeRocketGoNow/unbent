@@ -71,6 +71,18 @@ Four are worth knowing about:
   costs more CPU than Workers Free allows, so a self-hosted instance switches it on once
   it is on a plan that can run it. Where it is absent, the long way is the way.
 
+**A page in front of you is clipped with the bookmarklet, not the tool.** Where the
+instance clips, Settings, Import offers a Clip to Unbent link to drag to the bookmarks
+bar. Pressed on a page, it opens a small Unbent window and hands it the page as the tab
+shows it, signed in and drawn by its scripts, which a server's own fetch of the address
+would see as a sign-in screen or an empty shell. Nothing is kept until Save is pressed in
+that window, and the server then reads that HTML the way it reads a fetched page and
+fetches only the pictures. A picture it cannot fetch itself (one behind the site's
+sign-in, or on a private network) stays a link to where it was. A site that cuts the
+window off from its tab (a Cross-Origin-Opener-Policy does) leaves the window with the
+address alone, which the server fetches as the tool does, and the window says so first.
+Keeping only a selection, and a PDF open in the browser, are left for a browser extension.
+
 **Filling a notebook's fields in bulk is an assistant's job, on the assistant's own
 model.** Pressing Auto-fill fills one note's empty fields, and there is deliberately no
 button, and no tool, that runs it across a notebook: a press that ran a few hundred notes
