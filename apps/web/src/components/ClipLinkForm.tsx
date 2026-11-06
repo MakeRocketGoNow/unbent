@@ -41,7 +41,11 @@ export function whatWentWrong(err: unknown): string {
   return errorText(err);
 }
 
-const NEEDS_CONNECTION = 'Clipping needs a connection.';
+/** Why a clip control is faded while the server is out of reach: the server does the fetching. */
+export const CLIP_OFFLINE_TIP = 'Clipping needs a connection';
+
+/** The same, as the line under the field after a press, which is a sentence. */
+const NEEDS_CONNECTION = `${CLIP_OFFLINE_TIP}.`;
 
 /** Why the controls that would close the form are faded while it clips. */
 export const CLIP_RUNNING_TIP = 'Clipping this link';
@@ -196,7 +200,7 @@ export function ClipLinkForm({ clip, offline, compact = false, onCancel }: ClipL
     ref.current?.focus();
   }, [busy, clip.focusNext]);
 
-  const clipTip = offline ? 'Clipping needs a connection' : undefined;
+  const clipTip = offline ? CLIP_OFFLINE_TIP : undefined;
 
   return (
     <div className="clip-link">
