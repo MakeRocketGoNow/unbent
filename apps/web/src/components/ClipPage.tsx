@@ -173,7 +173,7 @@ export function ClipPage({ url: addressed }: { url: string | undefined }) {
               emailed code) leaves the tab's bookmarklet waiting, and it sends the page once
               this window asks again; one through a provider whose pages cut the opener
               leaves only the address, which the server fetches. */}
-          <Link to="/login" search={{ redirect: addressed ? `${CLIP_PATH}?url=${encodeURIComponent(addressed)}` : CLIP_PATH }} className="btn btn-primary">
+          <Link to="/login" search={{ redirect: addressed ? `${CLIP_PATH}?url=${encodeURIComponent(addressed)}` : CLIP_PATH }} className="btn btn-primary btn-large">
             Sign in
           </Link>
         </div>
@@ -240,11 +240,11 @@ export function ClipPage({ url: addressed }: { url: string | undefined }) {
           )}
           {closable ? (
             // A plain link, not the router's: see `openInTab`.
-            <a href={href} className="btn btn-secondary" onClick={openInTab}>
+            <a href={href} className="btn btn-secondary btn-large" onClick={openInTab}>
               Open note
             </a>
           ) : (
-            <Link to="/notes/$noteId" params={{ noteId: saving.id }} className="btn btn-primary">
+            <Link to="/notes/$noteId" params={{ noteId: saving.id }} className="btn btn-primary btn-large">
               Open note
             </Link>
           )}
