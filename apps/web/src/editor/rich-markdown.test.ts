@@ -945,6 +945,23 @@ describe('inline images', () => {
     );
   });
 
+  /**
+   * The picture is found by its address, so every picture at that address takes the
+   * stored copy, as "Save web images" would give it. Rewriting only the pressed one would
+   * need its position, which is exactly what a detached widget cannot be trusted for.
+   */
+  it('points every picture at the saved address to the stored file', async () => {
+    saveRemoteImage.mockClear();
+    const doc = '![a](https://example.com/x.png)\n\n![b](https://example.com/x.png)\n\nplain';
+    const v = mountWithAttachments(doc, doc.indexOf('plain'));
+    v.dom.querySelector<HTMLButtonElement>('.cm-md-image .zoom-save')?.click();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(saveRemoteImage).toHaveBeenCalledTimes(1);
+    expect(v.state.doc.toString()).toBe(
+      '![a](files/saved.png)\n\n![b](files/saved.png)\n\nplain',
+    );
+  });
+
   it('keeps the web link when the save fails', async () => {
     saveRemoteImage.mockRejectedValueOnce(new Error('403'));
     const doc = '![web](https://example.com/a.png)\n\nplain';
