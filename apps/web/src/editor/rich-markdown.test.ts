@@ -914,6 +914,54 @@ describe('inline images', () => {
     expect(live.state.doc.toString()).toBe('intro\n\n![web pic](files/saved.png)\n\nplain');
   });
 
+  /**
+   * Image widgets only exist in the viewport. Scrolling the picture off-screen destroys
+   * its DOM while the same EditorView is still open, and `posAtDOM` on the detached host
+   * does not throw: it answers the start or the end of the document. Finding the picture
+   * from that host then rewrites whichever image sits there, which may not be the one
+   * that was saved. The stored copy is found by its address instead, as a remount is.
+   */
+  it('writes the stored file by address when the pressed widget is gone from the same view', async () => {
+    let finish: (filename: string) => void = () => {};
+    saveRemoteImage.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+    const doc = '![save](https://example.com/save.png)\n\nplain\n\n![keep](https://example.com/keep.png)';
+    const v = mountWithAttachments(doc, doc.indexOf('plain'));
+    const widgets = v.dom.querySelectorAll('.cm-md-image');
+    expect(widgets).toHaveLength(2);
+    const host = widgets[0] as HTMLElement;
+    host.querySelector<HTMLButtonElement>('.zoom-save')?.click();
+    expect(saveRemoteImage).toHaveBeenCalledWith('https://example.com/save.png');
+    // Leave the viewport empty and repaint: the same thing scrolling the picture
+    // off-screen does, and the host is then gone from the view.
+    vi.spyOn(v, 'visibleRanges', 'get').mockReturnValue([]);
+    v.dispatch({ effects: pdfNamesChanged.of(null) });
+    // The bug needs the host detached; if faking the viewport stops doing that, the old
+    // lookup would find the right picture and this test would pass on the bug.
+    expect(host.isConnected).toBe(false);
+    finish('saved.png');
+    await new Promise((r) => setTimeout(r, 0));
+    expect(v.state.doc.toString()).toBe(
+      '![save](files/saved.png)\n\nplain\n\n![keep](https://example.com/keep.png)',
+    );
+  });
+
+  /**
+   * The picture is found by its address, so every picture at that address takes the
+   * stored copy, as "Save web images" would give it. Rewriting only the pressed one would
+   * need its position, which is exactly what a detached widget cannot be trusted for.
+   */
+  it('points every picture at the saved address to the stored file', async () => {
+    saveRemoteImage.mockClear();
+    const doc = '![a](https://example.com/x.png)\n\n![b](https://example.com/x.png)\n\nplain';
+    const v = mountWithAttachments(doc, doc.indexOf('plain'));
+    v.dom.querySelector<HTMLButtonElement>('.cm-md-image .zoom-save')?.click();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(saveRemoteImage).toHaveBeenCalledTimes(1);
+    expect(v.state.doc.toString()).toBe(
+      '![a](files/saved.png)\n\n![b](files/saved.png)\n\nplain',
+    );
+  });
+
   it('keeps the web link when the save fails', async () => {
     saveRemoteImage.mockRejectedValueOnce(new Error('403'));
     const doc = '![web](https://example.com/a.png)\n\nplain';
