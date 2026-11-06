@@ -5,6 +5,7 @@ import { MAX_CLIP_PARSED_CHARS } from '@unbent/shared';
 import * as api from '../notes-api.js';
 import * as actions from '../store/actions.js';
 import { PAGE, READY } from '../bookmarklet.js';
+import { resetConnectivity, setReachableForTests } from '../connectivity.js';
 import { ClipPage, PAGE_WAIT_MS } from './ClipPage.js';
 
 /**
@@ -22,6 +23,8 @@ vi.mock('@tanstack/react-router', () => ({
     </a>
   ),
 }));
+let inactive = false;
+vi.mock('../use-plan.js', async (importOriginal) => ({ ...(await importOriginal<typeof import('../use-plan.js')>()), usePlan: () => ({ inactive }) }));
 vi.mock('../notes-api.js', async (importOriginal) => ({ ...(await importOriginal<typeof import('../notes-api.js')>()), getConfig: vi.fn() }));
 vi.mock('../store/actions.js', async (importOriginal) => ({ ...(await importOriginal<typeof import('../store/actions.js')>()), clipLink: vi.fn() }));
 
@@ -74,6 +77,8 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  inactive = false;
+  resetConnectivity();
   frame.remove();
   setOpener(null);
   vi.useRealTimers();
@@ -189,6 +194,26 @@ describe('the clip window', () => {
     await act(() => vi.advanceTimersByTimeAsync(PAGE_WAIT_MS));
     expect(screen.queryByText('Not this one')).toBeNull();
     expect(screen.queryByText('bank.example')).toBeNull();
+  });
+
+  /* As Clip a link fades in the app: the server clips, and a read-only account adds no note. */
+  it('fades Save, saying why, offline and while the account is read-only', async () => {
+    mount();
+    await screen.findByRole('status');
+    post(opener, page());
+    act(() => setReachableForTests(false));
+    const save = screen.getByRole('button', { name: 'Save' });
+    expect(save.hasAttribute('disabled')).toBe(true);
+    expect(save.getAttribute('data-tip')).toBe('Clipping needs a connection');
+    act(() => setReachableForTests(true));
+    expect(screen.getByRole('button', { name: 'Save' }).hasAttribute('disabled')).toBe(false);
+    cleanup();
+    inactive = true;
+    mount();
+    await screen.findByRole('status');
+    post(opener, page());
+    expect(screen.getByRole('button', { name: 'Save' }).getAttribute('data-tip')).toBe('Not while the account is read-only');
+    expect(actions.clipLink).not.toHaveBeenCalled();
   });
 
   /* A site's Cross-Origin-Opener-Policy cuts the opener: the server fetches the address. */

@@ -6,7 +6,9 @@ import { configQuery } from '../queries.js';
 import { useAppSession } from '../useAppSession.js';
 import * as actions from '../store/actions.js';
 import { CLIP_PATH, READY, readPage, type ClippedPage } from '../bookmarklet.js';
-import { whatWentWrong } from './ClipLinkForm.js';
+import { useOffline } from '../connectivity.js';
+import { READ_ONLY_TIP, usePlan } from '../use-plan.js';
+import { CLIP_OFFLINE_TIP, whatWentWrong } from './ClipLinkForm.js';
 import { Button } from './Button.js';
 
 /**
@@ -131,6 +133,11 @@ export function ClipPage({ url: addressed }: { url: string | undefined }) {
   const offered = config.data?.webClip === true;
   const heard = useOpenerPage(offered && session !== null && !isPending);
   const [saving, setSaving] = useState<Saving>({ kind: 'idle' });
+  // Save fades for what Clip a link fades for in the app, with the same words: the server
+  // does the clipping, and a read-only account cannot add the note.
+  const offline = useOffline();
+  const { inactive } = usePlan();
+  const noSave = inactive ? READ_ONLY_TIP : offline ? CLIP_OFFLINE_TIP : undefined;
   // One id for this window's clip, so a second press after a lost answer finds the note
   // the first one made rather than clipping the page again.
   const id = useRef<string | null>(null);
@@ -260,7 +267,7 @@ export function ClipPage({ url: addressed }: { url: string | undefined }) {
         </p>
       )}
       <div className="login-actions">
-        <Button variant="primary" size="large" disabled={saving.kind === 'busy'} aria-busy={saving.kind === 'busy' || undefined} onClick={() => void save()}>
+        <Button variant="primary" size="large" disabled={saving.kind === 'busy' || noSave !== undefined} tip={noSave} aria-busy={saving.kind === 'busy' || undefined} onClick={() => void save()}>
           {saving.kind === 'busy' ? 'Saving…' : 'Save'}
         </Button>
       </div>
