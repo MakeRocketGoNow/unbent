@@ -68,6 +68,7 @@ export function extractArticle(html: string, url: string): Article | null {
   if (!isProbablyReaderable(document as never)) return null;
 
   joinSplitArticle(document as unknown as Root);
+  dropCaptionCopies(document as unknown as Root);
 
   // parse() rewrites the document as it scores it, so everything read from the page
   // itself is read above, before this.
@@ -194,6 +195,28 @@ function joinSplitArticle(document: Root): void {
   }
 }
 
+/**
+ * Removes the copies of a picture's caption that a page hides with its stylesheet.
+ *
+ * A lightbox (the viewer that opens a picture full size) often keeps its own copy of the
+ * caption inside the `<figure>`, beside the `<figcaption>`, hidden until it opens. A
+ * browser's copy leaves hidden text out, so a paste had the caption once; the clipper gets
+ * the page without its stylesheet, and the clip had it twice. A copy is told by its text,
+ * which is the caption's word for word, and an element holding a picture is never one.
+ */
+function dropCaptionCopies(document: Root): void {
+  for (const caption of document.querySelectorAll('figure figcaption')) {
+    const figure = caption.parentElement?.closest('figure');
+    const text = squash(caption.textContent);
+    if (!figure || !text) continue;
+    for (const element of figure.querySelectorAll('*')) {
+      if (!element.isConnected || element.contains(caption) || caption.contains(element)) continue;
+      if (element.querySelector('img, picture, video, svg')) continue;
+      if (squash(element.textContent) === text) element.remove();
+    }
+  }
+}
+
 /** The share of a box's text that sits inside links. */
 function linkShare(box: Element): number {
   const all = squash(box.textContent).length;
@@ -220,7 +243,10 @@ interface Element extends Root {
   readonly textContent: string | null;
   readonly parentElement: Element | null;
   readonly childNodes: ArrayLike<object>;
+  readonly isConnected: boolean;
   getAttribute(name: string): string | null;
+  querySelector(selector: string): Element | null;
+  closest(selector: string): Element | null;
   contains(other: Element): boolean;
   append(...nodes: object[]): void;
   remove(): void;

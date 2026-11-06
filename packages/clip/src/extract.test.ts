@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { extractArticle } from './extract.js';
-import { ARTICLE_PAGE, LAST_PARAGRAPH, LINKS_PAGE, PARAGRAPHS, RELATIVE_PAGE, SPLIT_PAGE } from './test-pages.js';
+import { ARTICLE_PAGE, CAPTION, LAST_PARAGRAPH, LINKS_PAGE, PARAGRAPHS, RELATIVE_PAGE, SPLIT_PAGE } from './test-pages.js';
 
 const URL_ = 'https://www.example.com/guides/anvil-care';
 
@@ -55,6 +55,12 @@ describe('extractArticle', () => {
     const { contentHtml } = extractArticle(whole, URL_)!;
     for (const p of [PARAGRAPHS[0], PARAGRAPHS[2], LAST_PARAGRAPH]) expect(contentHtml).toContain(p!.slice(0, 60));
     expect(contentHtml).not.toContain('Choosing your first tongs');
+  });
+
+  it('keeps a picture’s caption once when a lightbox holds a hidden copy', () => {
+    const { contentHtml } = extractArticle(SPLIT_PAGE, URL_)!;
+    expect(contentHtml.split(CAPTION).length - 1).toBe(1);
+    expect(contentHtml).toContain('Credit: Acme');
   });
 
   it('answers null for a page with no article', () => {
