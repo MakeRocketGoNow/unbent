@@ -56,11 +56,11 @@ export function ClipBookmarklet() {
         <ClipChipIcon />
         Clip to Unbent
       </a>
-      {pressed && (
-        <p className="small" role="status">
-          Drag it to your bookmarks bar, then press it on the page you want to keep.
-        </p>
-      )}
+      {/* There from the start and filled on the press: a live region that appears already
+          holding its words is often not read out at all. */}
+      <p className="small" role="status">
+        {pressed ? 'Drag it to your bookmarks bar, then press it on the page you want to keep.' : ''}
+      </p>
     </section>
   );
 }

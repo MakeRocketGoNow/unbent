@@ -282,6 +282,9 @@ h1 {
 
 .bookmarklet-chip + p { margin-top: 0.5rem; }
 
+/* The press's status line is in the page before it says anything; empty, it takes no room. */
+.bookmarklet-chip + p:empty { margin: 0; }
+
 .provider {
   /*
      A centred row rather than centred text, so a mark sits beside the label instead of the

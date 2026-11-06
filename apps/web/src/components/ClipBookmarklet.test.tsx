@@ -46,6 +46,7 @@ describe('the bookmarklet install link', () => {
   it('says what to do with it rather than running here', async () => {
     mount(true);
     const anchor = (await screen.findByText('Clip to Unbent')).closest('a')!;
+    expect(screen.getByRole('status').textContent).toBe('');
     const click = new MouseEvent('click', { bubbles: true, cancelable: true });
     fireEvent(anchor, click);
     expect(click.defaultPrevented).toBe(true);
