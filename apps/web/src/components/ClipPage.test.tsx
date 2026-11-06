@@ -179,6 +179,18 @@ describe('the clip window', () => {
     expect(screen.getByRole('note').textContent).toMatch(/fetch it from example\.com instead/);
   });
 
+  /* A site that opens the window could otherwise have Save name a site it is not. */
+  it('takes a page only for an address on the origin that posted it', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    mount();
+    await screen.findByRole('status');
+    post(opener, page({ url: 'https://bank.example/statement', title: 'Not this one' }));
+    expect(screen.queryByText('Not this one')).toBeNull();
+    await act(() => vi.advanceTimersByTimeAsync(PAGE_WAIT_MS));
+    expect(screen.queryByText('Not this one')).toBeNull();
+    expect(screen.queryByText('bank.example')).toBeNull();
+  });
+
   /* A site's Cross-Origin-Opener-Policy cuts the opener: the server fetches the address. */
   it('clips by the address, and says so, when the tab never answers', async () => {
     setOpener(null);

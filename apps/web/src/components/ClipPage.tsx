@@ -30,9 +30,13 @@ type Heard =
 /**
  * The page from the tab that opened this window, once `ready` says this window can use
  * it. Only a message whose source is `window.opener` counts: any site can post to a
- * window, and only the opener is the page the person pressed the bookmarklet on. A page
- * that arrives after the wait has given up is still taken, since the person has not
- * saved yet and the page is the better clip.
+ * window, and only the opener is the page the person pressed the bookmarklet on. And only
+ * a page whose address is on the origin that posted it: the bookmarklet posts from the
+ * page it names, so a page that claims another site's address is a site opening this
+ * window to have Save name a site it is not (a page of its own, filed as "Clipped from"
+ * someone's bank). A page served sandboxed posts from the origin `null` and so falls back
+ * to its address, which the server fetches. A page that arrives after the wait has given
+ * up is still taken, since the person has not saved yet and the page is the better clip.
  */
 function useOpenerPage(ready: boolean): Heard {
   const [heard, setHeard] = useState<Heard>({ kind: 'waiting' });
@@ -53,7 +57,7 @@ function useOpenerPage(ready: boolean): Heard {
     const onMessage = (event: MessageEvent) => {
       if (event.source !== opener) return;
       const page = readPage(event.data);
-      if (!page) return;
+      if (!page || new URL(page.url).origin !== event.origin) return;
       stop();
       setHeard({ kind: 'page', page });
     };

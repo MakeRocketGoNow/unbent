@@ -8,7 +8,9 @@
  * rules and every site's own policy exist to stop. A window this instance opens is
  * first-party, signed in, and draws its own Save button, and that press is the guard: any
  * site can open `/clip` and post it a page, and nothing is filed until the person who
- * owns the account presses Save on a page that names what it is about to keep.
+ * owns the account presses Save on a page that names what it is about to keep. What it
+ * names is the posted address, so `/clip` takes a page only from the origin of that
+ * address: a site can post itself, never another site.
  *
  * The handshake, in order:
  * 1. The bookmarklet opens `<instance>/clip?url=<the page's address>`.
@@ -18,7 +20,8 @@
  * 3. The bookmarklet waits for `READY` from the window it opened, on this instance's
  *    origin, then posts the page to that window with the instance's origin as the target,
  *    so the HTML reaches this instance or nobody.
- * 4. `/clip` takes a `PAGE` only from `window.opener`.
+ * 4. `/clip` takes a `PAGE` only from `window.opener`, and only for an address on the
+ *    origin that posted it.
  *
  * A site whose Cross-Origin-Opener-Policy severs the opener (and anything else that stops
  * the messages) leaves `/clip` with only the address, which the server can fetch itself,
