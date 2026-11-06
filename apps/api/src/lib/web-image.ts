@@ -139,6 +139,12 @@ export async function fetchWebImage(
      * plainly that it is Unbent, which suits a picture someone asked for by address.
      */
     headersFor?: (url: URL) => Record<string, string>;
+    /**
+     * Ends the fetch early, on top of each hop's own timeout: a caller with a deadline
+     * for a whole set of pictures (a clip's) passes it, and whatever is still on its way
+     * then fails as any broken fetch does.
+     */
+    signal?: AbortSignal;
   },
 ): Promise<WebImageResult> {
   const maxBytes = opts.maxBytes ?? MAX_WEB_IMAGE_BYTES;
@@ -151,7 +157,7 @@ export async function fetchWebImage(
     try {
       res = await fetch(current, {
         redirect: 'manual',
-        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+        signal: opts.signal ? AbortSignal.any([AbortSignal.timeout(FETCH_TIMEOUT_MS), opts.signal]) : AbortSignal.timeout(FETCH_TIMEOUT_MS),
         headers: {
           ...(opts.headersFor?.(new URL(current)) ?? { 'User-Agent': 'Unbent (+https://unbent.app)' }),
           Accept: 'image/*,*/*;q=0.5',

@@ -232,6 +232,36 @@ describe('clipUrl', () => {
     if (result.ok) expect(result.images.failed).toHaveLength(1);
   });
 
+  it('leaves the pictures not fetched in time as links, and still repairs the body', async () => {
+    const asked: string[] = [];
+    const page = articlePage(['/slow-1.png', '/slow-2.png', '/slow-3.png', '/slow-4.png', '/after.png']);
+    vi.stubGlobal('fetch', async (input: string | URL, init?: RequestInit) => {
+      const url = String(input);
+      asked.push(url);
+      if (url === PAGE_URL) return html(page)();
+      // A picture that sends its headers and then nothing, as a stalled host does, until
+      // the request is called off.
+      const body = new ReadableStream({
+        start(controller) {
+          init?.signal?.addEventListener('abort', () => controller.error(init.signal!.reason));
+        },
+      });
+      return new Response(body, { headers: { 'content-type': 'image/png' } });
+    });
+    const store = fakeStore();
+
+    const result = await clipUrl(store.env, ctx, store.repos, { url: PAGE_URL }, { ...options, imagesWithinMs: 50 });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.images.stored).toBe(0);
+    expect(result.images.failed.map((f) => f.error)).toEqual(Array(5).fill('Not fetched in time; it stays a link to the site.'));
+    // The fifth was never asked for: the four before it held every slot until the deadline.
+    expect(asked).not.toContain('https://example.com/after.png');
+    expect(store.updates[0]!.patch.body).toContain('(https://example.com/after.png)');
+    expect(store.updates[0]!.patch.body).not.toContain('files/');
+  });
+
   it('stops reading a picture that declares nothing at the limit, and leaves it a link', async () => {
     let pulled = 0;
     const chunk = new Uint8Array(1024 * 1024);

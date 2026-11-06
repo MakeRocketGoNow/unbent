@@ -78,6 +78,22 @@ export const CLIP_MAX_IMAGES = 10;
 const IMAGE_CONCURRENCY = 4;
 
 /**
+ * Every picture of a clip is fetched within this, counted from the first; one still on
+ * its way then fails, and stays a link to the site like any picture that could not be
+ * fetched.
+ *
+ * Without it the phase had no end of its own: twenty seconds a hop, six hops, ten
+ * pictures four at a time, so minutes, which the request waited on. A phone gives up on a
+ * clip at three minutes, and once its connection is gone only `waitUntil`'s thirty
+ * seconds are left: the fetches still running were cut there, the repair after them
+ * never ran, and the note kept `files/` links to nothing, with a retry finding the note
+ * and nothing to repair it from. Twenty seconds leaves the repair room inside those
+ * thirty however early the client goes, and is still several times what an article's
+ * pictures take; the web form waits no longer than this on them either.
+ */
+export const CLIP_IMAGES_MS = 20_000;
+
+/**
  * The largest picture a clip stores; a larger one stays a link to the site. Smaller than
  * `MAX_WEB_IMAGE_BYTES`, which is for a picture someone chose: here the page's HTML picks
  * the addresses, and four at that limit would be 120 of the isolate's 128 MB. Four at
@@ -150,6 +166,8 @@ export interface ClipOptions {
   pastFree?: (() => Promise<unknown>) | undefined;
   /** An assistant's clip: the body's repair is kept in history as its write. */
   by?: 'assistant' | undefined;
+  /** `CLIP_IMAGES_MS`, shorter in a test. */
+  imagesWithinMs?: number | undefined;
 }
 
 export async function clipUrl(
@@ -245,8 +263,8 @@ export async function clipUrl(
      nothing left to repair them from. So the rest runs under it.
 
      That covers a dropped connection for as long as `waitUntil` lasts (about thirty
-     seconds by Cloudflare's documentation, which a clip of slow pictures can outlive, at
-     twenty seconds a hop), and not the isolate ending. Both would need the web addresses
+     seconds by Cloudflare's documentation, which the pictures fit inside: see
+     `CLIP_IMAGES_MS`), and not the isolate ending. Both would need the web addresses
      written first and swapped once each file is in: a second write, a feed row and a copy
      in the note's history on every clip with pictures, to cover something rarer. Not
      taken unless it shows up.
@@ -455,6 +473,8 @@ async function storeImages(
   let stored = 0;
   let refusal: string | null = null;
   let next = 0;
+  const deadline = AbortSignal.timeout(opts.imagesWithinMs ?? CLIP_IMAGES_MS);
+  const late = 'Not fetched in time; it stays a link to the site.';
 
   const fail = (index: number, image: ClipImage, error: string) => {
     failed.push({ index, url: image.url, error });
@@ -469,13 +489,18 @@ async function storeImages(
         fail(index, image, refusal);
         continue;
       }
+      if (deadline.aborted) {
+        fail(index, image, late);
+        continue;
+      }
       const fetched = await fetchWebImage(image.url, {
         allowLoopback: opts.allowLoopback,
         maxBytes: CLIP_MAX_IMAGE_BYTES,
         headersFor: (url) => requestHeaders(url, { referer: pageUrl, userAgent: opts.userAgent }),
+        signal: deadline,
       });
       if (!fetched.ok) {
-        fail(index, image, fetched.error);
+        fail(index, image, deadline.aborted ? late : fetched.error);
         continue;
       }
       // Refused while this one was on its way: not worth an R2 put to be refused again.
