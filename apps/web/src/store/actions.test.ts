@@ -657,6 +657,8 @@ describe('a replayed write', () => {
   it('ends the create of a note the plan refused once that note is purged, as it does the free plan\u2019s', async () => {
     const { fake, engine } = library([row('n2')]);
     engine.pull.mockResolvedValue(undefined);
+    const replay = vi.fn();
+    fake.config.onlineDetector.subscribe(replay);
     const made = await actions.createNote({ title: 'Past the limits', body: '', tags: [], notebook: null });
     await tick();
     vi.mocked(api.createNote).mockRejectedValueOnce(new ApiError(402, '402: This account is past the free plan.', 'PLAN_INACTIVE'));
@@ -667,9 +669,13 @@ describe('a replayed write', () => {
     // for as long as the account stayed read-only.
     planIs(true);
     await actions.trashNote(made.id);
+    expect(replay).not.toHaveBeenCalled();
     await actions.purgeNote(made.id);
     await tick();
     expect(fake.queue.map((e) => e.mutationFnName)).toEqual(['createNote', 'trashNote', 'purgeNote']);
+    // The purge nudges the executor: its clock is at its minute by now, and nothing
+    // else would say the create can end.
+    expect(replay).toHaveBeenCalled();
     expect(await fake.replayOne()).toBe('done');
     expect(api.createNote).toHaveBeenCalledTimes(1);
   });
