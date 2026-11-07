@@ -466,7 +466,9 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
             const out = await fn(params);
             staleHeld = false;
             // A write the server took is a plan that is active, and a store with room;
-            // see `planLapsed` and `storeFull`.
+            // see `planLapsed` and `storeFull`. So is a kept create that ended unsent
+            // because its note was purged (`endingUnmade`): nothing refused waits now,
+            // and the next refusal sets the flags again.
             planAccepted();
             storeAccepted();
             // A purge from the queue may have taken a read-only account under the free
