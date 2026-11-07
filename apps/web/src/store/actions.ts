@@ -335,6 +335,12 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
 
   /** The notes whose create or copy is to end unsent; see `Outbox.unmake`. */
   const unmade = new Set<string>();
+  /** Told when a purge marks a note `unmade` while the plan holds the queue; see `unmake`. */
+  const unmadeHeld = new Set<() => void>();
+  const onUnmadeHeld = (listener: () => void): (() => void) => {
+    unmadeHeld.add(listener);
+    return () => unmadeHeld.delete(listener);
+  };
   /** Whether this note's create or copy is to end unsent, which forgets it: it is asked once, by that entry. */
   const unmadeNow = (noteId: string | undefined): boolean => {
     if (!noteId || !unmade.delete(noteId)) return false;
@@ -459,6 +465,19 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
    */
   /** The queued writes that delete for good, after which a read-only account may be free again; see `planFreed`. */
   const PURGES: ReadonlySet<string> = new Set(['purgeNote', 'purgeNotes']);
+  /**
+   * A create or copy the person has already purged: `unmadeNow` must still run, or
+   * `planHeld` keeps the entry at the head for as long as the account stays read-only
+   * and every later write waits with it. The free plan's count is not this: its
+   * refusal is `storeRefused`, so `planHeld` is false and `unmake` nudges via
+   * `storeFreed`.
+   */
+  const endingUnmade = (name: string, params: Parameters<MutationFn>[0]): boolean => {
+    if (name !== 'createNote' && name !== 'duplicateNote') return false;
+    const meta = (params as { transaction?: { metadata?: Record<string, unknown> } }).transaction?.metadata;
+    const noteId = name === 'createNote' ? meta?.id : meta?.copyId;
+    return typeof noteId === 'string' && unmade.has(noteId);
+  };
   const decided = (fns: Record<string, MutationFn>): Record<string, MutationFn> =>
     Object.fromEntries(
       Object.entries(fns).map(([name, fn]) => [
@@ -467,15 +486,18 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
           try {
             // The plan has been read since the refusal and says inactive: the answer would
             // be the same 402, so the entry waits without asking (`planHeld`). It is let
-            // go the moment the plan reads otherwise; see `connectivityDetector`.
-            if (planHeld()) throw new PlanHeld();
+            // go the moment the plan reads otherwise; see `connectivityDetector`. A
+            // create the person has already purged still runs, so `unmadeNow` can end it.
+            if (planHeld() && !endingUnmade(name, params)) throw new PlanHeld();
             // Refused while this page is behind the deploy: the answer would be the same
             // until the reload, whose build sends it again (`refusal`).
             if (staleHeld && behindDeploy()) throw new BuildHeld();
             const out = await fn(params);
             staleHeld = false;
             // A write the server took is a plan that is active, and a store with room;
-            // see `planLapsed` and `storeFull`.
+            // see `planLapsed` and `storeFull`. So is a kept create that ended unsent
+            // because its note was purged (`endingUnmade`): nothing refused waits now,
+            // and the next refusal sets the flags again.
             planAccepted();
             storeAccepted();
             // A purge from the queue may have taken a read-only account under the free
@@ -539,7 +561,7 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
     // Both, so a reload restores an upload's row as it restores a save's text.
     collections: { notes: lib.notes, attachments: lib.attachments },
     storage,
-    onlineDetector: connectivityDetector(),
+    onlineDetector: connectivityDetector(onUnmadeHeld),
     // Ours rather than the library's: per account, and a follower is promoted when the
     // holder goes, rather than left making every write a request for good (`leader.ts`).
     leaderElection: new OutboxLeader(outboxLeaderName(userId)),
@@ -986,6 +1008,11 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
         unmade.add(noteId);
         void storage.set(unmadeKey(noteId), '1').catch(() => {});
       }
+      // A create the plan holds is past its first refusals, so the executor's clock is
+      // at its minute: with nothing else to say so, the note would be gone from the
+      // screen and its entries waiting that long. The free plan's count has its word
+      // already (`storeFreed`), and a create not held needs none.
+      if (planHeld()) for (const wake of unmadeHeld) wake();
     },
     dispose: async () => {
       unsubscribeConnectivity();
@@ -1212,8 +1239,10 @@ class BuildHeld extends Error {
  * the store's refusal stands, and the levels agreeing again while a write is held behind
  * the deploy, are the other words to replay now, through the same door: a kept 402
  * waits on the checkout or on room, and a held write on the level, not on the network.
+ * So is a purge of a note whose create the plan holds (`onUnmadeHeld`, the outbox's
+ * own): the create can end now, and the queue behind it go.
  */
-function connectivityDetector(): OnlineDetector {
+function connectivityDetector(onUnmadeHeld: (listener: () => void) => () => void): OnlineDetector {
   return {
     subscribe: (cb) => {
       const offConnectivity = subscribeConnectivity(() => {
@@ -1231,11 +1260,17 @@ function connectivityDetector(): OnlineDetector {
       const offLevel = onCaughtUp(() => {
         if (!offlineNow()) cb();
       });
+      // And a purge that ends a create the plan holds. Not offline: the writes behind it
+      // need the server, and coming back online replays the lot.
+      const offUnmade = onUnmadeHeld(() => {
+        if (!offlineNow()) cb();
+      });
       return () => {
         offConnectivity();
         offPlan();
         offFreed();
         offLevel();
+        offUnmade();
       };
     },
     notifyOnline: () => recheck(),
