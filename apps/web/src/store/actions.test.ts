@@ -680,6 +680,23 @@ describe('a replayed write', () => {
     expect(api.createNote).toHaveBeenCalledTimes(1);
   });
 
+  it('ends the copy the plan refused once that copy is purged, as it does a create', async () => {
+    // The copy is told apart by `copyId`, not `id`: this is what holds that key.
+    const { fake, engine } = library([row('n1'), row('n2')]);
+    engine.pull.mockResolvedValue(undefined);
+    const copy = await actions.duplicateNote('n1');
+    await tick();
+    vi.mocked(api.duplicateNote).mockRejectedValueOnce(new ApiError(402, '402: This account is past the free plan.', 'PLAN_INACTIVE'));
+    expect(await fake.replayOne()).toBe('kept');
+    planIs(true);
+    await actions.trashNote(copy.id);
+    await actions.purgeNote(copy.id);
+    await tick();
+    expect(fake.queue.map((e) => e.mutationFnName)).toEqual(['duplicateNote', 'trashNote', 'purgeNote']);
+    expect(await fake.replayOne()).toBe('done');
+    expect(api.duplicateNote).toHaveBeenCalledTimes(1);
+  });
+
   /**
    * What a tab knows of the plan is its own last read, and the tab that holds the outbox
    * runs a client's New: one left in the background read the plan before a subscription
