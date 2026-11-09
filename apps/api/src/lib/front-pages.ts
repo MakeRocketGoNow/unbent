@@ -81,6 +81,19 @@ const SHELL_ROUTES: ReadonlySet<string> = new Set(['/pricing', '/support']);
 /** The app behind the sign-in, which a crawler has no business in even when it follows a link there. */
 const PRIVATE_PREFIXES = ['/api/', '/notes', '/trash', '/settings', '/import', '/login', '/connect', '/consent', '/device', '/embed/'];
 
+/**
+ * The two reads under `/api/` that every public page makes before it draws: the route's
+ * gate asks the config whether this instance has a front page, and the session whether to
+ * send the reader on to their notes. A crawler obeys robots.txt for a page's own requests
+ * too, so with these behind `Disallow: /api/` Google's renderer never got the config, the
+ * gate sent it to the sign-in screen, and every public page rendered as a blank sign-in
+ * page in its live test, the static copy the Worker had sent replaced by the app
+ * (2026-10-17 to 2026-11-09). The longer rule wins, so these beat the prefix; both answer
+ * a signed-out reader with nothing private. A new read in a public route's gate belongs
+ * here too.
+ */
+const PUBLIC_READS = ['/api/config', '/api/auth/get-session'];
+
 /** The entry point's env, before `withAppUrl` has settled `APP_URL`; hence the fallback below. */
 type FrontEnv = Pick<RawEnv, 'ASSETS' | 'FRONT_PAGE' | 'INSTANCE_LABEL' | 'APP_URL'>;
 
@@ -259,6 +272,7 @@ export function robotsTxt(indexable: boolean, origin: string): string {
   return [
     'User-agent: *',
     ...PRIVATE_PREFIXES.map((prefix) => `Disallow: ${prefix}`),
+    ...PUBLIC_READS.map((path) => `Allow: ${path}`),
     'Allow: /',
     `Sitemap: ${origin}/sitemap.xml`,
     '',
