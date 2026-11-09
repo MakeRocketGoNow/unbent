@@ -65,9 +65,12 @@ final class UnbentApiTests: XCTestCase {
         XCTAssertEqual(StubServer.origin, asked.headers["Origin"])
         XCTAssertNil(asked.headers["Cookie"])
 
-        StubServer.enqueue(.init(body: #"{"tags":[{"name":"tax","count":2}]}"#))
+        // Each tag's stored colour is read, and a server older than the colours sends none.
+        StubServer.enqueue(.init(body: #"{"tags":[{"id":"t1","name":"tax","count":2,"color":3},{"id":"t2","name":"old","count":1}]}"#))
         let tags = try await api.listTags()
-        XCTAssertEqual(["tax"], tags.map(\.name))
+        XCTAssertEqual(["tax", "old"], tags.map(\.name))
+        XCTAssertEqual(3, tags[0].color)
+        XCTAssertNil(tags[1].color)
         XCTAssertEqual("/api/tags", try StubServer.takeRequest().path)
     }
 

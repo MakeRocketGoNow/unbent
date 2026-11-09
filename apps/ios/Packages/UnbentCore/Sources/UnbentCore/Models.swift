@@ -120,17 +120,27 @@ public struct NotebookList: Decodable, Equatable, Sendable {
     private enum CodingKeys: String, CodingKey { case notebooks, unfiled }
 }
 
+/// A tag as `GET /api/tags` lists it. `color` is an index into the site's palette, which
+/// `TagPalette` holds a copy of; nil from a server older than the colours.
 public struct Tag: Decodable, Equatable, Sendable {
     public var name: String
     public var count: Int
+    public var color: Int?
+
+    public init(name: String, count: Int = 0, color: Int? = nil) {
+        self.name = name
+        self.count = count
+        self.color = color
+    }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         name = try c.decode(String.self, forKey: .name)
         count = try c.decodeIfPresent(Int.self, forKey: .count) ?? 0
+        color = try c.decodeIfPresent(Int.self, forKey: .color)
     }
 
-    private enum CodingKeys: String, CodingKey { case name, count }
+    private enum CodingKeys: String, CodingKey { case name, count, color }
 }
 
 struct TagList: Decodable {

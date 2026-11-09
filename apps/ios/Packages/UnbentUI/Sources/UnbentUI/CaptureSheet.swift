@@ -247,6 +247,11 @@ private struct NotebookPicker: View {
 /// The field's text belongs to the sheet, not to this editor, because the sheet is the
 /// one with a Save button: a tag still being typed when that is tapped has to go with it.
 /// See `tagsWithDraft`.
+///
+/// Each chip wears the colour the server stored on its tag (`Tag.color`, through
+/// `TagPalette`), found by name without case as the server finds a tag, so a chip here is
+/// the chip the site draws for the same tag. A tag typed here that the account does not
+/// have yet has no row and no colour, and is drawn neutral until the server gives it one.
 private struct TagEditor: View {
     @Binding var tags: [String]
     @Binding var draft: String
@@ -256,6 +261,10 @@ private struct TagEditor: View {
     private func add(_ raw: String) {
         tags = tagsWithDraft(tags, raw)
         draft = ""
+    }
+
+    private func color(_ tag: String) -> Int? {
+        suggestions.first { $0.name.caseInsensitiveCompare(tag) == .orderedSame }?.color
     }
 
     var body: some View {
@@ -272,7 +281,7 @@ private struct TagEditor: View {
                                 Image(systemName: "xmark").font(.caption2.weight(.bold))
                             }
                         }
-                        .buttonStyle(ChipStyle(filled: true))
+                        .buttonStyle(ChipStyle(color: color(tag)))
                         .accessibilityLabel("Remove tag \(tag)")
                     }
                 }
@@ -293,7 +302,7 @@ private struct TagEditor: View {
                 FlowLayout(spacing: Space.small) {
                     ForEach(offered, id: \.self) { name in
                         Button(name) { add(name) }
-                            .buttonStyle(ChipStyle(filled: false))
+                            .buttonStyle(ChipStyle(color: color(name)))
                             .accessibilityLabel("Add tag \(name)")
                     }
                 }
@@ -302,21 +311,27 @@ private struct TagEditor: View {
     }
 }
 
-/// A tag as a chip. Filled for one the note has, outlined for one on offer, so the two
-/// rows read as "these" and "or these" without a caption each.
+/// A tag as a chip, in the tag's own colour: a wash of its hue with the hue in the text,
+/// as the site draws it, and no outline on top, since the wash is the chip's edge.
+///
+/// Both rows wear it. They used to differ by fill (the note's tags in solid green, the
+/// offers outlined) but a tag that is red on the site and green here is two tags to the
+/// eye. What tells the rows apart now is the cross on each of the note's tags and the
+/// field between the two, which is how the Android sheet and the site already do it.
 private struct ChipStyle: ButtonStyle {
-    let filled: Bool
+    let color: Int?
+    @Environment(\.colorScheme) private var scheme
 
     func makeBody(configuration: Configuration) -> some View {
+        let dark = scheme == .dark
         configuration.label
             .font(.subheadline)
-            .foregroundStyle(filled ? Color.unbentOnAccent : .primary)
+            .foregroundStyle(Color(UIColor(rgb: TagPalette.ink(color, dark: dark))))
             .padding(.horizontal, Space.medium)
             // Shorter than a field, since a dozen of them wrap; the gap between rows
             // makes up the rest of a fingertip.
             .frame(minHeight: 36)
-            .background(filled ? Color.unbentAccent : .clear, in: Capsule())
-            .overlay { if !filled { Capsule().strokeBorder(Color(.separator)) } }
+            .background(Color(UIColor(rgb: TagPalette.fill(color, dark: dark))), in: Capsule())
             .contentShape(Capsule())
             .opacity(configuration.isPressed ? 0.7 : 1)
     }
@@ -373,7 +388,12 @@ private struct FlowLayout: Layout {
         suggestedTitle: "Capture 2026-09-01 14:30",
         signedIn: true,
         lastNotebook: "Coupons",
-        load: { CaptureSheet.Choices() },
+        load: {
+            CaptureSheet.Choices(tags: [
+                Tag(name: "receipts", color: 3), Tag(name: "tax", color: 0),
+                Tag(name: "warranty", color: 5), Tag(name: "untinted"),
+            ])
+        },
         onSave: { _, _, _ in },
         onCancel: {}
     )
