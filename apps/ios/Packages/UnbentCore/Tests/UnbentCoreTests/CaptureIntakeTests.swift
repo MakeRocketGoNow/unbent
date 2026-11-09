@@ -194,6 +194,52 @@ final class CaptureIntakeTests: XCTestCase {
         XCTAssertEqual("example.com", intake.title)
     }
 
+    /// Some apps share a page as a link and its address as text too, and not always the
+    /// same address. The two are one page, so the share is still a page to clip.
+    func testAnAddressSharedAsTextBesideTheLinkIsTheSamePage() async throws {
+        let link = NSItemProvider(object: try XCTUnwrap(NSURL(string: "https://www.example.com/news/a-slug.html")))
+        let text = NSItemProvider(object: "https://news.example.com/a-slug.html" as NSString)
+
+        let intake = await CaptureStager(directory: directory).stage([text, link], contentText: "An Example Page")
+
+        XCTAssertEqual("https://www.example.com/news/a-slug.html", intake.text)
+        XCTAssertEqual("https://www.example.com/news/a-slug.html", intake.pageUrl)
+        XCTAssertEqual("An Example Page", intake.title)
+    }
+
+    func testTheSameLinkSharedThriceBesideAnotherAddressIsOneLink() async throws {
+        let first = NSItemProvider(object: try XCTUnwrap(NSURL(string: "https://www.example.com/a-slug")))
+        let second = NSItemProvider(object: try XCTUnwrap(NSURL(string: "https://www.example.com/a-slug")))
+        let text = NSItemProvider(object: "https://www.example.com/a-slug" as NSString)
+        let other = NSItemProvider(object: "https://news.example.com/a-slug" as NSString)
+
+        let intake = await CaptureStager(directory: directory).stage([first, text, other, second], contentText: nil)
+
+        XCTAssertEqual("https://www.example.com/a-slug", intake.pageUrl)
+    }
+
+    /// Words beside a link are someone's note about it, and the note is what is kept.
+    func testWordsBesideALinkStayTheNotesBody() async throws {
+        let link = NSItemProvider(object: try XCTUnwrap(NSURL(string: "https://www.example.com/a-slug")))
+        let text = NSItemProvider(object: "Read before Friday https://www.example.com/a-slug" as NSString)
+
+        let intake = await CaptureStager(directory: directory).stage([text, link], contentText: nil)
+
+        XCTAssertEqual("Read before Friday https://www.example.com/a-slug\n\nhttps://www.example.com/a-slug", intake.text)
+        XCTAssertNil(intake.pageUrl)
+    }
+
+    /// An address attached as the share's text is not what the page is called.
+    func testAnotherAddressAttachedBesideALinkIsNotItsTitle() async throws {
+        let link = NSItemProvider(object: try XCTUnwrap(NSURL(string: "https://www.example.com/news/a-slug.html")))
+
+        let intake = await CaptureStager(directory: directory).stage([link], contentText: "https://news.example.com/a-slug.html")
+
+        XCTAssertNil(intake.subject)
+        XCTAssertEqual("example.com", intake.title)
+        XCTAssertEqual("https://www.example.com/news/a-slug.html", intake.pageUrl)
+    }
+
     func testASelectionIsTheNotesBodyAndItsFirstLineTheTitle() async {
         let text = NSItemProvider(object: "Pick up prescription\nand call the vet" as NSString)
 
