@@ -130,8 +130,9 @@ describe('NoteListHead', () => {
   });
 
   /* Clip a link is the other way a note is made from this row, so it sits with New: after
-     the controls about what is on screen, before the one word the row is for. */
-  it('draws the clip control after the view menu and before New', () => {
+     the controls about what is on screen, before the one word the row is for, and in one
+     group with it, which the stylesheet spaces apart from the rest. */
+  it('groups the clip control with New, after the view menu', () => {
     const { container } = render(
       <NoteListHead
         {...props}
@@ -142,7 +143,9 @@ describe('NoteListHead', () => {
       />,
     );
     const actions = container.querySelector('.list-head-actions')!;
-    expect([...actions.children].map((el) => el.textContent).slice(-4)).toEqual(['more', 'view', 'clip', 'New']);
+    expect([...actions.children].map((el) => el.textContent).slice(-3)).toEqual(['more', 'view', 'clipNew']);
+    const make = actions.querySelector('.list-head-make')!;
+    expect([...make.children].map((el) => el.textContent)).toEqual(['clip', 'New']);
   });
 
   /* The form takes the search field's place, so nothing moves while it is open: on a

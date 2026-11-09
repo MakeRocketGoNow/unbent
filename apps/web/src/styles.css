@@ -8089,15 +8089,33 @@ button.settings-nav-item {
 }
 
 /*
-   New, at the end of the row on a desktop.
+   Clip a link and New, at the end of the row on a desktop: the two controls that *make*
+   a note, apart from the ones that change what is on screen.
 
-   The gap before it separates the one control that *makes* something from the ones that
-   change what is on screen. It used to be stretched to the icons' 44px as well, when this
-   row was a phone's and the button a thumb target; a 44px-tall word beside a pointer-sized
-   count reads as a button from a different app.
+   The gap goes before the pair, not between Clip and New. It used to sit before New
+   alone, which left Clip spaced like the filter, the sort and the view, and read as a
+   fourth way of looking at the list. Turning New into a split button with Clip in its
+   menu was weighed and rejected: it hides a feature behind a chevron to group one other
+   control, and a phone has no New in this row to split (it floats), so Clip would live in
+   two places by width. Revisit that when there is a third way to make a note.
+
+   Only above the breakpoint, where New is in the row. On a phone Clip is the row's last
+   icon and a gap before it would cost width a 375px row does not have.
+
+   New was once stretched to the icons' 44px as well, when this row was a phone's and the
+   button a thumb target; a 44px-tall word beside a pointer-sized count reads as a button
+   from a different app.
 */
-.list-head-actions .btn {
-  margin-left: 0.4rem;
+.list-head-make {
+  display: flex;
+  align-items: center;
+  gap: 0.1rem;
+}
+
+@media (width > 860px) {
+  .list-head-make {
+    margin-left: 0.6rem;
+  }
 }
 
 /*

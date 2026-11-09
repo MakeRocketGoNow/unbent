@@ -408,8 +408,13 @@ export function NoteListHead({
             </button>
             {sort}
             {view}
-            {clip}
-            {action}
+            {/* The controls that make a note, as one group: see `.list-head-make`. */}
+            {(clip || action) && (
+              <div className="list-head-make">
+                {clip}
+                {action}
+              </div>
+            )}
           </div>
         )}
       </div>
