@@ -1,6 +1,7 @@
 import { isProbablyReaderable, Readability } from '@mozilla/readability';
 import { parseHTML } from 'linkedom/worker';
 import { clean, hostName, withoutSiteName } from './site.js';
+import { placeStreamed } from './streamed.js';
 
 /**
  * Finds the article in a web page: the part a person meant to keep when they clipped it,
@@ -60,6 +61,9 @@ export function extractArticle(html: string, url: string): Article | null {
   const { document } = parseHTML(html, { location: pageUrl });
 
   absoluteBase(document, pageUrl);
+  // Before anything reads the page: a streamed article is hidden until it is placed, and
+  // the quick check below reads only what is visible.
+  placeStreamed(document as never);
 
   const ogSiteName = document.querySelector('meta[property="og:site_name"]')?.getAttribute('content');
   const pageTitle = document.querySelector('title')?.textContent;
