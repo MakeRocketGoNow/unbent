@@ -3,6 +3,7 @@ import { toMarkdown } from 'mdast-util-to-markdown';
 import { visit } from 'unist-util-visit';
 import { nextAvailableFilename, splitExt } from '@unbent/shared/filenames';
 import { extractArticle } from './extract.js';
+import { streamedInstructions } from './streamed.js';
 import { dropComments, dropEmptyLinks, htmlToMarkdown, isElement, type Node, type Transform } from './html-to-markdown.js';
 import { clean, hostName, withoutSiteName } from './site.js';
 
@@ -200,6 +201,12 @@ function sourceLine(url: string, site: string, byline: string | null): string {
  * each closing tag rereads the page, which took 87 s on 720 KB of unclosed ones. Here
  * every search starts where the last ended.
  *
+ * One thing a script says is kept: React's instructions for moving the parts of a page it
+ * streamed into place (`$RC("B:1","S:1")`), left as the empty templates React writes for
+ * them on a page with no inline scripts, which `placeStreamed` carries out before
+ * Readability reads the page. Without them a streamed article is a hidden element that
+ * Readability skips.
+ *
  * What it cannot read it leaves for the parser: a tag, a comment or a `<title>` with no
  * end keeps the rest of the page. The only cut is an unclosed script or style, which an
  * HTML parser reads as running to the end of the page too.
@@ -235,6 +242,9 @@ export function withoutScriptsAndStyles(html: string): string {
     }
     out += html.slice(from, match.index);
     if (closeEnd === -1) return out;
+    // React's streaming instructions are the one thing in a script a clip needs: where
+    // the parts of the page sent later belong. See `placeStreamed`.
+    if (name === 'script') out += streamedInstructions(html.slice(tagEnd + 1, close!.index));
     from = closeEnd + 1;
     token.lastIndex = from;
   }
