@@ -162,12 +162,19 @@ public final class CaptureStager: @unchecked Sendable {
         var intake = CaptureIntake()
         var lines: [String] = []
         var links: [String] = []
+        // The links offered as links. A string that is only an address is offered as a
+        // link too (`public.url` beside its plain text), and is not one of these.
+        var offeredLinks = Set<String>()
         for provider in providers {
             switch Self.kind(of: provider) {
             case .file(let type, let load):
                 if let file = await file(from: provider, type: type, load: load) { intake.files.append(file) }
             case .link:
-                if let url = await Self.object(NSURL.self, from: provider) as? URL { links.append(url.absoluteString) }
+                if let url = await Self.object(NSURL.self, from: provider) as? URL {
+                    let link = url.absoluteString
+                    if !links.contains(link) { links.append(link) }
+                    if !provider.hasItemConformingToTypeIdentifier(UTType.plainText.identifier) { offeredLinks.insert(link) }
+                }
             case .text:
                 if let text = await Self.object(NSString.self, from: provider) as? String { lines.append(text) }
             case .nothing:
@@ -177,8 +184,19 @@ public final class CaptureStager: @unchecked Sendable {
 
         let attached = contentText?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         if !links.isEmpty {
-            // Beside a link the attached text is what the page is called, not content.
-            if !attached.isEmpty, !links.contains(attached) { intake.subject = attached }
+            // Beside a link the attached text is what the page is called, not content. An
+            // address there is not a name, and the host makes a better title than it would.
+            if !attached.isEmpty, !links.contains(attached), !CaptureNaming.isLonePageUrl(attached) {
+                intake.subject = attached
+            }
+            // An address sent as text beside a link is the same page again: some apps hand
+            // over the page as a link and its address as text as well, and not always the
+            // same address (a section's own host and the site's path to the same article).
+            // Kept, the two made a body of two links, which is a note and not a page, and
+            // the share was never clipped. The link the sender offered as a link is the one
+            // kept. Text with anything else in it is someone's words, is not offered as a
+            // link at all, and stays; two links that both came as links stay too.
+            if !offeredLinks.isEmpty { links.removeAll { !offeredLinks.contains($0) } }
         } else if lines.isEmpty, intake.files.isEmpty, !attached.isEmpty {
             lines.append(attached)
         }
