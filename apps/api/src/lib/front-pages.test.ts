@@ -188,6 +188,10 @@ describe('serveFrontPage', () => {
     const robots = await (await get('/robots.txt', env))!.text();
     expect(robots).toContain('Disallow: /notes');
     expect(robots).toContain('Disallow: /api/');
+    // The public pages' gate reads these before drawing; blocked, a crawler's render of
+    // every public page was the sign-in screen.
+    expect(robots).toContain('Allow: /api/config\n');
+    expect(robots).toContain('Allow: /api/auth/get-session\n');
     expect(robots).toContain('Allow: /');
     expect(robots).toContain('Sitemap: https://unbent.example/sitemap.xml');
     const sitemap = await get('/sitemap.xml', env);
