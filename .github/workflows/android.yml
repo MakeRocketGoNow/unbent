@@ -151,10 +151,14 @@ jobs:
       # Straight to the testing track, because the step this replaces was a person
       # downloading the artifact above and uploading that same file by hand.
       #
-      # `status: draft` stops short of releasing to testers: the bundle appears in the
-      # track and Play runs its checks, but a person still presses the button. That is the
-      # right default for something every push to main triggers. Change it to `completed`
-      # to have testers get the build without anyone asking.
+      # `status: completed` rolls the build out to the track's testers as soon as Play's
+      # review passes, so every push to main reaches a tester's phone with nobody pressing
+      # anything. That is the point while the testers are the people building the app:
+      # each build is one they want on their own phone. It reaches testers only, never
+      # production: a production release is still made by hand in Play Console, from the
+      # bundle library. `draft` was the setting until 2026-11-10, when it left a draft
+      # nobody promoted after every merge; go back to it if the track gains testers who
+      # should not get every build.
       #
       # `alpha` is the API's name for the default closed testing track: "closed" is not a
       # track name, and a custom closed track is referenced by the name it was given in
@@ -171,7 +175,7 @@ jobs:
           packageName: ${{ vars.ANDROID_APPLICATION_ID || 'com.makerocketgonow.unbent' }}
           releaseFiles: apps/android/app/build/outputs/bundle/release/*.aab
           tracks: alpha
-          status: draft
+          status: completed
           releaseName: ${{ steps.release_name.outputs.name }}
           # Written by hand in `apps/android/store/whatsnew/`, not generated from commit
           # subjects: those are addressed to whoever changes the code next ("Stop declaring

@@ -547,10 +547,13 @@ is the trap: it makes every build you can test locally work.
 
 ### Shipping to Play
 
-Pushes to `main` build a signed bundle and upload it to the closed testing track as a
-**draft**: it appears in Play Console and passes Play's checks, but nobody receives it
-until a person promotes it. Making testers get it automatically is a one-word change
-(`status: completed` in `.github/workflows/android.yml`).
+Pushes to `main` that touch `apps/android` build a signed bundle and release it to the
+closed testing track: once Play's review passes, the track's testers get it as an
+ordinary update with nobody pressing anything. Production is never reached from CI. A
+production release is made by hand in Play Console (Production, Create new release, Add
+from library, the newest version code), with its notes pasted in, since only a promotion
+from a track carries them across. Holding testing builds for a person to release again is
+a one-word change (`status: draft` in `.github/workflows/android.yml`).
 
 Never build a bundle by hand for Play. A local build gets `versionCode = 1`, which Play
 rejects as a duplicate; CI takes the run number, which is unique and always rising.
