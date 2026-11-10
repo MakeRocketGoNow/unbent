@@ -1,11 +1,12 @@
 :root {
   /*
-     Two families, one decision each.
+     One family per job.
 
-     `--font-ui` is the application: chrome, lists, menus, prose in the preview. `--font-mono`
-     is for text where character positions carry meaning: code, and the pipe tables whose
-     columns are aligned by literal padding in the document rather than by layout. Anything
-     that is neither is prose, and prose belongs to `--font-prose` below.
+     `--font-ui` is the application: chrome, lists, menus, prose in the preview beside the
+     source. `--font-mono` is for text where character positions carry meaning: code, and
+     the pipe tables whose columns are aligned by literal padding in the document rather
+     than by layout. Anything that is neither is prose: `--font-prose` while it is being
+     written, `--font-read` in the Read view, both below.
   */
   --font-ui: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
