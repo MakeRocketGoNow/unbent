@@ -2739,16 +2739,21 @@ a.overflow-item { text-decoration: none; }
 /*
    In em, not the rem of the plain setting above: those are sized against 16px text, and
    under 19px an h3 drew smaller than the paragraph it heads. In em they follow the body
-   at both breakpoints. h4 is stated too, since the browser's 1em made it larger than h3.
+   at both breakpoints. h4 to h6 are stated too: the browser's 1em made h4 larger than h3,
+   and its 0.83em and 0.67em drew h5 and h6 under the text.
 */
 .panes.reading .preview h1 { font-size: 1.6em; }
 .panes.reading .preview h2 { font-size: 1.35em; }
 .panes.reading .preview h3 { font-size: 1.15em; }
-.panes.reading .preview h4 { font-size: 1em; }
+.panes.reading .preview h4,
+.panes.reading .preview h5,
+.panes.reading .preview h6 { font-size: 1em; }
 .panes.reading .preview h1,
 .panes.reading .preview h2,
 .panes.reading .preview h3,
-.panes.reading .preview h4 { line-height: 1.25; margin: 1.6em 0 0.5em; }
+.panes.reading .preview h4,
+.panes.reading .preview h5,
+.panes.reading .preview h6 { line-height: 1.25; margin: 1.6em 0 0.5em; }
 .panes.reading .preview > :first-child > :first-child { margin-top: 0; }
 /* Set apart from the text, which runs right up to the picture otherwise. */
 .panes.reading .preview img { display: block; margin: 1.75em 0; }
