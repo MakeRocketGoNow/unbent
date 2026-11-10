@@ -27,6 +27,18 @@
      paint is the final one: no reflow a writer would watch happen mid-sentence.
   */
   --font-prose: "Avenir Next", Avenir, Seravek, "Segoe UI", system-ui, sans-serif;
+  /*
+     The Read view: a note, or a clipped article, set to be read rather than written.
+
+     A serif, which was rejected for rich mode above as too bookish. That was right for
+     the place a note is written, and it is what a reading view is for: Instapaper,
+     Kindle and Safari's Reader all set long text in one, and the change of face is what
+     says, at a glance, that this view is for reading. `ui-serif` is New York in Safari;
+     Chrome on a Mac does not know it and finds Charter, which every Mac has; Georgia is
+     on Windows; Android falls through to its own serif. Nothing is downloaded, for the
+     reason given above.
+  */
+  --font-read: ui-serif, Charter, "Iowan Old Style", Georgia, serif;
 
   --bg: #fbfaf8;
   --fg: #1c1a17;
@@ -2680,6 +2692,68 @@ a.overflow-item { text-decoration: none; }
 .preview table { border-collapse: collapse; display: block; overflow-x: auto; }
 .preview th, .preview td { padding: 0.4rem 0.7rem; border: 1px solid var(--border); }
 .preview hr { border: none; border-top: 1px solid var(--border); }
+
+/*
+   The byline a clipped page opens with (`markSourceLine`): smaller and quieter than the
+   article, so the first thing read is the article and not where it came from.
+*/
+.preview .preview-source { font-size: 0.875rem; color: var(--muted); }
+.preview .preview-source a { color: inherit; }
+
+/*
+   The Read view. The same rendering as the pane beside the source, set for a long read
+   rather than for checking what the markdown makes: that pane keeps the plain setting
+   above, since there it is a check on the source and sits in half the width.
+
+   The measure is the main thing. 46rem of 16px sans was about ninety-five characters a
+   line, where long text is comfortable at sixty to seventy; 36rem at this size is about
+   seventy. On the title's left edge, not centred the way reader apps set their column:
+   here the title, the fields and the toolbar stay where they are above it, and a
+   centred column started a few centimetres right of all of them, so the text jumped
+   sideways when you switched from Rich. On a phone the column is the screen.
+
+   Line height comes down as the size goes up: 1.7 suited 16px, and at 19px it spaces the
+   lines so far apart that the eye loses the next one.
+*/
+.panes.reading .preview {
+  max-width: 36rem;
+  padding: 1.5rem 0 4rem;
+  font-family: var(--font-read);
+  font-size: 1.1875rem;
+  line-height: 1.6;
+}
+/* A point smaller on a phone, where 19px left about thirty-five characters a line. */
+@media (width <= 860px) {
+  .panes.reading .preview { font-size: 1.125rem; }
+}
+.panes.reading .preview p,
+.panes.reading .preview ul,
+.panes.reading .preview ol,
+.panes.reading .preview blockquote { margin-block: 0 1.1em; }
+.panes.reading .preview li + li { margin-top: 0.3em; }
+.panes.reading .preview h1,
+.panes.reading .preview h2,
+.panes.reading .preview h3 { line-height: 1.25; margin: 1.6em 0 0.5em; }
+.panes.reading .preview > :first-child > :first-child { margin-top: 0; }
+/* Set apart from the text, which runs right up to the picture otherwise. */
+.panes.reading .preview img { display: block; margin: 1.75em 0; }
+/* The byline is the app's voice, not the article's, so it keeps the interface face. */
+.panes.reading .preview .preview-source {
+  margin-bottom: 1.75em;
+  font-family: var(--font-ui);
+  font-size: 0.875rem;
+}
+.panes.reading .preview blockquote { font-style: italic; }
+/* Tables and code are reference, not prose: back to their own faces and a smaller size. */
+.panes.reading .preview table { font-family: var(--font-ui); font-size: 0.8em; }
+.panes.reading .preview code { font-size: 0.8em; }
+
+/*
+   The formatting run, in the Read view: hidden but keeping its room, so the toolbar
+   stays the height it was and the switcher does not move. See `editing` in
+   `EditorToolbar.tsx`.
+*/
+.editor-toolbar.tb-reading .tb-scroll { visibility: hidden; }
 
 
 

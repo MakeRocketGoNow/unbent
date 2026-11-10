@@ -99,6 +99,19 @@ function onPreviewClick(event: MouseEvent<HTMLDivElement>, openPath: PreviewProp
 }
 
 /**
+ * Marks the line a clipped page opens with (`Clipped from [Site](…), by Author`, written
+ * by `@unbent/clip`) so it can be drawn as a byline rather than as the article's first
+ * paragraph. Only as the very first thing in the note, and only with its link, so a
+ * paragraph that merely starts with the words further down is left alone.
+ *
+ * On the string for the reason `splitOnPdfLinks` is, and after sanitization, so the class
+ * is ours: the sanitizer strips any a note writes.
+ */
+export function markSourceLine(html: string): string {
+  return html.replace(/^<p>(?=Clipped from <a )/, '<p class="preview-source">');
+}
+
+/**
  * Rendered markdown. The HTML is produced by the shared pipeline, which runs
  * rehype-sanitize: dangerouslySetInnerHTML is safe here only because of that, so the two
  * must never be separated.
@@ -112,7 +125,7 @@ export function Preview({ markdown, noteId, onOpenPath }: PreviewProps) {
   const pdfFilenames = usePdfAttachments(noteId);
 
   const segments = useMemo(
-    () => splitOnPdfLinks(renderMarkdown(markdown, { noteId, pdfFilenames })),
+    () => splitOnPdfLinks(markSourceLine(renderMarkdown(markdown, { noteId, pdfFilenames }))),
     [markdown, noteId, pdfFilenames],
   );
 
