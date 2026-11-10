@@ -44,7 +44,7 @@ describe('EditorToolbar view switcher', () => {
     const onChange = vi.fn();
     setup('rich', { onChange });
     // mousedown, not click: the buttons act on mousedown so the editor keeps its selection.
-    fireEvent.mouseDown(screen.getByRole('radio', { name: 'Preview' }));
+    fireEvent.mouseDown(screen.getByRole('radio', { name: 'Read' }));
     expect(onChange).toHaveBeenCalledWith('preview');
   });
 

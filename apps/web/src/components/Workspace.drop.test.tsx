@@ -114,9 +114,9 @@ describe('a file dragged over the note', () => {
     expect(dropPoint(view())).toBe(note.body.length);
   });
 
-  it('is not taken in the preview, where there is no point to show it by', async () => {
+  it('is not taken in the Read view, where there is no point to show it by', async () => {
     const { column, switchTo } = await mount();
-    switchTo('Preview');
+    switchTo('Read');
     await waitFor(() => expect(column.querySelector('.panes.reading')).not.toBeNull());
     expect(dragOver(column).defaultPrevented).toBe(false);
   });

@@ -58,6 +58,12 @@ interface HistorySheetProps {
 /** The two ways of looking at a version; see `HistoryChanges` for the second. */
 type HistoryView = 'preview' | 'changes';
 
+/*
+   "Preview" here, though the editor's switch beside it says "Read" for its rendered view.
+   This one is a look at a version before deciding to restore it, which is what a preview
+   is, and it is drawn in the plain setting the preview beside the source uses, not the
+   Read view's (`.panes.reading`). Calling it Read would promise that view and not give it.
+*/
 const VIEWS: { value: HistoryView; label: string; title: string }[] = [
   { value: 'preview', label: 'Preview', title: 'This version as it would read' },
   { value: 'changes', label: 'Changes', title: 'What restoring this version would change' },

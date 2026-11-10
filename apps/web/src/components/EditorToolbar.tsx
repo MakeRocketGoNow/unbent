@@ -345,9 +345,14 @@ export function EditorToolbar({
 
   /*
      Formatting acts on a selection in a text editor, so it has nothing to act on in the
-     rendered view. Disabled rather than removed: a row that loses two thirds of its
-     controls when you switch views reads as a different toolbar, and the buttons coming
-     back in different places is worse than their being briefly greyed.
+     reading view. Disabled, and in that view also hidden (`tb-reading` in the stylesheet).
+
+     Greying them out was tried first, on the argument that a row losing two thirds of
+     its controls reads as a different toolbar. In a view meant for reading, a row of
+     dead B, I and H1 above the text was clutter that looked broken, and the view being
+     different is the point of it. Hidden with `visibility`, not removed, so the row
+     keeps its height and the switcher stays exactly where it was: nothing moves when
+     you switch, and the buttons come back in the places they left.
   */
   const editing = noteView.current !== 'preview';
   const canEdit = editing && !readOnly;
@@ -384,7 +389,9 @@ export function EditorToolbar({
 
   return (
     <div
-      className={['editor-toolbar', docked ? 'docked' : '', more ? 'tb-more' : ''].filter(Boolean).join(' ')}
+      className={['editor-toolbar', docked ? 'docked' : '', more ? 'tb-more' : '', editing ? '' : 'tb-reading']
+        .filter(Boolean)
+        .join(' ')}
       role="toolbar"
       aria-label="Formatting"
       style={docked ? { bottom: `${keyboardInset}px` } : undefined}
@@ -513,7 +520,13 @@ export function EditorToolbar({
 const VIEWS: { value: NoteView; label: string; title: string }[] = [
   { value: 'rich', label: 'Rich', title: 'Rich text' },
   { value: 'source', label: 'Source', title: 'Plain source' },
-  { value: 'preview', label: 'Preview', title: 'Rendered preview' },
+  /*
+     "Read", not "Preview": a preview is a look at what something will become, which
+     made this sound like a check on the source. It is the view for reading a note,
+     a clipped article above all, and is drawn for that (`.panes.reading .preview`).
+     The value stays `preview`, since it is stored per device as the last view chosen.
+  */
+  { value: 'preview', label: 'Read', title: 'Reading view' },
 ];
 
 /**
