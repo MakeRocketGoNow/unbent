@@ -33,6 +33,23 @@ import { fieldsSchema, normalizeNotebook, notebookSchema, resolveFieldNames, tag
  * once. Decided here rather than by the caller so the decision is the function's own and
  * a test can see it.
  */
+/**
+ * The reading speed a clip's reading time is worked out at: a common figure for adults
+ * reading prose on a screen. Stated here so every assistant filling a reading-time field
+ * uses the same one, rather than each picking its own and two notes clipped a day apart
+ * disagreeing about the same length.
+ */
+export const READING_WORDS_PER_MINUTE = 230;
+
+/**
+ * Minutes to read `words`, rounded, and never 0 for an article with any words in it: a
+ * field that says a short page takes no time to read is wrong, where one minute is only
+ * generous. 0 is kept for a clip with no text at all, which is the case to notice.
+ */
+export function readingTimeMinutes(words: number): number {
+  return words > 0 ? Math.max(1, Math.round(words / READING_WORDS_PER_MINUTE)) : 0;
+}
+
 export function registerClipTool(
   server: Pick<McpServer, 'registerTool'>,
   env: Pick<Env, 'BLOBS' | 'AI' | 'ALLOW_TEST_CREDENTIALS' | 'ATTACHMENT_FETCH_USER_AGENT' | 'WEB_CLIP'>,
@@ -63,10 +80,16 @@ export function registerClipTool(
         'site. The page never passes through the conversation, so prefer this to reading a ' +
         'page and writing it out with create_note. The title defaults to the article\'s ' +
         'headline. The answer carries the note\'s url and images: how many pictures were ' +
-        'stored and which failed, with why.' +
+        'stored and which failed, with why. It also carries wordCount, the words of the ' +
+        'article itself (not the "Clipped from" line, links\' addresses or pictures), and ' +
+        `readingTimeMinutes, that count at ${READING_WORDS_PER_MINUTE} words a minute; use ` +
+        'them for a field such as a reading time, since the article is not in the ' +
+        'conversation to count. A count of a few dozen words is a page that did not give ' +
+        'its text up.' +
         SHARE_NOTE_LINK +
         ' If the site refuses this server (401, 403 or 429), or the page needs a sign-in ' +
-        'or JavaScript to show its text (the note comes back nearly empty), read the page ' +
+        'or JavaScript to show its text (the note comes back nearly empty, with a low ' +
+        'wordCount), read the page ' +
         'yourself and write the note with create_note, with a "Clipped from" link to the ' +
         'page. A file at a URL, such as a PDF or a picture, is not a page: attach it to a ' +
         'note with add_attachment instead.',
@@ -126,7 +149,12 @@ export function registerClipTool(
             : '';
         return toolError(`${result.error}${yourself}`);
       }
-      return jsonResult({ ...noteRef(result.note, links), images: result.images });
+      return jsonResult({
+        ...noteRef(result.note, links),
+        images: result.images,
+        wordCount: result.wordCount,
+        readingTimeMinutes: readingTimeMinutes(result.wordCount),
+      });
     },
   );
 }

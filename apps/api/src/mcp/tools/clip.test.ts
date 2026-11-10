@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { appLinks } from '../../lib/app-links.js';
 import type { AttachmentsRepo } from '../../lib/attachments-repo.js';
 import type { NotesRepo } from '../../lib/notes-repo.js';
-import { registerClipTool } from './clip.js';
+import { readingTimeMinutes, registerClipTool } from './clip.js';
 
 /**
  * The tool's own part of a clip: fields by name before anything is fetched, the note
@@ -60,6 +60,9 @@ describe('clip_web_page', () => {
     expect(answer.url).toMatch(/^https:\/\/notes\.example\.com\//);
     expect(answer.title).toBe('Lighting a forge');
     expect(answer.images).toEqual({ stored: 0, failed: [] });
+    // Six paragraphs of 23 words; the headline is the title, not the article.
+    expect(answer.wordCount).toBe(138);
+    expect(answer.readingTimeMinutes).toBe(1);
     expect(created[0]).toMatchObject({ notebook: 'Guides', tags: ['forge'], fields: { 'f-source': 'Acme' } });
   });
 
@@ -79,5 +82,11 @@ describe('clip_web_page', () => {
     expect(result.isError).toBe(true);
     expect(result.content[0]!.text).toContain('example.com answered 403');
     expect(result.content[0]!.text).toContain('create_note');
+  });
+
+  it('works the reading time out at one rate, and says 0 only for no words', () => {
+    expect(readingTimeMinutes(0)).toBe(0);
+    expect(readingTimeMinutes(40)).toBe(1);
+    expect(readingTimeMinutes(2140)).toBe(9);
   });
 });

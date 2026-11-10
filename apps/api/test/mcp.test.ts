@@ -1360,6 +1360,8 @@ describe('clip_web_page', () => {
     const answer = JSON.parse(toolText(body));
     expect(answer).toMatchObject({ title: 'Dressing the edges', notebook, tags: ['forge'], images: { stored: 1, failed: [] } });
     expect(answer.url).toContain(answer.id);
+    // Three paragraphs of 34 words: not the nav, the headline, the source line or the picture.
+    expect(answer).toMatchObject({ wordCount: 102, readingTimeMinutes: 1 });
 
     const note = (await (await fetch(`${BASE}/api/notes/${answer.id}`, { headers: { Cookie: frank.cookie, Origin: ORIGIN } })).json()) as {
       body: string;

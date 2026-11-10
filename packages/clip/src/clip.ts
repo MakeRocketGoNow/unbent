@@ -37,6 +37,11 @@ export interface Clip {
   markdown: string;
   images: ClipImage[];
   source: { url: string; siteName: string | null; byline: string | null };
+  /**
+   * The words of the article as a reader reads them: its text, not the source line, a
+   * link's address or a picture. See `countWords`.
+   */
+  wordCount: number;
 }
 
 export interface ClipOptions {
@@ -153,6 +158,10 @@ interface ClipMeta {
 function clipTree(tree: Node, pageUrl: URL, base: URL, meta: ClipMeta, opts: ClipOptions): Clip {
   const images: ClipImage[] = [];
   dropTitleHeading(tree, meta.title);
+  // Counted here, on the page's own text, before it becomes Markdown: in the Markdown a
+  // link's address and a picture's path are text too, and telling them apart again
+  // would be parsing what was just written.
+  const wordCount = countWords(tree);
 
   const article = htmlToMarkdown(tree, {
     transforms: [dropComments, rewriteLinksAndImages(base, images, opts.maxImages ?? DEFAULT_MAX_IMAGES), dropEmptyLinks],
@@ -164,7 +173,48 @@ function clipTree(tree: Node, pageUrl: URL, base: URL, meta: ClipMeta, opts: Cli
     markdown: article ? `${source}\n\n${article}` : source,
     images,
     source: { url: pageUrl.href, siteName: meta.siteName, byline: meta.byline },
+    wordCount,
   };
+}
+
+/**
+ * Elements whose text runs on into the text beside them. Every other element is a
+ * break, so `<p>end.</p><p>Start</p>` is two words and not `end.Start`, while
+ * `un<em>believ</em>able` stays one. Listing the inline ones rather than the blocks
+ * means an element nobody thought of splits words, which miscounts by one at most,
+ * where gluing two paragraphs together would.
+ */
+const INLINE_TAGS = new Set([
+  'a', 'abbr', 'b', 'bdi', 'bdo', 'cite', 'code', 'data', 'del', 'dfn', 'em', 'i', 'ins',
+  'kbd', 'mark', 'q', 's', 'samp', 'small', 'span', 'strong', 'sub', 'sup', 'time', 'u', 'var',
+]);
+
+const WORDS = new Intl.Segmenter(undefined, { granularity: 'word' });
+
+/**
+ * The words in a tree's text.
+ *
+ * By `Intl.Segmenter` rather than by splitting on spaces, which would count a sentence
+ * of Japanese or Chinese as one word and a lone dash as another. A picture has no text
+ * (its alt is an attribute) and neither has a link's address, so neither is counted; a
+ * code block is, since it is read too.
+ */
+export function countWords(tree: Node): number {
+  const parts: string[] = [];
+  const walk = (node: Node): void => {
+    if (node.type === 'text') {
+      parts.push(node.value ?? '');
+      return;
+    }
+    const inline = isElement(node) && INLINE_TAGS.has(node.tagName ?? '');
+    if (!inline) parts.push(' ');
+    for (const child of node.children ?? []) walk(child);
+    if (!inline) parts.push(' ');
+  };
+  walk(tree);
+  let count = 0;
+  for (const segment of WORDS.segment(parts.join(''))) if (segment.isWordLike) count += 1;
+  return count;
 }
 
 /**
