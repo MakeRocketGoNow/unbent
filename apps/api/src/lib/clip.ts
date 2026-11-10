@@ -137,7 +137,7 @@ export interface ClipImages {
  * after the note is made is not a failed clip: it is a picture in `failed`.
  */
 export type ClipResult =
-  | { ok: true; note: Note; existing: boolean; images: ClipImages }
+  | { ok: true; note: Note; existing: boolean; images: ClipImages; wordCount: number }
   | { ok: false; status: 400 | 413 | 415 | 502; error: string; code: ClipErrorCode };
 
 /**
@@ -258,7 +258,9 @@ export async function clipUrl(
     }
     throw err;
   }
-  if (created.existing) return { ok: true, note: created.note, existing: true, images: { stored: 0, failed: [] } };
+  if (created.existing) {
+    return { ok: true, note: created.note, existing: true, images: { stored: 0, failed: [] }, wordCount: clip.wordCount };
+  }
 
   /*
      From here the note exists and its body names `files/` paths, while the pictures'
@@ -276,7 +278,7 @@ export async function clipUrl(
   */
   const finishing = finishClip(env, ctx, repos, created.note, clip, page.url, opts);
   ctx.waitUntil(finishing.catch(() => {}));
-  return { ok: true, existing: false, ...(await finishing) };
+  return { ok: true, existing: false, wordCount: clip.wordCount, ...(await finishing) };
 }
 
 /** Stores the note's pictures, then repairs its body if any of them needs it. */

@@ -301,3 +301,41 @@ describe('clipFragment', () => {
     );
   });
 });
+
+describe('wordCount', () => {
+  const count = (html: string) => fragment(html).wordCount;
+
+  it('counts the article and not the source line, a link address or a picture', () => {
+    expect(
+      count(
+        '<p>Heat the bar <a href="https://example.com/a/very/long/address">evenly</a>.</p>' +
+          '<p><img src="images/joint.jpg" alt="A scarf joint ready to weld"> Then strike.</p>',
+      ),
+    ).toBe(6);
+  });
+
+  it('keeps paragraphs apart and a word split by emphasis whole', () => {
+    expect(count('<p>end.</p><p>Start</p>')).toBe(2);
+    expect(count('<p>un<em>believ</em>able</p>')).toBe(1);
+    expect(count('<ul><li>one</li><li>two</li></ul><br>three')).toBe(3);
+  });
+
+  it('does not count the title heading it drops, or punctuation', () => {
+    expect(count('<h1>Forge welding</h1><p>Flux it - then hammer.</p>')).toBe(4);
+  });
+
+  it('counts words in text with no spaces between them', () => {
+    expect(count('<p>鍛接の手順を説明します</p>')).toBeGreaterThan(1);
+  });
+
+  it('is 0 for a page with no text', () => {
+    expect(count('<div><img src="a.png" alt="Only a picture"></div>')).toBe(0);
+  });
+
+  it('counts the whole article of a page', () => {
+    const words = (text: string) => text.split(/\s+/).filter((w) => /\w/.test(w)).length;
+    const expected =
+      words(PARAGRAPHS[0]!) + words(PARAGRAPHS[1]!) + words('See dressing the edges for the method.') + words(PARAGRAPHS[2]!);
+    expect(clipPage(ARTICLE_PAGE, PAGE_URL).wordCount).toBe(expected);
+  });
+});
