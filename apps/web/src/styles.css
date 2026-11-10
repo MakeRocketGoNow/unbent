@@ -2731,6 +2731,10 @@ a.overflow-item { text-decoration: none; }
 .panes.reading .preview ol,
 .panes.reading .preview blockquote { margin-block: 0 1.1em; }
 .panes.reading .preview li + li { margin-top: 0.3em; }
+/* A list inside an item is part of that item, not a block of its own: without this the
+   rule above gave a sub-list a paragraph's gap after it. */
+.panes.reading .preview li > ul,
+.panes.reading .preview li > ol { margin-block: 0.3em 0; }
 /*
    In em, not the rem of the plain setting above: those are sized against 16px text, and
    under 19px an h3 drew smaller than the paragraph it heads. In em they follow the body
