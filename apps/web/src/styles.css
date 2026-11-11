@@ -6459,6 +6459,12 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   font-weight: 600;
 }
 
+/* A line of explanation under a section's heading; the purpose's hint, for a section. */
+.notebook-section-hint {
+  align-self: stretch;
+  margin: 0;
+}
+
 .notebook-admin {
   list-style: none;
   margin: 0;

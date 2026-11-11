@@ -13,6 +13,7 @@ import {
   assignOptionColors,
   compareOptions,
   fieldHasOptions,
+  fieldSortsByOptions,
   fieldNameSchema,
   isCurrencyField,
   isRatingField,
@@ -744,6 +745,17 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
 
       <section className="notebook-section">
         <h3 className="notebook-section-head">Fields</h3>
+        {/* Where the settings say that arranging a select's options rearranges every list
+            sorted by it (`fieldSortsByOptions`). A line, not a tip on "Sort A–Z", which is
+            where it was first: a tip is never drawn on a phone, that one gave way to
+            "Already in A–Z order" for exactly the lists already in it, and it was read out
+            as describing a button it did not describe. Once for the section, not under
+            each field's options, where a notebook with four selects said it four times.
+            Only when some select has an order to follow: a multi-select does not sort
+            this way, and a lone option has none. */}
+        {list.some((f) => fieldSortsByOptions(f.type) && f.options.length > 1) && (
+          <p className="muted small notebook-section-hint">Notes sorted by a Select field follow the order of its options.</p>
+        )}
 
         <ul className="notebook-admin field-admin">
           {list.map((field, index) => (
@@ -881,16 +893,13 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
                     }
                     trailing={
                       // Faded rather than gone once the list is in order, so the row does
-                      // not change shape after a press. Its tip is where the settings say
-                      // that the order here is the order notes sort in: a line under every
-                      // select's options would say it once per field on a page of them, and
-                      // this is the control someone who wanted the alphabet back looks for.
+                      // not change shape after a press.
                       field.options.length > 1 && (
                         <Button
                           variant="quiet"
                           size="small"
                           disabled={busy || isSorted(field.options)}
-                          tip={isSorted(field.options) ? 'Already in A–Z order' : 'Notes sorted by this field follow the order here'}
+                          tip={isSorted(field.options) ? 'Already in A–Z order' : undefined}
                           onClick={() =>
                             void run(() => api.editNotebookFieldOptions(notebookId, field.id, { sort: 'alpha' }))
                           }
