@@ -594,6 +594,33 @@ describe('notes: search', () => {
     }
   });
 
+  it('keeps one row per note across the tier statements, and stops once the page is full', async () => {
+    // The FTS-driven search is a statement per tier, and what used to be SQL between
+    // them is code now: which row of a note is kept, and whether a lower tier runs at
+    // all. No filter, so none of this takes the scope-driven shape.
+    const { stub } = freshStore('tier-merge');
+    // In its body and under a tag: the body's row, never "tagged X" beneath it.
+    const both = await stub.create(note({ title: 'Both', body: 'gadget on the desk', tags: ['gadget'] }));
+    // Twice in the tag tier: one row, and the first the tier returned, its better-ranked.
+    const twice = await stub.create(note({ title: 'Twice', body: 'nothing', tags: ['gadget', 'gadget spares and other odds and ends'] }));
+    const inFile = await stub.create(note({ title: 'Scan', body: 'nothing' }));
+    await stub.recordAttachment({ id: 'f1', noteId: inFile.id, filename: 'scan.pdf', contentType: 'application/pdf', size: 1, r2Key: 'k1' });
+    await stub.recordText({ attachmentId: 'f1', noteId: inFile.id, filename: 'scan.pdf', text: 'a gadget manual' });
+
+    const all = await stub.search('gadget', 10);
+    expect(all.map((r) => [r.id, r.matchedTag ?? r.matchedFile ?? 'body'])).toEqual([
+      [both.id, 'body'],
+      [twice.id, 'gadget'],
+      [inFile.id, 'scan.pdf'],
+    ]);
+    expect(all[0]!.snippet).toContain('<<gadget>>');
+
+    // A page the tiers above have filled is not asked of the ones below, and a page that
+    // ends inside a tier is cut there.
+    expect((await stub.search('gadget', 1)).map((r) => r.id)).toEqual([both.id]);
+    expect((await stub.search('gadget', 2)).map((r) => r.id)).toEqual([both.id, twice.id]);
+  });
+
   it("carries each match's list row, in the search's order, for a table", async () => {
     const { stub } = freshStore('search-rows');
     const nb = (await stub.createNotebook('Receipts'))!;
