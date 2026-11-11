@@ -176,8 +176,8 @@ function isDocumentLoad(request: Request): boolean {
  * The answer for `/`, `/pricing` and `/support`, marked as depending on the cookie (and,
  * for `/`, on what asked), so nothing between here and the browser hands one requester's
  * page to another. One header for all three: a cache that varies on more than it needs
- * to only stores more copies. The asset layer's
- * own answer (a failed read) has headers that cannot be changed, hence the copy.
+ * to only stores more copies. The asset layer's own answer (a failed read) has headers
+ * that cannot be changed, hence the copy.
  */
 async function varyOnRequester(answer: Promise<Response>): Promise<Response> {
   const settled = await answer;
@@ -189,10 +189,10 @@ async function varyOnRequester(answer: Promise<Response>): Promise<Response> {
 /**
  * The shell, with the addresses in its head completed: for a front page that cannot be
  * served as its copy, and for `/`, `/pricing` and `/support` with a session
- * (`READ_SIGNED_IN`). A card's picture must be a whole
- * address: left to the asset layer, a link unfurled in Slack with no picture, because the
- * shell names it as `/front/…` and a card is drawn by something that resolves nothing.
- * Asked for as a plain GET, for the reason `servePrerendered` gives.
+ * (`READ_SIGNED_IN`). A card's picture must be a whole address: left to the asset layer,
+ * a link unfurled in Slack with no picture, because the shell names it as `/front/…` and
+ * a card is drawn by something that resolves nothing. Asked for as a plain GET, for the
+ * reason `servePrerendered` gives.
  */
 async function serveShell(request: Request, env: FrontEnv, origin: string): Promise<Response> {
   const asset = await env.ASSETS.fetch(new Request(new URL('/', request.url)));
