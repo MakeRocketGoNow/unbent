@@ -6459,6 +6459,18 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   font-weight: 600;
 }
 
+/* A section's heading and the line that explains it, read as one: the purpose's spacing
+   between its box and its hint, where the section's own gap would set the line as far
+   from its heading as from the list below. */
+.notebook-section-intro {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.notebook-section-hint { margin: 0; }
+
 .notebook-admin {
   list-style: none;
   margin: 0;

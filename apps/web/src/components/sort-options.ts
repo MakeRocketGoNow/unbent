@@ -76,6 +76,11 @@ export interface FieldSortDirection {
  * table's headers do on a first click. A rating and an amount are numbers underneath and
  * read fine as one.
  *
+ * A select sorts in its options' own order, the one the notebook's settings and the cell's
+ * menu list them in (`fieldSortsByOptions`), so its ends are that order and its reverse.
+ * A–Z over a column that ran Queued, Started, Done would be a label that is plainly wrong, and
+ * "First–last" beside a column of dates' "Newest" would read as one of those.
+ *
  * A multi-select sorts by its stored list, which puts it in order of its first option; A–Z
  * says that well enough.
  */
@@ -95,6 +100,11 @@ export function fieldSortDirections(type: FieldType): [FieldSortDirection, Field
       return [
         { order: 'desc', label: 'Checked', phrase: 'checked first' },
         { order: 'asc', label: 'Unchecked', phrase: 'unchecked first' },
+      ];
+    case 'select':
+      return [
+        { order: 'asc', label: 'In order', phrase: 'in order' },
+        { order: 'desc', label: 'Reversed', phrase: 'reversed' },
       ];
     default:
       return [
@@ -149,11 +159,12 @@ export function columnSortState(target: SortTarget, search: SortSearch): 'asc' |
  * The search params a click on a column header writes.
  *
  * A first click sorts the way that column is usually wanted (names and field values
- * A–Z or low to high, dates newest first) and a click on the column already in charge
- * flips it. There is no third state: the list always has *some* order, and a header that
- * cycled to "none" would silently put "Newest first" back under a column that no
- * longer said so. The two kinds of sort are exclusive on the wire, so choosing one
- * clears the other, and the defaults are dropped the way `parseSortKey` drops them.
+ * A–Z or low to high, a select in its options' order, dates newest first) and a click
+ * on the column already in charge flips it. There is no third state: the list always
+ * has *some* order, and a header that cycled to "none" would silently put "Newest
+ * first" back under a column that no longer said so. The two kinds of sort are
+ * exclusive on the wire, so choosing one clears the other, and the defaults are
+ * dropped the way `parseSortKey` drops them.
  */
 export function nextColumnSort(
   target: SortTarget,

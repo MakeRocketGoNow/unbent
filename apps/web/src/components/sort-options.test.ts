@@ -128,7 +128,7 @@ describe('column sorting', () => {
     expect(sortLabel(undefined, 'asc', amount)).toBe('Amount, lowest first');
     expect(sortLabel(undefined, undefined, amount)).toBe('Amount, highest first');
     expect(sortLabel(undefined, 'asc', { name: 'Due', type: 'date' })).toBe('Due, oldest first');
-    expect(sortLabel(undefined, 'desc', { name: 'Store', type: 'select' })).toBe('Store, Z–A');
+    expect(sortLabel(undefined, 'desc', { name: 'Store', type: 'select' })).toBe('Store, reversed');
   });
 
   /* Each type offers both ends, once each, whatever order it puts them in. */
@@ -144,5 +144,7 @@ describe('column sorting', () => {
     expect(fieldSortDirections('checkbox')[0]).toMatchObject({ order: 'desc', label: 'Checked' });
     expect(fieldSortDirections('number')[0]).toMatchObject({ order: 'asc', label: 'Low–high' });
     expect(fieldSortDirections('text')[0]).toMatchObject({ order: 'asc', label: 'A–Z' });
+    // A select's first end is its options' first, as the notebook's settings list them.
+    expect(fieldSortDirections('select')[0]).toMatchObject({ order: 'asc', label: 'In order' });
   });
 });

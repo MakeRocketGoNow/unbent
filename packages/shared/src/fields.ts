@@ -607,6 +607,29 @@ export function fieldSortsNumerically(type: FieldType): boolean {
 }
 
 /**
+ * Whether a type orders by its options' own order, as the notebook's settings list them,
+ * rather than by its text.
+ *
+ * A select's options are arranged by the person (Queued, Started, Done), and the order
+ * they chose is the one the cell's menu and the filter already show. Sorted as text the
+ * column disagreed with both, and the way round it was to number the options by hand
+ * ("1 Urgent"). There is no setting for the old order: "Sort A–Z" beside the options
+ * puts them in it, once, for the menu, the filter and the sort together.
+ *
+ * A value that is no longer an option (see `withHeldOptions`) comes after every option in
+ * both directions, as a note with no value comes after those: it has no place in the
+ * order, and leading a descending list with retired values would put the leftovers first.
+ * Among themselves they order as text.
+ *
+ * Not a multi-select. Its stored text is the JSON list, which no index can read "the
+ * earliest option held" from, so the store would sort every value of the field for each
+ * page; it keeps ordering by that text until that is worth a column of its own.
+ */
+export function fieldSortsByOptions(type: FieldType): boolean {
+  return type === 'select';
+}
+
+/**
  * The value the API sorted a row by, as it rides on the row: the numeric shadow for a
  * numeric type, the text otherwise, or `''` when the note holds no value for the field.
  *

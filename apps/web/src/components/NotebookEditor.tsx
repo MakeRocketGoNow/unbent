@@ -13,6 +13,7 @@ import {
   assignOptionColors,
   compareOptions,
   fieldHasOptions,
+  fieldSortsByOptions,
   fieldNameSchema,
   isCurrencyField,
   isRatingField,
@@ -743,7 +744,23 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
       </section>
 
       <section className="notebook-section">
-        <h3 className="notebook-section-head">Fields</h3>
+        {/* The heading and the line under it are one item of the section's column, so
+            the line sits close under "Fields" as the purpose's hint sits under its box,
+            and the section's own gap falls between the pair and the list. */}
+        <div className="notebook-section-intro">
+          <h3 className="notebook-section-head">Fields</h3>
+          {/* Where the settings say that arranging a select's options rearranges every list
+              sorted by it (`fieldSortsByOptions`). A line, not a tip on "Sort A–Z", which is
+              where it was first: a tip is never drawn on a phone, that one gave way to
+              "Already in A–Z order" for exactly the lists already in it, and it was read out
+              as describing a button it did not describe. Once for the section, not under
+              each field's options, where a notebook with four selects said it four times.
+              Only when some select has an order to follow: a multi-select does not sort
+              this way, and a lone option has none. */}
+          {list.some((f) => fieldSortsByOptions(f.type) && f.options.length > 1) && (
+            <p className="muted small notebook-section-hint">Notes sorted by a Select field follow the order of its options.</p>
+          )}
+        </div>
 
         <ul className="notebook-admin field-admin">
           {list.map((field, index) => (
