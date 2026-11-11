@@ -1,4 +1,5 @@
 import { OPERATOR_PLACEHOLDER } from '@unbent/shared';
+import { escapeHtml } from './html.js';
 import { frontPageOf, operatorContactOf } from './instance.js';
 import { instanceLabelOf } from '../routes/auth.js';
 import type { RawEnv } from '../types.js';
@@ -37,7 +38,7 @@ export const WHY_PATH = '/why';
 /**
  * Every page the build writes a static copy of, and the file it wrote it to: the story,
  * the features page, the comparisons, pricing and support (`PAGES` in the web app's
- * `prerender.tsx`, which this must match).
+ * `prerender.tsx`, which this must match; `prerender.test.tsx` there holds the two together).
  *
  * Flat file names rather than a `compare/` directory keep each copy off its page's own
  * address. They do not keep the asset layer away from it: that answers the file's name
@@ -239,11 +240,6 @@ export function fillOperator(page: string, env: Pick<RawEnv, 'OPERATOR_NAME' | '
   return page
     .replaceAll(OPERATOR_PLACEHOLDER.name, escapeHtml(operator.name))
     .replaceAll(OPERATOR_PLACEHOLDER.email, escapeHtml(operator.email));
-}
-
-/** For text and attribute values alike: every placeholder sits in one or the other. */
-function escapeHtml(value: string): string {
-  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 function html(body: string): Response {

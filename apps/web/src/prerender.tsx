@@ -73,7 +73,8 @@ export interface PrerenderedPage {
  * Each page's file is flat, `compare-joplin.html` rather than `compare/joplin.html`. The
  * asset layer still serves each at its name without `.html`, raw; why that is left so is
  * on the Worker's `PRERENDERED` (`apps/api/src/lib/front-pages.ts`), which names the
- * same files and must be kept in step, as its `FRONT_FILE` must with the front page's.
+ * same files and must be kept in step, as its `FRONT_FILE` must with the front page's
+ * (`prerender.test.tsx` fails when they are not).
  */
 export const PAGES: Record<string, PrerenderedPage> = {
   '/': { component: FrontPage, meta: FRONT_META, file: 'front-page.html' },

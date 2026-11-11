@@ -1,3 +1,5 @@
+import { escapeHtml } from './html.js';
+
 /**
  * The email that carries a sign-in code.
  *
@@ -46,6 +48,8 @@ const SUBJECT = 'Your Unbent sign-in code';
 const FINE_PRINT = 'Do not share it with anyone. It expires in five minutes and can be used once. If you did not ask to sign in, you can ignore this email.';
 
 export function signInCodeEmail(otp: string): SignInCodeEmail {
+  // Better Auth's codes are digits, so this changes nothing today. It is here so that a
+  // longer or alphanumeric code (a plugin option away) can never become markup.
   const code = escapeHtml(otp);
   return {
     subject: SUBJECT,
@@ -70,16 +74,4 @@ export function signInCodeEmail(otp: string): SignInCodeEmail {
 </body>
 </html>`,
   };
-}
-
-/**
- * Better Auth's codes are digits, so this changes nothing today. It is here so that a
- * longer or alphanumeric code (a plugin option away) can never become markup.
- */
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
 }
