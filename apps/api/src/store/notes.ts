@@ -2277,6 +2277,10 @@ export class NotesStore {
      * aggregate, so a note matching in its body and in a tag came back with the tag's
      * snippet and "tagged X" under it whenever the tag's bm25 happened to be the smaller
      * number. Then a window function, in the one statement; now the first row seen.
+     *
+     * Every tier takes the held list, the note tier too, where it is always empty: the
+     * four are run by one loop with one set of binds, and a statement handed a bind it
+     * has no parameter for is refused.
      */
     const tiers: Record<keyof typeof SEARCH_TIERS, string> = {
       note: `SELECT ${tierColumns('note', 'n', 'vtab')}
