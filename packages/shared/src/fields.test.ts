@@ -12,6 +12,7 @@ import {
   fieldNameSchema,
   fieldRangeBound,
   fieldSortKey,
+  fieldSortsByOptions,
   fieldSortsNumerically,
   fieldsByName,
   formatFieldFilter,
@@ -362,6 +363,14 @@ describe('fieldSortKey', () => {
     value,
     notebookId: 'nb',
     notebook: 'Coupons',
+  });
+
+  it('only a select sorts by its options\u2019 order', () => {
+    expect(fieldSortsByOptions('select')).toBe(true);
+    // A multi-select's stored text is its JSON list; see `fieldSortsByOptions`.
+    for (const t of ['multiselect', 'text', 'number', 'date', 'checkbox', 'url'] as const) {
+      expect(fieldSortsByOptions(t)).toBe(false);
+    }
   });
 
   it('numeric types sort by their shadow', () => {

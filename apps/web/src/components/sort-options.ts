@@ -76,6 +76,11 @@ export interface FieldSortDirection {
  * table's headers do on a first click. A rating and an amount are numbers underneath and
  * read fine as one.
  *
+ * A select sorts in its options' own order, the one the notebook's settings and the cell's
+ * menu list them in (`fieldSortsByOptions`), so its ends are that order and its reverse.
+ * A–Z over a column that ran Queued, Started, Done would be a label that is plainly wrong, and
+ * "First–last" beside a column of dates' "Newest" would read as one of those.
+ *
  * A multi-select sorts by its stored list, which puts it in order of its first option; A–Z
  * says that well enough.
  */
@@ -95,6 +100,11 @@ export function fieldSortDirections(type: FieldType): [FieldSortDirection, Field
       return [
         { order: 'desc', label: 'Checked', phrase: 'checked first' },
         { order: 'asc', label: 'Unchecked', phrase: 'unchecked first' },
+      ];
+    case 'select':
+      return [
+        { order: 'asc', label: 'In order', phrase: 'in order' },
+        { order: 'desc', label: 'Reversed', phrase: 'reversed' },
       ];
     default:
       return [

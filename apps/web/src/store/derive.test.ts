@@ -62,6 +62,27 @@ describe('derive', () => {
     expect(list(s, {}, { sortField: 'amount', order: 'desc' }).map((r) => r.id)).toEqual(['a', 'b', 'e', 'c']);
   });
 
+  it('sorts by a select in its options\u2019 order, with values that are no longer options after them, then the valueless', () => {
+    // The store's test of the same name, value for value: an order no alphabet gives,
+    // two options apart only by case, two values retired, two notes with none.
+    const status = { id: 'status', notebookId: 'nb3', name: 'Status', type: 'select' as const, options: ['Want to Watch', 'Watching', 'watched', 'Watched', 'Gave Up'], scale: null, currency: null, position: 0 };
+    const held = ['Watched', 'Want to Watch', null, 'Gave Up', 'Watching', 'watched', 'Want to Watch', null, 'Old', 'Watching', 'Ancient'];
+    const watching: Snapshot = {
+      ...s,
+      notebooks: [nb('nb3', 'Watch List', [status])],
+      notes: held.map((value, i) =>
+        note(`n${String(i).padStart(2, '0')}`, {
+          notebookId: 'nb3',
+          ...(value ? { fields: [{ fieldId: 'status', name: 'Status', type: 'select', value, notebookId: 'nb3', notebook: 'Watch List' }] } : {}),
+        }),
+      ),
+    };
+    const at = (rows: { id: string }[]) => rows.map((r) => Number(r.id.slice(1)));
+    expect(at(list(watching, {}, { sortField: 'status', order: 'asc' }))).toEqual([1, 6, 4, 9, 5, 0, 3, 10, 8, 2, 7]);
+    // Descending turns the options round and each run with them; the two tails stay last.
+    expect(at(list(watching, {}, { sortField: 'status', order: 'desc' }))).toEqual([3, 0, 5, 9, 4, 6, 1, 8, 10, 7, 2]);
+  });
+
   it('filters by notebook (case-insensitively, and unfiled), by tags ANDed, by field, and by date on the sort\'s date', () => {
     expect(list(s, { notebook: 'RECEIPTS' }, {}).map((r) => r.id)).toEqual(['b', 'a']);
     expect(list(s, { notebook: '[unfiled]' }, {}).map((r) => r.id)).toEqual(['e']);

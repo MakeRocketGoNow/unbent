@@ -7,6 +7,7 @@ import {
   sameName,
   fieldRangeBound,
   fieldSortKey,
+  fieldSortsByOptions,
   fieldSortsNumerically,
   parseFieldFilter,
   startOfDay,
@@ -317,6 +318,12 @@ export function comparator(ordering: ListOrdering, trashed: boolean, sortField: 
   const sort = ordering.sort ?? DEFAULT_NOTE_SORT;
   const descending = trashed || (ordering.order ?? 'desc') === 'desc';
   const dir = descending ? -1 : 1;
+  // A select orders by where its options stand in the notebook's settings, not by their
+  // text; see `fieldSortsByOptions`. Ranked once here: the comparator runs for every pair.
+  const rank =
+    sortField && fieldSortsByOptions(sortField.type)
+      ? new Map(sortField.options.map((option, i) => [option, i]))
+      : null;
   return (a: LocalNote, b: LocalNote): number => {
     let c: number;
     if (trashed) {
@@ -330,7 +337,16 @@ export function comparator(ordering: ListOrdering, trashed: boolean, sortField: 
       const vb = kb !== '';
       if (va !== vb) return va ? -1 : 1;
       if (!va) return dir * (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
-      c = fieldSortsNumerically(sortField.type) ? Number(ka) - Number(kb) : byNameNoCase(String(ka), String(kb));
+      if (rank) {
+        // A value that is no longer an option follows every option, whichever direction,
+        // and orders as text among its own kind: the store's last runs before the valueless.
+        const ra = rank.get(String(ka));
+        const rb = rank.get(String(kb));
+        if ((ra === undefined) !== (rb === undefined)) return ra === undefined ? 1 : -1;
+        c = ra === undefined || rb === undefined ? byNameNoCase(String(ka), String(kb)) : ra - rb;
+      } else {
+        c = fieldSortsNumerically(sortField.type) ? Number(ka) - Number(kb) : byNameNoCase(String(ka), String(kb));
+      }
     } else if (sort === 'title') {
       c = byNameNoCase(a.title, b.title);
     } else if (sort === 'updated') {

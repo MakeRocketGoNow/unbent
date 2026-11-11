@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { runInDurableObject } from 'cloudflare:test';
-import { REVISIONS_KEPT, UNFILED, encodeCursor } from '@unbent/shared';
+import { REVISIONS_KEPT, UNFILED, encodeCursor, fieldSortKey } from '@unbent/shared';
 import { beginDump } from '@unbent/api/lib/dump';
 import { DUMP_TABLES } from '@unbent/api/store/tables';
 import type { ViewsStore } from '@unbent/api/store/views';
@@ -425,6 +425,60 @@ describe('notes: listing and counting', () => {
     expect(page2[1]!.id).toBe(valuelessIds[0]);
     const page3 = await stub.list({ limit: 2, sortField, order: 'asc', cursor: `\u001F${page2[1]!.id}` });
     expect(page3.map((n) => n.id)).toEqual(valuelessIds.slice(1, 3));
+  });
+
+  it('sorts by a select in its options\u2019 order, not their text, paged across every seam', async () => {
+    const { stub } = freshStore('selectsort');
+    const nb = (await stub.createNotebook('Watch List'))!;
+    // An order no alphabet gives, and two options that differ only by case: the index
+    // the runs seek is caseless, and a note must still land in one run.
+    const options = ['Want to Watch', 'Watching', 'watched', 'Watched', 'Gave Up'];
+    const status = (await stub.createField(nb.id, { name: 'Status', type: 'select', options })) as { id: string };
+    const held = ['Watched', 'Want to Watch', null, 'Gave Up', 'Watching', 'watched', 'Want to Watch', null, 'Old', 'Watching', 'Ancient'];
+    const ids: string[] = [];
+    for (const [i, value] of held.entries()) {
+      // The two that are no longer options are stored while they still are.
+      const created = await stub.create(
+        note({ title: `${value ?? 'None'} ${i}`, notebook: 'Watch List', ...(value && options.includes(value) ? { fields: { [status.id]: value } } : {}) }),
+      );
+      ids.push(created.id);
+    }
+    await runInDurableObject(stub, (_i, state) => {
+      for (const [i, value] of held.entries()) {
+        if (value && !options.includes(value)) {
+          state.storage.sql.exec(`INSERT INTO note_fields (note_id, field_id, value_text) VALUES (?1, ?2, ?3)`, ids[i]!, status.id, value);
+        }
+      }
+    });
+    const sortField = (await stub.fieldById(status.id))!;
+
+    const walk = async (order: 'asc' | 'desc', limit: number) => {
+      const titles: string[] = [];
+      let cursor: string | undefined;
+      for (let page = 0; page < 20; page++) {
+        const items = await stub.list({ limit, sortField, order, cursor });
+        titles.push(...items.map((n) => n.title));
+        if (items.length < limit) break;
+        const last = items[items.length - 1]!;
+        cursor = encodeCursor(fieldSortKey(sortField, last.fields), last.id);
+      }
+      return titles;
+    };
+    // Within an option, and among the valueless, by id; ids are random, so the titles
+    // expected are put in id order rather than written down.
+    const byId = (...at: number[]) => at.sort((a, b) => (ids[a]! < ids[b]! ? -1 : 1)).map((i) => `${held[i] ?? 'None'} ${i}`);
+    const down = (titles: string[]) => [...titles].reverse();
+    const asc = [...byId(1, 6), ...byId(4, 9), 'watched 5', 'Watched 0', 'Gave Up 3', 'Ancient 10', 'Old 8', ...byId(2, 7)];
+    // Descending turns the options round and each run with them, and leaves the two
+    // tails where they were: values that are no longer options, then no value at all.
+    const desc = ['Gave Up 3', 'Watched 0', 'watched 5', ...down(byId(4, 9)), ...down(byId(1, 6)), 'Old 8', 'Ancient 10', ...down(byId(2, 7))];
+    for (const limit of [1, 2, 3, 50]) {
+      expect(await walk('asc', limit), `asc by ${limit}`).toEqual(asc);
+      expect(await walk('desc', limit), `desc by ${limit}`).toEqual(desc);
+    }
+    // A filter still applies inside each run.
+    const filtered = await stub.list({ limit: 50, sortField, order: 'asc', fields: [{ fieldId: status.id, op: 'eq', value: 'Watching' }] });
+    expect(filtered.map((n) => n.title)).toEqual(byId(4, 9));
   });
 
   it('lists the trash newest-deleted first and counts it from the stored totals', async () => {
@@ -1261,6 +1315,7 @@ describe('rows read on an archive-sized store', () => {
       return { label, rowsRead, rowsWritten };
     };
     const sortField = (await stub.fieldById('amount'))!;
+    const kindField = (await stub.fieldById('kind'))!;
     const now = Date.now();
     let held = 0;
     const results = [
@@ -1278,6 +1333,19 @@ describe('rows read on an archive-sized store', () => {
         return stub.exportPage({ limit: 100, sort: 'created', ids }, { sort: 'created', ids });
       }),
       await measure('field sort page', () => stub.list({ limit: 50, notebook: 'Notebook 0', sortField })),
+      // Off the end of the valued notes, where the valueless run reads the notebook: the
+      // dear page of any field sort, and the measure the select's own is held against.
+      await measure('field sort page, past the last value', () =>
+        stub.list({ limit: 50, notebook: 'Notebook 0', sortField, order: 'asc', cursor: encodeCursor(2995, 'n02995') })),
+      // A select sorts in its options' order, a run per option: a page must cost what
+      // one option's does however many options there are, at any depth, and only the
+      // page that runs off the end of the valued notes may read the notebook.
+      await measure('select sort page', () => stub.list({ limit: 50, notebook: 'Notebook 0', sortField: kindField, order: 'asc' })),
+      await measure('select sort page, descending', () => stub.list({ limit: 50, notebook: 'Notebook 0', sortField: kindField, order: 'desc' })),
+      await measure('select sort page, deep', () =>
+        stub.list({ limit: 50, notebook: 'Notebook 0', sortField: kindField, order: 'asc', cursor: encodeCursor('Fuel', 'n01505') })),
+      await measure('select sort page, past the last value', () =>
+        stub.list({ limit: 50, notebook: 'Notebook 0', sortField: kindField, order: 'asc', cursor: encodeCursor('Fuel', 'n02965') })),
       // The tags of a set, counted within it: the cost is the set's, so these are the
       // three sizes it can be: a notebook of six hundred, one of thirty, and a tag on three.
       await measure('tag counts in a big notebook', () => stub.tagCounts({ notebook: 'Notebook 3' })),
@@ -1454,6 +1522,14 @@ describe('rows read on an archive-sized store', () => {
       // live notes would read three thousand before it started on the files.
       'export page of named notes': 1700,
       'field sort page': 600,
+      'field sort page, past the last value': 1300,
+      // The field sort page's, and a row more a note for reading the page by id.
+      'select sort page': 700,
+      'select sort page, descending': 700,
+      'select sort page, deep': 700,
+      // The notebook, as above, with a row for each value held to find the retired ones,
+      // and this page has fifty valueless notes on it where that one had none.
+      'select sort page, past the last value': 2200,
       // A notebook's tags cost about two and a half rows a note (the note, its links)
       // and no more: 1,489 for 594 notes, 77 for 30 (2026-10-04). A plan that started from
       // the links would read the account's 1,500 of them whatever the notebook, so the

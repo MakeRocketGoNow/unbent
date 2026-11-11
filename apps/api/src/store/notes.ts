@@ -41,6 +41,7 @@ import {
   type SearchResult,
   type StaleNote,
   DEFAULT_NOTE_SORT,
+  fieldSortsByOptions,
   foldNoCase,
   leastUsedColor,
 } from '@unbent/shared';
@@ -378,6 +379,12 @@ export class NotesStore {
     const binds: Bind[] = [];
     // Bound first, so the page can name it as ?1 whatever else the filters bind later.
     if (byField) binds.push(byField.id);
+    // A select's options, in the order the notebook's settings give them, which is the
+    // order it sorts in; see `fieldSortsByOptions`. One bind holding the JSON list, since
+    // a select may have a hundred options and a statement binds a hundred values.
+    const options = byField && fieldSortsByOptions(byField.type) ? byField.options : undefined;
+    if (options) binds.push(JSON.stringify(options));
+    const optionsBind = `?${binds.length}`;
 
     const decoded = cursor ? decodeCursor(cursor) : null;
     /**
@@ -411,10 +418,16 @@ export class NotesStore {
     const pastValueless = byField && decoded?.key === '';
     let valuedCursor = '';
     let valuelessCursor = '';
+    // A select's valued cursor is its value and the note's id, bound apart: which run
+    // that resumes is `pageByOptions`'s to say.
+    let optionCursor = '';
     if (byField && decoded) {
       if (pastValueless) {
         binds.push(decoded.id);
         valuelessCursor = `n.id ${op} ?${binds.length}`;
+      } else if (options) {
+        binds.push(decoded.id);
+        optionCursor = `sf.note_id ${op} ?${binds.length}`;
       } else {
         valuedCursor = pastCursor(sortKey, 'sf.note_id');
       }
@@ -473,6 +486,26 @@ export class NotesStore {
                         ${valuelessCursor ? `AND ${valuelessCursor}` : ''}
                   ORDER BY n.id ${direction}
                   LIMIT ${limitBind})`;
+      if (options) {
+        return this.pageByOptions(
+          {
+            options,
+            optionsBind,
+            after: optionCursor ? { value: String(decoded!.key), past: optionCursor } : null,
+            valuelessCursor,
+            pastValueless: !!pastValueless,
+            where,
+            sortKey,
+            column: spec.column,
+            direction,
+            descending,
+            columns,
+            binds,
+            limit,
+          },
+          opts,
+        );
+      }
       page = pastValueless ? valueless : `${valued} UNION ALL ${valueless} LIMIT ${limitBind}`;
     } else {
       page = `SELECT ${columns}, ${sortKey} AS sort_key
@@ -500,6 +533,121 @@ export class NotesStore {
       page,
       binds,
       `${byField ? '(n.sort_key IS NULL) ASC, ' : ''}n.sort_key ${direction}, n.id ${direction}`,
+      { compact: opts.compact, compactFields: opts.compactFields },
+    );
+  }
+
+  /**
+   * A page sorted by a select, which orders by its options' own order rather than their
+   * text (`fieldSortsByOptions`); the rest of `pageRows` has bound the filters and read
+   * the cursor, and hands both over.
+   *
+   * No index holds that order. `ORDER BY CASE` over the options would be the single
+   * query `pageRows` describes again: every value of the field read and sorted for each
+   * page. So the valued run becomes one run per option, in the options' order. Each is
+   * a seek into the same index on the field and that one text, already in id order, and
+   * a run is only made when the ones before it left the page short. A page costs what
+   * it did, and an option nobody holds costs a seek that finds nothing.
+   *
+   * The runs are statements of their own, made from here, and not arms of one UNION ALL:
+   * the object's SQLite refuses a compound select of more than a handful of terms ("too
+   * many terms in compound SELECT" at seven), and a select may have a hundred options.
+   * Statements inside one call are not requests, and what is metered is the rows, which
+   * are the same either way. Each run answers ids only; the page is then those ids, in
+   * the order found, read whole by `summaryRows`, at one more row per note.
+   *
+   * The option is compared twice: under NOCASE, which is the index's collation and what
+   * makes it a seek, and exactly, because options are distinct by case ("read" beside
+   * "Read") and a note must fall in one run only. It is named by its place in the one
+   * bound list, never written into the statement.
+   *
+   * Last of the valued runs, in both directions, are the values that are no longer
+   * options, in text order, a run for each as for an option. Which values those are is
+   * read first, from the index alone: a row per value held, and nothing after it when
+   * every value is an option, which is nearly always. Asked as one run with
+   * `NOT IN` the options, it joined every value's note to test the filters before it
+   * could let the value go, twice the rows to find nothing. Like the valueless run
+   * after it, this is reached on the last page or two, where a field sort already reads
+   * the notebook.
+   *
+   * A cursor on an option resumes that option's run past its note and takes the options
+   * after it whole; one on a retired value is past every option.
+   */
+  private pageByOptions(
+    q: {
+      options: string[];
+      optionsBind: string;
+      /** The cursor's value and the condition that passes its note, when it is on a valued row. */
+      after: { value: string; past: string } | null;
+      valuelessCursor: string;
+      pastValueless: boolean;
+      where: string;
+      sortKey: string;
+      column: string;
+      direction: string;
+      descending: boolean;
+      columns: string;
+      binds: Bind[];
+      limit: number;
+    },
+    opts: Pick<ListOptions, 'compact' | 'compactFields'>,
+  ): SummaryRow[] {
+    const ids: string[] = [];
+    const binds = [...q.binds];
+    // The room left is bound last and every run names it, so the binds a run does not
+    // use (another run's cursor) are still counted for by the highest one it does.
+    const take = (run: string): void => {
+      if (ids.length >= q.limit) return;
+      const left = q.limit - ids.length;
+      for (const r of this.sql.exec<{ id: string }>(`${run} LIMIT ?${binds.length + 1}`, ...binds, left)) ids.push(r.id);
+    };
+    /** The runs for `values`, which `list` (a bound JSON list) holds at the same places. */
+    const takeEach = (values: string[], list: string): void => {
+      const order = values.map((_, i) => i);
+      if (q.descending) order.reverse();
+      const at = q.after ? values.indexOf(q.after.value) : -1;
+      for (const i of at >= 0 ? order.slice(order.indexOf(at)) : order) {
+        const value = `json_extract(${list}, '$[${i}]')`;
+        take(`SELECT sf.note_id AS id
+                FROM note_fields sf CROSS JOIN notes n ON n.id = sf.note_id
+               WHERE sf.field_id = ?1 AND ${q.sortKey} = ${value} AND ${q.column} = ${value} AND ${q.where}
+                     ${i === at ? `AND ${q.after!.past}` : ''}
+               ORDER BY sf.note_id ${q.direction}`);
+      }
+    };
+    if (!q.pastValueless) {
+      const onRetired = q.after !== null && !q.options.includes(q.after.value);
+      if (!onRetired) takeEach(q.options, q.optionsBind);
+      if (ids.length < q.limit) {
+        const held = this.sql.exec<{ value: string }>(
+          `SELECT DISTINCT ${q.column} AS value FROM note_fields sf WHERE sf.field_id = ?1 AND ${q.column} IS NOT NULL`,
+          binds[0]!,
+        );
+        const retired = held
+          .map((r) => r.value)
+          .filter((v) => !q.options.includes(v))
+          .sort((a, b) => {
+            const [fa, fb] = [foldNoCase(a), foldNoCase(b)];
+            return fa < fb ? -1 : fa > fb ? 1 : a < b ? -1 : a > b ? 1 : 0;
+          });
+        if (retired.length > 0) {
+          binds.push(JSON.stringify(retired));
+          // Past the options, a cursor that is on one of them resumes nothing here.
+          if (!onRetired) q = { ...q, after: null };
+          takeEach(retired, `?${binds.length}`);
+        }
+      }
+    }
+    take(`SELECT n.id FROM notes n
+           WHERE ${q.where}
+             AND NOT EXISTS (SELECT 1 FROM note_fields sf
+                              WHERE sf.note_id = n.id AND sf.field_id = ?1 AND ${q.column} IS NOT NULL)
+                 ${q.valuelessCursor ? `AND ${q.valuelessCursor}` : ''}
+           ORDER BY n.id ${q.direction}`);
+    return this.summaryRows(
+      `SELECT ${q.columns}, j.key AS sort_key FROM json_each(?1) j CROSS JOIN notes n ON n.id = j.value`,
+      [JSON.stringify(ids)],
+      'n.sort_key ASC',
       { compact: opts.compact, compactFields: opts.compactFields },
     );
   }
