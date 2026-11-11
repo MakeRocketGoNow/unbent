@@ -11338,10 +11338,13 @@ button.settings-nav-item {
 
 .front-section { padding-top: var(--front-gap); }
 
+/* Balanced, as the headline is: a heading too long for a phone's line otherwise leaves
+   its last word alone on a second one. */
 .front-section h2 {
   margin: 0;
   font-size: 1.6rem;
   letter-spacing: -0.015em;
+  text-wrap: balance;
 }
 
 .front-intro {
