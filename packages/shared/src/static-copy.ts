@@ -4,7 +4,7 @@
  * The build writes the public pages out as HTML (`prerender.tsx` in the web app) and
  * cannot know who runs the instance it will be served from: that is `OPERATOR_NAME` and
  * `OPERATOR_EMAIL` on the Worker. Most copies simply leave the operator out, and the app
- * adds what it draws from them once it runs (the footer's Privacy and Terms links). The
+ * adds what it draws from them once it runs (the footer's "Unbent is run by" line). The
  * support page cannot: its first sentence is the operator's address, and a copy without
  * it would say something else there and change under the reader once the app took over,
  * and a crawler would index a support page with no way to reach anyone.
