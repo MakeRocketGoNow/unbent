@@ -21,15 +21,15 @@
     "release": "wrangler deploy --env \"\""
   },
   "dependencies": {
-    "@better-auth/mcp": "^1.7.10",
-    "@better-auth/oauth-provider": "^1.7.10",
-    "@better-auth/passkey": "1.7.10",
+    "@better-auth/mcp": "^1.7.21",
+    "@better-auth/oauth-provider": "^1.7.21",
+    "@better-auth/passkey": "1.7.21",
     "@hono/zod-validator": "^0.9.1",
     "@modelcontextprotocol/server": "^2.4.0",
     "@unbent/clip": "workspace:*",
     "@unbent/enex": "workspace:*",
     "@unbent/shared": "workspace:*",
-    "better-auth": "^1.7.10",
+    "better-auth": "^1.7.21",
     "hono": "^4.13.18",
     "zod": "^4.6.7"
   },

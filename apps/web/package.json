@@ -15,8 +15,8 @@
     "compat:bump": "UNBENT_COMPAT=bump vitest run src/compat/contract.test.ts"
   },
   "dependencies": {
-    "@better-auth/oauth-provider": "^1.7.10",
-    "@better-auth/passkey": "1.7.10",
+    "@better-auth/oauth-provider": "^1.7.21",
+    "@better-auth/passkey": "1.7.21",
     "@codemirror/commands": "^6.11.1",
     "@codemirror/lang-markdown": "^6.5.2",
     "@codemirror/language": "^6.13.1",
@@ -36,7 +36,7 @@
     "@unbent/seed": "workspace:*",
     "@unbent/shared": "workspace:*",
     "@zip.js/zip.js": "^2.24.0",
-    "better-auth": "^1.7.10",
+    "better-auth": "^1.7.21",
     "codemirror": "^6.0.2",
     "diff": "^9.0.0",
     "downshift": "^9.5.0",
