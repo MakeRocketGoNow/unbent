@@ -188,7 +188,8 @@ async function varyOnRequester(answer: Promise<Response>): Promise<Response> {
 
 /**
  * The shell, with the addresses in its head completed: for a front page that cannot be
- * served as its copy, and for `/` with a session. A card's picture must be a whole
+ * served as its copy, and for `/`, `/pricing` and `/support` with a session
+ * (`READ_SIGNED_IN`). A card's picture must be a whole
  * address: left to the asset layer, a link unfurled in Slack with no picture, because the
  * shell names it as `/front/…` and a card is drawn by something that resolves nothing.
  * Asked for as a plain GET, for the reason `servePrerendered` gives.
