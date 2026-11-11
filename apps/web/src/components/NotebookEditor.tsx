@@ -881,13 +881,16 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
                     }
                     trailing={
                       // Faded rather than gone once the list is in order, so the row does
-                      // not change shape after a press.
+                      // not change shape after a press. Its tip is where the settings say
+                      // that the order here is the order notes sort in: a line under every
+                      // select's options would say it once per field on a page of them, and
+                      // this is the control someone who wanted the alphabet back looks for.
                       field.options.length > 1 && (
                         <Button
                           variant="quiet"
                           size="small"
                           disabled={busy || isSorted(field.options)}
-                          tip={isSorted(field.options) ? 'Already in A–Z order' : undefined}
+                          tip={isSorted(field.options) ? 'Already in A–Z order' : 'Notes sorted by this field follow the order here'}
                           onClick={() =>
                             void run(() => api.editNotebookFieldOptions(notebookId, field.id, { sort: 'alpha' }))
                           }
