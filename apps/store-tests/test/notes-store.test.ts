@@ -579,6 +579,21 @@ describe('notes: search', () => {
     expect(await stub.search('shared', 10, { notebook: 'no such notebook' })).toEqual([]);
   });
 
+  it('prepares with twenty tag filters, scope-driven and FTS-driven', async () => {
+    // SQLite 3.54.1 fails a statement whose CTE expansions open as many cursors as the
+    // expression-depth limit, 100 in workerd. Each tag filter is a subquery, so a shape
+    // that repeats the filters once per tier ran out at a dozen tags (see `search`).
+    const { stub } = freshStore('many-tags');
+    const tags = Array.from({ length: 20 }, (_, i) => `t${i}`);
+    const tagged = await stub.create(note({ title: 'Tagged', body: 'shared word', notebook: 'Small', tags }));
+    await stub.create(note({ title: 'Untagged', body: 'shared word', notebook: 'Small' }));
+
+    for (const filters of [{ tags }, { tags, notebook: 'Small' }]) {
+      expect((await stub.search('shared', 10, filters)).map((r) => r.id)).toEqual([tagged.id]);
+      expect((await stub.search('shared', 10, filters, 0)).map((r) => r.id)).toEqual([tagged.id]);
+    }
+  });
+
   it("carries each match's list row, in the search's order, for a table", async () => {
     const { stub } = freshStore('search-rows');
     const nb = (await stub.createNotebook('Receipts'))!;
