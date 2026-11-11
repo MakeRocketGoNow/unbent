@@ -18,13 +18,13 @@
     "@unbent/clip": "workspace:*",
     "@unbent/shared": "workspace:*",
     "@zip.js/zip.js": "^2.24.0",
-    "hast-util-from-html": "^2.0.3",
-    "pdfjs-dist": "^6.4.299",
+    "hast-util-from-html": "^2.1.0",
+    "pdfjs-dist": "^6.5.438",
     "saxes": "^6.0.0",
-    "unist-util-visit": "^5.1.0"
+    "unist-util-visit": "^5.2.0"
   },
   "devDependencies": {
-    "@types/node": "^26.6.5",
+    "@types/node": "^26.6.6",
     "typescript": "^7.0.2",
     "vitest": "^5.0.3"
   }
