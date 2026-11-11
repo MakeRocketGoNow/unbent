@@ -197,12 +197,18 @@ describe('socialConfig for Apple', () => {
    * `exact-or-sha256` comparison exists for.
    */
   it('verifies a native token for the bundle id, with its hashed nonce', async () => {
-    const keys = (await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, [
-      'sign',
-      'verify',
-    ])) as CryptoKeyPair;
+    const keys = (await crypto.subtle.generateKey(
+      {
+        name: 'RSASSA-PKCS1-v1_5',
+        modulusLength: 2048,
+        publicExponent: new Uint8Array([1, 0, 1]),
+        hash: 'SHA-256',
+      },
+      true,
+      ['sign', 'verify'],
+    )) as CryptoKeyPair;
     const nonce = 'raw-nonce';
-    const sign = (claims: Record<string, unknown>) => es256(keys.privateKey, claims);
+    const sign = (claims: Record<string, unknown>) => rs256(keys.privateKey, claims);
     const now = Math.floor(Date.now() / 1000);
     const claims = {
       iss: 'https://appleid.apple.com',
@@ -236,12 +242,19 @@ async function sha256Hex(value: string): Promise<string> {
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-/** A compact ES256 JWT, signed with Web Crypto rather than a JOSE library. */
-async function es256(key: CryptoKey, claims: Record<string, unknown>): Promise<string> {
+/**
+ * A compact RS256 JWT, signed with Web Crypto rather than a JOSE library.
+ *
+ * RS256 because that is what Apple signs with, and since Better Auth 1.7.12 the
+ * algorithm comes from the provider's configuration rather than the token's header: a
+ * token in any other algorithm is refused before its audience is looked at. This was
+ * ES256 until then, which passed only because the header was trusted.
+ */
+async function rs256(key: CryptoKey, claims: Record<string, unknown>): Promise<string> {
   const part = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('base64url');
-  const input = `${part({ alg: 'ES256', kid: 'test' })}.${part(claims)}`;
+  const input = `${part({ alg: 'RS256', kid: 'test' })}.${part(claims)}`;
   const signature = await crypto.subtle.sign(
-    { name: 'ECDSA', hash: 'SHA-256' },
+    { name: 'RSASSA-PKCS1-v1_5' },
     key,
     new TextEncoder().encode(input),
   );

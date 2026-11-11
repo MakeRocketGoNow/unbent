@@ -16,12 +16,12 @@
   "dependencies": {
     "@mozilla/readability": "^0.6.0",
     "@unbent/shared": "workspace:*",
-    "hast-util-from-html": "^2.0.3",
+    "hast-util-from-html": "^2.1.0",
     "hast-util-to-mdast": "^10.1.2",
-    "linkedom": "^0.18.14",
+    "linkedom": "^0.18.15",
     "mdast-util-gfm": "^3.1.0",
-    "mdast-util-to-markdown": "^2.2.0",
-    "unist-util-visit": "^5.1.0"
+    "mdast-util-to-markdown": "^2.2.3",
+    "unist-util-visit": "^5.2.0"
   },
   "devDependencies": {
     "typescript": "^7.0.2",

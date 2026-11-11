@@ -42,7 +42,9 @@ on 0.12. `pins.test.ts` checks it is exact as well. Pick the versions that agree
 persistence-core 0.4.3 (browser persistence 0.2.28) and offline-transactions 1.0.61.
 `npm view <pkg>@<v> dependencies` says which core each release is built on.
 
-**Not 0.12, and still not as of 0.15.1 (2026-10-16).** 0.12.0 removes `begin({ immediate })`
+**Not 0.12, and still not as of 1.0.0-rc.1.5 (2026-11-11).** The 1.0 release candidate is
+npm's `latest` now, and `offline-transactions` 1.2 peers on `^1.0.0-rc.0`; neither brings
+`begin({ immediate })` back, so `pnpm outdated` listing them is not a reason to move. 0.12.0 removes `begin({ immediate })`
 from the sync API and queues sync writes behind any mutation in flight; nothing since brings
 either back. `feedControls` begins every transaction immediate because, without it, a page of
 the feed waited on the outbox entry that was itself waiting for that page: a second queued
@@ -70,7 +72,7 @@ it only made every move of the family one package wider. Adding it back for `use
 puts it in this family, at the version built on the same core.
 
 **`@journeyapps/wa-sqlite` ^1.** The persistence adapter peers on `^1.4.1` (still so in
-0.2.35, 2026-10-16). 2.0 updates PowerSync's own SQLite extension and their write-ahead VFS, neither
+0.2.37 and in 1.0.0-rc.1.5, 2026-11-11). 2.0 updates PowerSync's own SQLite extension and their write-ahead VFS, neither
 of which is used here. Released when the adapter's peer range takes 2; Dependabot ignores
 the major until then.
 
@@ -85,9 +87,31 @@ runtime modules to that. vite-plugin-pwa 2.0.0 still carries Workbox 7.4.1.
 ## Auth: Better Auth
 
 **The family moves in lockstep:** `better-auth`, `@better-auth/mcp`,
-`@better-auth/oauth-provider` and `@better-auth/passkey`, all at one version (1.7.10). A core
+`@better-auth/oauth-provider` and `@better-auth/passkey`, all at one version (1.7.21). A core
 a version ahead of its plugins breaks the types in `apps/api/src/auth.ts`. `passkey` is
 written exactly, the others with `^`; move them all together either way.
+
+## The Workers runtime: Wrangler and the vitest plugin
+
+**`wrangler` 4.151.1 and `@cloudflare/vitest-plugin` 1.4.4, both exactly.** Each brings its
+own workerd, and every workerd from 1.20261106 on carries SQLite 3.54.1 (workerd #8239),
+under which the store's search fails with "VIEWs and/or subqueries nested too deep". The
+statement is `NotesStore.search`'s four tiers, MATERIALIZED CTEs feeding one another
+(`note_hits`, `early`, `earlier`, `combined`, `best`), and it fails whatever the data.
+Measured 2026-11-11: on plugin 1.8.0 (workerd 1.20261110.1) eleven store tests fail, every
+one in a search, on vitest 5.0.3 as on 5.1.0; with that plugin's miniflare forced back to
+5.20261104.0-beta, the attachments file's three failures pass. Wrangler matters as much as
+the plugin, because `pnpm dev` runs the Worker on Wrangler's workerd, so search on a local
+instance fails the same way. The newest releases still on an older workerd are plugin 1.6.0
+and Wrangler 4.158.0 (both miniflare 5.20261104.0-beta); neither was taken, and the versions
+pinned are the ones tested.
+
+The runtime is not only local. Cloudflare's production runtime is the same workerd, so
+unbent.app gets SQLite 3.54.1 when that release is deployed, and its search with it, whatever
+this pin says. The pin keeps a local instance and the store tests on a SQLite where search
+works; the fix is to reshape the statement until it prepares on 3.54.1. Lift the pin with
+that fix: move the plugin and Wrangler to their newest, clear `node_modules/.vitest-cache`,
+and `pnpm --filter @unbent/store-tests test` must pass, search tests included.
 
 ## Tooling
 
@@ -111,6 +135,11 @@ run and takes six of the fifteen files with it ("Worker exited unexpectedly"). P
 the workspace holds one vitest; a `pnpm -r update vitest` would move them and leave two. Lift
 it when a plugin release passes `pnpm --filter @unbent/store-tests test` on the newer vitest,
 run from a cleared `node_modules/.vitest-cache`.
+
+Rechecked 2026-11-11 against vitest 5.1.0: still broken, on plugin 1.6.0 and on 1.8.0 alike,
+each losing the same eight of seventeen files to "Worker exited unexpectedly". (1.8.0 fails
+the search tests besides, for the runtime reason above.) Keep vitest at 5.0.3; plugin 1.4.4
+is exact now for the runtime's sake, which this hold also needs.
 
 ## The workflows' actions
 
