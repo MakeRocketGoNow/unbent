@@ -25,12 +25,25 @@ import { billingOn, type StripeEnv } from './stripe.js';
  * there is no policy here, so a half-configured operator is treated as none at all.
  */
 export function operatorOf(env: Env): AppConfig['operator'] | undefined {
+  const contact = operatorContactOf(env);
+  if (!contact) return undefined;
+  // From APP_URL rather than the request: the documents should give the address the
+  // operator configured, not whichever host a WebView or Tailscale name arrived on.
+  return { ...contact, host: new URL(env.APP_URL).host };
+}
+
+/**
+ * The operator's name and address under the same rule, for a caller that runs before
+ * `APP_URL` is settled: the support page's static copy (`fillOperator` in
+ * `front-pages.ts`), which must name exactly the operator the app will draw.
+ */
+export function operatorContactOf(
+  env: Pick<Env, 'OPERATOR_NAME' | 'OPERATOR_EMAIL'>,
+): { name: string; email: string } | undefined {
   const name = env.OPERATOR_NAME?.trim();
   const email = env.OPERATOR_EMAIL?.trim();
   if (!name || !email) return undefined;
-  // From APP_URL rather than the request: the documents should give the address the
-  // operator configured, not whichever host a WebView or Tailscale name arrived on.
-  return { name, email, host: new URL(env.APP_URL).host };
+  return { name, email };
 }
 
 /**

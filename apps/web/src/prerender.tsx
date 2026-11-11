@@ -8,6 +8,7 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router';
+import { OPERATOR_PLACEHOLDER, type AppConfig } from '@unbent/shared';
 import { keys } from './queries.js';
 import { FrontPage, FRONT_META } from './components/FrontPage.js';
 import { WhyPage, WHY_META } from './components/WhyPage.js';
@@ -20,6 +21,8 @@ import {
   PaperlessNgxComparison,
 } from './components/ComparePage.js';
 import { COMPARE_META, comparison } from './components/comparisons.js';
+import { PricingPage, PRICING_META } from './components/PricingPage.js';
+import { SupportPage, SUPPORT_META } from './components/SupportPage.js';
 import type { PageMeta } from './page-meta.js';
 
 /**
@@ -33,9 +36,10 @@ import type { PageMeta } from './page-meta.js';
  * its head (`apps/api/src/lib/front-pages.ts`); the app then takes over in the browser,
  * as `main.tsx` describes.
  *
- * Only the pages for people who are not signed in belong here, and not all of those.
- * The pricing page could join the list; the story, the comparisons, the features page
- * and the front page are the ones a search lands on, so they went first.
+ * Only the pages for people who are not signed in belong here. The story, the
+ * comparisons, the features page and the front page went first, as the ones a search
+ * lands on; pricing and support followed on 2026-11-11 (MAK-257), when a search listed
+ * both as "Unbent" with the front page's sentence, which is all the shell says.
  *
  * The front page is written to a file of its own, never into `index.html`: that is the
  * shell for every route of the app, so a copy of the front page there would be drawn for
@@ -51,12 +55,18 @@ import type { PageMeta } from './page-meta.js';
  * cannot know. The footer's Privacy and Terms links are therefore missing from
  * the static copy and arrive when the app runs. No session either, so the way out is the
  * trial, which is what a visitor who has never signed in should read.
+ *
+ * The support page is the one exception to "nothing of the operator": its first sentence
+ * is their address, so it is rendered with placeholders the Worker fills in
+ * (`OPERATOR_PLACEHOLDER`, whose comment says why), through the page's `config`.
  */
 export interface PrerenderedPage {
   component: FunctionComponent;
   meta: PageMeta;
   /** The file under `dist/`, which the asset layer serves for the page's address. */
   file: string;
+  /** What the page is rendered with beyond the least every page gets. */
+  config?: Partial<AppConfig>;
 }
 
 /**
@@ -78,6 +88,14 @@ export const PAGES: Record<string, PrerenderedPage> = {
     meta: comparison('paperless-ngx').meta,
     file: 'compare-paperless-ngx.html',
   },
+  '/pricing': { component: PricingPage, meta: PRICING_META, file: 'pricing.html' },
+  '/support': {
+    component: SupportPage,
+    meta: SUPPORT_META,
+    file: 'support.html',
+    // No page reads the host, so it is not a placeholder of its own.
+    config: { operator: { ...OPERATOR_PLACEHOLDER, host: '' } },
+  },
 };
 
 /** The page at `path`, as HTML for the inside of `#root`. */
@@ -92,7 +110,7 @@ export async function render(path: string): Promise<string> {
   });
   await router.load();
   const client = new QueryClient();
-  client.setQueryData(keys.config(), { providers: [], frontPage: true });
+  client.setQueryData(keys.config(), { providers: [], frontPage: true, ...page.config });
   return renderToString(
     <QueryClientProvider client={client}>
       {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
