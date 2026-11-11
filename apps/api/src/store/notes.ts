@@ -601,17 +601,37 @@ export class NotesStore {
       const left = q.limit - ids.length;
       for (const r of this.sql.exec<{ id: string }>(`${run} LIMIT ?${binds.length + 1}`, ...binds, left)) ids.push(r.id);
     };
-    /** The runs for `values`, which `list` (a bound JSON list) holds at the same places. */
+    /** Retired values' order: text as the index's NOCASE has it, then exactly. */
+    const byText = (a: string, b: string): number => {
+      const [fa, fb] = [foldNoCase(a), foldNoCase(b)];
+      return fa < fb ? -1 : fa > fb ? 1 : a < b ? -1 : a > b ? 1 : 0;
+    };
+    /**
+     * The runs for `values`, which `list` (a bound JSON list) holds at the same places.
+     *
+     * A cursor's value may have left the list since its page was read: the last note
+     * holding a retired value was edited or deleted, so the value is no longer among
+     * those held. The runs then start at the first value past it, as a key comparison
+     * would; from the top, the next page repeated every retired value before it. Only
+     * the retired list is ever asked this, and it is in `byText`'s order.
+     */
     const takeEach = (values: string[], list: string): void => {
       const order = values.map((_, i) => i);
       if (q.descending) order.reverse();
-      const at = q.after ? values.indexOf(q.after.value) : -1;
-      for (const i of at >= 0 ? order.slice(order.indexOf(at)) : order) {
+      const after = q.after;
+      const at = after ? values.indexOf(after.value) : -1;
+      const from =
+        at >= 0
+          ? order.slice(order.indexOf(at))
+          : after
+            ? order.filter((i) => (q.descending ? -1 : 1) * byText(values[i]!, after.value) > 0)
+            : order;
+      for (const i of from) {
         const value = `json_extract(${list}, '$[${i}]')`;
         take(`SELECT sf.note_id AS id
                 FROM note_fields sf CROSS JOIN notes n ON n.id = sf.note_id
                WHERE sf.field_id = ?1 AND ${q.sortKey} = ${value} AND ${q.column} = ${value} AND ${q.where}
-                     ${i === at ? `AND ${q.after!.past}` : ''}
+                     ${i === at ? `AND ${after!.past}` : ''}
                ORDER BY sf.note_id ${q.direction}`);
       }
     };
@@ -626,10 +646,7 @@ export class NotesStore {
         const retired = held
           .map((r) => r.value)
           .filter((v) => !q.options.includes(v))
-          .sort((a, b) => {
-            const [fa, fb] = [foldNoCase(a), foldNoCase(b)];
-            return fa < fb ? -1 : fa > fb ? 1 : a < b ? -1 : a > b ? 1 : 0;
-          });
+          .sort(byText);
         if (retired.length > 0) {
           binds.push(JSON.stringify(retired));
           // Past the options, a cursor that is on one of them resumes nothing here.

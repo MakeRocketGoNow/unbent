@@ -476,6 +476,21 @@ describe('notes: listing and counting', () => {
       expect(await walk('asc', limit), `asc by ${limit}`).toEqual(asc);
       expect(await walk('desc', limit), `desc by ${limit}`).toEqual(desc);
     }
+    // A cursor on a retired value nobody holds by the next page (its last note edited or
+    // deleted in between) resumes past where the value stood, not from the first retired
+    // value again: ascending, 'Ancient' is not repeated after 'Old'.
+    const old = ids[8]!;
+    await runInDurableObject(stub, (_i, state) => {
+      state.storage.sql.exec(`DELETE FROM note_fields WHERE note_id = ?1 AND field_id = ?2`, old, status.id);
+    });
+    const pastOld = await stub.list({ limit: 1, sortField, order: 'asc', cursor: encodeCursor('Old', old) });
+    expect(held[ids.indexOf(pastOld[0]!.id)] ?? null, pastOld[0]!.title).toBeNull();
+    const beforeOld = await stub.list({ limit: 1, sortField, order: 'desc', cursor: encodeCursor('Old', old) });
+    expect(beforeOld.map((n) => n.title)).toEqual(['Ancient 10']);
+    await runInDurableObject(stub, (_i, state) => {
+      state.storage.sql.exec(`INSERT INTO note_fields (note_id, field_id, value_text) VALUES (?1, ?2, 'Old')`, old, status.id);
+    });
+
     // A filter still applies inside each run.
     const filtered = await stub.list({ limit: 50, sortField, order: 'asc', fields: [{ fieldId: status.id, op: 'eq', value: 'Watching' }] });
     expect(filtered.map((n) => n.title)).toEqual(byId(4, 9));
