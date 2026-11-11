@@ -274,7 +274,24 @@ export default defineConfig({
       manifest: false,
       injectRegister: false,
       injectManifest: {
-        globPatterns: ['**/*.{html,js,mjs,css,wasm,png,svg,webmanifest}'],
+        /*
+         * `index.html` is the one page the worker keeps. Every other HTML file in the build
+         * is a public page's static copy (`PAGES` in `src/prerender.tsx`), and none of them
+         * belongs in the shell. Offline, each of those routes is the shell, which draws the
+         * same page. Online, the worker answers a page load from the network. And the
+         * fill cannot store one anyway: the asset layer answers `/compare.html` with a
+         * redirect to `/compare`, which is HTML under a name with a dot in it, so
+         * `isShellFallback` takes it for the page in disguise and the install fails.
+         *
+         * Named here rather than as a list of exclusions, which is what this was. Each new
+         * copy had to remember to join that list: the story, the features page and the
+         * front page did, the comparisons (2026-10-23), pricing and support did not, and
+         * from then on no worker installed anywhere, for anyone, signed in or not.
+         *
+         * The features page's pictures and clips (`public/features/`) are kept out by the
+         * same patterns: they are WebP, WebM and MP4, which none of them takes.
+         */
+        globPatterns: ['index.html', '**/*.{js,mjs,css,wasm,png,svg,webmanifest}'],
         globIgnores: [
           /*
            * pdf.js's pure-JavaScript stand-ins for its WebAssembly decoders, for browsers
@@ -288,26 +305,6 @@ export default defineConfig({
            * when an import starts, which the HTTP cache already covers.
            */
           '**/import-worker-*.js',
-          /*
-           * The story's static copy (`src/prerender.tsx`), a page for people who are not
-           * signed in. The shell draws the same page offline, and the asset layer answers
-           * `/why.html` with a redirect to `/why`, which a precache fill cannot store
-           * under the file's name.
-           */
-          'why.html',
-          /*
-           * The features page's static copy, for the same reason. Its pictures and clips
-           * (`public/features/`) need no entry: they are WebP, WebM and MP4, which the
-           * patterns above never take, and that is what keeps them out, not this list.
-           */
-          'features.html',
-          /*
-           * The front page's static copy, which only a visitor with no session is handed
-           * (`FRONT_FILE` in the Worker's `front-pages.ts`). Offline, `/` is the shell,
-           * which draws the same page; every install would download a copy nobody using
-           * the app is ever served.
-           */
-          'front-page.html',
           /*
            * The link-preview card (`CARD_IMAGE` in `src/page-meta.ts`), the one PNG under
            * `front/`. It is read by Slack and the like, never by the app, so every install
