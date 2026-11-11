@@ -13,7 +13,6 @@ import {
   AutofillFeatureIcon,
   DisconnectFeatureIcon,
   ExportFeatureIcon,
-  FieldsFeatureIcon,
   FilingFeatureIcon,
   OfflineFeatureIcon,
   PhoneAppsFeatureIcon,
@@ -54,11 +53,21 @@ export const FRONT_META: PageMeta = {
  * unbent.app's front page, for someone who is not signed in.
  *
  * Written for a person arriving from a link with no idea what this is, and who is not a
- * developer: someone leaving Evernote with years of scans, or dreading its next price.
+ * developer: someone with things to keep that belong nowhere. A receipt, a tax form, a
+ * gift card's balance, a film a friend named: each is in a different app, in a
+ * spreadsheet nobody opens on a phone, or in a photo that will never be found again.
+ * Until 2026-11-11 the reader was someone leaving Evernote with years of scans, and the
+ * page led with the paperless office. That reader is still answered (the second section
+ * is theirs, and the story and the comparisons are where a search for an alternative
+ * lands), but paperwork is one kind of thing the app is kept for and not the whole of
+ * it, and a page that said only paperwork was describing a filing cabinet to people who
+ * would have used it for a good deal more.
+ *
  * The order answers their questions as they come up: what this is for, what it looks
- * like, whether it will find their paperwork, what it does with AI (both the reader who
- * wants an assistant in it and the one who wants none near their notes), how their notes
- * get in, what they keep if they leave, what else is in it, and what it costs.
+ * like, what kinds of thing go in it, whether it will find their paperwork, what it does
+ * with AI (both the reader who wants an assistant in it and the one who wants none near
+ * their notes), how their notes get in, what they keep if they leave, what else is in
+ * it, and what it costs.
  *
  * The words are the buyer's, not the code's. "Markdown", "byte-identical" and the rest
  * are true and are kept, one click away in the README and the docs, where the reader who
@@ -94,10 +103,16 @@ export function FrontPage() {
           <span className="front-beat">Find anything.</span>{' '}
           <span className="front-beat">Take it all with you.</span>
         </h1>
+        {/* What "everything" is, as four things a reader has somewhere and could not lay
+            a hand on: two of them paper and two of them not, so neither the person with a
+            scanner nor the one with a list in a to-do app reads it as someone else's
+            product. The promise that nothing is held hostage left this paragraph for
+            room, and is made three times further down. */}
         <p className="front-lead">
-          Unbent keeps your notes, receipts and scanned paperwork together and finds them by
-          what they say, even a photo of a receipt. Everything is an ordinary file you can
-          download whenever you like, and if you ever stop paying, nothing is held hostage.
+          Unbent is a home for the things that don&apos;t have one: the receipt, the tax
+          form, the gift card balance, the film a friend told you to watch. It finds them by
+          what they say, even a photo of a receipt, and every one is an ordinary file you
+          can take with you.
         </p>
         <div className="front-cta">
           {/* An anchor wearing the filled button's shape, which the stylesheet allows for
@@ -131,15 +146,30 @@ export function FrontPage() {
         <Link to={FEATURES}>See every feature, in pictures</Link>
       </p>
 
-      {/* The lead section is the paperless office, named as such, because it is the use
-          the app was built for and the one its buyer is searching for. Its four cards are
-          the workflow in order (a scan comes in, is filed, is found, is counted), two by
-          two rather than three and an orphan. */}
+      {/* The first section is the range, shown: the lead named four things with no home,
+          and this is where each of them goes. Tables of sample rows and no cards of
+          prose, because "a notebook with its own columns" takes a sentence to say and a
+          glance to see. */}
+      <Section
+        title="A notebook for each kind of thing"
+        intro="Give a notebook its own columns (a date, an amount, a rating, a choice) and it is a list you can sort, filter and add up, not a pile to dig through. Start with one, and add the next when something else needs a home."
+      >
+        <div className="front-samples">
+          {SAMPLES.map((sample) => (
+            <Sample key={sample.name} sample={sample} />
+          ))}
+        </div>
+      </Section>
+
+      {/* The paperless office, named as such, because it is the use the app was first
+          built for and one its buyer is searching for. Its three cards are the workflow
+          in order: a scan comes in, is filed, is found. There was a fourth, the notebook
+          as a spreadsheet, until the section above took its claim and showed it. */}
       <Section
         title="Your paperless office"
         intro="Scan the bills, receipts, manuals and letters once and recycle the paper. Unbent files them, tags them, and finds them by what is written on them."
       >
-        <div className="front-grid front-grid-pairs">
+        <div className="front-grid">
           <Point icon={<ScanInFeatureIcon />} title="Scan it, drop it in">
             Drop a stack of PDFs or photos on the list and each becomes a note with the file
             attached. Install the app and your scanner can send straight to it.
@@ -152,10 +182,6 @@ export function FrontPage() {
           <Point icon={<SearchFilesFeatureIcon />} title="Search inside your files">
             Search reaches the text in every PDF you attach, and pictures and scans are read
             too, so a photo of a receipt turns up under the name of the shop.
-          </Point>
-          <Point icon={<FieldsFeatureIcon />} title="Notebooks that work like a spreadsheet">
-            Give a notebook dates, amounts, ratings or choices, then see it as a table and
-            filter by any of them. Receipts by month, warranties by when they run out.
           </Point>
         </div>
       </Section>
@@ -486,6 +512,155 @@ function Point({
       <h3>{title}</h3>
       <p>{children}</p>
       {help}
+    </div>
+  );
+}
+
+/** A sample's cell: its text, or a rating, which is drawn as stars and read out as a number. */
+type SampleCell = string | { stars: number };
+
+interface NotebookSample {
+  emoji: string;
+  name: string;
+  /** Three, the first the one a row is known by. */
+  columns: [string, string, string];
+  /** Which column holds money, and so is set against the right edge. */
+  money?: 1 | 2;
+  rows: [SampleCell, SampleCell, SampleCell][];
+}
+
+/**
+ * The notebooks the first section shows: six kinds of thing with no other home, each as
+ * the first rows of its table. Paper and lists take turns, so whichever the reader came
+ * for is in the first two, and a phone, which shows four of the six (`.front-sample` in
+ * the stylesheet), still shows both.
+ *
+ * Everything in them is invented, and is the demo library's where it has the notebook
+ * (`packages/seed/`): the placeholder businesses, titles nobody made, restaurants that
+ * are not there. Three columns each and values short enough to sit whole in the
+ * narrowest card; a real notebook has as many fields as it likes, and the features page
+ * shows one in the app. No date carries a year, so the page does not go stale by
+ * standing still.
+ *
+ * Tables in the page and not pictures of the app's table view: six pictures in two
+ * themes would be twelve downloads to say what eighteen rows of text say, and one
+ * picture cannot show the range, which is the claim.
+ */
+const SAMPLES: NotebookSample[] = [
+  {
+    emoji: '🧾',
+    name: 'Receipts',
+    columns: ['Vendor', 'Date', 'Amount'],
+    money: 2,
+    rows: [
+      ['Acme Outfitters', 'Mar 3', '$129.00'],
+      ['Northwind Coffee', 'Feb 26', '$18.40'],
+      ['Contoso Pharmacy', 'Feb 19', '$32.75'],
+    ],
+  },
+  {
+    emoji: '🎬',
+    name: 'Watch List',
+    columns: ['Title', 'Where', 'Status'],
+    rows: [
+      ['Paper Moons', 'Library', 'Watched'],
+      ['Signal Hill', 'Rental', 'To watch'],
+      ['Glass Orchard', 'Streaming', 'Watching'],
+    ],
+  },
+  {
+    emoji: '💳',
+    name: 'Gift Cards',
+    columns: ['Card', 'Expires', 'Balance'],
+    money: 2,
+    rows: [
+      ['Tailspin Bikes', 'Jun 30', '$40.00'],
+      ['Contoso Books', 'Never', '$25.00'],
+      ['Northwind Coffee', 'Dec 31', '$18.50'],
+    ],
+  },
+  {
+    emoji: '🍽️',
+    name: 'Restaurants',
+    columns: ['Restaurant', 'Rating', 'Go again'],
+    rows: [
+      ['Riverbend Ramen', { stars: 5 }, 'Yes'],
+      ['Juniper & Salt', { stars: 3 }, 'Maybe'],
+      ['Gravelpine Diner', { stars: 2 }, 'No'],
+    ],
+  },
+  {
+    emoji: '📖',
+    name: 'Manuals',
+    columns: ['Item', 'Brand', 'Warranty'],
+    rows: [
+      ['Dishwasher', 'Fabrikam', '3 years'],
+      ['Road bike', 'Tailspin', 'Lifetime'],
+      ['Laptop', 'Contoso', '1 year'],
+    ],
+  },
+  {
+    emoji: '📍',
+    name: 'Places',
+    columns: ['Place', 'Kind', 'Status'],
+    rows: [
+      ['Cedar Gorge', 'Hike', 'Want to go'],
+      ['Tide Museum', 'Museum', 'Visited'],
+      ['Saffron Table', 'Dinner', 'Want to go'],
+    ],
+  },
+];
+
+/** The most stars a sample's rating is out of, which is the app's own default scale. */
+const SAMPLE_STARS = 5;
+
+/**
+ * One sample notebook: its name as the table's caption, so the table is named to a
+ * screen reader by what a sighted reader sees over it, and its rows under a header of
+ * the fields.
+ *
+ * A rating is the app's own glyphs (`formatRating` in `format-field.ts`), filled then
+ * hollow, said as "3 out of 5": read as text they are "black star" three times over.
+ * The emoji is decoration beside a name that already says what the notebook is.
+ */
+function Sample({ sample }: { sample: NotebookSample }) {
+  return (
+    <div className="front-sample">
+      <table>
+        <caption>
+          <span className="front-sample-emoji" aria-hidden="true">
+            {sample.emoji}
+          </span>
+          {sample.name}
+        </caption>
+        <thead>
+          <tr>
+            {sample.columns.map((column, at) => (
+              <th key={column} scope="col" data-align={sample.money === at ? 'end' : undefined}>
+                {column}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {sample.rows.map((row) => (
+            <tr key={String(row[0])}>
+              {row.map((cell, at) => (
+                <td key={sample.columns[at]} data-align={sample.money === at ? 'end' : undefined}>
+                  {typeof cell === 'string' ? (
+                    cell
+                  ) : (
+                    <span role="img" aria-label={`${cell.stars} out of ${SAMPLE_STARS}`}>
+                      {'★'.repeat(cell.stars)}
+                      {'☆'.repeat(SAMPLE_STARS - cell.stars)}
+                    </span>
+                  )}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

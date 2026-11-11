@@ -772,10 +772,6 @@ export function SearchFilesFeatureIcon() {
   return <FeatureIcon icon={FileSearch} />;
 }
 
-export function FieldsFeatureIcon() {
-  return <FeatureIcon icon={Table2} />;
-}
-
 export function AssistantFeatureIcon() {
   return <FeatureIcon icon={Bot} />;
 }
