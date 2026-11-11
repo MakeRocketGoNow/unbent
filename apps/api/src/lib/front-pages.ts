@@ -60,6 +60,18 @@ export const PRERENDERED: Readonly<Record<string, string>> = {
 };
 
 /**
+ * The copies a signed-in person reads as often as a visitor: pricing, and support, which a
+ * receipt links to. Each was rendered with no session, so it offers the trial and says
+ * Sign in, where the app draws "Open your notes" and "Your notes"; drawn to a signed-in
+ * reader, the way out would change shape under them once the app ran. Their routes ask for
+ * the session first precisely so the page draws once, and a request with a session cookie
+ * gets the shell, which keeps that, as `/` does (`hasSessionCookie`). Crawlers and link
+ * previews carry no cookie, so they still read the copy. The story and the other copies
+ * are left as they were: only their header's link changes, and they are read signed out.
+ */
+const READ_SIGNED_IN: ReadonlySet<string> = new Set(['/pricing', '/support']);
+
+/**
  * The front page's static copy (`PAGES['/']` in the web app's `prerender.tsx`). Not in
  * `PRERENDERED`, because `/` is also the way into the notes, and a signed-in load of it
  * must be the shell rather than the front page drawn for a moment before the router
@@ -112,8 +124,11 @@ export function serveFrontPage(request: Request, env: FrontEnv): Promise<Respons
     );
   }
   const file = PRERENDERED[url.pathname];
-  if (file) return servePrerendered(request, env, origin, file);
-  return null;
+  if (!file) return null;
+  if (READ_SIGNED_IN.has(url.pathname)) {
+    return varyOnRequester(hasSessionCookie(request) ? serveShell(request, env, origin) : servePrerendered(request, env, origin, file));
+  }
+  return servePrerendered(request, env, origin, file);
 }
 
 /**
@@ -158,8 +173,10 @@ function isDocumentLoad(request: Request): boolean {
 }
 
 /**
- * The answer for `/`, marked as depending on the cookie and on what asked, so nothing
- * between here and the browser hands one requester's page to another. The asset layer's
+ * The answer for `/`, `/pricing` and `/support`, marked as depending on the cookie (and,
+ * for `/`, on what asked), so nothing between here and the browser hands one requester's
+ * page to another. One header for all three: a cache that varies on more than it needs
+ * to only stores more copies. The asset layer's
  * own answer (a failed read) has headers that cannot be changed, hence the copy.
  */
 async function varyOnRequester(answer: Promise<Response>): Promise<Response> {

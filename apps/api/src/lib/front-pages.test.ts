@@ -159,17 +159,21 @@ describe('serveFrontPage', () => {
   });
 
   /**
-   * A link to the front page is unfurled from the shell for a signed-in request, and a
-   * card's picture must be a whole address, with a front page or not.
+   * The copies were rendered with no session, so a signed-in reader gets the shell, which
+   * draws the right way out once. A card's picture must still be a whole address, with a
+   * front page or not.
    */
-  it('completes the shell’s addresses for the front page with a session, with a front page or not', async () => {
-    for (const env of [
-      { ASSETS: built, FRONT_PAGE: '1', APP_URL: 'https://unbent.example' },
-      { ASSETS: built, APP_URL: 'https://unbent.example' },
-    ]) {
-      const response = await get('/', env, SIGNED_IN);
-      expect(response?.headers.get('Content-Type')).toBe('text/html; charset=utf-8');
-      expect(await response!.text()).toContain('<meta property="og:image" content="https://unbent.example/front/card.png" />');
+  it('serves the shell, with its addresses completed, for /, /pricing and /support with a session', async () => {
+    for (const path of ['/', '/pricing', '/support']) {
+      for (const env of [
+        { ASSETS: built, FRONT_PAGE: '1', APP_URL: 'https://unbent.example', ...OPERATOR },
+        { ASSETS: built, APP_URL: 'https://unbent.example' },
+      ]) {
+        const response = await get(path, env, SIGNED_IN);
+        expect(response?.headers.get('Content-Type')).toBe('text/html; charset=utf-8');
+        expect(response?.headers.get('Vary')).toBe('Cookie, Sec-Fetch-Dest, Accept');
+        expect(await response!.text()).toBe(SHELL.replace('"/front/', '"https://unbent.example/front/'));
+      }
     }
   });
 
