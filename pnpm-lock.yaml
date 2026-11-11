@@ -215,8 +215,8 @@ importers:
         specifier: ^5.20261110.1
         version: 5.20261110.1
       '@posthog/cli':
-        specifier: ^0.18.10
-        version: 0.18.10
+        specifier: ^0.19.3
+        version: 0.19.3
       '@tanstack/router-plugin':
         specifier: ^1.169.0
         version: 1.169.0(@tanstack/react-router@1.170.46(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(esbuild@0.28.2)(rolldown@1.2.19)(rollup@4.68.2)(vite@8.3.8(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1))
@@ -1779,8 +1779,8 @@ packages:
   '@posthog/browser-common@0.10.8':
     resolution: {integrity: sha512-TQmqLVNFoKaL4dDV5Q8AScX2dIwdq8By2cj2KU1hMGe88tn7Usbf3U/hv5okhobEojntqJeslPIRBrG79Su+vg==}
 
-  '@posthog/cli@0.18.10':
-    resolution: {integrity: sha512-WFucXcIqUL35NkH4hVlch3TBSGRRAhjqvmh2/2z8sj+HsR7e+NUiG3QT5dy9Qs1C3hVe7uWkdNU6DKyKvONAXw==}
+  '@posthog/cli@0.19.3':
+    resolution: {integrity: sha512-jR33tYxUGbBJszHZyEGKaliQNk3XJeMqk1AnJQwakzqg0eTsbIUtblt3deGFN1lJpghqRB/l9+Q5rxsHZ6cPYA==}
     engines: {node: '>=14.14', npm: '>=6'}
     hasBin: true
 
@@ -6136,7 +6136,7 @@ snapshots:
     transitivePeerDependencies:
       - preact-render-to-string
 
-  '@posthog/cli@0.18.10':
+  '@posthog/cli@0.19.3':
     dependencies:
       detect-libc: 2.1.2
 
