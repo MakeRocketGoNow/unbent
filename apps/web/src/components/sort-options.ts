@@ -159,8 +159,8 @@ export function columnSortState(target: SortTarget, search: SortSearch): 'asc' |
  * The search params a click on a column header writes.
  *
  * A first click sorts the way that column is usually wanted (names and field values
- * A–Z or low to high, dates newest first) and a click on the column already in charge
- * flips it. There is no third state: the list always has *some* order, and a header that
+ * A–Z or low to high, a select in its options' order, dates newest first) and a click
+ * on the column already in charge flips it. There is no third state: the list always has *some* order, and a header that
  * cycled to "none" would silently put "Newest first" back under a column that no
  * longer said so. The two kinds of sort are exclusive on the wire, so choosing one
  * clears the other, and the defaults are dropped the way `parseSortKey` drops them.
