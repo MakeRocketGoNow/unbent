@@ -484,7 +484,8 @@ describe('notes: listing and counting', () => {
       state.storage.sql.exec(`DELETE FROM note_fields WHERE note_id = ?1 AND field_id = ?2`, old, status.id);
     });
     const pastOld = await stub.list({ limit: 1, sortField, order: 'asc', cursor: encodeCursor('Old', old) });
-    expect(held[ids.indexOf(pastOld[0]!.id)] ?? null, pastOld[0]!.title).toBeNull();
+    // The first of the valueless, which that note is one of for as long as its value is gone.
+    expect([2, 7, 8], pastOld[0]!.title).toContain(ids.indexOf(pastOld[0]!.id));
     const beforeOld = await stub.list({ limit: 1, sortField, order: 'desc', cursor: encodeCursor('Old', old) });
     expect(beforeOld.map((n) => n.title)).toEqual(['Ancient 10']);
     await runInDurableObject(stub, (_i, state) => {
