@@ -614,6 +614,15 @@ export class NotesStore {
      * those held. The runs then start at the first value past it, as a key comparison
      * would; from the top, the next page repeated every retired value before it. Only
      * the retired list is ever asked this, and it is in `byText`'s order.
+     *
+     * Not covered, and known: a cursor on an option that is deleted or renamed before
+     * the next page. Its notes' values are rewritten, so the cursor's value is then
+     * neither an option nor held, which is exactly how the case above looks, and it is
+     * read as that one: the options after it are skipped and their notes are missing
+     * from that walk. Reading it the other way would repeat the whole list for a
+     * retired value instead. Telling the two apart needs the cursor to say whether its
+     * value was an option, a change to what every build pages with, for a list read
+     * from the server across an edit to the field's options.
      */
     const takeEach = (values: string[], list: string): void => {
       const order = values.map((_, i) => i);
