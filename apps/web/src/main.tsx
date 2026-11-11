@@ -224,9 +224,10 @@ if (!root) throw new Error('Missing #root element');
  * first, and the first commit puts the same page back in one go. Every other load has an
  * empty container and renders at once, as before.
  *
- * Replaced rather than hydrated: the static copy was rendered with no session and no
- * operator, and the running app draws the footer's links and the way out from both, so
- * the markup is not the same and hydration would have to repair it.
+ * Replaced rather than hydrated: the static copy was rendered with no session and,
+ * but for support's operator, nothing of the instance (`prerender.tsx`), and the running
+ * app draws the footer's links and the way out from both, so the markup is not the same
+ * and hydration would have to repair it.
  */
 async function mount() {
   if (root!.hasChildNodes()) {
