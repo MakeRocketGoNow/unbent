@@ -11387,6 +11387,98 @@ button.settings-nav-item {
   color: var(--accent);
 }
 
+/*
+   The first section's sample notebooks (`SAMPLES` in `FrontPage.tsx`): six small tables,
+   each in a card, three abreast, then two, then one.
+
+   Set by breakpoint and not by `auto-fill` as the grids above are. A card's table has
+   three columns whose values should sit whole, so the narrowest a card gets beside
+   another is chosen here: 19.5rem, which is what three abreast come to at the page's
+   full width, and so what two abreast start from. `auto-fill` put three abreast in
+   cards of 17rem, too narrow for a title, a place and a status side by side. Only a
+   card alone on a row is narrower, on a phone, where there is nothing to do about it.
+
+   A phone shows four of the six. Six tables one above another are a screen and a half
+   of the same shape before the next section starts, and four still show paper and lists
+   both, which is what the samples' order is for.
+
+   The first column takes the room the other two leave and cuts a value short with an
+   ellipsis: `max-width: 0` is what lets a cell in an auto-laid-out table shrink below
+   its content, and `width: 100%` is what makes it the column that takes the slack. The
+   other two are as wide as what is in them. The values are chosen to fit, so the
+   ellipsis is for a reader with a wider font than was tested, not part of the design.
+*/
+.front-samples {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1.25rem;
+  margin-top: 1.75rem;
+}
+
+.front-sample {
+  padding: 1rem 1.15rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+}
+
+.front-sample table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+/* The notebook's name, at the size and weight of the cards' headings further down. */
+.front-sample caption {
+  padding-bottom: 0.5rem;
+  font-size: 1.05rem;
+  font-weight: 700;
+  text-align: left;
+}
+
+.front-sample-emoji { margin-right: 0.45rem; }
+
+.front-sample th,
+.front-sample td {
+  padding: 0.4rem 0 0.4rem 1rem;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.front-sample th:first-child,
+.front-sample td:first-child {
+  width: 100%;
+  max-width: 0;
+  padding-left: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The fields' names, as the app's own table heads them: smaller, lighter, quieter. */
+.front-sample th {
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.front-sample td { border-top: 1px solid var(--border); }
+
+.front-sample [data-align='end'] {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Under the page's full width (`.front-width`, 64rem) three cards would each be
+   narrower than the 19.5rem above. */
+@media (width < 64rem) {
+  .front-samples { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* And under this, two would be. */
+@media (width <= 680px) {
+  .front-samples { grid-template-columns: minmax(0, 1fr); }
+  .front-sample:nth-child(n + 5) { display: none; }
+}
+
 .front-pricing {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
