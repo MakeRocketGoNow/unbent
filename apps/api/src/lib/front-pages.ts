@@ -37,7 +37,7 @@ export const WHY_PATH = '/why';
 /**
  * Every page the build writes a static copy of, and the file it wrote it to: the story,
  * the features page, the comparisons, pricing and support (`PAGES` in the web app's
- * `prerender.tsx`, which this must match).
+ * `prerender.tsx`, which this must match; `prerender.test.tsx` there holds the two together).
  *
  * Flat file names rather than a `compare/` directory keep each copy off its page's own
  * address. They do not keep the asset layer away from it: that answers the file's name
