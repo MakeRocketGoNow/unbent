@@ -124,7 +124,11 @@ describe('serveFrontPage', () => {
 
   /** Search listed both as "Unbent" with the front page's sentence, which is all the shell says (MAK-257). */
   it('hands over the pricing page’s static copy, and the shell on an instance with no front page', async () => {
-    const html = await (await get('/pricing', { ASSETS: built, FRONT_PAGE: '1', APP_URL: 'https://unbent.example' }))!.text();
+    const copy = await get('/pricing', { ASSETS: built, FRONT_PAGE: '1', APP_URL: 'https://unbent.example' });
+    // The copy depends on the cookie as much as the shell does: cached without it, a
+    // signed-in reader could be handed the signed-out page.
+    expect(copy?.headers.get('Vary')).toBe('Cookie, Sec-Fetch-Dest, Accept');
+    const html = await copy!.text();
     expect(html).toContain('<title>Pricing · Unbent</title>');
     expect(html).toContain('<link rel="canonical" href="https://unbent.example/pricing" />');
     const fork = await get('/pricing', { ASSETS: built, APP_URL: 'https://notes.example.com' });
