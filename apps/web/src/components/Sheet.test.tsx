@@ -97,7 +97,9 @@ describe('Sheet', () => {
       const el = grip(container);
       fireEvent.pointerDown(el, { clientY: 100, button: 0, pointerId: 1 });
       fireEvent.pointerMove(el, { clientY: 140, pointerId: 1 });
-      expect(dialogOf(container).style.translate).toBe('0 40px');
+      // Read back as a browser serializes the `0 40px` the sheet writes: jsdom 31 does
+      // too, where 30 handed the string back as written.
+      expect(dialogOf(container).style.translate).toBe('0px 40px');
       expect(dialogOf(container).hasAttribute('data-dragging')).toBe(true);
     });
 
@@ -204,7 +206,8 @@ describe('Sheet', () => {
       const el = grip(container);
       fireEvent.pointerDown(el, { clientY: 200, button: 0, pointerId: 1 });
       fireEvent.pointerMove(el, { clientY: 100, pointerId: 1 });
-      expect(dialogOf(container).style.translate).toBe('0 0px');
+      // `0 0px` as written, serialized as a browser does.
+      expect(dialogOf(container).style.translate).toBe('0px');
       fireEvent.pointerUp(el, { clientY: 100, pointerId: 1 });
       expect(onClose).not.toHaveBeenCalled();
     });
