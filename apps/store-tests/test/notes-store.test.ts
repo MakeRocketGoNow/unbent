@@ -1443,6 +1443,9 @@ describe('rows read on an archive-sized store', () => {
       // MCP's search with a line per file of each match (MAK-172): fifty matches, a third with a scan.
       await measure('search common word with file summaries', () => stub.searchWithFiles('receipt', 50)),
       await measure('search one letter', () => stub.search('r', 50)),
+      // A word only files hold: the three tiers above come back empty and the file tier
+      // runs, which no search of a word every note's body has ever reaches.
+      await measure('search reaching the file tier', () => stub.search('scanned', 50)),
       await measure('search in a small tag', () => stub.search('receipt', 50, { tags: ['rare'] })),
       // A table's search: the page above, plus the rows the list would draw for its matches.
       await measure('search rows in a notebook', () => stub.searchRows('receipt', 50, { notebook: 'Notebook 0' })),
@@ -1687,11 +1690,18 @@ describe('rows read on an archive-sized store', () => {
       'sweep visit': 12,
       'forget expired files': 30,
       'sweep visit with nothing due': 4,
-      'search common word': 2500,
-      // The search's own 502 and the files of its fifty matches, each asked by the note's
-      // index whether it has any (670, measured 2026-10-05).
-      'search common word with file summaries': 800,
-      'search one letter': 2500,
+      // A page that fills in the note tier is that tier's statement and nothing else:
+      // about three rows a match, and the tiers below are never asked (149, measured
+      // 2026-11-11). As one statement it was 502, every tier's CTE being opened.
+      'search common word': 250,
+      // The search's own 149 and the files of its fifty matches, each asked by the note's
+      // index whether it has any (317, measured 2026-11-11).
+      'search common word with file summaries': 450,
+      'search one letter': 250,
+      // Four rows a match, for the page and its overfetch: two hundred of the thousand
+      // files that hold the word (799, measured 2026-11-11). A tier that read every match
+      // would be five times that.
+      'search reaching the file tier': 1000,
       'search in a small tag': 80,
       'search rows in a notebook': 1500,
       // A write reads its feed row back in (the insert counts one), the counter, and the
