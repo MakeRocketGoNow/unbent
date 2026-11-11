@@ -19,3 +19,4 @@ export * from './plan.js';
 export * from './cursor.js';
 export * from './llm-prices.js';
 export * from './colors.js';
+export * from './static-copy.js';

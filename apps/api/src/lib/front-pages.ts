@@ -1,11 +1,12 @@
-import { frontPageOf } from './instance.js';
+import { OPERATOR_PLACEHOLDER } from '@unbent/shared';
+import { frontPageOf, operatorContactOf } from './instance.js';
 import { instanceLabelOf } from '../routes/auth.js';
 import type { RawEnv } from '../types.js';
 
 /**
  * The pages for people who are not signed in, as a crawler and a link preview see them
- * (MAK-240): the static copies of the front page, the story, the features page and the
- * comparisons, the shell that pricing and support are, `robots.txt` and the sitemap.
+ * (MAK-240): the static copies of the front page, the story, the features page, the
+ * comparisons, pricing and support, `robots.txt` and the sitemap.
  *
  * Every other path is the web app's shell, which the `ASSETS` binding serves for any
  * address without a file, and which says "Unbent" and the front page's sentence whatever
@@ -21,7 +22,7 @@ import type { RawEnv } from '../types.js';
  * the site-relative ones the build wrote are completed here from the origin the instance
  * is served on. And a fork deployed unchanged must not tell unbent.app's story under its
  * own name: on an instance with no front page (`FRONT_PAGE`), `/why` is the shell, which
- * the app's router sends to the sign-in screen as it does `/pricing`.
+ * the app's router sends to the sign-in screen.
  *
  * `robots.txt` and the sitemap follow the same flag. An instance with no front page is
  * someone's private notes and asks not to be indexed at all; one with a front page lists
@@ -35,7 +36,8 @@ export const WHY_PATH = '/why';
 
 /**
  * Every page the build writes a static copy of, and the file it wrote it to: the story,
- * the features page and the comparisons (`PAGES` in the web app's `prerender.tsx`, which this must match).
+ * the features page, the comparisons, pricing and support (`PAGES` in the web app's
+ * `prerender.tsx`, which this must match).
  *
  * Flat file names rather than a `compare/` directory keep each copy off its page's own
  * address. They do not keep the asset layer away from it: that answers the file's name
@@ -53,7 +55,21 @@ export const PRERENDERED: Readonly<Record<string, string>> = {
   '/compare/notion': '/compare-notion.html',
   '/compare/joplin': '/compare-joplin.html',
   '/compare/paperless-ngx': '/compare-paperless-ngx.html',
+  '/pricing': '/pricing.html',
+  '/support': '/support.html',
 };
+
+/**
+ * The copies a signed-in person reads as often as a visitor: pricing, and support, which a
+ * receipt links to. Each was rendered with no session, so it offers the trial and says
+ * Sign in, where the app draws "Open your notes" and "Your notes"; drawn to a signed-in
+ * reader, the way out would change shape under them once the app ran. Their routes ask for
+ * the session first precisely so the page draws once, and a request with a session cookie
+ * gets the shell, which keeps that, as `/` does (`hasSessionCookie`). Crawlers and link
+ * previews carry no cookie, so they still read the copy. The story and the other copies
+ * are left as they were: only their header's link changes, and they are read signed out.
+ */
+const READ_SIGNED_IN: ReadonlySet<string> = new Set(['/pricing', '/support']);
 
 /**
  * The front page's static copy (`PAGES['/']` in the web app's `prerender.tsx`). Not in
@@ -64,19 +80,7 @@ export const PRERENDERED: Readonly<Record<string, string>> = {
 export const FRONT_FILE = '/front-page.html';
 
 /** The pages under the front page's shell, in the order the sitemap lists them. */
-export const FRONT_ROUTES = ['/', ...Object.keys(PRERENDERED), '/pricing', '/support'] as const;
-
-/**
- * The front routes with no static copy of their own, which are the shell itself. They pass
- * through here only so the card's picture in the shell's head is a whole address: left to
- * the asset layer, a link to the front page unfurled in Slack with no picture, because
- * the shell names it as `/front/…` and a card is drawn by something that resolves nothing.
- * The front page is the shell too, for a request that carries a session, but `/` is
- * answered before this list is read: see `FRONT_FILE`. The rest of the app's routes stay
- * with the asset layer: they are behind the sign-in, and a card for one of them has
- * nothing to show anyway.
- */
-const SHELL_ROUTES: ReadonlySet<string> = new Set(['/pricing', '/support']);
+export const FRONT_ROUTES = ['/', ...Object.keys(PRERENDERED)] as const;
 
 /** The app behind the sign-in, which a crawler has no business in even when it follows a link there. */
 const PRIVATE_PREFIXES = ['/api/', '/notes', '/trash', '/settings', '/import', '/login', '/connect', '/consent', '/device', '/embed/'];
@@ -95,7 +99,7 @@ const PRIVATE_PREFIXES = ['/api/', '/notes', '/trash', '/settings', '/import', '
 const PUBLIC_READS = ['/api/config', '/api/auth/get-session'];
 
 /** The entry point's env, before `withAppUrl` has settled `APP_URL`; hence the fallback below. */
-type FrontEnv = Pick<RawEnv, 'ASSETS' | 'FRONT_PAGE' | 'INSTANCE_LABEL' | 'APP_URL'>;
+type FrontEnv = Pick<RawEnv, 'ASSETS' | 'FRONT_PAGE' | 'INSTANCE_LABEL' | 'APP_URL' | 'OPERATOR_NAME' | 'OPERATOR_EMAIL'>;
 
 /**
  * Answers the paths above, or `null` for every other request so the entry point
@@ -120,9 +124,11 @@ export function serveFrontPage(request: Request, env: FrontEnv): Promise<Respons
     );
   }
   const file = PRERENDERED[url.pathname];
-  if (file) return servePrerendered(request, env, origin, file);
-  if (SHELL_ROUTES.has(url.pathname)) return serveShell(request, env, origin);
-  return null;
+  if (!file) return null;
+  if (READ_SIGNED_IN.has(url.pathname)) {
+    return varyOnRequester(hasSessionCookie(request) ? serveShell(request, env, origin) : servePrerendered(request, env, origin, file));
+  }
+  return servePrerendered(request, env, origin, file);
 }
 
 /**
@@ -167,9 +173,11 @@ function isDocumentLoad(request: Request): boolean {
 }
 
 /**
- * The answer for `/`, marked as depending on the cookie and on what asked, so nothing
- * between here and the browser hands one requester's page to another. The asset layer's
- * own answer (a failed read) has headers that cannot be changed, hence the copy.
+ * The answer for `/`, `/pricing` and `/support`, marked as depending on the cookie (and,
+ * for `/`, on what asked), so nothing between here and the browser hands one requester's
+ * page to another. One header for all three: a cache that varies on more than it needs
+ * to only stores more copies. The asset layer's own answer (a failed read) has headers
+ * that cannot be changed, hence the copy.
  */
 async function varyOnRequester(answer: Promise<Response>): Promise<Response> {
   const settled = await answer;
@@ -179,9 +187,12 @@ async function varyOnRequester(answer: Promise<Response>): Promise<Response> {
 }
 
 /**
- * The shell, with the addresses in its head completed. On every instance, with a front
- * page or not: the shell is the same file either way, and a whole address is right on
- * both. Asked for as a plain GET, for the reason `servePrerendered` gives.
+ * The shell, with the addresses in its head completed: for a front page that cannot be
+ * served as its copy, and for `/`, `/pricing` and `/support` with a session
+ * (`READ_SIGNED_IN`). A card's picture must be a whole address: left to the asset layer,
+ * a link unfurled in Slack with no picture, because the shell names it as `/front/…` and
+ * a card is drawn by something that resolves nothing. Asked for as a plain GET, for the
+ * reason `servePrerendered` gives.
  */
 async function serveShell(request: Request, env: FrontEnv, origin: string): Promise<Response> {
   const asset = await env.ASSETS.fetch(new Request(new URL('/', request.url)));
@@ -191,8 +202,9 @@ async function serveShell(request: Request, env: FrontEnv, origin: string): Prom
 
 /**
  * A page's static copy, with its addresses completed and `head` added to its head; or
- * the shell, on an instance with no front page, and when the build wrote no copy (a dev
- * Worker over a `dist` built without it), so the page still draws and the app fills it
+ * the shell, on an instance with no front page, when the build wrote no copy (a dev
+ * Worker over a `dist` built without it), and when the copy names an operator this
+ * instance has none of (`fillOperator`), so the page still draws and the app fills it
  * in as it does every other route.
  *
  * The shell is asked for as `/`, not as the request: the binding resolves `/why` to
@@ -206,8 +218,32 @@ async function servePrerendered(request: Request, env: FrontEnv, origin: string,
   // not this answer with its addresses completed.
   const asset = await env.ASSETS.fetch(new Request(new URL(file, request.url)));
   if (!asset.ok) return shell();
-  const page = completeAddresses(await asset.text(), origin);
+  const filled = fillOperator(await asset.text(), env);
+  if (filled === null) return shell();
+  const page = completeAddresses(filled, origin);
   return html(head ? page.replace('</head>', `${head}\n  </head>`) : page);
+}
+
+/**
+ * A copy's operator placeholders (`OPERATOR_PLACEHOLDER`, written by the build into the
+ * support page) replaced with this instance's own, under the rule the config answers by
+ * (`operatorContactOf`), so the copy names exactly the operator the app then draws. A
+ * copy with no placeholder comes back as it was. `null` where the copy has one and the
+ * instance names no operator: the app draws such a page without one, in words the copy
+ * does not have, so the shell is the answer that does not change under the reader.
+ */
+export function fillOperator(page: string, env: Pick<RawEnv, 'OPERATOR_NAME' | 'OPERATOR_EMAIL'>): string | null {
+  if (!page.includes(OPERATOR_PLACEHOLDER.name) && !page.includes(OPERATOR_PLACEHOLDER.email)) return page;
+  const operator = operatorContactOf(env);
+  if (!operator) return null;
+  return page
+    .replaceAll(OPERATOR_PLACEHOLDER.name, escapeHtml(operator.name))
+    .replaceAll(OPERATOR_PLACEHOLDER.email, escapeHtml(operator.email));
+}
+
+/** For text and attribute values alike: every placeholder sits in one or the other. */
+function escapeHtml(value: string): string {
+  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 function html(body: string): Response {

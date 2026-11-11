@@ -2,7 +2,8 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { PRERENDERED, hasSessionCookie, serveFrontPage } from './front-pages.js';
+import { OPERATOR_PLACEHOLDER } from '@unbent/shared';
+import { PRERENDERED, fillOperator, hasSessionCookie, serveFrontPage } from './front-pages.js';
 
 /**
  * The story's static copy as the build writes it: site-relative addresses in the head,
@@ -34,7 +35,25 @@ const COMPARE_HTML = WHY_HTML.replace(/Why Unbent exists/g, 'Unbent and Joplin')
 
 const FRONT_HTML = WHY_HTML.replace(/Why Unbent exists/g, 'Unbent').replace(/"\/why"/g, '"/"');
 
-const built = assets({ '/why.html': WHY_HTML, '/compare-joplin.html': COMPARE_HTML, '/front-page.html': FRONT_HTML });
+const PRICING_HTML = WHY_HTML.replace(/Why Unbent exists/g, 'Pricing · Unbent').replace(/"\/why"/g, '"/pricing"');
+
+/** The support page's copy as the build writes it: the operator is the placeholders, for the Worker to fill. */
+const SUPPORT_HTML = WHY_HTML.replace(/Why Unbent exists/g, 'Support · Unbent')
+  .replace(/"\/why"/g, '"/support"')
+  .replace(
+    '</h1>',
+    `</h1><p>Write to <a href="mailto:${OPERATOR_PLACEHOLDER.email}">${OPERATOR_PLACEHOLDER.email}</a>.</p><footer>Unbent is run by ${OPERATOR_PLACEHOLDER.name}.</footer>`,
+  );
+
+const built = assets({
+  '/why.html': WHY_HTML,
+  '/compare-joplin.html': COMPARE_HTML,
+  '/front-page.html': FRONT_HTML,
+  '/pricing.html': PRICING_HTML,
+  '/support.html': SUPPORT_HTML,
+});
+
+const OPERATOR = { OPERATOR_NAME: 'Acme Notes LLC', OPERATOR_EMAIL: 'help@example.com' };
 
 const get = (path: string, env: Parameters<typeof serveFrontPage>[1], headers?: HeadersInit) =>
   serveFrontPage(new Request(`https://notes.example.com${path}`, { headers }), env);
@@ -103,19 +122,61 @@ describe('serveFrontPage', () => {
     expect(await response!.text()).toBe(SHELL.replace('"/front/', '"https://notes.example.com/front/'));
   });
 
+  /** Search listed both as "Unbent" with the front page's sentence, which is all the shell says (MAK-257). */
+  it('hands over the pricing page’s static copy, and the shell on an instance with no front page', async () => {
+    const copy = await get('/pricing', { ASSETS: built, FRONT_PAGE: '1', APP_URL: 'https://unbent.example' });
+    // The copy depends on the cookie as much as the shell does: cached without it, a
+    // signed-in reader could be handed the signed-out page.
+    expect(copy?.headers.get('Vary')).toBe('Cookie, Sec-Fetch-Dest, Accept');
+    const html = await copy!.text();
+    expect(html).toContain('<title>Pricing · Unbent</title>');
+    expect(html).toContain('<link rel="canonical" href="https://unbent.example/pricing" />');
+    const fork = await get('/pricing', { ASSETS: built, APP_URL: 'https://notes.example.com' });
+    expect(await fork!.text()).toBe(SHELL.replace('"/front/', '"https://notes.example.com/front/'));
+  });
+
+  /** Its first sentence is the operator's address, which only the Worker knows. */
+  it('hands over the support page’s static copy with the operator filled in', async () => {
+    const env = { ASSETS: built, FRONT_PAGE: '1', APP_URL: 'https://unbent.example', ...OPERATOR };
+    const html = await (await get('/support', env))!.text();
+    expect(html).toContain('<title>Support · Unbent</title>');
+    expect(html).toContain('<link rel="canonical" href="https://unbent.example/support" />');
+    expect(html).toContain('<a href="mailto:help@example.com">help@example.com</a>');
+    expect(html).toContain('Unbent is run by Acme Notes LLC.');
+    expect(html).not.toContain('__UNBENT_OPERATOR');
+  });
+
   /**
-   * A link to pricing is unfurled from the shell, and a card's picture must be a whole
-   * address. The front page is the shell only for a signed-in request, hence the cookie.
+   * The app draws support without an operator in other words than the copy's, so the
+   * copy would change under the reader: the shell instead. And a fork with no front page
+   * gets the shell whoever runs it.
    */
-  it('completes the shell’s addresses for the front routes that are the shell, with a front page or not', async () => {
+  it('serves the shell for /support where no operator is configured, or no front page', async () => {
+    const shell = SHELL.replace('"/front/', '"https://unbent.example/front/');
+    for (const env of [
+      { ASSETS: built, FRONT_PAGE: '1', APP_URL: 'https://unbent.example' },
+      { ASSETS: built, FRONT_PAGE: '1', APP_URL: 'https://unbent.example', OPERATOR_NAME: 'Acme Notes LLC' },
+      { ASSETS: built, APP_URL: 'https://unbent.example', ...OPERATOR },
+    ]) {
+      expect(await (await get('/support', env))!.text()).toBe(shell);
+    }
+  });
+
+  /**
+   * The copies were rendered with no session, so a signed-in reader gets the shell, which
+   * draws the right way out once. A card's picture must still be a whole address, with a
+   * front page or not.
+   */
+  it('serves the shell, with its addresses completed, for /, /pricing and /support with a session', async () => {
     for (const path of ['/', '/pricing', '/support']) {
       for (const env of [
-        { ASSETS: built, FRONT_PAGE: '1', APP_URL: 'https://unbent.example' },
+        { ASSETS: built, FRONT_PAGE: '1', APP_URL: 'https://unbent.example', ...OPERATOR },
         { ASSETS: built, APP_URL: 'https://unbent.example' },
       ]) {
         const response = await get(path, env, SIGNED_IN);
         expect(response?.headers.get('Content-Type')).toBe('text/html; charset=utf-8');
-        expect(await response!.text()).toContain('<meta property="og:image" content="https://unbent.example/front/card.png" />');
+        expect(response?.headers.get('Vary')).toBe('Cookie, Sec-Fetch-Dest, Accept');
+        expect(await response!.text()).toBe(SHELL.replace('"/front/', '"https://unbent.example/front/'));
       }
     }
   });
@@ -217,6 +278,20 @@ describe('serveFrontPage', () => {
       expect(await (await get('/robots.txt', env))!.text()).toBe('User-agent: *\nDisallow: /\n');
       expect((await get('/sitemap.xml', env))?.status).toBe(404);
     }
+  });
+});
+
+describe('fillOperator', () => {
+  it('leaves a copy with no placeholder as it was, operator or not', () => {
+    expect(fillOperator(WHY_HTML, {})).toBe(WHY_HTML);
+    expect(fillOperator(WHY_HTML, OPERATOR)).toBe(WHY_HTML);
+  });
+
+  it('escapes what it fills in', () => {
+    const page = `<a href="mailto:${OPERATOR_PLACEHOLDER.email}">${OPERATOR_PLACEHOLDER.name}</a>`;
+    expect(fillOperator(page, { OPERATOR_NAME: 'Smith & "Co" <x>', OPERATOR_EMAIL: ' a@example.com ' })).toBe(
+      '<a href="mailto:a@example.com">Smith &amp; &quot;Co&quot; &lt;x&gt;</a>',
+    );
   });
 });
 
