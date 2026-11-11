@@ -787,8 +787,9 @@ export const TRASH_SORT = {
  * `sf`, which `pageRows` walks in order; notes without a value come after every note with
  * one, whichever direction. A select is the exception to "in order": its text column is
  * read one option at a time, in the options' own order (`fieldSortsByOptions`), and the
- * cursor still carries the text, which names the option to resume in. The rows show their updated date under this sort, as under the
- * title sort, so that is what a date range reads.
+ * cursor still carries the text, which names the option to resume in. The rows show
+ * their updated date under this sort, as under the title sort, so that is what a date
+ * range reads.
  */
 export function fieldSort(def: FieldDef) {
   const numeric = fieldSortsNumerically(def.type);
