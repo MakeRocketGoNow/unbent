@@ -613,7 +613,7 @@ export function fieldSortsNumerically(type: FieldType): boolean {
  * A select's options are arranged by the person (Queued, Started, Done), and the order
  * they chose is the one the cell's menu and the filter already show. Sorted as text the
  * column disagreed with both, and the way round it was to number the options by hand
- * ("1 Urgent"). There is no setting for the old order: "Sort A-Z" beside the options
+ * ("1 Urgent"). There is no setting for the old order: "Sort A–Z" beside the options
  * puts them in it, once, for the menu, the filter and the sort together.
  *
  * A value that is no longer an option (see `withHeldOptions`) comes after every option in
