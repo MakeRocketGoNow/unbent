@@ -2265,11 +2265,10 @@ export class NotesStore {
      * 100. Each tier named the one above three times (its union, its count, its NOT IN),
      * so the note tier was expanded 27 times and its filter clauses with it: a plain
      * search opened between 150 and 200 cursors, one in a notebook and a tag over 200.
-     * Here no statement names another,
-     * the skip is a check of the set's size between statements, and nothing grows with
-     * the number of tiers or filters. Workerd backed the check out again
-     * (cloudflare/workerd 0d01fe9f, 2026-11-10), but a statement that only prepares
-     * because of a patch is one SQLite release from breaking again.
+     * Here no statement names another, the skip is a check of the set's size between
+     * statements, and nothing grows with the number of tiers or filters. Workerd backed
+     * the check out again (cloudflare/workerd 0d01fe9f, 2026-11-10), but a statement that
+     * only prepares because of a patch is one SQLite release from breaking again.
      *
      * One row per note, and it is the best-tier one: a note is in at most one tier, since
      * each leaves out the notes above it, and the first row of it a tier returns is its
