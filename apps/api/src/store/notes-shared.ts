@@ -341,8 +341,8 @@ export function decodeAttachmentsJson(json: string | null): NonNullable<NoteSumm
  * How many rows past the page each later search tier reads, as a multiple of the limit.
  *
  * A tag, field or file tier yields one row per matching tag, value or file, not per note:
- * a note tagged with three matching tags is three rows until the window function keeps its
- * best one. The tier is read in rank order and cut off at this multiple of the page, so
+ * a note tagged with three matching tags is three rows until `search` keeps the first of
+ * them, its best. The tier is read in rank order and cut off at this multiple of the page, so
  * the page is exact unless the top of a tier averages more than this many rows per note,
  * in which case the page comes back short rather than wrong. Four is well past what an
  * archive shows (most notes carry one or two files) and still bounded.
