@@ -57,10 +57,12 @@ import {
   PURGE_PAGE,
   SCOPE_DRIVEN_SEARCH_MAX,
   SEARCH_OVERFETCH,
+  SEARCH_TIERS,
   SORTS,
   TRASH_SORT,
   currencyColumn,
   styleColumn,
+  byTierRankId,
   decodeAttachmentsJson,
   decodeCursor,
   decodeFieldsJson,
@@ -88,6 +90,7 @@ import {
   type ExportedNote,
   type FieldRow,
   type NoteRow,
+  type RankedSearchRow,
   type SearchRow,
   type SummaryRow,
 } from './notes-shared.js';
@@ -2199,6 +2202,10 @@ export class NotesStore {
     const query = toFtsQuery(rawQuery);
     if (!query) return [];
 
+    if (this.searchScopeIsSmall(filters, scopeDrivenSearchMax)) {
+      return this.searchScope(query, limit, filters);
+    }
+
     /**
      * The filters bind after the two fixed parameters, and the same clauses are spliced
      * into every tier: each joins `notes n` on its own, so a filter applied to only one
@@ -2207,12 +2214,7 @@ export class NotesStore {
     const binds: Bind[] = [query, limit];
     const scope = filterConditions(filters, binds);
     const scoped = scope.length > 0 ? `AND ${scope.join(' AND ')}` : '';
-
-    if (this.searchScopeIsSmall(filters, scopeDrivenSearchMax)) {
-      return this.sql
-        .exec<SearchRow>(scopeDrivenSearchSql(liveCondition(false, filters.tags), scoped), ...binds)
-        .map(toSearchResult);
-    }
+    const held = `?${binds.length + 1}`;
 
     /**
      * Four indexes, one result set.
@@ -2233,15 +2235,8 @@ export class NotesStore {
      * outrank OCR text; the tag comes first because it is the coarser, more often used
      * classification, and a search for a tag name is usually looking for the tag.
      *
-     * One row per note, and it is the best-tier one. This was a GROUP BY with MIN(tier)
-     * and MIN(rank), which relied on SQLite's bare-column rule to pick the snippet, and
-     * that rule follows the *last* aggregate, so a note matching in its body and in a
-     * tag came back with the tag's snippet and "tagged X" under it whenever the tag's
-     * bm25 happened to be the smaller number. The window function says which row is
-     * meant.
-     *
-     * tag_hits carries two unary pluses, and both are load-bearing. Without the one on
-     * `n.deleted_at` the planner (which has no statistics and so takes the first column
+     * The tag tier carries two unary pluses, and both are load-bearing. Without the one
+     * on `n.deleted_at` the planner (which has no statistics and so takes the first column
      * of an index to be selective) would join each matching tag to every live note
      * through a `deleted_at` index and ask each one whether it carried the tag; on the
      * shared database, where the column was `user_id`, that read 12.7k rows per matching
@@ -2259,83 +2254,112 @@ export class NotesStore {
      * can outrank them), and each later tier leaves out notes an earlier one already
      * holds, so its rows are all candidates. The same common word now reads about 10k.
      * `rank MATCH 'bm25(10.0, 1.0)'` keeps the title weighting the old `bm25()` call had.
-     * The MATERIALIZED CTEs are each referenced several times and must run once.
+     *
+     * One statement per tier, run in order, with the notes the tiers above already hold
+     * passed down as a JSON list. It was one statement, a chain of MATERIALIZED CTEs in
+     * which each tier counted and excluded the union of the ones above it, and that
+     * stopped preparing on SQLite 3.54.1 (workerd 1.20261106): "VIEWs and/or subqueries
+     * nested too deep". SQLite expands a CTE once for every place it is named, even a
+     * MATERIALIZED one that then runs once, and 3.54.1 fails a statement whose expansions
+     * have opened as many cursors as the expression-depth limit, which workerd sets to
+     * 100. Each tier named the one above three times (its union, its count, its NOT IN),
+     * so the note tier was expanded 27 times and its filter clauses with it: a plain
+     * search opened between 150 and 200 cursors, one in a notebook and a tag over 200.
+     * Here no statement names another, the skip is a check of the set's size between
+     * statements, and nothing grows with the number of tiers or filters. Workerd backed
+     * the check out again (cloudflare/workerd 0d01fe9f, 2026-11-10), but a statement that
+     * only prepares because of a patch is one SQLite release from breaking again.
+     *
+     * One row per note, and it is the best-tier one: a note is in at most one tier, since
+     * each leaves out the notes above it, and the first row of it a tier returns is its
+     * best-ranked there. This was a GROUP BY with MIN(tier) and MIN(rank), which relied on
+     * SQLite's bare-column rule to pick the snippet, and that rule follows the *last*
+     * aggregate, so a note matching in its body and in a tag came back with the tag's
+     * snippet and "tagged X" under it whenever the tag's bm25 happened to be the smaller
+     * number. Then a window function, in the one statement; now the first row seen.
+     *
+     * Every tier takes the held list, the note tier too, where it is always empty: the
+     * four are run by one loop with one set of binds, and a statement handed a bind it
+     * has no parameter for is refused.
      */
-    return this.sql
-      .exec<SearchRow>(
-        `WITH note_hits AS MATERIALIZED (
-           SELECT ${tierColumns('note', 'n', 'vtab')}
-             FROM notes_fts
-             JOIN notes n ON n.rowid = notes_fts.rowid
-            WHERE notes_fts MATCH ?1 AND ${tierRankMatch('note')}
-              AND n.deleted_at IS NULL
-              ${scoped}
-            ORDER BY notes_fts.rank
-            LIMIT ?2
-         ),
-         tag_hits AS MATERIALIZED (
-           SELECT ${tierColumns('tag', 'n', 'vtab')}
-             FROM tags_fts
-             JOIN tags t ON t.rowid = tags_fts.rowid
-             JOIN note_tags nt ON nt.tag_id = t.id
-             JOIN notes n ON n.id = +nt.note_id
-            WHERE (SELECT COUNT(*) FROM note_hits) < ?2
-              AND tags_fts MATCH ?1
-              AND +n.deleted_at IS NULL
-              AND n.id NOT IN (SELECT id FROM note_hits)
-              ${scoped}
-            ORDER BY tags_fts.rank
-            LIMIT ?2 * ${SEARCH_OVERFETCH}
-         ),
-         early AS MATERIALIZED (
-           SELECT * FROM note_hits UNION ALL SELECT * FROM tag_hits
-         ),
-         field_hits AS MATERIALIZED (
-           SELECT ${tierColumns('field', 'n', 'vtab')}
-             FROM note_fields_fts
-             JOIN note_fields nf ON nf.rowid = note_fields_fts.rowid
-             JOIN notebook_fields f ON f.id = nf.field_id
-             JOIN notes n ON n.id = nf.note_id
-            WHERE (SELECT COUNT(DISTINCT id) FROM early) < ?2
-              AND note_fields_fts MATCH ?1
-              AND +n.deleted_at IS NULL
-              AND n.id NOT IN (SELECT id FROM early)
-              ${scoped}
-            ORDER BY note_fields_fts.rank
-            LIMIT ?2 * ${SEARCH_OVERFETCH}
-         ),
-         earlier AS MATERIALIZED (
-           SELECT * FROM early UNION ALL SELECT * FROM field_hits
-         ),
-         file_hits AS (
-           SELECT ${tierColumns('file', 'n', 'vtab')}
-             FROM attachment_text_fts
-             JOIN attachment_text at ON at.rowid = attachment_text_fts.rowid
-             JOIN notes n ON n.id = at.note_id
-            WHERE (SELECT COUNT(DISTINCT id) FROM earlier) < ?2
-              AND attachment_text_fts MATCH ?1
-              AND +n.deleted_at IS NULL
-              AND n.id NOT IN (SELECT id FROM earlier)
-              ${scoped}
-            ORDER BY attachment_text_fts.rank
-            LIMIT ?2 * ${SEARCH_OVERFETCH}
-         ),
-         combined AS (
-           SELECT * FROM earlier UNION ALL SELECT * FROM file_hits
-         ),
-         best AS (
-           SELECT *, ROW_NUMBER() OVER (PARTITION BY id ORDER BY tier, rank) AS place
-             FROM combined
-         )
-         SELECT id, title, updated_at, snippet, matched_file, matched_field, matched_tag,
-                tier, rank
-           FROM best
-          WHERE place = 1
-          ORDER BY tier, rank, id
-          LIMIT ?2`,
-        ...binds,
-      )
-      .map(toSearchResult);
+    const tiers: Record<keyof typeof SEARCH_TIERS, string> = {
+      note: `SELECT ${tierColumns('note', 'n', 'vtab')}
+               FROM notes_fts
+               JOIN notes n ON n.rowid = notes_fts.rowid
+              WHERE notes_fts MATCH ?1 AND ${tierRankMatch('note')}
+                AND n.deleted_at IS NULL
+                AND n.id NOT IN (SELECT value FROM json_each(${held}))
+                ${scoped}
+              ORDER BY notes_fts.rank
+              LIMIT ?2`,
+      tag: `SELECT ${tierColumns('tag', 'n', 'vtab')}
+              FROM tags_fts
+              JOIN tags t ON t.rowid = tags_fts.rowid
+              JOIN note_tags nt ON nt.tag_id = t.id
+              JOIN notes n ON n.id = +nt.note_id
+             WHERE tags_fts MATCH ?1
+               AND +n.deleted_at IS NULL
+               AND n.id NOT IN (SELECT value FROM json_each(${held}))
+               ${scoped}
+             ORDER BY tags_fts.rank
+             LIMIT ?2 * ${SEARCH_OVERFETCH}`,
+      field: `SELECT ${tierColumns('field', 'n', 'vtab')}
+                FROM note_fields_fts
+                JOIN note_fields nf ON nf.rowid = note_fields_fts.rowid
+                JOIN notebook_fields f ON f.id = nf.field_id
+                JOIN notes n ON n.id = nf.note_id
+               WHERE note_fields_fts MATCH ?1
+                 AND +n.deleted_at IS NULL
+                 AND n.id NOT IN (SELECT value FROM json_each(${held}))
+                 ${scoped}
+               ORDER BY note_fields_fts.rank
+               LIMIT ?2 * ${SEARCH_OVERFETCH}`,
+      file: `SELECT ${tierColumns('file', 'n', 'vtab')}
+               FROM attachment_text_fts
+               JOIN attachment_text at ON at.rowid = attachment_text_fts.rowid
+               JOIN notes n ON n.id = at.note_id
+              WHERE attachment_text_fts MATCH ?1
+                AND +n.deleted_at IS NULL
+                AND n.id NOT IN (SELECT value FROM json_each(${held}))
+                ${scoped}
+              ORDER BY attachment_text_fts.rank
+              LIMIT ?2 * ${SEARCH_OVERFETCH}`,
+    };
+
+    const best = new Map<string, RankedSearchRow>();
+    for (const sql of [tiers.note, tiers.tag, tiers.field, tiers.file]) {
+      if (best.size >= limit) break;
+      const rows = this.sql.exec<RankedSearchRow>(sql, ...binds, JSON.stringify([...best.keys()]));
+      for (const row of rows) if (!best.has(row.id)) best.set(row.id, row);
+    }
+    return [...best.values()].sort(byTierRankId).slice(0, limit).map(toSearchResult);
+  }
+
+  /**
+   * The scope-driven search (`scopeDrivenSearchSql`) in two statements: the notes in
+   * scope, then the four tiers asked about those notes alone, handed over as JSON.
+   *
+   * One statement, with the scope as a MATERIALIZED CTE each tier started from, stopped
+   * preparing on SQLite 3.54.1 once a search carried a dozen tag filters: the CTE is
+   * expanded once per tier, each copy with every filter's subquery, and the cursors they
+   * opened reached workerd's limit of 100 (see `search`). The scope is at most
+   * `SCOPE_DRIVEN_SEARCH_MAX` notes, its four columns are all the tiers read of a note,
+   * and a CTE over `json_each` reads no table, so the notes are read once, as they were.
+   * An empty scope stops here, without asking an FTS table anything.
+   */
+  private searchScope(query: string, limit: number, filters: SearchFilters): SearchResult[] {
+    const binds: Bind[] = [];
+    const scope = filterConditions(filters, binds);
+    const notes = this.sql.exec<{ rid: number; id: string; title: string; updated_at: number }>(
+      `SELECT n.rowid AS rid, n.id, n.title, n.updated_at
+         FROM notes n
+        WHERE ${liveCondition(false, filters.tags)}
+          ${scope.length > 0 ? `AND ${scope.join(' AND ')}` : ''}`,
+      ...binds,
+    );
+    if (notes.length === 0) return [];
+    const rows = notes.map((n) => [n.rid, n.id, n.title, n.updated_at]);
+    return this.sql.exec<SearchRow>(scopeDrivenSearchSql(), query, limit, JSON.stringify(rows)).map(toSearchResult);
   }
 
   /**

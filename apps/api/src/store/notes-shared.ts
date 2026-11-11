@@ -341,8 +341,8 @@ export function decodeAttachmentsJson(json: string | null): NonNullable<NoteSumm
  * How many rows past the page each later search tier reads, as a multiple of the limit.
  *
  * A tag, field or file tier yields one row per matching tag, value or file, not per note:
- * a note tagged with three matching tags is three rows until the window function keeps its
- * best one. The tier is read in rank order and cut off at this multiple of the page, so
+ * a note tagged with three matching tags is three rows until `search` keeps the first of
+ * them, its best. The tier is read in rank order and cut off at this multiple of the page, so
  * the page is exact unless the top of a tier averages more than this many rows per note,
  * in which case the page comes back short rather than wrong. Four is well past what an
  * archive shows (most notes carry one or two files) and still bounded.
@@ -425,6 +425,21 @@ export interface SearchRow {
   matched_tag: string | null;
 }
 
+/** A tier's row as the FTS-driven search reads it, before one is kept per note. */
+export interface RankedSearchRow extends SearchRow {
+  tier: number;
+  rank: number;
+}
+
+/**
+ * The order both query shapes return: tier, then relevance, then id so that equal ranks
+ * come back the same way every time. The scope-driven one says it in SQL; the FTS-driven
+ * one runs a statement per tier and sorts here. Ids are ASCII, so `<` is SQLite's BINARY.
+ */
+export function byTierRankId(a: RankedSearchRow, b: RankedSearchRow): number {
+  return a.tier - b.tier || a.rank - b.rank || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+}
+
 export function toSearchResult(r: SearchRow): SearchResult {
   return {
     id: r.id,
@@ -456,16 +471,18 @@ export function toSearchResult(r: SearchRow): SearchResult {
  * read every file the account has once per note in scope. There is no such column here
  * and no such index; the CROSS JOINs alone fix the order.
  *
- * `live` is the `deleted_at` condition (see `liveCondition` for why it hides the index
- * when a tag filter is present) and `scoped` the filter clauses, bound as in `search`.
- * The FTS query is `?1` and the limit `?2`; the filters bind after them.
+ * The scope is not read here. `searchScope` reads it in a statement of its own and binds
+ * it as `?3`, a JSON array of `[rowid, id, title, updated_at]` per note, because a scope
+ * read in this statement was expanded once per tier with every filter's subquery, and a
+ * dozen tag filters made more cursors than workerd's SQLite allows one statement (see
+ * `search`). Every tier still names `scope`, but now each copy is one `json_each`.
+ * The FTS query is `?1` and the limit `?2`.
  */
-export function scopeDrivenSearchSql(live: string, scoped: string): string {
+export function scopeDrivenSearchSql(): string {
   return `WITH scope AS MATERIALIZED (
-            SELECT n.rowid AS rid, n.id, n.title, n.updated_at
-              FROM notes n
-             WHERE ${live}
-               ${scoped}
+            SELECT s.value ->> 0 AS rid, s.value ->> 1 AS id,
+                   s.value ->> 2 AS title, s.value ->> 3 AS updated_at
+              FROM json_each(?3) s
           ),
           note_hits AS (
             SELECT ${tierColumns('note', 's', 'bm25')}

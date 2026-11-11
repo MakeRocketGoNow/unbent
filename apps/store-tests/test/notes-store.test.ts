@@ -579,6 +579,48 @@ describe('notes: search', () => {
     expect(await stub.search('shared', 10, { notebook: 'no such notebook' })).toEqual([]);
   });
 
+  it('prepares with twenty tag filters, scope-driven and FTS-driven', async () => {
+    // SQLite 3.54.1 fails a statement whose CTE expansions open as many cursors as the
+    // expression-depth limit, 100 in workerd. Each tag filter is a subquery, so a shape
+    // that repeats the filters once per tier ran out at a dozen tags (see `search`).
+    const { stub } = freshStore('many-tags');
+    const tags = Array.from({ length: 20 }, (_, i) => `t${i}`);
+    const tagged = await stub.create(note({ title: 'Tagged', body: 'shared word', notebook: 'Small', tags }));
+    await stub.create(note({ title: 'Untagged', body: 'shared word', notebook: 'Small' }));
+
+    for (const filters of [{ tags }, { tags, notebook: 'Small' }]) {
+      expect((await stub.search('shared', 10, filters)).map((r) => r.id)).toEqual([tagged.id]);
+      expect((await stub.search('shared', 10, filters, 0)).map((r) => r.id)).toEqual([tagged.id]);
+    }
+  });
+
+  it('keeps one row per note across the tier statements, and stops once the page is full', async () => {
+    // The FTS-driven search is a statement per tier, and what used to be SQL between
+    // them is code now: which row of a note is kept, and whether a lower tier runs at
+    // all. No filter, so none of this takes the scope-driven shape.
+    const { stub } = freshStore('tier-merge');
+    // In its body and under a tag: the body's row, never "tagged X" beneath it.
+    const both = await stub.create(note({ title: 'Both', body: 'gadget on the desk', tags: ['gadget'] }));
+    // Twice in the tag tier: one row, and the first the tier returned, its better-ranked.
+    const twice = await stub.create(note({ title: 'Twice', body: 'nothing', tags: ['gadget', 'gadget spares and other odds and ends'] }));
+    const inFile = await stub.create(note({ title: 'Scan', body: 'nothing' }));
+    await stub.recordAttachment({ id: 'f1', noteId: inFile.id, filename: 'scan.pdf', contentType: 'application/pdf', size: 1, r2Key: 'k1' });
+    await stub.recordText({ attachmentId: 'f1', noteId: inFile.id, filename: 'scan.pdf', text: 'a gadget manual' });
+
+    const all = await stub.search('gadget', 10);
+    expect(all.map((r) => [r.id, r.matchedTag ?? r.matchedFile ?? 'body'])).toEqual([
+      [both.id, 'body'],
+      [twice.id, 'gadget'],
+      [inFile.id, 'scan.pdf'],
+    ]);
+    expect(all[0]!.snippet).toContain('<<gadget>>');
+
+    // A page the tiers above have filled is not asked of the ones below, and a page that
+    // ends inside a tier is cut there.
+    expect((await stub.search('gadget', 1)).map((r) => r.id)).toEqual([both.id]);
+    expect((await stub.search('gadget', 2)).map((r) => r.id)).toEqual([both.id, twice.id]);
+  });
+
   it("carries each match's list row, in the search's order, for a table", async () => {
     const { stub } = freshStore('search-rows');
     const nb = (await stub.createNotebook('Receipts'))!;
@@ -1401,6 +1443,9 @@ describe('rows read on an archive-sized store', () => {
       // MCP's search with a line per file of each match (MAK-172): fifty matches, a third with a scan.
       await measure('search common word with file summaries', () => stub.searchWithFiles('receipt', 50)),
       await measure('search one letter', () => stub.search('r', 50)),
+      // A word only files hold: the three tiers above come back empty and the file tier
+      // runs, which no search of a word every note's body has ever reaches.
+      await measure('search reaching the file tier', () => stub.search('scanned', 50)),
       await measure('search in a small tag', () => stub.search('receipt', 50, { tags: ['rare'] })),
       // A table's search: the page above, plus the rows the list would draw for its matches.
       await measure('search rows in a notebook', () => stub.searchRows('receipt', 50, { notebook: 'Notebook 0' })),
@@ -1645,11 +1690,18 @@ describe('rows read on an archive-sized store', () => {
       'sweep visit': 12,
       'forget expired files': 30,
       'sweep visit with nothing due': 4,
-      'search common word': 2500,
-      // The search's own 502 and the files of its fifty matches, each asked by the note's
-      // index whether it has any (670, measured 2026-10-05).
-      'search common word with file summaries': 800,
-      'search one letter': 2500,
+      // A page that fills in the note tier is that tier's statement and nothing else:
+      // about three rows a match, and the tiers below are never asked (149, measured
+      // 2026-11-11). As one statement it was 502, every tier's CTE being opened.
+      'search common word': 250,
+      // The search's own 149 and the files of its fifty matches, each asked by the note's
+      // index whether it has any (317, measured 2026-11-11).
+      'search common word with file summaries': 450,
+      'search one letter': 250,
+      // Four rows a match, for the page and its overfetch: two hundred of the thousand
+      // files that hold the word (799, measured 2026-11-11). A tier that read every match
+      // would be five times that.
+      'search reaching the file tier': 1000,
       'search in a small tag': 80,
       'search rows in a notebook': 1500,
       // A write reads its feed row back in (the insert counts one), the counter, and the

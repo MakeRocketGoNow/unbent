@@ -93,25 +93,26 @@ written exactly, the others with `^`; move them all together either way.
 
 ## The Workers runtime: Wrangler and the vitest plugin
 
-**`wrangler` 4.151.1 and `@cloudflare/vitest-plugin` 1.4.4, both exactly.** Each brings its
-own workerd, and every workerd from 1.20261106 on carries SQLite 3.54.1 (workerd #8239),
-under which the store's search fails with "VIEWs and/or subqueries nested too deep". The
-statement is `NotesStore.search`'s four tiers, MATERIALIZED CTEs feeding one another
-(`note_hits`, `early`, `earlier`, `combined`, `best`), and it fails whatever the data.
-Measured 2026-11-11: on plugin 1.8.0 (workerd 1.20261110.1) eleven store tests fail, every
-one in a search, on vitest 5.0.3 as on 5.1.0; with that plugin's miniflare forced back to
-5.20261104.0-beta, the attachments file's three failures pass. Wrangler matters as much as
-the plugin, because `pnpm dev` runs the Worker on Wrangler's workerd, so search on a local
-instance fails the same way. The newest releases still on an older workerd are plugin 1.6.0
-and Wrangler 4.158.0 (both miniflare 5.20261104.0-beta); neither was taken, and the versions
-pinned are the ones tested.
+**Not held since 2026-11-11.** `wrangler` is `^4.160.1` again; the plugin is exact at 1.8.0
+only for the vitest pairing below. Each brings its own workerd, and every workerd from
+1.20261106 on carries SQLite 3.54.1 (workerd #8239), which fails a statement once the
+cursors its CTE expansions open reach the expression-depth limit (workerd sets 100) with
+"VIEWs and/or subqueries nested too deep". SQLite expands a CTE once for every place it is
+named, MATERIALIZED or not, and `NotesStore.search` was a chain of CTEs each naming the
+one above it three times, so every search failed. Wrangler 4.151.1 and the plugin 1.4.4
+were pinned exactly for a day to keep local instances and the store tests on an older
+workerd; the pin protected nothing in production, whose runtime is the same workerd.
 
-The runtime is not only local. Cloudflare's production runtime is the same workerd, so
-unbent.app gets SQLite 3.54.1 when that release is deployed, and its search with it, whatever
-this pin says. The pin keeps a local instance and the store tests on a SQLite where search
-works; the fix is to reshape the statement until it prepares on 3.54.1. Lift the pin with
-that fix: move the plugin and Wrangler to their newest, clear `node_modules/.vitest-cache`,
-and `pnpm --filter @unbent/store-tests test` must pass, search tests included.
+The statement was reshaped instead: the FTS-driven search runs one statement per tier, and
+the scope-driven one reads its scope first and hands it to the tiers as JSON (the comments
+on `search` and `scopeDrivenSearchSql` say how). Workerd backed the check out of its own
+build on 2026-11-10 (cloudflare/workerd 0d01fe9f), after plugin 1.8.0's workerd 1.20261110.1
+was cut, but nothing here should depend on that patch staying.
+
+When either moves, run `pnpm --filter @unbent/store-tests test` from a cleared
+`node_modules/.vitest-cache`, and try search under `pnpm dev`: a new SQLite in workerd shows
+up there first. A new statement that names one CTE from several places multiplies its
+expansions; check it prepares under a limit of 100.
 
 ## Tooling
 
@@ -138,8 +139,9 @@ run from a cleared `node_modules/.vitest-cache`.
 
 Rechecked 2026-11-11 against vitest 5.1.0: still broken, on plugin 1.6.0 and on 1.8.0 alike,
 each losing the same eight of seventeen files to "Worker exited unexpectedly". (1.8.0 fails
-the search tests besides, for the runtime reason above.) Keep vitest at 5.0.3; plugin 1.4.4
-is exact now for the runtime's sake, which this hold also needs.
+the search tests besides, a failure since fixed in the statement; see above.) Keep vitest at
+5.0.3, and keep the plugin exact at a release that passes on it: 1.8.0 passes all seventeen
+files on 5.0.3 (2026-11-11).
 
 ## The workflows' actions
 
