@@ -196,14 +196,12 @@ public final class CaptureStager: @unchecked Sendable {
             // the share was never clipped. The link the sender offered as a link is the one
             // kept.
             //
-            // A provider that is only a string lands in `lines`, not `links`: `kind`
-            // classifies it as text, and it is never a `public.url`. Filtering `links`
-            // alone left that address in the body, and `pageUrl` still saw two links.
-            // Drop a line that is itself a lone address. Text with anything else in it
-            // is someone's words and stays. A provider offered as both a link and text
-            // is a `.link` (url wins), so it never became a line; `offeredLinks` still
-            // drops those from `links` when another item was a link-only provider.
-            // Two links that both came as links stay too.
+            // A string that is only an address is usually offered as `public.url` too, so it
+            // is a `.link` and `offeredLinks` drops it. A provider that registers only plain
+            // text is a `.text`, and its address lands in `lines`, which that filter never
+            // sees; so a line that is itself a lone address goes as well. Text with anything
+            // else in it is someone's words and stays; two links that both came as links
+            // stay too.
             lines.removeAll { CaptureNaming.isLonePageUrl($0) }
             if !offeredLinks.isEmpty { links.removeAll { !offeredLinks.contains($0) } }
         } else if lines.isEmpty, intake.files.isEmpty, !attached.isEmpty {
