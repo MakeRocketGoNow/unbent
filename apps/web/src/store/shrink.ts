@@ -33,11 +33,15 @@
  * one, or below zero, which Chrome reports as about 4 GB and never corrects.
  *
  * Never truncates a file it does not then remove at once. A handle is exclusive, so a file
- * another tab's engine still holds refuses the handle and is skipped untouched, and the
- * page's plain removal is refused for the same reason and tried again later, as it always
- * was. What it does take, nobody else can open between the truncate and the removal but
- * for the instant after `close`, and a file left empty there is a store that was being
- * wiped anyway: an empty SQLite file opens as an empty database.
+ * another tab's engine holds at that moment refuses it and is skipped untouched; the page's
+ * plain removal is refused for the same reason and tried again later, as it always was.
+ * That is not a promise that an open library is left alone: wa-sqlite's cooperative VFS lets
+ * a file go between transactions (`usage.ts` measured it), so an idle library in another
+ * tab is usually not holding its file, and is emptied and removed here exactly as
+ * `removeEntry` alone removed it before. The wipe tells those tabs to close first
+ * (`installLibraryCloser`) for that reason. Between `close` and the removal another engine
+ * could take the file back; what it would find is an emptied store that was being wiped
+ * anyway, which the wipe's next try removes.
  *
  * A file it cannot empty (no `createSyncAccessHandle` in this browser, or a handle refused)
  * is left for the page, rather than removed here without the truncate: the page's
