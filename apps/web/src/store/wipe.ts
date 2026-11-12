@@ -172,8 +172,13 @@ async function wipeStoreFiles(keep: string[] = [], keepFiles?: string): Promise<
     for await (const [name] of root.entries()) if (isStoreFile(name) && !keep.some((k) => name.startsWith(k))) names.push(name);
     const dirs: string[] = [];
     for await (const [name] of root.entries()) if (isFilesDir(name) && name !== keepFiles) dirs.push(name);
+    // The databases are emptied through a sync access handle before they go, in a worker,
+    // so their removal does not take Chrome's usage counter below zero (`shrink.ts`). The
+    // files directories are not: their bytes are written with `createWritable`, which
+    // Chrome counts properly, and a recursive removal of them subtracts what was added.
+    const shrunk = await removeInWorker(names);
     const outcomes = await Promise.all([
-      ...names.map((name) => root.removeEntry(name).then(() => true, () => false)),
+      ...names.map((name) => (shrunk.has(name) ? true : root.removeEntry(name).then(() => true, gone))),
       ...dirs.map((name) => root.removeEntry(name, { recursive: true }).then(() => true, () => false)),
     ]);
     return outcomes.every(Boolean);
@@ -181,6 +186,53 @@ async function wipeStoreFiles(keep: string[] = [], keepFiles?: string): Promise<
     // No OPFS, or it is unavailable in this context (a private window, say).
     return true;
   }
+}
+
+/**
+ * A removal that failed because the file is not there has done what it was for: the worker
+ * may have removed it after its answer stopped being waited for.
+ */
+const gone = (error: unknown) => error instanceof DOMException && error.name === 'NotFoundError';
+
+/**
+ * How long a wipe waits for the worker that empties the store files. Emptying a file is
+ * milliseconds; this is for the worker's start, which fetches its script (from the service
+ * worker's shell when offline), and for a worker that never answers, which must not hold a
+ * sign-out. Past it, what the worker has not reported is removed on the page, as before
+ * the worker existed.
+ */
+const SHRINK_WAIT_MS = 2_000;
+
+/**
+ * Empties and removes `names` in a worker (`shrink-worker.ts`) and answers which went.
+ * Never throws and never waits past `SHRINK_WAIT_MS`: a browser with no workers, a worker
+ * that fails to start or errors, and one that is slow all answer with what was reported so
+ * far, which may be nothing, and the caller removes the rest with a plain `removeEntry`.
+ */
+function removeInWorker(names: string[]): Promise<Set<string>> {
+  const removed = new Set<string>();
+  if (names.length === 0 || typeof Worker === 'undefined') return Promise.resolve(removed);
+  return new Promise((resolve) => {
+    let worker: Worker;
+    try {
+      worker = new Worker(new URL('./shrink-worker.ts', import.meta.url), { type: 'module' });
+    } catch {
+      resolve(removed);
+      return;
+    }
+    const finish = () => {
+      clearTimeout(timer);
+      worker.terminate();
+      resolve(removed);
+    };
+    const timer = setTimeout(finish, SHRINK_WAIT_MS);
+    worker.onmessage = (event: MessageEvent<Partial<{ removed: string; done: true }>>) => {
+      if (typeof event.data?.removed === 'string') removed.add(event.data.removed);
+      if (event.data?.done) finish();
+    };
+    worker.onerror = worker.onmessageerror = finish;
+    worker.postMessage({ names });
+  });
 }
 
 async function wipeOutboxes(keep?: string): Promise<void> {

@@ -3,6 +3,7 @@ import { closeLocalStores, installLibraryCloser, wipeLocalStores } from './wipe.
 
 vi.mock('./library.js', () => ({ closeLibraryAndStore: vi.fn(async () => {}), currentLibraryUser: vi.fn(() => null) }));
 import { closeLibraryAndStore as closeLibrary, currentLibraryUser } from './library.js';
+import { shrinkAndRemove, type ShrinkRoot } from './shrink.js';
 
 /**
  * What the wipe removes, against a stand-in file system and IndexedDB: every account's
@@ -10,7 +11,7 @@ import { closeLibraryAndStore as closeLibrary, currentLibraryUser } from './libr
  * journal and WAL beside it, its files directory and its outbox stay, since the outbox may hold writes the server has
  * not heard of. The engine's own directory is never ours to remove.
  */
-function device(files: string[], dbs: string[], opts: { refuse?: (name: string, attempt: number) => boolean } = {}) {
+function device(files: string[], dbs: string[], opts: { refuse?: (name: string, attempt: number) => boolean; held?: (name: string) => boolean } = {}) {
   const removed: string[] = [];
   const deleted: string[] = [];
   /** Everything that happened, in order: what was posted, deleted and removed. */
@@ -22,6 +23,16 @@ function device(files: string[], dbs: string[], opts: { refuse?: (name: string, 
       getDirectory: async () => ({
         entries: async function* () {
           for (const f of remaining) yield [f, {}];
+        },
+        // What the worker opens: a sync access handle, refused while another tab holds the file.
+        getFileHandle: async (name: string) => {
+          if (!remaining.has(name)) throw new DOMException('gone', 'NotFoundError');
+          return {
+            createSyncAccessHandle: async () => {
+              if (opts.held?.(name)) throw new DOMException('held', 'NoModificationAllowedError');
+              return { truncate: () => order.push(`truncate:${name}`), flush: () => {}, close: () => {} };
+            },
+          };
         },
         removeEntry: async (name: string) => {
           const attempt = (attempts.get(name) ?? 0) + 1;
@@ -240,6 +251,127 @@ describe('other tabs', () => {
     expect(installLibraryCloser()).toBeTypeOf('function');
     await wipeLocalStores();
     expect(deleted.sort()).toEqual(['unbent-outbox-a', 'unbent-outbox-b']);
+  });
+});
+
+/**
+ * A stand-in for the worker that empties the store files: it runs what the real one runs
+ * (`shrinkAndRemove`) against the stand-in file system, or fails the way a real one can.
+ */
+function workers(behaviour: 'works' | 'cannot start' | 'errors' | 'silent' = 'works') {
+  const started: string[][] = [];
+  class FakeWorker {
+    onmessage: ((e: { data: unknown }) => void) | null = null;
+    onerror: (() => void) | null = null;
+    onmessageerror: (() => void) | null = null;
+    terminated = false;
+    constructor() {
+      if (behaviour === 'cannot start') throw new Error('no worker');
+    }
+    postMessage({ names }: { names: string[] }) {
+      started.push(names);
+      if (behaviour === 'silent') return;
+      if (behaviour === 'errors') return void queueMicrotask(() => this.onerror?.());
+      void (async () => {
+        const root = (await navigator.storage.getDirectory()) as unknown as ShrinkRoot;
+        await shrinkAndRemove(root, names, (removed) => !this.terminated && this.onmessage?.({ data: { removed } }));
+        if (!this.terminated) this.onmessage?.({ data: { done: true } });
+      })();
+    }
+    terminate() {
+      this.terminated = true;
+    }
+  }
+  vi.stubGlobal('Worker', FakeWorker);
+  return { started };
+}
+
+describe('emptying the store files before they go', () => {
+  const stores = ['unbent-a.search.sqlite', 'unbent-a.sqlite', 'unbent-a.sqlite-journal', 'unbent-a.sqlite-wal', 'unbent-b.search.sqlite', 'unbent-b.sqlite'];
+
+  it('truncates each database in a worker before removing it, and leaves the files directories to the page', async () => {
+    const { removed, order, attempts } = device(files, dbs);
+    const { started } = workers();
+    await wipeLocalStores();
+    expect(started).toHaveLength(1);
+    expect(started[0]!.sort()).toEqual(stores);
+    for (const name of stores) {
+      expect(order.indexOf(`truncate:${name}`)).toBeGreaterThanOrEqual(0);
+      expect(order.indexOf(`truncate:${name}`)).toBeLessThan(order.indexOf(`remove:${name}`));
+      // Removed once, by the worker: the page did not try it again.
+      expect(attempts.get(name)).toBe(1);
+    }
+    expect(removed.sort()).toEqual([...stores, 'unbent-files-a', 'unbent-files-b'].sort());
+    expect(order).not.toContain('truncate:unbent-files-a');
+  });
+
+  it('names only what the wipe removes: the kept account’s files are never opened, let alone emptied', async () => {
+    const { order } = device(files, dbs);
+    vi.mocked(currentLibraryUser).mockReturnValue('a');
+    const { started } = workers();
+    await wipeLocalStores('a');
+    expect(started[0]!.sort()).toEqual(['unbent-b.search.sqlite', 'unbent-b.sqlite']);
+    expect(order.filter((o) => o.startsWith('truncate:')).sort()).toEqual(['truncate:unbent-b.search.sqlite', 'truncate:unbent-b.sqlite']);
+  });
+
+  it('leaves a file another tab holds untouched, for the page to remove once it is let go', async () => {
+    vi.useFakeTimers();
+    try {
+      let holding = true;
+      const { removed, order } = device(files, dbs, {
+        held: (name) => holding && name === 'unbent-b.sqlite',
+        refuse: (name) => holding && name === 'unbent-b.sqlite',
+      });
+      workers();
+      const wipe = wipeLocalStores();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(order).not.toContain('truncate:unbent-b.sqlite');
+      expect(removed).not.toContain('unbent-b.sqlite');
+      holding = false;
+      await vi.advanceTimersByTimeAsync(2_000);
+      await wipe;
+      // Let go, and emptied first on the next try like the rest.
+      expect(order.indexOf('truncate:unbent-b.sqlite')).toBeLessThan(order.indexOf('remove:unbent-b.sqlite'));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it.each(['cannot start', 'errors'] as const)('removes every file on the page when the worker %s', async (behaviour) => {
+    const { removed, order } = device(files, dbs);
+    workers(behaviour);
+    await wipeLocalStores();
+    expect(removed.sort()).toEqual([...stores, 'unbent-files-a', 'unbent-files-b'].sort());
+    expect(order.some((o) => o.startsWith('truncate:'))).toBe(false);
+  });
+
+  it('removes every file on the page when the worker never answers, after a bounded wait', async () => {
+    vi.useFakeTimers();
+    try {
+      const { removed } = device(files, dbs);
+      workers('silent');
+      let done = false;
+      void wipeLocalStores().then(() => (done = true));
+      await vi.advanceTimersByTimeAsync(1_900);
+      expect(done).toBe(false);
+      await vi.advanceTimersByTimeAsync(200);
+      expect(done).toBe(true);
+      expect(removed.sort()).toEqual([...stores, 'unbent-files-a', 'unbent-files-b'].sort());
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('removes on the page what a browser without sync access handles cannot empty', async () => {
+    const { removed, order } = device(files, dbs);
+    workers();
+    const getDirectory = navigator.storage.getDirectory;
+    vi.stubGlobal('navigator', {
+      storage: { getDirectory: async () => ({ ...(await getDirectory()), getFileHandle: async () => ({}) }) },
+    });
+    await wipeLocalStores();
+    expect(removed.sort()).toEqual([...stores, 'unbent-files-a', 'unbent-files-b'].sort());
+    expect(order.some((o) => o.startsWith('truncate:'))).toBe(false);
   });
 });
 
