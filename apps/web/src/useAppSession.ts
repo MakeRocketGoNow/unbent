@@ -23,10 +23,38 @@ export function useAppSession(): { session: Session | null; isPending: boolean; 
   const state = useSession() as unknown as SessionState;
   const waiting = state.isPending && !sessionCheckAbandoned();
   useEffect(() => {
-    if (!waiting) void recordSession(state);
+    if (waiting) return;
+    answeredUnreachable = answerFor(state, rememberedSession()).unreachable;
+    void recordSession(state);
     // `state` is a fresh object on every render; what it says is these three.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [waiting, state.data, state.error, state.isPending]);
-  if (waiting) return { session: null, isPending: true, unreachable: false };
+  if (waiting) {
+    const held = answeredUnreachable ? rememberedSession() : null;
+    if (held) return { session: held, isPending: false, unreachable: true };
+    return { session: null, isPending: true, unreachable: false };
+  }
   return { ...answerFor(state, rememberedSession()), isPending: false };
 }
+
+/**
+ * Whether the last answer read here was that the server could not be asked, so the page
+ * is running on the remembered session.
+ *
+ * Better Auth holds its own answer through a check in flight: a store with a session in it
+ * keeps `data` and says `isPending: false` until the server answers again. A remembered
+ * session is ours, not the store's, and the store has nothing to hold, so when it is asked
+ * again it reports `isPending: true`, which is exactly how the first check of a cold start
+ * looks. That ask comes when the connection does (`installSessionRecheck`), and read as a
+ * first check it sent every page that had been running offline back to the shell's
+ * "Loading…" for the length of a round trip: the list, the search field and an open note's
+ * editor were thrown away and drawn again from nothing (the offline gate's last check,
+ * 2026-11-11). So a check in flight after that answer keeps it, the way the store keeps
+ * its own, until the server says something.
+ *
+ * Only that answer is held. One with nobody in it has already sent the page to `/login`,
+ * and a check that follows it is a sign-in, which must wait for the server as before.
+ * Module-wide rather than per hook, so a component mounted during the check reads the
+ * same answer as the shell around it; the remembered session it names is module-wide too.
+ */
+let answeredUnreachable = false;
