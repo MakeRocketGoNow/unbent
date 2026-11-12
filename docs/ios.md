@@ -141,7 +141,8 @@ tries with a backoff, and none for a 4xx that will be the same next time; a file
 on is left out of a capture that is otherwise saved; a 503 with `Retry-After` waited
 out, up to fourteen times, without spending a try; a 401 for the session the phone still
 holds forgets the session and keeps the capture, which then waits for a sign-in like one
-made signed out. A retry is a request created at once with `earliestBeginDate`, so the
+made signed out; a 402, which is the plan having no room (below), keeps it too. A retry is
+a request created at once with `earliestBeginDate`, so the
 wait is the system's to keep. The note's id is chosen on the phone, and each file's is
 sent as `X-Attachment-Id`, which is what makes any of this safe to send twice. An app the
 person force-quit is not relaunched for a result, so whatever is on disk is also looked
@@ -155,6 +156,20 @@ share contending with the app woken for the first.
 Shared while signed out, a capture is staged all the same and sent after the next sign-in;
 it waits thirty days for one, and the notification says so if it is given up on. A sheet
 closed without Save or Cancel leaves no record, and its files go after three.
+
+Where an instance sells a plan, a share from an account whose plan has lapsed, or that is
+past its storage, is answered with a 402 whose `code` says which (`CaptureRefusal`; the
+queue keeps that answer's body, and no other). Nothing is wrong with the capture and the
+answer changes when the person subscribes or deletes something, so it is kept, marked on
+its record, and the notification says why ("Your notes are read-only", "Out of storage" and
+so on), that the share is kept, and opens the Plan page. It is tried again when the app
+comes forward and when another capture lands, never on a launch in the background, which
+would have each refusal launch the app to send the next. Which captures a pass sends is one
+pure function, `CaptureJob.resends`: one kept capture for each reason, the rest following
+when one lands; a refused file or clip only after a quarter of an hour, doubling to six
+hours, and a capture's files one at a time; only as the account it was refused for; and
+given up on, with a notification, at the first refusal past thirty days from its first.
+Signing out recalls the requests the system still holds for that instance's captures.
 Its one notification goes from "Saving…" to "Saved" in place and opens the note; delivery
 is asked for provisionally, so there is no prompt and the first one arrives quietly with
 the system's own Keep or Turn Off. A PDF or an image can also be opened in the app from
