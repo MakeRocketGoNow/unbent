@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { emailOtp, signIn } from '../auth-client.js';
 import { keys } from '../queries.js';
 import { CAPTCHA_HEADER, loadTurnstile } from '../turnstile.js';
+import { readChoice, resolveTheme } from '../theme.js';
 
 /** What the sentence under a widget that could not run says; the one place it is worded. */
 export const TURNSTILE_FAILED_MESSAGE =
@@ -46,7 +47,10 @@ export interface TurnstileProps {
  * the token is usually in hand before anyone has finished typing an address.
  *
  * `flexible` fills the form's column, which is the width the fields above it have. The
- * theme follows the page's, as the fields do. The container has the widget's height before
+ * theme is the page's, as the fields' is: the one in effect, read from `theme.ts` at
+ * mount, never Cloudflare's `auto`, which follows the device past a theme chosen in
+ * Settings › Appearance. Read once, since the widget is drawn once and nobody changes the
+ * theme on the sign-in screen. The container has the widget's height before
  * the script arrives (`.turnstile` in the stylesheet), so nothing below it jumps when it does.
  *
  * The callbacks are held in a ref and the widget is rendered once per mount: Turnstile
@@ -69,7 +73,7 @@ export function Turnstile({ siteKey, onToken, onFail, onInteractive }: Turnstile
         try {
           widgetId = turnstile.render(element, {
             sitekey: siteKey,
-            theme: 'auto',
+            theme: resolveTheme(readChoice()),
             size: 'flexible',
             appearance: 'always',
             callback: (token) => handlers.current.onToken(token),

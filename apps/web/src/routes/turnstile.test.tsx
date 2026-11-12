@@ -53,6 +53,18 @@ describe('the Turnstile page', () => {
     delete window.UnbentApp;
   });
 
+  /** Cloudflare's `auto` follows the device, which a theme chosen in Settings overrides. */
+  it('draws the widget in the theme chosen on this device', async () => {
+    localStorage.setItem('unbent.theme', 'dark');
+    try {
+      harness({ turnstile: { siteKey: '1x00' } });
+      await waitFor(() => expect(widgets).toHaveLength(1));
+      expect(widgets[0]!.theme).toBe('dark');
+    } finally {
+      localStorage.removeItem('unbent.theme');
+    }
+  });
+
   it('draws the widget from the instance\'s site key and hands the app the token', async () => {
     const heard = listen();
     harness({ turnstile: { siteKey: '1x00' } });
