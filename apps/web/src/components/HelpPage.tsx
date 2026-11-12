@@ -5,6 +5,7 @@ import { configQuery } from '../queries.js';
 import { supportLink } from '../support-link.js';
 import { buildInfo, feedbackUrl, type BuildInfo } from '../build-info.js';
 import { BackArrow } from './BackArrow.js';
+import { McpUrl } from './McpUrl.js';
 
 /** Whether this device's shortcuts are written with ⌘ and ⌥ rather than Ctrl and Alt. */
 function isApple(): boolean {
@@ -84,7 +85,6 @@ export function HelpPage({ build = buildInfo }: { build?: BuildInfo | null }) {
   const support = supportLink(config.data);
   const feedback = build ? feedbackUrl(build) : null;
   const apple = isApple();
-  const mcpUrl = `${window.location.origin}/api/mcp`;
 
   return (
     <div className="settings help">
@@ -196,8 +196,13 @@ export function HelpPage({ build = buildInfo }: { build?: BuildInfo | null }) {
         <Topic title="Connecting an AI assistant">
           <p className="muted small">
             Claude, ChatGPT, Cursor and other assistants that speak MCP can search, read and
-            write your notes. Add <code className="help-url">{mcpUrl}</code> as a connector in
-            the assistant and approve it when asked.{' '}
+            write your notes. Add this address as a connector in the assistant, and approve it
+            when asked:
+          </p>
+          <p>
+            <McpUrl />
+          </p>
+          <p className="muted small">
             <Link to="/settings/connected-apps">Settings, then AI assistants</Link> has the
             steps for each one, and lists what is connected.
           </p>

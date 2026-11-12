@@ -5,6 +5,7 @@ import { Button } from '../components/Button.js';
 import { Confirm } from '../components/Confirm.js';
 import { SOURCE_URL } from '../components/FrontPage.js';
 import { CopiedIcon, CopyIcon } from '../components/icons.js';
+import { McpUrl, mcpUrl } from '../components/McpUrl.js';
 import { oauth2 } from '../auth-client.js';
 import { chatgptInstructions } from '../chatgpt-instructions.js';
 import { claudeInstructions } from '../claude-instructions.js';
@@ -23,44 +24,6 @@ interface Grant {
   clientId: string;
   name: string | null;
   grantedAt: string | null;
-}
-
-/**
- * The MCP server URL for this instance, with a button that copies it.
- *
- * The URL is built from the current origin rather than hardcoded, because the same page
- * serves unbent.app and every self-hosted instance, and a self-hosted user pasting a
- * production URL into Claude would get someone else's consent screen.
- */
-function McpUrl() {
-  const [copied, setCopied] = useState(false);
-  const url = `${window.location.origin}/api/mcp`;
-
-  async function copy() {
-    try {
-      await navigator.clipboard.writeText(url);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // Clipboard access can fail in older browsers or non-https contexts; the URL is
-      // still visible to select and copy by hand, so this is not worth an error message.
-    }
-  }
-
-  return (
-    <span className="mcp-url-wrap">
-      <code className="mcp-url">{url}</code>
-      <button
-        type="button"
-        className="mcp-copy"
-        onClick={() => void copy()}
-        aria-label="Copy URL"
-        data-tip={copied ? 'Copied' : 'Copy'}
-      >
-        {copied ? '✓' : <CopyIcon />}
-      </button>
-    </span>
-  );
 }
 
 /**
@@ -193,7 +156,7 @@ const STANDING_INSTRUCTIONS_DOC = `${SOURCE_URL}/blob/main/docs/assistants.md#st
  */
 function StandingInstructions() {
   const { notebooks, failed } = useInstructionLibrary();
-  const url = `${window.location.origin}/api/mcp`;
+  const url = mcpUrl();
   const tip = notebooks ? undefined : failed ? 'Could not read your notebooks' : 'Reading your notebooks…';
 
   return (
@@ -358,7 +321,7 @@ function ConnectedAppsPage() {
           <CopyButton
             label="Copy setup prompt"
             copied="Setup prompt copied"
-            text={() => mcpSetupPrompt(`${window.location.origin}/api/mcp`)}
+            text={() => mcpSetupPrompt(mcpUrl())}
           />
         </p>
         <p className="muted small">

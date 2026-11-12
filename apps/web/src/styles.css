@@ -4837,9 +4837,6 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   border-radius: 0.25rem;
 }
 
-/* The assistant's address sits in a sentence and has no spaces to break at. */
-.help-url { overflow-wrap: anywhere; }
-
 /* The files the picker takes, before one is chosen. A list rather than a sentence each:
    the reader is matching the file they have against a shape, and a list scans. Same
    measure and colour as the paragraphs around it, so it reads as part of the same run. */
