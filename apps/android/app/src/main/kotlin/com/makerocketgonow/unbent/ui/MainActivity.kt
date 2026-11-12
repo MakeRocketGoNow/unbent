@@ -36,6 +36,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
@@ -44,10 +45,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.view.WindowCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewFeature
@@ -203,6 +206,24 @@ class MainActivity : ComponentActivity() {
         val surface = MaterialTheme.colorScheme.surface
         val dark = isSystemInDarkTheme()
         val ground = pageBackground ?: surface
+        /*
+         * The bars' icons take their contrast from the page's colour once it has said
+         * what that is, not from the phone's night mode, which `enableEdgeToEdge` reads.
+         * The page can be in a theme other than the phone's (Settings › Appearance), and
+         * then the system's choice puts dark icons on the dark strip or light on light,
+         * and the clock disappears. iOS decides its status bar the same way
+         * (`PageColour.isDark`). Until the page reports, the system's answer stands, since
+         * the strip is still the app's own surface.
+         */
+        val reported = pageBackground
+        LaunchedEffect(reported) {
+            if (reported == null) return@LaunchedEffect
+            val light = reported.luminance() > 0.5f
+            WindowCompat.getInsetsController(window, window.decorView).apply {
+                isAppearanceLightStatusBars = light
+                isAppearanceLightNavigationBars = light
+            }
+        }
         /*
          * The page is kept out from under the status and navigation bars, and the strips
          * behind them are painted in the page's own colour. A WebView tells a page nothing
