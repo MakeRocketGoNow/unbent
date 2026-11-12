@@ -50,20 +50,45 @@ public struct CaptureNotifications: CaptureNotifying {
     /// The capture is kept, so there is nothing to share again: signing in finishes it.
     public func signInNeeded(_ job: CaptureJob) { post(job, "Sign in to Unbent to finish saving") }
 
-    /// The note a tapped notification is for, when it is one that names a note.
-    public static func noteId(in userInfo: [AnyHashable: Any]) -> String? {
-        guard let id = userInfo[noteKey] as? String, UUID(uuidString: id) != nil else { return nil }
-        return id
+    /// The plan would not take the capture, and it is kept (`CaptureRefusal`).
+    ///
+    /// The title is the web app's words for the same state, cut to a notification's first
+    /// line; the Plan page, which a tap opens, has the numbers and the way out for every
+    /// one of these: subscribing, adding storage, and what to delete instead. The second
+    /// line says the one thing the person cannot see for themselves, which is that what
+    /// they shared has not been lost and needs no sharing again. The words are the
+    /// Android app's (`refused_*` in its `strings.xml`).
+    public func refused(_ job: CaptureJob, _ refusal: CaptureRefusal) {
+        let title = switch refusal {
+        case .planEnded: "Your plan has ended"
+        case .freeNotesFull: "The free plan is full"
+        case .storageFull: "Out of storage"
+        case .notesFull: "Out of room for notes"
+        case .plan: "Your plan has no room for this"
+        }
+        post(job, title, detail: "Not saved yet. It is kept on this device and sent again when you open Unbent.", plan: true)
+    }
+
+    /// The page a tapped notification is for, as a path on the site: the note "Saved"
+    /// names, or the Plan page for a capture the plan refused. Nil for one that names
+    /// neither. Built here from what the notification carries, never carried as a path,
+    /// so nothing in a notification's payload chooses where the app goes.
+    public static func path(in userInfo: [AnyHashable: Any]) -> String? {
+        if let id = userInfo[noteKey] as? String, UUID(uuidString: id) != nil { return "/notes/\(id)" }
+        if userInfo[planKey] as? Bool == true { return "/settings/plan" }
+        return nil
     }
 
     private static let noteKey = "noteId"
+    private static let planKey = "plan"
 
     /// The note's title is the second line throughout, so "Saved" says what was saved.
-    private func post(_ job: CaptureJob, _ title: String, noteId: String? = nil) {
+    private func post(_ job: CaptureJob, _ title: String, noteId: String? = nil, detail: String? = nil, plan: Bool = false) {
         let content = UNMutableNotificationContent()
         content.title = title
-        content.body = job.title.isEmpty ? "Untitled" : job.title
+        content.body = [job.title.isEmpty ? "Untitled" : job.title, detail].compactMap { $0 }.joined(separator: "\n")
         if let noteId { content.userInfo = [Self.noteKey: noteId] }
+        if plan { content.userInfo = [Self.planKey: true] }
         // Notifications may be off; the capture itself is unaffected.
         UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: job.id, content: content, trigger: nil))
     }

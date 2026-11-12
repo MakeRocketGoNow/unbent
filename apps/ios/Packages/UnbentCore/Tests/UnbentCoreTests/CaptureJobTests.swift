@@ -217,6 +217,93 @@ final class CaptureJobTests: XCTestCase {
         XCTAssertEqual([.file("file-1")], partway.pending(live: []))
     }
 
+    // MARK: - The plan
+
+    private func refusal(_ body: String?) -> CaptureOutcome {
+        CaptureOutcome(status: 402, body: body.map { Data($0.utf8) })
+    }
+
+    /// The bodies are the shapes the API writes for each.
+    func testA402SaysWhichRoomThePlanHasNoneOf() {
+        XCTAssertEqual(.planEnded, CaptureRefusal.of(refusal(#"{"code":"PLAN_INACTIVE","error":"This account is read-only."}"#)))
+        XCTAssertEqual(.freeNotesFull, CaptureRefusal.of(refusal(#"{"code":"FREE_NOTES_FULL","error":"The free plan holds up to 100 notes."}"#)))
+        XCTAssertEqual(.storageFull, CaptureRefusal.of(refusal(#"{"code":"STORAGE_FULL","of":"files","usedBytes":10737418240,"quotaBytes":10737418240,"error":"Full."}"#)))
+        XCTAssertEqual(.notesFull, CaptureRefusal.of(refusal(#"{"code":"STORAGE_FULL","of":"notes","usedBytes":1610612736,"quotaBytes":1610612736,"error":"Full."}"#)))
+        // A server from before `of` existed meant the files.
+        XCTAssertEqual(.storageFull, CaptureRefusal.of(refusal(#"{"code":"STORAGE_FULL","error":"Full."}"#)))
+    }
+
+    /// A newer server's code, a body that is not JSON, or none at all: still the plan's.
+    func testA402ThisBuildCannotReadIsStillThePlansRefusal() {
+        XCTAssertEqual(.plan, CaptureRefusal.of(refusal(#"{"code":"SOMETHING_NEWER","error":"No."}"#)))
+        XCTAssertEqual(.plan, CaptureRefusal.of(refusal("<html>not json</html>")))
+        XCTAssertEqual(.plan, CaptureRefusal.of(refusal(nil)))
+    }
+
+    func testNoOtherFailureIsARefusalWhateverItsBodySays() {
+        let body = Data(#"{"code":"PLAN_INACTIVE"}"#.utf8)
+        for status in [400, 401, 413, 500, 503] {
+            XCTAssertNil(CaptureRefusal.of(CaptureOutcome(status: status, body: body)), "\(status)")
+        }
+        XCTAssertNil(CaptureRefusal.of(CaptureOutcome(status: nil)))
+    }
+
+    /// Not the capture's failure: nothing is counted, nothing is given up on, and the
+    /// same request is what goes again.
+    func testACaptureThePlanRefusedIsKeptWholeAndGoesAgain() {
+        var fresh = job()
+        XCTAssertEqual(.refused(.planEnded), fresh.handle(.create, refusal(#"{"code":"PLAN_INACTIVE"}"#)))
+        XCTAssertEqual(.planEnded, fresh.refused)
+        XCTAssertEqual(0, fresh.progress.attempts)
+        XCTAssertFalse(fresh.created)
+        XCTAssertEqual([.create], fresh.pending(live: []))
+
+        // However often it is asked: a 4xx is otherwise final at once, and four tries are all there are.
+        for _ in 0..<6 {
+            XCTAssertEqual(.refused(.planEnded), fresh.handle(.create, refusal(#"{"code":"PLAN_INACTIVE"}"#)))
+        }
+        XCTAssertEqual(0, fresh.progress.attempts)
+    }
+
+    /// The note exists and one file is on it when the storage runs out. The file is not
+    /// left out, as one refused for its own sake is: it waits with the capture.
+    func testAFileRefusedForStorageWaitsRatherThanBeingLeftOut() {
+        var job = job()
+        _ = job.handle(.create, ok)
+        _ = job.handle(.file("file-0"), ok)
+        XCTAssertEqual(.refused(.storageFull), job.handle(.file("file-1"), refusal(#"{"code":"STORAGE_FULL","of":"files"}"#)))
+        XCTAssertNotEqual(true, job.file("file-1")?.failed)
+        XCTAssertEqual(0, job.filesNotAdded)
+        XCTAssertEqual([.file("file-1")], job.pending(live: []))
+    }
+
+    /// Once anything is taken there is room, and the capture is an ordinary one again.
+    func testTheRefusalIsForgottenWhenTheServerTakesTheCapture() {
+        var job = job(files: ["a.pdf"])
+        _ = job.handle(.create, refusal(#"{"code":"FREE_NOTES_FULL"}"#))
+        XCTAssertEqual(.send([.file("file-0")]), job.handle(.create, ok))
+        XCTAssertNil(job.refused)
+        XCTAssertEqual(.saved, job.handle(.file("file-0"), ok))
+    }
+
+    func testAClipThePlanRefusedStaysAClip() {
+        var job = clipJob()
+        XCTAssertEqual(.refused(.planEnded), job.handle(.create, refusal(#"{"code":"PLAN_INACTIVE"}"#)))
+        XCTAssertNotNil(job.clip)
+    }
+
+    func testTheRefusalSurvivesTheRecordOnDiskAndAnOlderRecordHasNone() throws {
+        var job = job()
+        _ = job.handle(.create, refusal(#"{"code":"STORAGE_FULL","of":"notes"}"#))
+        let data = try JSONEncoder().encode(job)
+        XCTAssertEqual(.notesFull, try JSONDecoder().decode(CaptureJob.self, from: data).refused)
+
+        var old = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        old.removeValue(forKey: "refused")
+        let read = try JSONDecoder().decode(CaptureJob.self, from: JSONSerialization.data(withJSONObject: old))
+        XCTAssertNil(read.refused)
+    }
+
     /// The page replaced the session while the request waited: go again with the new one.
     func testA401ForASessionSinceReplacedGoesAgainAtOnce() {
         var job = job()
@@ -267,7 +354,7 @@ final class CaptureJobTests: XCTestCase {
     /// What the server says about the account or the session is not about the page.
     func testARefusalEveryCaptureHandlesIsNotAReasonToFallBack() {
         var plan = clipJob()
-        XCTAssertEqual(.failed, plan.handle(.create, CaptureOutcome(status: 402)))
+        XCTAssertEqual(.refused(.plan), plan.handle(.create, CaptureOutcome(status: 402)))
         XCTAssertNotNil(plan.clip)
         var session = clipJob()
         XCTAssertEqual(.signInNeeded, session.handle(.create, CaptureOutcome(status: 401)))

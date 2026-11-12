@@ -9,6 +9,7 @@ public protocol CaptureNotifying: Sendable {
     func saved(_ job: CaptureJob)
     func failed(_ job: CaptureJob)
     func signInNeeded(_ job: CaptureJob)
+    func refused(_ job: CaptureJob, _ refusal: CaptureRefusal)
 }
 
 /// Uploads captures in the system's background sessions, and applies what comes back.
@@ -71,6 +72,11 @@ public final class CaptureQueue: NSObject, @unchecked Sendable {
     /// meanwhile. Read and written on `work`.
     private var resuming = false
     private var resumeAgain = false
+    /// Whether the pass waiting behind this one was asked to send refused captures too.
+    private var resumeAgainRefused = false
+    /// What the server has said so far with each 402 still arriving, by the request's
+    /// label. Read and written on `work`. See `urlSession(_:dataTask:didReceive:)`.
+    private var refusals: [CaptureStep.Key: Data] = [:]
     private let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "unbent", category: "capture")
 
     /// The app's session, named for the app.
@@ -144,10 +150,18 @@ public final class CaptureQueue: NSObject, @unchecked Sendable {
     /// sent, and each sent everything: correct, because of the ids, and a 100 MB video
     /// uploaded three times over a phone connection. A call during a pass asks for one
     /// more after it, however many calls there were, since something may have changed.
-    public func resumeAll() {
+    ///
+    /// `refused` also sends the captures the plan refused (`CaptureRefusal`), and is true
+    /// only when the app has come in front of the person: that is the moment after they
+    /// could have subscribed or made room, in Safari or on another device. Not on every
+    /// launch, because the system launches the app to hear a request's answer, and a
+    /// launch that sent a refused capture again would be launched again for its refusal,
+    /// for as long as the plan stayed as it was.
+    public func resumeAll(refused: Bool = false) {
         work.async {
             guard !self.resuming else {
                 self.resumeAgain = true
+                self.resumeAgainRefused = self.resumeAgainRefused || refused
                 return
             }
             self.resuming = true
@@ -158,10 +172,14 @@ public final class CaptureQueue: NSObject, @unchecked Sendable {
                 // Read again: results may have been applied while the lists were fetched.
                 for job in self.jobsOnDisk() {
                     if job.isSaved { self.apply(.saved, to: job); continue }
+                    if job.refused != nil, !refused { continue }
                     for step in job.pending(live: live) {
                         // A note going out for the first time from here is one that
-                        // waited for a sign-in, and now there is something to say.
-                        if step == .create, self.sessions.session(for: job.origin) != nil { self.notifier.saving(job) }
+                        // waited for a sign-in, and now there is something to say. Not
+                        // one the plan refused: "Saving…" would replace the notice that
+                        // says why it is waiting, to be replaced by it again a moment
+                        // later, every time the app is opened.
+                        if step == .create, job.refused == nil, self.sessions.session(for: job.origin) != nil { self.notifier.saving(job) }
                         self.send(step, of: job)
                     }
                 }
@@ -174,8 +192,10 @@ public final class CaptureQueue: NSObject, @unchecked Sendable {
     private func finishedResuming() {
         resuming = false
         guard resumeAgain else { return }
+        let refused = resumeAgainRefused
         resumeAgain = false
-        resumeAll()
+        resumeAgainRefused = false
+        resumeAll(refused: refused)
     }
 
     /// The app was launched, or resumed in the background, because requests in
@@ -311,6 +331,13 @@ public final class CaptureQueue: NSObject, @unchecked Sendable {
             cancelRequests(of: job)
             notifier.signInNeeded(job)
             onSignedOut(job.origin)
+        case .refused(let refusal):
+            // The files stay, and so does the record, which now says why
+            // (`CaptureJob.refused`). Its other requests would be refused one by one for
+            // the same reason, each a file uploaded to hear it, so they are recalled;
+            // `resumeAll(refused: true)` sends what is left when the app is next opened.
+            cancelRequests(of: job)
+            notifier.refused(job, refusal)
         case .failed:
             end(job)
             notifier.failed(job)
@@ -369,6 +396,7 @@ extension CaptureQueue: URLSessionTaskDelegate {
         if (error as? URLError)?.code == .cancelled { return }
 
         let response = task.response as? HTTPURLResponse
+        let said = task.taskDescription.flatMap { refusals.removeValue(forKey: $0) }
         if let error {
             log.warning("\(task.taskDescription ?? "", privacy: .public) got no answer: \(error.localizedDescription, privacy: .public)")
         }
@@ -380,10 +408,31 @@ extension CaptureQueue: URLSessionTaskDelegate {
                 // An answer that came with an error did not finish arriving.
                 status: error == nil ? response?.statusCode : nil,
                 retryAfter: response?.value(forHTTPHeaderField: "Retry-After"),
-                currentSession: held == nil || sent == held
+                currentSession: held == nil || sent == held,
+                body: said
             ))
         }
     }
+}
+
+extension CaptureQueue: URLSessionDataDelegate {
+    /// The words of a 402, kept until the request completes: the one answer whose body
+    /// decides anything, since its `code` says whether the plan has ended or which of its
+    /// rooms is full (`CaptureRefusal`). An upload task is a data task, and its answer's
+    /// body comes here ahead of `didCompleteWithError`, on the same queue.
+    ///
+    /// Nothing else is kept: a 2xx to a create is the whole note, and nothing reads it.
+    /// Bounded, because the body is the server's and a refusal is a few hundred bytes. A
+    /// 402 that arrives with no body at all still reads as the plan's (`.plan`), so the
+    /// capture is kept either way and only the notice's first line is less exact.
+    public func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
+        guard (dataTask.response as? HTTPURLResponse)?.statusCode == 402, let key = dataTask.taskDescription else { return }
+        var said = refusals[key] ?? Data()
+        said.append(data.prefix(max(0, Self.refusalLimit - said.count)))
+        refusals[key] = said
+    }
+
+    private static let refusalLimit = 16 * 1024
 }
 
 extension CaptureQueue: URLSessionDelegate {

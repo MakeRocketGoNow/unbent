@@ -17,11 +17,56 @@ public struct CaptureOutcome: Equatable, Sendable {
     /// meanwhile (see `WebShellController.installSession`), so a 401 for an old one says
     /// nothing about the person being signed out.
     public var currentSession: Bool
+    /// What the server said with a 402, which is the only answer whose words decide
+    /// anything (`CaptureRefusal`). Nil for every other status, and for a 402 whose body
+    /// did not arrive.
+    public var body: Data?
 
-    public init(status: Int?, retryAfter: String? = nil, currentSession: Bool = true) {
+    public init(status: Int?, retryAfter: String? = nil, currentSession: Bool = true, body: Data? = nil) {
         self.status = status
         self.retryAfter = retryAfter
         self.currentSession = currentSession
+        self.body = body
+    }
+}
+
+/// Why the server would not take a capture that there is nothing wrong with: the account
+/// has no room for it. A 402, with a `code` in its body that says which room.
+///
+/// Apart from every other 4xx because the answer changes when the person acts. A name
+/// the server will not take is refused the same way however often it is sent, so that
+/// capture is given up on; a plan that has ended is not, the moment someone subscribes or
+/// deletes their way under the free plan. So a refused capture is kept, like one waiting
+/// for a sign-in, and its notification says which of these it was and opens the Plan
+/// page, where the way out is. It used to say "Could not save" and delete what was
+/// shared, which read as the app being broken to the one person who could have fixed it.
+///
+/// The web app keeps a refused write for the same reason (`plan-refused.ts` and
+/// `store-full.ts` there). The Android app's half is `CaptureRefusal.kt`.
+public enum CaptureRefusal: String, Codable, Equatable, Sendable {
+    /// `PLAN_INACTIVE`: no plan holding, and more kept than the free plan allows. Read-only.
+    case planEnded
+    /// `FREE_NOTES_FULL`: a free account at its count of notes. Only a new note is refused.
+    case freeNotesFull
+    /// `STORAGE_FULL` of files: the plan's storage has no room for this file.
+    case storageFull
+    /// `STORAGE_FULL` of notes: the notes themselves take more room than the plan allows.
+    case notesFull
+    /// A 402 that names none of those: a code from a server newer than this build, or a
+    /// body that never arrived. Still the plan's refusal and still answered on the Plan
+    /// page, so it is kept like the rest and says the least it can be sure of.
+    case plan
+
+    /// The refusal an outcome is, or nil for any failure that is not the plan's.
+    public static func of(_ outcome: CaptureOutcome) -> CaptureRefusal? {
+        guard outcome.status == 402 else { return nil }
+        let said = outcome.body.flatMap { try? JSONSerialization.jsonObject(with: $0) } as? [String: Any]
+        switch said?["code"] as? String {
+        case "PLAN_INACTIVE": return .planEnded
+        case "FREE_NOTES_FULL": return .freeNotesFull
+        case "STORAGE_FULL": return said?["of"] as? String == "notes" ? .notesFull : .storageFull
+        default: return .plan
+        }
     }
 }
 
@@ -39,6 +84,9 @@ public enum CaptureAction: Equatable, Sendable {
     /// The session is gone. Forget it and say so. The capture is kept as it is, like one
     /// made while signed out, and goes again after the next sign-in.
     case signInNeeded
+    /// The plan has no room for it. Say which room; the capture is kept as it is, and
+    /// goes again when the app is next opened (`CaptureQueue.resumeAll`).
+    case refused(CaptureRefusal)
     /// The note could not be made. Delete the files and say so.
     case failed
 }
@@ -134,6 +182,11 @@ public struct CaptureJob: Codable, Equatable, Sendable {
     /// Whether the server has answered that the note exists.
     public var created = false
     public var progress = Progress()
+    /// Why the plan refused this capture, while it is waiting on the person to make room
+    /// (`CaptureRefusal`). Set by the refusal and cleared by the next answer that takes
+    /// anything, so it also says a resend is a second asking, which shows no "Saving…".
+    /// Optional so a record written before the field existed still reads.
+    public var refused: CaptureRefusal?
     /// The background session the extension started this capture's upload in, which the
     /// app joins to hear how it went. Nil for a capture nothing has been sent for yet,
     /// and for one made in the app.
@@ -222,8 +275,8 @@ public struct CaptureJob: Codable, Equatable, Sendable {
 
     /// Whether an answer will be the same however often it is asked for: a 4xx, which is
     /// the server refusing the request as it stands (a name it will not take, a file
-    /// too large, a note that is gone). Three are not that: 401 is about the session and
-    /// is handled before this, 408 is a timeout, and 429 is "later".
+    /// too large, a note that is gone). Four are not that: 401 is about the session and
+    /// 402 about the plan, both handled before this, 408 is a timeout, and 429 is "later".
     ///
     /// The web app's outbox has the same rule (`NonRetriableError`), for the same reason:
     /// trying again is four uploads of a file to hear one answer.
@@ -246,11 +299,11 @@ public struct CaptureJob: Codable, Equatable, Sendable {
     /// without the clipper, and the 404 says the same thing.
     ///
     /// A 400 can also be the request itself (a title too long), which the create then
-    /// repeats and is refused the same way: one request more, in a rare case. A
-    /// background session hands this the status and no body, so the `code` that would
-    /// tell the two apart is nothing it could read; Android can, and uses the same five
-    /// statuses all the same, so that two phones never fall back on different answers to
-    /// the same page. Not a 402, which is the plan and refuses the fallback the same
+    /// repeats and is refused the same way: one request more, in a rare case. The queue
+    /// keeps an answer's body only for a 402 (`CaptureOutcome.body`), so the `code` that
+    /// would tell the two apart is nothing this reads; Android could, and uses the same
+    /// five statuses all the same, so that two phones never fall back on different
+    /// answers to the same page. Not a 402, which is the plan and refuses the fallback the same
     /// way, and nothing `handle` already decides (401, a 503 with `Retry-After`).
     public static func clipFallsBack(_ outcome: CaptureOutcome) -> Bool {
         guard let status = outcome.status else { return false }
@@ -265,6 +318,8 @@ public struct CaptureJob: Codable, Equatable, Sendable {
     /// Applies how a request ended, and says what to do next.
     public mutating func handle(_ step: CaptureStep, _ outcome: CaptureOutcome) -> CaptureAction {
         if let status = outcome.status, (200..<300).contains(status) {
+            // There is room now, whatever was said before.
+            refused = nil
             switch step {
             case .create:
                 // Twice is possible (the extension's request and the app's own resend
@@ -287,6 +342,16 @@ public struct CaptureJob: Codable, Equatable, Sendable {
             // often and opens the app rarely finds out it lapsed only by sharing, and
             // for a scan opened from a scanner's app, the staged copy may be the only one.
             return .signInNeeded
+        }
+
+        if let refusal = CaptureRefusal.of(outcome) {
+            // The plan has ended or is full. Like the 401 above, it is not the capture's
+            // failure and nothing is counted against it: what landed stays landed, a clip
+            // stays a clip, and the same requests go again once there may be room. Before
+            // the clip's fallback and `isPermanent`, both of which would otherwise have it:
+            // the plain note is refused the same way, and giving up deletes the files.
+            refused = refusal
+            return .refused(refusal)
         }
 
         if step == .create, clip != nil, Self.clipFallsBack(outcome) {
