@@ -184,8 +184,9 @@ public struct CaptureJob: Codable, Equatable, Sendable {
     public var created = false
     public var progress = Progress()
     /// Why the plan refused this capture, while it is waiting on the person to make room
-    /// (`CaptureRefusal`). Set by the refusal and cleared by the next answer that takes
-    /// anything, so it also says a resend is a second asking, which shows no "Saving…".
+    /// (`CaptureRefusal`). Set by the refusal and cleared when the note is taken (a
+    /// capture refused at a file keeps it until it is saved and gone), so it also says a
+    /// resend is a second asking, which shows no "Saving…".
     /// Optional so a record written before the field existed still reads.
     public var refused: CaptureRefusal?
     /// The background session the extension started this capture's upload in, which the
@@ -319,8 +320,10 @@ public struct CaptureJob: Codable, Equatable, Sendable {
     /// Applies how a request ended, and says what to do next.
     public mutating func handle(_ step: CaptureStep, _ outcome: CaptureOutcome) -> CaptureAction {
         if let status = outcome.status, (200..<300).contains(status) {
-            // There is room now, whatever was said before.
-            refused = nil
+            // The note was taken: there is room now, whatever was said before. Not for a
+            // file, since several are out at once and one landing after another's
+            // refusal says nothing about the refused one, which is still waiting.
+            if step == .create { refused = nil }
             switch step {
             case .create:
                 // Twice is possible (the extension's request and the app's own resend

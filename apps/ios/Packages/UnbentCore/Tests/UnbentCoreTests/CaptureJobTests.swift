@@ -298,6 +298,16 @@ final class CaptureJobTests: XCTestCase {
         XCTAssertEqual(.refused(.planEnded, again: false), job.handle(.create, refusal(#"{"code":"PLAN_INACTIVE"}"#)))
     }
 
+    /// Files go out together. One that lands after another was refused does not mean
+    /// there is room for the refused one.
+    func testAnotherFileLandingDoesNotForgetTheRefusal() {
+        var job = job(files: ["a.pdf", "b.pdf", "c.pdf"])
+        _ = job.handle(.create, ok)
+        _ = job.handle(.file("file-1"), refusal(#"{"code":"STORAGE_FULL","of":"files"}"#))
+        XCTAssertEqual(.wait, job.handle(.file("file-0"), ok))
+        XCTAssertEqual(.storageFull, job.refused)
+    }
+
     func testAClipThePlanRefusedStaysAClip() {
         var job = clipJob()
         XCTAssertEqual(.refused(.planEnded, again: false), job.handle(.create, refusal(#"{"code":"PLAN_INACTIVE"}"#)))
