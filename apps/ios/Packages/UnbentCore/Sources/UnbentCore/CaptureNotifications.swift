@@ -52,8 +52,11 @@ public struct CaptureNotifications: CaptureNotifying {
 
     /// The plan would not take the capture, and it is kept (`CaptureRefusal`).
     ///
-    /// The title is the web app's words for the same state, cut to a notification's first
-    /// line. A tap opens the Plan page, which has the numbers for every one of these and
+    /// The title names the room there is none of, short enough for a notification's first
+    /// line. The first is the web app's own word for the state (its banner says "Your
+    /// notes are read-only"), and on purpose not "Your plan has ended": a renewal that
+    /// failed is answered with the same code, and that account's plan has not ended, its
+    /// card has to be updated. A tap opens the Plan page, which has the numbers for every one of these and
     /// says what to delete. Inside the app that page draws no Subscribe or storage
     /// buttons (the stores' billing rules; `isHosted` in the web app's `Plan.tsx`) and
     /// says to do those on the web, so the notice promises a reason, not a checkout. The second
@@ -64,11 +67,11 @@ public struct CaptureNotifications: CaptureNotifying {
     /// `again` for a capture that was refused before and has been again, which happens
     /// each time the app is opened while the plan stays as it is. The first notice may
     /// drop down over the app; a repeat is passive, which `quiet(_:)` reads to keep it to
-    /// Notification Center. Without that, "Your plan has ended" came down over the page
+    /// Notification Center. Without that, the same notice came down over the page
     /// on every return to the app. Android's repeat is silent for the same reason.
     public func refused(_ job: CaptureJob, _ refusal: CaptureRefusal, again: Bool) {
         let title = switch refusal {
-        case .planEnded: "Your plan has ended"
+        case .planEnded: "Your notes are read-only"
         case .freeNotesFull: "The free plan is full"
         case .storageFull: "Out of storage"
         case .notesFull: "Out of room for notes"

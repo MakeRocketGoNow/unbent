@@ -112,8 +112,8 @@ object CaptureNotifications {
     /**
      * The plan would not take the capture, and it is kept on the phone ([CaptureRefusal]).
      *
-     * The title is the web app's words for the same state, cut to what a notification's
-     * first line holds. A tap opens the Plan page, which has the numbers for every one of
+     * The title names the room there is none of, short enough for a notification's first
+     * line (`strings.xml` says why the first is the web app's "read-only"). A tap opens the Plan page, which has the numbers for every one of
      * these and says what to delete. Inside the app that page draws no Subscribe or
      * storage buttons (the stores' billing rules; `isHosted` in the web app's `Plan.tsx`)
      * and says to do those on the web, so the notice promises a reason, not a checkout.
