@@ -80,4 +80,13 @@ describe('theme', () => {
       }
     }
   });
+
+  /**
+   * Every dark rule keys off `[data-theme='dark']`. One written the old way, under the
+   * media query, would follow the device past the person's choice and fail nowhere else.
+   */
+  it('keeps the stylesheet free of colour-scheme media queries', () => {
+    const css = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), 'styles.css'), 'utf8');
+    expect(css).not.toMatch(/@media[^{]*prefers-color-scheme/);
+  });
 });
