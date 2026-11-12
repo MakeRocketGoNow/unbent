@@ -7,9 +7,12 @@
  * install was told "Unbent is using 3.98 GB": `estimate()` put 4,245 MB under
  * `usageDetails.fileSystem`, while the files in it (the library, the search index and
  * SQLite's scratch directories) came to 31 MB, and the origin's folder in the profile held
- * 34 MB on disk. The counter Chrome keeps beside that folder read minus 82 MB, marked valid.
- * Nothing the app writes can set that counter: it is Chrome's bookkeeping of the writes
- * SQLite makes through access handles, all day, in small pieces. The other parts of the
+ * 34 MB on disk. The counter Chrome keeps beside that folder (`File System/<n>/t/.usage` in
+ * the profile) read minus 82 MB, marked valid, and the figure reported was that wrapped
+ * round 2^32 plus the files: 4,295 - 82 + 33 = 4,246. A restart kept it; deleting the file
+ * with Chrome closed made Chrome measure the folder again (31 MB). Nothing the app writes
+ * can set that counter: it is Chrome's bookkeeping of the writes SQLite makes through
+ * access handles, all day, in small pieces, and one day it took away more than it added. The other parts of the
  * estimate (the worker's caches, IndexedDB) matched what was stored, so only the file
  * system's part is replaced, and only where the browser reports the parts at all. Firefox
  * and Safari give a total alone, which is then said as it is.
