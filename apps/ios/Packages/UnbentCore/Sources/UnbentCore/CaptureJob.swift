@@ -17,11 +17,56 @@ public struct CaptureOutcome: Equatable, Sendable {
     /// meanwhile (see `WebShellController.installSession`), so a 401 for an old one says
     /// nothing about the person being signed out.
     public var currentSession: Bool
+    /// What the server said with a 402, which is the only answer whose words decide
+    /// anything (`CaptureRefusal`). Nil for every other status, and for a 402 whose body
+    /// did not arrive.
+    public var body: Data?
 
-    public init(status: Int?, retryAfter: String? = nil, currentSession: Bool = true) {
+    public init(status: Int?, retryAfter: String? = nil, currentSession: Bool = true, body: Data? = nil) {
         self.status = status
         self.retryAfter = retryAfter
         self.currentSession = currentSession
+        self.body = body
+    }
+}
+
+/// Why the server would not take a capture that there is nothing wrong with: the account
+/// has no room for it. A 402, with a `code` in its body that says which room.
+///
+/// Apart from every other 4xx because the answer changes when the person acts. A name
+/// the server will not take is refused the same way however often it is sent, so that
+/// capture is given up on; a plan that has ended is not, the moment someone subscribes or
+/// deletes their way under the free plan. So a refused capture is kept, like one waiting
+/// for a sign-in, and its notification says which of these it was and opens the Plan
+/// page, which has the numbers. It used to say "Could not save" and delete what was
+/// shared, which read as the app being broken to the one person who could have fixed it.
+///
+/// The web app keeps a refused write for the same reason (`plan-refused.ts` and
+/// `store-full.ts` there). The Android app's half is `CaptureRefusal.kt`.
+public enum CaptureRefusal: String, Codable, Equatable, Sendable {
+    /// `PLAN_INACTIVE`: no plan holding, and more kept than the free plan allows. Read-only.
+    case planEnded
+    /// `FREE_NOTES_FULL`: a free account at its count of notes. Only a new note is refused.
+    case freeNotesFull
+    /// `STORAGE_FULL` of files: the plan's storage has no room for this file.
+    case storageFull
+    /// `STORAGE_FULL` of notes: the notes themselves take more room than the plan allows.
+    case notesFull
+    /// A 402 that names none of those: a code from a server newer than this build, or a
+    /// body that never arrived. Still the plan's refusal and still answered on the Plan
+    /// page, so it is kept like the rest and says the least it can be sure of.
+    case plan
+
+    /// The refusal an outcome is, or nil for any failure that is not the plan's.
+    public static func of(_ outcome: CaptureOutcome) -> CaptureRefusal? {
+        guard outcome.status == 402 else { return nil }
+        let said = outcome.body.flatMap { try? JSONSerialization.jsonObject(with: $0) } as? [String: Any]
+        switch said?["code"] as? String {
+        case "PLAN_INACTIVE": return .planEnded
+        case "FREE_NOTES_FULL": return .freeNotesFull
+        case "STORAGE_FULL": return said?["of"] as? String == "notes" ? .notesFull : .storageFull
+        default: return .plan
+        }
     }
 }
 
@@ -39,6 +84,15 @@ public enum CaptureAction: Equatable, Sendable {
     /// The session is gone. Forget it and say so. The capture is kept as it is, like one
     /// made while signed out, and goes again after the next sign-in.
     case signInNeeded
+    /// The plan has no room for it. Say which room; the capture is kept as it is, and
+    /// goes again when the app is next opened (`CaptureQueue.resumeAll`). `again` when it
+    /// had been refused before and this is the same news, which is then said quietly.
+    case refused(CaptureRefusal, again: Bool)
+    /// Kept its thirty days and refused again, for this reason. Delete the files, say
+    /// so, and end the others kept for that reason that are past their own thirty days
+    /// (`keptTooLong`). Apart from `.failed` because only this is an answer about room:
+    /// a capture ended for anything else says nothing about the others.
+    case expired(CaptureRefusal)
     /// The note could not be made. Delete the files and say so.
     case failed
 }
@@ -134,6 +188,39 @@ public struct CaptureJob: Codable, Equatable, Sendable {
     /// Whether the server has answered that the note exists.
     public var created = false
     public var progress = Progress()
+    /// The id of the account this capture is kept for, once the plan has refused it and
+    /// the server has said whose session it was sent with (`CaptureQueue`); nil before
+    /// that, and where it could not be asked. Never cleared: it outlasts the refusal,
+    /// so the hold does too. See `mayGo`.
+    public var account: String?
+    /// Why the plan refused this capture, while it is waiting on the person to make room
+    /// (`CaptureRefusal`). Set by the refusal and cleared when the note is taken (a
+    /// capture refused at a file keeps it until it is saved and gone), so it also says a
+    /// resend is a second asking, which shows no "Saving…".
+    /// Optional so a record written before the field existed still reads.
+    public var refused: CaptureRefusal?
+    /// When it was last refused, and how many times it has been; see `refusedWait`.
+    public var refusedAt: Date?
+    public var refusedCount: Int?
+    /// When it was first refused, which how long it is kept counts from (`keptLongEnough`).
+    public var refusedSince: Date?
+    /// The reason it had been refused for, once its note has been taken after all. Kept
+    /// past `refused` so that when the capture lands the queue knows what there is room
+    /// of now (`landedAfter`).
+    public var tookAfter: CaptureRefusal?
+    /// True when its last resend ended out of tries rather than in a refusal: something
+    /// about sending it is failing. It then waits out a quiet spell whatever it is
+    /// (`refusedWait`), so that it does not go first for its reason on every return to
+    /// the app, four tries at a time, with the captures that would be taken waiting
+    /// behind it. The next refusal is an answer, and clears it.
+    public var refusedStuck: Bool?
+    /// The file a refused capture is asking with: the one sent since its refusal, set by
+    /// whoever sends it (`asking`). Its landing is what says there is room, and sends
+    /// the next. By name rather than by how long ago the refusal was, which is what
+    /// this first went by: a capture sent early because another had just landed, or on
+    /// a phone whose clock had moved, landed "too soon" and its other files waited for
+    /// the app to be opened again.
+    public var refusedAsking: String?
     /// The background session the extension started this capture's upload in, which the
     /// app joins to hear how it went. Nil for a capture nothing has been sent for yet,
     /// and for one made in the app.
@@ -222,8 +309,8 @@ public struct CaptureJob: Codable, Equatable, Sendable {
 
     /// Whether an answer will be the same however often it is asked for: a 4xx, which is
     /// the server refusing the request as it stands (a name it will not take, a file
-    /// too large, a note that is gone). Three are not that: 401 is about the session and
-    /// is handled before this, 408 is a timeout, and 429 is "later".
+    /// too large, a note that is gone). Four are not that: 401 is about the session and
+    /// 402 about the plan, both handled before this, 408 is a timeout, and 429 is "later".
     ///
     /// The web app's outbox has the same rule (`NonRetriableError`), for the same reason:
     /// trying again is four uploads of a file to hear one answer.
@@ -246,15 +333,219 @@ public struct CaptureJob: Codable, Equatable, Sendable {
     /// without the clipper, and the 404 says the same thing.
     ///
     /// A 400 can also be the request itself (a title too long), which the create then
-    /// repeats and is refused the same way: one request more, in a rare case. A
-    /// background session hands this the status and no body, so the `code` that would
-    /// tell the two apart is nothing it could read; Android can, and uses the same five
-    /// statuses all the same, so that two phones never fall back on different answers to
-    /// the same page. Not a 402, which is the plan and refuses the fallback the same
+    /// repeats and is refused the same way: one request more, in a rare case. The queue
+    /// keeps an answer's body only for a 402 (`CaptureOutcome.body`), so the `code` that
+    /// would tell the two apart is nothing this reads; Android could, and uses the same
+    /// five statuses all the same, so that two phones never fall back on different
+    /// answers to the same page. Not a 402, which is the plan and refuses the fallback the same
     /// way, and nothing `handle` already decides (401, a 503 with `Retry-After`).
     public static func clipFallsBack(_ outcome: CaptureOutcome) -> Bool {
         guard let status = outcome.status else { return false }
         return [400, 404, 413, 415, 502].contains(status)
+    }
+
+    /// How long a capture the plan refused is kept: thirty days from its first refusal,
+    /// ended by the first refusal after that. Long enough to subscribe, or to delete
+    /// down to the free plan, without the scan that prompted it having gone; not for
+    /// good, since each asking costs the server a request and a kept scan costs the
+    /// phone its size.
+    ///
+    /// Decided at a refusal, never by the sweep (`CaptureStore.sweepAbandoned` leaves a
+    /// refused capture twice as long): the launch sweep runs before anything is sent, so
+    /// it deleted a capture on the very opening of the app that was to have sent it.
+    /// Android's half is `KeptCapture.expired`.
+    static let keptLongEnough: TimeInterval = 30 * 24 * 60 * 60
+
+    /// The quiet spell after a capture's first refusal, and the longest it grows to.
+    static let refusedQuiet: TimeInterval = 15 * 60
+    static let refusedQuietMax: TimeInterval = 6 * 60 * 60
+
+    /// The quiet spell after a capture's `count`th refusal: a quarter of an hour,
+    /// doubling, to six hours.
+    ///
+    /// A fixed quarter of an hour was first. It is right for the person adding storage,
+    /// who is back within it, and wrong for the account that simply stays full: that one
+    /// uploaded the same scan four times in every hour the app was in use, for as long
+    /// as it was used. Doubling leaves the first few askings close together and settles
+    /// at four a day.
+    static func quiet(count: Int) -> TimeInterval {
+        min(refusedQuiet * pow(2, Double(min(max(count, 1), 16) - 1)), refusedQuietMax)
+    }
+
+    /// How long a capture the plan refused waits before it is sent again, when the app
+    /// has come forward (`CaptureQueue.resumeAll`): nothing for most, and the rest of a
+    /// quiet spell for the two that are dear to ask about.
+    ///
+    /// A note that was refused is a few hundred bytes, and goes every time: someone back
+    /// from subscribing should not wait. Two captures cost more. One refused at a file
+    /// uploads the whole file to hear the answer, a scan of tens of megabytes over a
+    /// phone connection; and a clip has the server fetch and read someone else's page
+    /// before the store refuses it. The app comes forward often (after Notification
+    /// Center, after a system sheet), so those two wait out `quiet(count:)` from their
+    /// last refusal first. The request is handed to the system with that wait on it
+    /// rather than held back, so it goes when the wait ends without the app being opened
+    /// a second time.
+    ///
+    /// Asking the server for the plan first was the other way. It answers a different
+    /// question for each of the four refusals (a state, a count of notes, two sizes of
+    /// room), and the write itself is the only check that is never out of step with the
+    /// rule it checks. Android's half is `CaptureWork.refusedWaitMs`.
+    public func refusedWait(now: Date = Date()) -> TimeInterval {
+        // A refusal "in the future" is a clock that was set back, not a reason to wait
+        // until the wall time catches up with it.
+        guard refused != nil, created || clip != nil || refusedStuck == true, let refusedAt, refusedAt <= now else { return 0 }
+        return max(0, Self.quiet(count: refusedCount ?? 1) - now.timeIntervalSince(refusedAt))
+    }
+
+    /// Whether this capture may be sent while `current` is the account signed in on its
+    /// instance (nil when that is not known).
+    ///
+    /// A capture carries its instance and nothing of who shared it, which was enough
+    /// while one lasted minutes. A kept one waits up to a month, through a sign-out, and
+    /// was sent as whoever signed in next on that instance: a scan became a note in the
+    /// wrong library, or was asked of a note the new account does not own and given up
+    /// on. So a capture that has been kept goes only as the account it was refused for,
+    /// and one whose instance's account is not known yet waits for a pass that knows,
+    /// rather than going on a guess. A capture that was never refused, or whose account
+    /// could not be asked at the refusal, goes as it always did.
+    ///
+    /// On the account alone, not on still being marked refused. A 401 clears the mark
+    /// (the capture then waits for a sign-in), and held only while marked, the capture
+    /// went as whoever signed in: the lapsed account whose session ran out is the very
+    /// case. It also holds the files of a capture whose note that account's library
+    /// took. Android's half is `KeptCapture.account`.
+    public func mayGo(as current: String?) -> Bool {
+        guard let account else { return true }
+        return current == account
+    }
+
+    /// Of the captures the plan refused, the ones to ask the server about: one for each
+    /// reason they were refused, by id.
+    ///
+    /// A lapsed account that shared a dozen things has a dozen kept captures, and the
+    /// answer to the first is the answer to all of them: every return to the app was a
+    /// dozen requests, each paying a call to the account's store to hear 402, and a dozen
+    /// notices posted again. So one goes, the one that can go soonest and among those
+    /// the longest kept, and the queue asks about the rest when a capture lands. By
+    /// reason, because the reasons have different answers: an account out of storage for
+    /// files still takes a note. Android's half is `CaptureWork.firstOfEach`.
+    public static func firstOfEachRefusal(_ jobs: [CaptureJob], now: Date = Date()) -> Set<String> {
+        let refused = jobs.filter { $0.refused != nil }
+        let first = Dictionary(grouping: refused, by: \.refused).values.compactMap { same in
+            same.min { a, b in
+                let (wa, wb) = (a.refusedWait(now: now), b.refusedWait(now: now))
+                if wa != wb { return wa < wb }
+                // With every wait over, one that failed last time still stands behind
+                // those that have not, however long it has been kept.
+                let (sa, sb) = (a.refusedStuck == true, b.refusedStuck == true)
+                if sa != sb { return sb }
+                return (a.refusedSince ?? now) < (b.refusedSince ?? now)
+            }
+        }
+        return Set(first.map(\.id))
+    }
+
+    /// Whether a capture the plan refused has been kept its thirty days. Decided for the
+    /// capture itself at its own next refusal (`handle`); this is for the others, when
+    /// one has just been ended that way (`CaptureQueue`): the answer it was given is
+    /// theirs too, and asking each in turn uploaded every expired scan once more, one
+    /// per opening of the app, only to delete it.
+    public func keptTooLong(now: Date = Date()) -> Bool {
+        guard refused != nil, let refusedSince else { return false }
+        return now.timeIntervalSince(refusedSince) > Self.keptLongEnough
+    }
+
+    /// Notes which file a refused capture is being sent with; see `refusedAsking`.
+    public mutating func asking(_ step: CaptureStep) {
+        if refused != nil, case .file(let id) = step { refusedAsking = id }
+    }
+
+    /// One capture's part of a pass: what to send for it, and after how long.
+    public struct Resend: Equatable, Sendable {
+        public var job: String
+        public var steps: [CaptureStep]
+        public var wait: TimeInterval
+    }
+
+    /// What a pass over the captures on disk sends (`CaptureQueue.resumeAll`): the rules
+    /// of that pass in one place, with nothing of the system in them, so they can be
+    /// tested. Every one was first a line in the queue's loop, and most were got wrong
+    /// there at least once.
+    ///
+    /// - A capture with no session on its instance cannot go (`signedIn`), and one held
+    ///   to an account goes only as that account (`mayGo`, `current` by instance).
+    /// - A capture the plan refused goes only on a pass that sends those (`refused`),
+    ///   and then only one for each reason (`firstOfEachRefusal`), after the rest of its
+    ///   quiet spell (`refusedWait`).
+    /// - `roomFor` is the reasons a capture that has just landed shows there is room for
+    ///   now (`roomShown`), so one kept for any of them goes without a wait. One
+    ///   that the system already holds a request for is left to it, and passed over in
+    ///   the choosing, so that the pass sends another kept for that reason now rather
+    ///   than choosing the one whose request cannot be hurried.
+    /// - Nothing the system is already carrying is sent again (`pending(live:)`).
+    public static func resends(
+        _ jobs: [CaptureJob],
+        live: Set<CaptureStep.Key>,
+        signedIn: (String) -> Bool,
+        current: [String: String],
+        refused: Bool,
+        roomFor: Set<CaptureRefusal> = [],
+        now: Date = Date()
+    ) -> [Resend] {
+        let able = jobs.filter { !$0.isSaved && signedIn($0.origin) && $0.mayGo(as: current[$0.origin]) }
+        func out(_ job: CaptureJob) -> Bool { live.contains { $0.hasPrefix(job.id + "|") } }
+        func room(_ job: CaptureJob) -> Bool { job.refused.map(roomFor.contains) ?? false }
+        let choosable = able.filter { !(room($0) && out($0)) }
+        let asked = refused ? firstOfEachRefusal(choosable, now: now) : []
+        return able.compactMap { job in
+            if job.refused != nil, !asked.contains(job.id) { return nil }
+            let steps = job.pending(live: live)
+            guard !steps.isEmpty else { return nil }
+            return Resend(job: job.id, steps: steps, wait: room(job) ? 0 : job.refusedWait(now: now))
+        }
+    }
+
+    /// The reason this capture had been refused for, for one that has landed: there is
+    /// room of that kind now. Nil for a capture the plan never refused.
+    public var landedAfter: CaptureRefusal? { refused ?? tookAfter }
+
+    /// What a capture that has landed shows there is room for, as the reasons a capture
+    /// can be kept for.
+    ///
+    /// A note with no files means the plan holds (or the free plan has room for a note)
+    /// and the notes have room; one with files means the plan holds and its storage has
+    /// room, and its note may have been made long before. Neither says anything of the
+    /// other's room, so each clears only its own, with the reason the capture itself had
+    /// been refused for, which has certainly been answered.
+    ///
+    /// Only that last reason counted at first, and trying it on a phone showed what that
+    /// missed: someone subscribes, shares something new, and it lands, while the page
+    /// they shared last week stays on its quarter of an hour, or its six hours.
+    /// Android's half is `CaptureWork.roomShownBy`.
+    public var roomShown: Set<CaptureRefusal> {
+        var room: Set<CaptureRefusal> = files.isEmpty ? [.planEnded, .freeNotesFull, .notesFull] : [.planEnded, .storageFull]
+        if let landedAfter { room.insert(landedAfter) }
+        return room
+    }
+
+    /// Writes down an asking that ran out of tries, so its wait grows as a refusal's
+    /// does and it stands behind the captures that have not failed (`refusedStuck`).
+    /// Its callers answer `.refused` with `again`, so the notice goes back, quietly, to
+    /// the one that says why the capture is kept: the last may be "Waiting for Unbent to
+    /// come back", and nothing is waiting any more.
+    private mutating func stick(_ now: Date) {
+        refusedAt = now
+        refusedCount = (refusedCount ?? 0) + 1
+        refusedStuck = true
+    }
+
+    private mutating func forgetRefusal() {
+        refused = nil
+        refusedAt = nil
+        refusedCount = nil
+        refusedSince = nil
+        refusedStuck = nil
+        refusedAsking = nil
     }
 
     /// Thirty seconds, doubling: WorkManager's backoff, which Android's worker runs on.
@@ -263,8 +554,15 @@ public struct CaptureJob: Codable, Equatable, Sendable {
     }
 
     /// Applies how a request ended, and says what to do next.
-    public mutating func handle(_ step: CaptureStep, _ outcome: CaptureOutcome) -> CaptureAction {
+    public mutating func handle(_ step: CaptureStep, _ outcome: CaptureOutcome, now: Date = Date()) -> CaptureAction {
         if let status = outcome.status, (200..<300).contains(status) {
+            // The note was taken: there is room now, whatever was said before. Not for a
+            // file, since several are out at once and one landing after another's
+            // refusal says nothing about the refused one, which is still waiting.
+            if step == .create {
+                tookAfter = refused ?? tookAfter
+                forgetRefusal()
+            }
             switch step {
             case .create:
                 // Twice is possible (the extension's request and the app's own resend
@@ -274,7 +572,18 @@ public struct CaptureJob: Codable, Equatable, Sendable {
                 return remaining.isEmpty ? .saved : .send(remaining.map { .file($0.id) })
             case .file(let id):
                 mark(id) { $0.done = true }
-                return remaining.isEmpty && created ? .saved : .wait
+                if remaining.isEmpty, created { return .saved }
+                // A capture that was refused at a file sends its files one at a time
+                // (`pending`), so the next goes now that this one has been taken. Only
+                // when this one was that asking (`refusedAsking`): a file that was
+                // already out when another was refused lands moments after the refusal,
+                // and says nothing about room for the refused one, which would be
+                // uploaded again at once.
+                if refused != nil, id == refusedAsking, let next = remaining.first {
+                    refusedAsking = next.id
+                    return .send([.file(next.id)])
+                }
+                return .wait
             }
         }
 
@@ -286,7 +595,36 @@ public struct CaptureJob: Codable, Equatable, Sendable {
             // But a session carries no expiry this app can read, so someone who shares
             // often and opens the app rarely finds out it lapsed only by sharing, and
             // for a scan opened from a scanner's app, the staged copy may be the only one.
+            //
+            // A capture the plan had refused waits for the sign-in now, not for room:
+            // left marked, the resend after signing in passed it over, and "Sign in to
+            // finish saving" was not true of it until the app was next opened. Only the
+            // mark goes: how long it has been kept, and how often refused, are still
+            // true after the sign-in, and a fresh thirty days for each one would keep a
+            // capture for as long as its sessions kept running out.
+            refused = nil
+            refusedStuck = nil
+            refusedAsking = nil
             return .signInNeeded
+        }
+
+        if let refusal = CaptureRefusal.of(outcome) {
+            // The plan has ended or is full. Like the 401 above, it is not the capture's
+            // failure and nothing is counted against it: what landed stays landed, a clip
+            // stays a clip, and the same requests go again once there may be room. Before
+            // the clip's fallback and `isPermanent`, both of which would otherwise have it:
+            // the plain note is refused the same way, and giving up deletes the files.
+            let again = refused != nil
+            let since = refusedSince ?? now
+            // Thirty days of asking is enough; see `keptLongEnough`.
+            guard now.timeIntervalSince(since) <= Self.keptLongEnough else { return .expired(refusal) }
+            refused = refusal
+            refusedAt = now
+            refusedCount = (refusedCount ?? 0) + 1
+            refusedSince = since
+            refusedStuck = nil
+            refusedAsking = nil
+            return .refused(refusal, again: again)
         }
 
         if step == .create, clip != nil, Self.clipFallsBack(outcome) {
@@ -298,17 +636,40 @@ public struct CaptureJob: Codable, Equatable, Sendable {
             return .send([.create])
         }
 
+        // A capture held to an account does not go again with a session that replaced
+        // the one it was sent with: that may be someone else's. It waits for the next
+        // pass, which asks who is signed in first (`mayGo`). Before anything is counted:
+        // below the count, a capture on its fourth try was given up on here instead.
+        if outcome.status == 401, account != nil { return .wait }
+
         var progress = self.progress(of: step)
         defer { setProgress(progress, of: step) }
 
+        // Out of tries is the end of a share made a minute ago. A capture kept for the
+        // plan has a notice saying it is kept, and a bad afternoon for the server is not
+        // a reason to break that: its count starts over and it waits, still marked, for
+        // the next return to the app, until the thirty days every kept capture has are
+        // up. Not for a refusal that will not change (`isPermanent`), which is final.
+        let keeps = refused != nil && now.timeIntervalSince(refusedSince ?? now) <= Self.keptLongEnough
+
         if Self.waitsOut(outcome) {
             progress.unavailable += 1
-            guard progress.unavailable <= Self.maxUnavailable else { return .failed }
+            guard progress.unavailable <= Self.maxUnavailable else {
+                guard keeps, let refused else { return .failed }
+                progress = Progress()
+                stick(now)
+                return .refused(refused, again: true)
+            }
             return .retry(step, after: Self.wait(retryAfter: outcome.retryAfter), unavailable: true)
         }
 
         progress.attempts += 1
         guard progress.attempts < Self.maxAttempts, !Self.isPermanent(outcome) else {
+            if keeps, !Self.isPermanent(outcome), let refused {
+                progress = Progress()
+                stick(now)
+                return .refused(refused, again: true)
+            }
             switch step {
             case .create:
                 return .failed
@@ -339,9 +700,17 @@ public struct CaptureJob: Codable, Equatable, Sendable {
 
     /// The requests this capture still needs that nothing is carrying: what to send when
     /// the app finds the capture on disk. `live` is the requests the system still holds.
+    ///
+    /// A capture the plan refused sends one file and no more while any is out. Files
+    /// otherwise go together, several at a time, and a full account would upload all of
+    /// them side by side to hear the first 402, which recalls the rest: many times the
+    /// bytes one answer needs. `handle` sends the next as each is taken.
     public func pending(live: Set<CaptureStep.Key>) -> [CaptureStep] {
         guard created else { return live.contains(CaptureStep.create.key(job: id)) ? [] : [.create] }
-        return remaining.map { CaptureStep.file($0.id) }.filter { !live.contains($0.key(job: id)) }
+        let files = remaining.map { CaptureStep.file($0.id) }
+        let waiting = files.filter { !live.contains($0.key(job: id)) }
+        guard refused != nil else { return waiting }
+        return waiting.count == files.count ? Array(waiting.prefix(1)) : []
     }
 
     /// True once the note exists and every file is on it or has been given up on.

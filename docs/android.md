@@ -92,6 +92,21 @@ the note's title, then "Saved" (or "Page clipped"), which peeks over the screen 
 note in the app. HEIC images are transcoded to JPEG on the phone, because the server's
 inline-safe allowlist excludes HEIC and browsers other than Safari cannot render it.
 
+**A capture the plan has no room for is kept.** Where an instance sells a plan, a share
+from an account whose plan has lapsed, or that is past its storage, is answered with a 402
+whose `code` says which (`CaptureRefusal`). Nothing is wrong with the capture and the
+answer changes when the person subscribes or deletes something, so the job fails without
+clearing the staged files, writes its input and a small record beside them (`KeptCapture`),
+and the notification says why ("Your notes are read-only", "Out of storage" and so on),
+that the share is kept, and opens the Plan page. It is tried again when the app comes to
+the screen, when something else is shared and when another capture lands
+(`CaptureWork.resumeRefused`), by a new job started from the kept input. A few rules bound
+that: one kept capture is asked about for each reason, and the rest follow when one lands;
+a refused file or clip, which costs an upload or a fetched page to ask about, waits a
+quarter of an hour first, doubling to six hours; a kept capture goes only to the instance
+and as the account it was shared from, and survives a session that has run out; and it is
+given up on, with a notification, at the first refusal past thirty days from its first.
+
 **How a capture becomes searchable.** A PDF gets a second job, chained after the upload:
 it loads `/embed/index-files?note=…` in a WebView that is never shown, and the page runs
 the same pdf.js extraction the site does, for that one note. Chained rather than folded

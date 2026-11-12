@@ -4,6 +4,7 @@ import android.content.ContentResolver
 import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
+import androidx.work.Data
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -27,7 +28,12 @@ data class StagedFile(
 object Staging {
 
     fun stageAll(context: Context, uris: List<Uri>, jobId: String): List<StagedFile> {
-        sweepAbandoned(File(context.noBackupFilesDir, SHARES), System.currentTimeMillis())
+        // A kept capture that has waited out its month was promised to someone; say it went.
+        for (kept in sweepAbandoned(File(context.noBackupFilesDir, SHARES), System.currentTimeMillis())) {
+            val input = runCatching { Data.fromByteArray(kept) }.getOrNull() ?: continue
+            val id = input.getString(UploadWorker.KEY_JOB_ID) ?: continue
+            CaptureNotifications.failed(context, id, input.getString(UploadWorker.KEY_TITLE).orEmpty())
+        }
         val dir = jobDir(context, jobId).apply { mkdirs() }
         val used = mutableSetOf<String>()
         return uris.mapIndexedNotNull { index, uri ->
@@ -220,6 +226,12 @@ object Staging {
         File(File(context.cacheDir, SHARES), jobId).deleteRecursively()
     }
 
+    /** Every capture's directory still on the device, wherever it was staged. */
+    fun jobDirs(context: Context): List<File> =
+        listOf(context.noBackupFilesDir, context.cacheDir)
+            .flatMap { File(it, SHARES).listFiles().orEmpty().toList() }
+            .filter { it.isDirectory }
+
     /**
      * Deletes job directories nothing has touched in [ABANDONED_MS].
      *
@@ -228,13 +240,29 @@ object Staging {
      * whose files the cache would once have reclaimed on its own and this directory never
      * will. Touched means any file in it: a capture waiting on a 503
      * rewrites its count on every attempt, so a live one never looks abandoned.
+     *
+     * A capture the plan refused is not this sweep's to end while the app is in use: the
+     * worker gives it up at the first refusal past thirty days (`KeptCapture.expired`),
+     * so that its last act is an asking. This takes only one nothing has touched for
+     * [REFUSED_MS], twice that, which is a capture on a phone where the app was never
+     * opened again, or kept for an account that never came back. Sweeping at thirty
+     * days deleted a capture as its owner shared something new, moments before the
+     * resend that sharing starts. Its notification says it is kept.
+     * Those are returned as they go (the input [CaptureResume.keepRefused] was given), so
+     * the caller can say that what was kept no longer is; the rest go silently, since
+     * nobody was told anything about them. The iOS app's sweep makes the same split.
      */
-    internal fun sweepAbandoned(root: File, now: Long) {
+    internal fun sweepAbandoned(root: File, now: Long): List<ByteArray> {
+        val promised = mutableListOf<ByteArray>()
         for (dir in root.listFiles().orEmpty()) {
             if (!dir.isDirectory) continue
             val touched = (dir.listFiles().orEmpty().map { it.lastModified() } + dir.lastModified()).max()
-            if (now - touched > ABANDONED_MS) dir.deleteRecursively()
+            val kept = if (CaptureResume.wasRefused(dir)) REFUSED_MS else ABANDONED_MS
+            if (now - touched <= kept) continue
+            CaptureResume.refusedJob(dir)?.let(promised::add)
+            dir.deleteRecursively()
         }
+        return promised
     }
 
     private const val SHARES = "shares"
@@ -244,4 +272,7 @@ object Staging {
      * cannot serve, at five-hour gaps) so only a job WorkManager has let go of is swept.
      */
     private const val ABANDONED_MS = 3 * 24 * 60 * 60 * 1000L
+
+    /** Sixty days untouched for a capture the plan refused; see [sweepAbandoned]. */
+    private const val REFUSED_MS = 2 * KeptCapture.KEPT_MS
 }

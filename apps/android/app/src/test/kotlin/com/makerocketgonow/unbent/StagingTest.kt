@@ -1,5 +1,8 @@
 package com.makerocketgonow.unbent
 
+import com.makerocketgonow.unbent.share.CaptureRefusal
+import com.makerocketgonow.unbent.share.CaptureResume
+import com.makerocketgonow.unbent.share.KeptCapture
 import com.makerocketgonow.unbent.share.StagedFile
 import com.makerocketgonow.unbent.share.Staging
 import java.io.File
@@ -169,5 +172,30 @@ class StagingTest {
 
         assertFalse(abandoned.exists())
         assertTrue(waiting.exists())
+    }
+
+    @Test
+    fun `a capture the plan refused outlasts the sweep that takes an abandoned one`() {
+        val root = temp.newFolder("shares-refused")
+        val day = 24 * 60 * 60 * 1000L
+        val now = 100 * day
+        fun refusedAt(name: String, age: Long) = File(root, name).apply {
+            mkdirs()
+            File(this, "scan.pdf").apply { writeText("x") }.setLastModified(now - age)
+            CaptureResume.keepRefused(this, name.toByteArray(), KeptCapture(CaptureRefusal.PLAN_ENDED.name, "https://notes.example.com"))
+            listFiles().orEmpty().forEach { it.setLastModified(now - age) }
+            setLastModified(now - age)
+        }
+        // Four days would have swept it as abandoned, and at thirty-one it is still the
+        // worker's to end, at its next refusal. Only one nothing has touched in sixty goes.
+        val waiting = refusedAt("waiting", 31 * day)
+        val forgotten = refusedAt("forgotten", 61 * day)
+
+        val promised = Staging.sweepAbandoned(root, now)
+
+        assertTrue(waiting.exists())
+        assertFalse(forgotten.exists())
+        // The one that went is handed back, so the person who was told it is kept can be told it is not.
+        assertEquals(listOf("forgotten"), promised.map { String(it) })
     }
 }

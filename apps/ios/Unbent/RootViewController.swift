@@ -378,6 +378,9 @@ extension RootViewController: WebShellDelegate {
     /// keep working for a while on a session the app itself has forgotten.
     func shellDidSignOut(_ shell: WebShellController) {
         guard shell === self.shell else { return }
+        // Before the session goes: what the system still holds for this instance's
+        // captures carries it, and would be sent with it hours from now.
+        AppCaptures.queue?.forget(origin: instance)
         sessions.clear(for: instance)
         dismissForSignOut()
         clearCookies { [weak self] in self?.start() }

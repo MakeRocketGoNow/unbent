@@ -41,6 +41,8 @@ class Prefs(context: Context) {
             return SessionCookie(name, value)
         }
         set(value) = prefs.edit {
+            // Whoever [account] named, a session set or cleared may be someone else's.
+            remove(sessionKey("account", instance))
             if (value == null) {
                 remove(sessionKey("name", instance))
                 remove(sessionKey("value", instance))
@@ -48,6 +50,21 @@ class Prefs(context: Context) {
                 putString(sessionKey("name", instance), value.name)
                 putString(sessionKey("value", instance), value.value)
             }
+        }
+
+    /**
+     * The id of the account the session belongs to, once something has asked the server
+     * (`/api/me`); null until then, and again whenever the session changes.
+     *
+     * The app works from the session alone and never needed this. A capture kept for
+     * weeks does: it is sent only as the account it was shared from, and choosing which
+     * kept capture to send must not take a request per capture (`CaptureWork`). Written
+     * by whoever learns it, never guessed, and per instance like the session.
+     */
+    var account: String?
+        get() = prefs.getString(sessionKey("account", instance), null)
+        set(value) = prefs.edit {
+            if (value == null) remove(sessionKey("account", instance)) else putString(sessionKey("account", instance), value)
         }
 
     val isSignedIn: Boolean get() = session != null

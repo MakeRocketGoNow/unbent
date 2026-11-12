@@ -9,6 +9,7 @@ public protocol CaptureNotifying: Sendable {
     func saved(_ job: CaptureJob)
     func failed(_ job: CaptureJob)
     func signInNeeded(_ job: CaptureJob)
+    func refused(_ job: CaptureJob, _ refusal: CaptureRefusal, again: Bool)
 }
 
 /// Uploads captures in the system's background sessions, and applies what comes back.
@@ -56,6 +57,11 @@ public final class CaptureQueue: NSObject, @unchecked Sendable {
     private let sessions: SessionStoring
     private let notifier: CaptureNotifying
     private let onSignedOut: @Sendable (String) -> Void
+    private let whoAmI: @Sendable (_ origin: String, _ bearer: String) async -> String?
+    /// The account each instance's session belongs to, as last answered, with the
+    /// session it was answered for: asked once per session, not once per pass. Read and
+    /// written on `work`.
+    private var accounts: [String: (bearer: String, id: String)] = [:]
 
     /// Everything below runs here: the sessions' delegate calls, and every read and write
     /// of a capture's record. One queue is what makes "load, change, save" a step nothing
@@ -71,6 +77,13 @@ public final class CaptureQueue: NSObject, @unchecked Sendable {
     /// meanwhile. Read and written on `work`.
     private var resuming = false
     private var resumeAgain = false
+    /// Whether the pass waiting behind this one was asked to send refused captures too,
+    /// and what it was told there is room of.
+    private var resumeAgainRefused = false
+    private var resumeAgainRoom: Set<CaptureRefusal> = []
+    /// What the server has said so far with each 402 still arriving, by the request's
+    /// label. Read and written on `work`. See `urlSession(_:dataTask:didReceive:)`.
+    private var refusals: [CaptureStep.Key: Data] = [:]
     private let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "unbent", category: "capture")
 
     /// The app's session, named for the app.
@@ -84,6 +97,9 @@ public final class CaptureQueue: NSObject, @unchecked Sendable {
     ///   - home: the session new requests go into: `appSession` or `shareSession`.
     ///   - appGroup: where the system keeps what it is uploading for the extension.
     ///   - onSignedOut: an instance's session was refused and has been forgotten.
+    ///   - whoAmI: the id of the account a session belongs to, asked of its instance
+    ///     (`/api/me`), or nil when it could not be asked. What a kept capture is held
+    ///     to; see `CaptureJob.mayGo`.
     public init(
         store: CaptureStore,
         home: String,
@@ -91,7 +107,10 @@ public final class CaptureQueue: NSObject, @unchecked Sendable {
         appGroup: String?,
         sessions: SessionStoring,
         notifier: CaptureNotifying,
-        onSignedOut: @escaping @Sendable (String) -> Void = { _ in }
+        onSignedOut: @escaping @Sendable (String) -> Void = { _ in },
+        whoAmI: @escaping @Sendable (_ origin: String, _ bearer: String) async -> String? = { origin, bearer in
+            (try? await UnbentApi(origin: origin, bearer: bearer).me())?.id
+        }
     ) {
         self.store = store
         self.home = home
@@ -100,6 +119,7 @@ public final class CaptureQueue: NSObject, @unchecked Sendable {
         self.sessions = sessions
         self.notifier = notifier
         self.onSignedOut = onSignedOut
+        self.whoAmI = whoAmI
     }
 
     // MARK: - In
@@ -144,10 +164,24 @@ public final class CaptureQueue: NSObject, @unchecked Sendable {
     /// sent, and each sent everything: correct, because of the ids, and a 100 MB video
     /// uploaded three times over a phone connection. A call during a pass asks for one
     /// more after it, however many calls there were, since something may have changed.
-    public func resumeAll() {
+    ///
+    /// `refused` also sends the captures the plan refused (`CaptureRefusal`), and is true
+    /// only when the app has come in front of the person: that is the moment after they
+    /// could have subscribed or made room, in Safari or on another device. Not on every
+    /// launch, because the system launches the app to hear a request's answer, and a
+    /// launch that sent a refused capture again would be launched again for its refusal,
+    /// for as long as the plan stayed as it was.
+    ///
+    /// `roomFor` is the reasons a capture that has just landed shows there is room for
+    /// now (`CaptureJob.roomShown`): the others kept for those go without waiting out a
+    /// quiet spell that can be six hours. Otherwise the scans behind the first one to
+    /// land arrived hours apart.
+    public func resumeAll(refused: Bool = false, roomFor: Set<CaptureRefusal> = []) {
         work.async {
             guard !self.resuming else {
                 self.resumeAgain = true
+                self.resumeAgainRefused = self.resumeAgainRefused || refused
+                self.resumeAgainRoom.formUnion(roomFor)
                 return
             }
             self.resuming = true
@@ -155,27 +189,84 @@ public final class CaptureQueue: NSObject, @unchecked Sendable {
             guard !jobs.isEmpty else { return self.finishedResuming() }
             let identifiers = Set([self.home] + jobs.compactMap(\.shareSession))
             self.liveRequests(in: identifiers) { live, idle in
-                // Read again: results may have been applied while the lists were fetched.
-                for job in self.jobsOnDisk() {
-                    if job.isSaved { self.apply(.saved, to: job); continue }
-                    for step in job.pending(live: live) {
-                        // A note going out for the first time from here is one that
-                        // waited for a sign-in, and now there is something to say.
-                        if step == .create, self.sessions.session(for: job.origin) != nil { self.notifier.saving(job) }
-                        self.send(step, of: job)
+                // Whose session each instance's is, for the captures that are held to an
+                // account. Asked before the choosing, so one that may not go is never
+                // chosen; on every pass, since one whose refusal a 401 cleared goes on
+                // an ordinary pass; and once per session, so most passes ask nothing.
+                // Only where this pass could send one: a held capture still marked
+                // refused goes on a pass that sends those and no other. A launch in the
+                // background for an upload's answer otherwise waited on a request, up
+                // to its timeout offline, before sending anything at all.
+                let held = Set(self.jobsOnDisk().filter { $0.account != nil && (refused || $0.refused == nil) }.map(\.origin))
+                self.accounts(for: Array(held)) { current in
+                    // Read again: results may have been applied while the lists were fetched.
+                    let jobs = self.jobsOnDisk()
+                    for job in jobs where job.isSaved { self.apply(.saved, to: job) }
+                    // Which of the rest go, and when, is `CaptureJob.resends`.
+                    let plan = CaptureJob.resends(
+                        jobs,
+                        live: live,
+                        signedIn: { self.sessions.session(for: $0) != nil },
+                        current: current,
+                        refused: refused,
+                        roomFor: roomFor
+                    )
+                    for one in plan {
+                        guard let job = jobs.first(where: { $0.id == one.job }) else { continue }
+                        for step in one.steps {
+                            // A note going out for the first time from here is one that
+                            // waited for a sign-in, and now there is something to say. Not
+                            // one the plan refused: "Saving…" would replace the notice that
+                            // says why it is waiting, to be replaced by it again a moment
+                            // later, every time the app is opened.
+                            if step == .create, job.refused == nil { self.notifier.saving(job) }
+                            // The file a refused capture asks with is written down, so
+                            // its landing is known for the answer it is.
+                            if job.refused != nil { self.update(job.id) { $0.asking(step); return .wait } }
+                            self.send(step, of: job, after: one.wait)
+                        }
                     }
+                    for identifier in idle where identifier != self.home { self.retire(identifier) }
+                    self.finishedResuming()
                 }
-                for identifier in idle where identifier != self.home { self.retire(identifier) }
-                self.finishedResuming()
             }
+        }
+    }
+
+    /// The account signed in on `origin`, on `work`: from what was last answered for the
+    /// session held now, or asked. Nil with no session, or when the asking failed, which
+    /// is not remembered, so the next pass asks again.
+    private func account(for origin: String, then: @escaping @Sendable (String?) -> Void) {
+        guard let bearer = sessions.session(for: origin)?.bearer else { return then(nil) }
+        if let known = accounts[origin], known.bearer == bearer { return then(known.id) }
+        Task {
+            let id = await self.whoAmI(origin, bearer)
+            self.work.async {
+                if let id { self.accounts[origin] = (bearer, id) }
+                then(id)
+            }
+        }
+    }
+
+    /// `account(for:)` for several instances, one after another, then all of them.
+    private func accounts(for origins: [String], found: [String: String] = [:], then: @escaping @Sendable ([String: String]) -> Void) {
+        guard let origin = origins.first else { return then(found) }
+        account(for: origin) { id in
+            var found = found
+            found[origin] = id
+            self.accounts(for: Array(origins.dropFirst()), found: found, then: then)
         }
     }
 
     private func finishedResuming() {
         resuming = false
         guard resumeAgain else { return }
+        let refused = resumeAgainRefused
+        let room = resumeAgainRoom
         resumeAgain = false
-        resumeAll()
+        resumeAgainRefused = false
+        resumeAgainRoom = []
+        resumeAll(refused: refused, roomFor: room)
     }
 
     /// The app was launched, or resumed in the background, because requests in
@@ -200,6 +291,19 @@ public final class CaptureQueue: NSObject, @unchecked Sendable {
             _ = self.session(identifier)
         }
         return true
+    }
+
+    /// Recalls every request the system holds for captures on `origin`, at a sign-out.
+    ///
+    /// A kept capture's resend can be held for hours with its session already written on
+    /// it (`earliestBeginDate`). Left, it uploaded a whole file long after the person
+    /// had signed out, to be answered 401, which posted "Sign in to Unbent to finish
+    /// saving" at an hour nobody was sharing anything. The captures themselves stay,
+    /// and `resumeAll` sends what they still need after the next sign-in.
+    public func forget(origin: String) {
+        work.async {
+            for job in self.jobsOnDisk() where job.origin == origin { self.cancelRequests(of: job) }
+        }
     }
 
     /// Removes captures nobody finished or cancelled, and says so for the ones someone
@@ -301,6 +405,14 @@ public final class CaptureQueue: NSObject, @unchecked Sendable {
         case .saved:
             store.clear(job.id)
             notifier.saved(job)
+            // Something landed, so there may be room: the captures the plan refused
+            // were waiting on an answer like this one (`CaptureJob.firstOfEachRefusal`).
+            // Only after a success, so a wake-up for a refusal never sends another, and
+            // after any capture, as on Android: a share made today that lands is as good
+            // a sign as a kept one. Those kept for a reason this one answers go at once.
+            if jobsOnDisk().contains(where: { $0.refused != nil }) {
+                resumeAll(refused: true, roomFor: job.roomShown)
+            }
         case .signInNeeded:
             // The stale session would fail every later share the same way, silently.
             sessions.clear(for: job.origin)
@@ -311,9 +423,30 @@ public final class CaptureQueue: NSObject, @unchecked Sendable {
             cancelRequests(of: job)
             notifier.signInNeeded(job)
             onSignedOut(job.origin)
+        case .refused(let refusal, let again):
+            // The files stay, and so does the record, which now says why
+            // (`CaptureJob.refused`). Its other requests would be refused one by one for
+            // the same reason, each a file uploaded to hear it, so they are recalled;
+            // `resumeAll(refused: true)` sends what is left when the app is next opened.
+            cancelRequests(of: job)
+            notifier.refused(job, refusal, again: again)
         case .failed:
             end(job)
             notifier.failed(job)
+        case .expired(let reason):
+            end(job)
+            notifier.failed(job)
+            // The others kept for the reason just heard, by the same account, that are
+            // past their thirty days have had the same answer, moments ago, and go with
+            // it rather than each being uploaded once more to hear it. Only from here:
+            // a capture ended for any other cause (a request the server will never
+            // take, a file that could not be written) is no answer about room, and
+            // ending the rest on it deleted scans that would have landed.
+            for other in jobsOnDisk() where other.id != job.id && other.refused == reason
+                && other.account == job.account && other.origin == job.origin && other.keptTooLong() {
+                end(other)
+                notifier.failed(other)
+            }
         }
     }
 
@@ -365,6 +498,10 @@ public final class CaptureQueue: NSObject, @unchecked Sendable {
 extension CaptureQueue: URLSessionTaskDelegate {
     public func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
         guard let (jobId, step) = CaptureStep.parse(task.taskDescription) else { return }
+        // Taken before anything returns: a request recalled while its 402 was arriving
+        // would otherwise leave half a body under its label, for the same step's next
+        // answer to be appended to and no longer read.
+        let said = task.taskDescription.flatMap { refusals.removeValue(forKey: $0) }
         // One this queue cancelled itself: its capture ended, or is waiting for a sign-in.
         if (error as? URLError)?.code == .cancelled { return }
 
@@ -376,14 +513,50 @@ extension CaptureQueue: URLSessionTaskDelegate {
             // The header the request went out with, against the session held now.
             let sent = task.originalRequest?.value(forHTTPHeaderField: "Authorization")
             let held = self.sessions.session(for: job.origin).map { "Bearer \($0.bearer)" }
+            // A capture the plan refuses is kept for the account that sent it
+            // (`CaptureJob.mayGo`), so whose that is gets written down: only while the
+            // session that sent the request is still the one held, since it is that
+            // session the instance is asked about. Asked at a refusal until it is
+            // known, and carried from then on; while it is not, the capture goes as
+            // every capture did.
+            if error == nil, response?.statusCode == 402, job.account == nil, held != nil, sent == held {
+                self.account(for: job.origin) { id in
+                    guard let id else { return }
+                    self.update(jobId) { kept in
+                        if kept.account == nil { kept.account = id }
+                        return .wait
+                    }
+                }
+            }
             return job.handle(step, CaptureOutcome(
                 // An answer that came with an error did not finish arriving.
                 status: error == nil ? response?.statusCode : nil,
                 retryAfter: response?.value(forHTTPHeaderField: "Retry-After"),
-                currentSession: held == nil || sent == held
+                currentSession: held == nil || sent == held,
+                body: said
             ))
         }
     }
+}
+
+extension CaptureQueue: URLSessionDataDelegate {
+    /// The words of a 402, kept until the request completes: the one answer whose body
+    /// decides anything, since its `code` says whether the plan has ended or which of its
+    /// rooms is full (`CaptureRefusal`). An upload task is a data task, and its answer's
+    /// body comes here ahead of `didCompleteWithError`, on the same queue.
+    ///
+    /// Nothing else is kept: a 2xx to a create is the whole note, and nothing reads it.
+    /// Bounded, because the body is the server's and a refusal is a few hundred bytes. A
+    /// 402 that arrives with no body at all still reads as the plan's (`.plan`), so the
+    /// capture is kept either way and only the notice's first line is less exact.
+    public func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
+        guard (dataTask.response as? HTTPURLResponse)?.statusCode == 402, let key = dataTask.taskDescription else { return }
+        var said = refusals[key] ?? Data()
+        said.append(data.prefix(max(0, Self.refusalLimit - said.count)))
+        refusals[key] = said
+    }
+
+    private static let refusalLimit = 16 * 1024
 }
 
 extension CaptureQueue: URLSessionDelegate {

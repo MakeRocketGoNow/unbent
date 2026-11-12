@@ -48,16 +48,17 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
 }
 
 extension AppDelegate: UNUserNotificationCenterDelegate {
-    /// "Saved", tapped: the note it names.
+    /// "Saved", tapped: the note it names. A capture the plan refused: the Plan page.
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
-        guard let noteId = CaptureNotifications.noteId(in: response.notification.request.content.userInfo) else { return }
-        await MainActor.run { AppDelegate.open(path: "/notes/\(noteId)") }
+        guard let path = CaptureNotifications.path(in: response.notification.request.content.userInfo) else { return }
+        await MainActor.run { AppDelegate.open(path: path) }
     }
 
     /// With the app on screen a notification is otherwise swallowed, and a file opened in
-    /// the app is captured with the app on screen.
+    /// the app is captured with the app on screen. Not as a banner for a refusal the
+    /// person has been told of already: that one is repeated whenever the app is opened.
     func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
-        [.banner, .list]
+        CaptureNotifications.quiet(notification.request.content) ? [.list] : [.banner, .list]
     }
 }
 
@@ -131,8 +132,9 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     func sceneDidBecomeActive(_ scene: UIScene) {
         root?.becameActive()
         // A capture made while signed out, or one whose result the system did not
-        // relaunch the app for, moves now.
-        AppCaptures.queue?.resumeAll()
+        // relaunch the app for, moves now. So does one the plan refused: the person is
+        // here, and may have subscribed or made room since.
+        AppCaptures.queue?.resumeAll(refused: true)
     }
 
     func sceneDidEnterBackground(_ scene: UIScene) {

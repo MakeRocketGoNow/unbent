@@ -139,6 +139,8 @@ to answer `free` or `inactive`. Uploads are bounded by the quota, which for an a
 plan holds is the free plan's gigabyte; its store's room follows from that, as every
 account's does. The web app keeps a refused note in the outbox, as it keeps a store-full
 refusal, and New says the free plan is full before it makes one the server would refuse.
+The Android and iOS apps keep a refused share on the phone, say which refusal it was, and
+try it again when the app is next opened (`docs/android.md`, `docs/ios.md`).
 
 Auto-fill on the free plan is a lifetime pool of presses, `AUTOFILL_FREE_PRESSES` (100 on
 unbent.app), counted only while the account is free, so the trial's presses never come out

@@ -215,9 +215,11 @@ public struct CaptureStore: Sendable {
     /// - No record: a sheet whose extension was killed before Save or Cancel. Nobody is
     ///   waiting for it. Gone after three days, silently.
     /// - A record: a capture someone saved, which is waiting for a sign-in (made signed
-    ///   out, or refused for a lapsed session) and was told it would be saved. Kept for
-    ///   thirty days, and returned when it goes so the caller can say it was not. It was
-    ///   three days and silent for these too, which broke the sheet's own promise.
+    ///   out, or refused for a lapsed session) or for the plan to have room
+    ///   (`CaptureJob.refused`), and was told it would be saved. Kept for thirty days
+    ///   (sixty for one the plan refused; see `refused`), and returned when it goes so
+    ///   the caller can say it was not. It was three days and silent for these too,
+    ///   which broke the sheet's own promise.
     ///
     /// Touched means any file in it. A capture that is being retried is never swept by
     /// either limit: its record is rewritten on every attempt, so the longest it goes
@@ -233,7 +235,8 @@ public struct CaptureStore: Sendable {
                 .compactMap { try? $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate }
                 .max() ?? .distantPast
             let record = CaptureJob.load(from: directory)
-            guard now.timeIntervalSince(touched) > (record == nil ? Self.abandoned : Self.unclaimed) else { continue }
+            let limit = record == nil ? Self.abandoned : record?.refused == nil ? Self.unclaimed : Self.refused
+            guard now.timeIntervalSince(touched) > limit else { continue }
             try? fm.removeItem(at: directory)
             if let record { givenUp.append(record) }
         }
@@ -245,4 +248,10 @@ public struct CaptureStore: Sendable {
 
     /// How long a saved capture waits for a sign-in.
     static let unclaimed: TimeInterval = 30 * 24 * 60 * 60
+
+    /// How long a capture the plan refused goes untouched before the sweep takes it:
+    /// twice what it is kept for. It is ended at thirty days by its own next refusal
+    /// (`CaptureJob.keptLongEnough`), so its last act is an asking; this is for one that
+    /// is never asked about again, on an instance nobody signed back in to.
+    static let refused: TimeInterval = 2 * CaptureJob.keptLongEnough
 }

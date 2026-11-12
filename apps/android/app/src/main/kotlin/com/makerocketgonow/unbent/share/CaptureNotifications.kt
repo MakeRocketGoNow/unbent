@@ -25,6 +25,9 @@ object CaptureNotifications {
 
     private const val CHANNEL = "capture-status"
 
+    /** The site's Plan page, which has the numbers behind every refusal a capture is kept for. */
+    private const val PLAN_PATH = "/settings/plan"
+
     fun createChannel(context: Context) {
         val manager = context.getSystemService(NotificationManager::class.java) ?: return
         /*
@@ -106,12 +109,57 @@ object CaptureNotifications {
         )
     }
 
-    fun signInNeeded(context: Context, jobId: String, title: String) {
+    /**
+     * The plan would not take the capture, and it is kept on the phone ([CaptureRefusal]).
+     *
+     * The title names the room there is none of, short enough for a notification's first
+     * line (`strings.xml` says why the first is the web app's "read-only"). A tap opens
+     * the Plan page, which has the numbers for every one of these and says what to
+     * delete. Inside the app that page draws no Subscribe or storage buttons (the stores'
+     * billing rules; `isHosted` in the web app's `Plan.tsx`) and says to do those on the
+     * web, so the notice promises a reason, not a checkout. The expanded text says the
+     * one thing the person cannot see for themselves, which is that what they shared has
+     * not been lost and needs no sharing again.
+     *
+     * [quiet] for a capture that was refused before and has been again: the first notice
+     * peeks, and a repeat of it each time the app is opened would be nagging.
+     */
+    fun refused(context: Context, jobId: String, title: String, refusal: CaptureRefusal, quiet: Boolean = false) {
+        val heading = when (refusal) {
+            CaptureRefusal.PLAN_ENDED -> R.string.refused_plan_ended
+            CaptureRefusal.FREE_NOTES_FULL -> R.string.refused_free_notes_full
+            CaptureRefusal.STORAGE_FULL -> R.string.refused_storage_full
+            CaptureRefusal.NOTES_FULL -> R.string.refused_notes_full
+            CaptureRefusal.PLAN -> R.string.refused_plan
+        }
+        val named = title.ifBlank { context.getString(R.string.untitled) }
+        // A repeat only brings the notice up to date; it does not bring it back. Someone
+        // who swiped it away has read it, and a note that is refused on every return to
+        // the app would put it in the shade again each time.
+        if (quiet && !showing(context, jobId)) return
         post(
             context, jobId,
             builder(context, title)
                 .setSmallIcon(android.R.drawable.stat_notify_error)
-                .setContentTitle(context.getString(R.string.sign_in_needed))
+                .setContentTitle(context.getString(heading))
+                .setStyle(NotificationCompat.BigTextStyle().bigText(context.getString(R.string.refused_kept, named)))
+                .setContentIntent(openPlan(context))
+                .setSilent(quiet)
+                .setAutoCancel(true),
+        )
+    }
+
+    /**
+     * [kept] for a capture that is still on the phone and goes when someone signs in (one
+     * the plan had refused), which must not be told to share again; every other capture
+     * has been cleared by the time this is posted.
+     */
+    fun signInNeeded(context: Context, jobId: String, title: String, kept: Boolean = false) {
+        post(
+            context, jobId,
+            builder(context, title)
+                .setSmallIcon(android.R.drawable.stat_notify_error)
+                .setContentTitle(context.getString(if (kept) R.string.sign_in_to_finish else R.string.sign_in_needed))
                 .setContentIntent(signIn(context))
                 .setAutoCancel(true),
         )
@@ -121,6 +169,11 @@ object CaptureNotifications {
     private fun builder(context: Context, title: String): NotificationCompat.Builder =
         NotificationCompat.Builder(context, CHANNEL)
             .setContentText(title.ifBlank { context.getString(R.string.untitled) })
+
+    private fun showing(context: Context, jobId: String): Boolean {
+        val manager = context.getSystemService(NotificationManager::class.java) ?: return false
+        return runCatching { manager.activeNotifications.any { it.id == jobId.hashCode() } }.getOrDefault(false)
+    }
 
     private fun post(context: Context, jobId: String, builder: NotificationCompat.Builder) {
         val manager = context.getSystemService(NotificationManager::class.java) ?: return
@@ -133,6 +186,15 @@ object CaptureNotifications {
             context,
             noteId.hashCode(),
             MainActivity.openNote(context, noteId),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+
+    /** One request code for every capture: they all open the same page. */
+    private fun openPlan(context: Context): PendingIntent =
+        PendingIntent.getActivity(
+            context,
+            2,
+            MainActivity.openPath(context, PLAN_PATH),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 

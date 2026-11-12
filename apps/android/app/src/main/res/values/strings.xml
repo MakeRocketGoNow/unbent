@@ -101,6 +101,22 @@
     <string name="clipped">Page clipped to Unbent</string>
     <string name="save_failed">Could not save to Unbent</string>
     <string name="sign_in_needed">Sign in to Unbent, then share again</string>
+    <!-- For a share that is still kept on the phone: signing in sends it. The iOS app's words. -->
+    <string name="sign_in_to_finish">Sign in to Unbent to finish saving</string>
+    <!--
+      A share the plan had no room for (402), which the phone keeps and sends again. A
+      tap opens the Plan page, which has the numbers and says what to do. The first is the
+      web app's own word for the state (its banner says "Your notes are read-only"), and
+      on purpose not "Your plan has ended": a renewal that failed is answered with the
+      same code, and that account's plan has not ended, its card has to be updated.
+    -->
+    <string name="refused_plan_ended">Your notes are read-only</string>
+    <string name="refused_free_notes_full">The free plan is full</string>
+    <string name="refused_storage_full">Out of storage</string>
+    <string name="refused_notes_full">Out of room for notes</string>
+    <string name="refused_plan">Your plan has no room for this</string>
+    <!-- %1$s is the note's title. Two lines: what was shared, then what became of it. -->
+    <string name="refused_kept">%1$s\nNot saved yet. It is kept on this phone and tried again after you open Unbent.</string>
     <string name="nothing_to_share">Nothing to share</string>
     <string name="channel_captures">Captures</string>
     <string name="channel_captures_desc">Progress and results for items shared to Unbent</string>

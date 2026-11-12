@@ -93,4 +93,14 @@ class UploadWorkerTest {
         assertFalse(UploadWorker.clipFallsBack(ApiException(503, "busy", retryAfter = "60")))
         assertFalse(UploadWorker.clipFallsBack(ApiException(500, "broken")))
     }
+
+    @Test
+    fun `a kept capture is not asked about for a month when the server will never take it`() {
+        assertTrue(UploadWorker.isPermanent(ApiException(413, "too large")))
+        assertTrue(UploadWorker.isPermanent(ApiException(400, "bad name")))
+        // The session's, the plan's, a timeout and "later" are each decided elsewhere or passing.
+        for (status in listOf(401, 402, 408, 429, 500, 503)) {
+            assertFalse("$status", UploadWorker.isPermanent(ApiException(status, "x")))
+        }
+    }
 }

@@ -217,6 +217,413 @@ final class CaptureJobTests: XCTestCase {
         XCTAssertEqual([.file("file-1")], partway.pending(live: []))
     }
 
+    // MARK: - The plan
+
+    private func refusal(_ body: String?) -> CaptureOutcome {
+        CaptureOutcome(status: 402, body: body.map { Data($0.utf8) })
+    }
+
+    /// The bodies are the shapes the API writes for each.
+    func testA402SaysWhichRoomThePlanHasNoneOf() {
+        XCTAssertEqual(.planEnded, CaptureRefusal.of(refusal(#"{"code":"PLAN_INACTIVE","error":"This account is read-only."}"#)))
+        XCTAssertEqual(.freeNotesFull, CaptureRefusal.of(refusal(#"{"code":"FREE_NOTES_FULL","error":"The free plan holds up to 100 notes."}"#)))
+        XCTAssertEqual(.storageFull, CaptureRefusal.of(refusal(#"{"code":"STORAGE_FULL","of":"files","usedBytes":10737418240,"quotaBytes":10737418240,"error":"Full."}"#)))
+        XCTAssertEqual(.notesFull, CaptureRefusal.of(refusal(#"{"code":"STORAGE_FULL","of":"notes","usedBytes":1610612736,"quotaBytes":1610612736,"error":"Full."}"#)))
+        // A server from before `of` existed meant the files.
+        XCTAssertEqual(.storageFull, CaptureRefusal.of(refusal(#"{"code":"STORAGE_FULL","error":"Full."}"#)))
+    }
+
+    /// A newer server's code, a body that is not JSON, or none at all: still the plan's.
+    func testA402ThisBuildCannotReadIsStillThePlansRefusal() {
+        XCTAssertEqual(.plan, CaptureRefusal.of(refusal(#"{"code":"SOMETHING_NEWER","error":"No."}"#)))
+        XCTAssertEqual(.plan, CaptureRefusal.of(refusal("<html>not json</html>")))
+        XCTAssertEqual(.plan, CaptureRefusal.of(refusal(nil)))
+    }
+
+    func testNoOtherFailureIsARefusalWhateverItsBodySays() {
+        let body = Data(#"{"code":"PLAN_INACTIVE"}"#.utf8)
+        for status in [400, 401, 413, 500, 503] {
+            XCTAssertNil(CaptureRefusal.of(CaptureOutcome(status: status, body: body)), "\(status)")
+        }
+        XCTAssertNil(CaptureRefusal.of(CaptureOutcome(status: nil)))
+    }
+
+    /// Not the capture's failure: nothing is counted, nothing is given up on, and the
+    /// same request is what goes again.
+    func testACaptureThePlanRefusedIsKeptWholeAndGoesAgain() {
+        var fresh = job()
+        XCTAssertEqual(.refused(.planEnded, again: false), fresh.handle(.create, refusal(#"{"code":"PLAN_INACTIVE"}"#)))
+        XCTAssertEqual(.planEnded, fresh.refused)
+        XCTAssertEqual(0, fresh.progress.attempts)
+        XCTAssertFalse(fresh.created)
+        XCTAssertEqual([.create], fresh.pending(live: []))
+
+        // However often it is asked: a 4xx is otherwise final at once, and four tries are all
+        // there are. Each after the first is the same news, to be said quietly.
+        for _ in 0..<6 {
+            XCTAssertEqual(.refused(.planEnded, again: true), fresh.handle(.create, refusal(#"{"code":"PLAN_INACTIVE"}"#)))
+        }
+        XCTAssertEqual(0, fresh.progress.attempts)
+    }
+
+    /// The note exists and one file is on it when the storage runs out. The file is not
+    /// left out, as one refused for its own sake is: it waits with the capture.
+    func testAFileRefusedForStorageWaitsRatherThanBeingLeftOut() {
+        var job = job()
+        _ = job.handle(.create, ok)
+        _ = job.handle(.file("file-0"), ok)
+        XCTAssertEqual(.refused(.storageFull, again: false), job.handle(.file("file-1"), refusal(#"{"code":"STORAGE_FULL","of":"files"}"#)))
+        XCTAssertNotEqual(true, job.file("file-1")?.failed)
+        XCTAssertEqual(0, job.filesNotAdded)
+        XCTAssertEqual([.file("file-1")], job.pending(live: []))
+    }
+
+    /// Once anything is taken there is room, and the capture is an ordinary one again.
+    func testTheRefusalIsForgottenWhenTheServerTakesTheCapture() {
+        var job = job(files: ["a.pdf"])
+        _ = job.handle(.create, refusal(#"{"code":"FREE_NOTES_FULL"}"#))
+        XCTAssertEqual(.send([.file("file-0")]), job.handle(.create, ok))
+        XCTAssertNil(job.refused)
+        XCTAssertEqual(.saved, job.handle(.file("file-0"), ok))
+        // What it had been refused for is still known when it lands: there is room of that kind now.
+        XCTAssertEqual(.freeNotesFull, job.landedAfter)
+        XCTAssertNil(self.job().landedAfter)
+    }
+
+    /// A share made today that lands answers for the ones kept last week, as far as it
+    /// can: a note says the plan holds and notes have room, a file that storage has.
+    func testACaptureThatLandsSaysWhatThereIsRoomFor() {
+        XCTAssertEqual([.planEnded, .freeNotesFull, .notesFull], job(files: []).roomShown)
+        XCTAssertEqual([.planEnded, .storageFull], job().roomShown)
+        var kept = job(files: [])
+        _ = kept.handle(.create, refusal(#"{"code":"STORAGE_FULL","of":"files"}"#))
+        _ = kept.handle(.create, ok)
+        XCTAssertTrue(kept.roomShown.contains(.storageFull))
+    }
+
+    /// The session lapsed while the capture waited on the plan. It is now one waiting for
+    /// a sign-in, which is what its notice says, and the resend after signing in is a
+    /// first asking again.
+    func testARefusedCaptureWhoseSessionThenLapsesWaitsForTheSignInInstead() {
+        var job = job()
+        _ = job.handle(.create, refusal(#"{"code":"PLAN_INACTIVE"}"#))
+        XCTAssertEqual(.signInNeeded, job.handle(.create, CaptureOutcome(status: 401)))
+        XCTAssertNil(job.refused)
+        XCTAssertEqual(.refused(.planEnded, again: false), job.handle(.create, refusal(#"{"code":"PLAN_INACTIVE"}"#)))
+    }
+
+    /// Files go out together. One that lands after another was refused does not mean
+    /// there is room for the refused one.
+    func testAnotherFileLandingDoesNotForgetTheRefusal() {
+        var job = job(files: ["a.pdf", "b.pdf", "c.pdf"])
+        _ = job.handle(.create, ok)
+        _ = job.handle(.file("file-1"), refusal(#"{"code":"STORAGE_FULL","of":"files"}"#))
+        XCTAssertEqual(.wait, job.handle(.file("file-0"), ok))
+        XCTAssertEqual(.storageFull, job.refused)
+    }
+
+    /// Coming back to the app asks again. A refused note is cheap to ask about; a file
+    /// is uploaded whole to hear the answer and a clip has the server read the page, so
+    /// those wait out the rest of a quiet spell first.
+    func testARefusedFileOrClipWaitsOutAQuietSpellBeforeItIsSentAgain() {
+        let then = Date(timeIntervalSince1970: 1_000_000)
+        let soon = then.addingTimeInterval(60)
+        let later = then.addingTimeInterval(CaptureJob.refusedQuiet)
+
+        var note = job()
+        _ = note.handle(.create, refusal(#"{"code":"PLAN_INACTIVE"}"#), now: then)
+        XCTAssertEqual(0, note.refusedWait(now: soon))
+
+        var file = job()
+        _ = file.handle(.create, ok)
+        _ = file.handle(.file("file-0"), refusal(#"{"code":"STORAGE_FULL","of":"files"}"#), now: then)
+        XCTAssertEqual(CaptureJob.refusedQuiet - 60, file.refusedWait(now: soon))
+        XCTAssertEqual(0, file.refusedWait(now: later))
+
+        var clip = clipJob()
+        _ = clip.handle(.create, refusal(#"{"code":"PLAN_INACTIVE"}"#), now: then)
+        XCTAssertEqual(CaptureJob.refusedQuiet - 60, clip.refusedWait(now: soon))
+        // A clock set back since does not hold it until the wall time catches up.
+        XCTAssertEqual(0, clip.refusedWait(now: then.addingTimeInterval(-3600)))
+
+        // A capture that was never refused is not held back by any of this.
+        XCTAssertEqual(0, job().refusedWait(now: soon))
+    }
+
+    /// An account that stays full is asked less and less often, down to four times a day.
+    func testEachRefusalDoublesTheQuietSpellUpToSixHours() {
+        let then = Date(timeIntervalSince1970: 1_000_000)
+        var clip = clipJob()
+        _ = clip.handle(.create, refusal(#"{"code":"PLAN_INACTIVE"}"#), now: then)
+        _ = clip.handle(.create, refusal(#"{"code":"PLAN_INACTIVE"}"#), now: then)
+        XCTAssertEqual(2 * CaptureJob.refusedQuiet, clip.refusedWait(now: then))
+        for _ in 0..<20 { _ = clip.handle(.create, refusal(#"{"code":"PLAN_INACTIVE"}"#), now: then) }
+        XCTAssertEqual(CaptureJob.refusedQuietMax, clip.refusedWait(now: then))
+
+        // Taken at last: the next refusal, if there is one, starts from the shortest spell.
+        var note = clipJob()
+        _ = note.handle(.create, refusal(#"{"code":"PLAN_INACTIVE"}"#), now: then)
+        _ = note.handle(.create, refusal(#"{"code":"PLAN_INACTIVE"}"#), now: then)
+        _ = note.handle(.create, ok)
+        XCTAssertNil(note.refusedCount)
+    }
+
+    /// Thirty days from the first refusal, ended by a refusal: the capture's last act is
+    /// an asking, not a sweep on the opening of the app that was to have sent it.
+    func testAKeptCaptureIsGivenUpOnAtTheFirstRefusalPastThirtyDays() {
+        let day: TimeInterval = 24 * 60 * 60
+        let first = Date(timeIntervalSince1970: 1_000_000)
+        var job = job()
+        _ = job.handle(.create, refusal(#"{"code":"PLAN_INACTIVE"}"#), now: first)
+        XCTAssertEqual(.refused(.planEnded, again: true), job.handle(.create, refusal(#"{"code":"PLAN_INACTIVE"}"#), now: first.addingTimeInterval(29 * day)))
+        XCTAssertEqual(first, job.refusedSince)
+        XCTAssertEqual(.expired(.planEnded), job.handle(.create, refusal(#"{"code":"PLAN_INACTIVE"}"#), now: first.addingTimeInterval(31 * day)))
+    }
+
+    /// Three files and no room: sent together they are all uploaded to hear one answer.
+    /// A refused capture asks with one, and sends the next only when that one is taken.
+    func testARefusedCaptureSendsItsFilesOneAtATime() {
+        var job = job(files: ["a.pdf", "b.pdf", "c.pdf"])
+        _ = job.handle(.create, ok)
+        let then = Date(timeIntervalSince1970: 1_000_000)
+        _ = job.handle(.file("file-0"), refusal(#"{"code":"STORAGE_FULL","of":"files"}"#), now: then)
+        XCTAssertEqual([.file("file-0")], job.pending(live: []))
+        // While it is out, nothing joins it.
+        XCTAssertEqual([], job.pending(live: ["job-1|file|file-0"]))
+
+        // Sent again, which the sender writes down, and taken: there is room, so the rest
+        // follow. However soon: one sent early because another capture had just landed
+        // is as much an answer, and by the clock it used to leave the rest waiting.
+        job.asking(.file("file-0"))
+        let soon = then.addingTimeInterval(5)
+        XCTAssertEqual(.send([.file("file-1")]), job.handle(.file("file-0"), ok, now: soon))
+        XCTAssertEqual(.send([.file("file-2")]), job.handle(.file("file-1"), ok, now: soon))
+        XCTAssertEqual(.saved, job.handle(.file("file-2"), ok, now: soon))
+    }
+
+    func testOfManyKeptCapturesOneIsAskedAboutForEachReason() {
+        let then = Date(timeIntervalSince1970: 1_000_000)
+        func kept(_ id: String, _ body: String, at: TimeInterval, clip: Bool = false) -> CaptureJob {
+            var job = clip ? clipJob() : job()
+            job.id = id
+            _ = job.handle(.create, refusal(body), now: then.addingTimeInterval(at))
+            return job
+        }
+        let ended = #"{"code":"PLAN_INACTIVE"}"#
+        let jobs = [
+            kept("newer", ended, at: 300),
+            kept("oldest", ended, at: 100),
+            // Older still, but a clip with a quiet spell to wait out: a note that can go now answers sooner.
+            kept("waiting", ended, at: 50, clip: true),
+            // Another reason has another answer, so it is asked about too.
+            kept("full", #"{"code":"FREE_NOTES_FULL"}"#, at: 200),
+            job(),
+        ]
+        XCTAssertEqual(["oldest", "full"], CaptureJob.firstOfEachRefusal(jobs, now: then.addingTimeInterval(400)))
+    }
+
+    /// Four failures end a share made a minute ago. A capture the person was told is
+    /// kept is still kept after them, and goes again on a later return to the app.
+    func testAKeptCaptureOutOfTriesIsStillKept() {
+        let then = Date(timeIntervalSince1970: 1_000_000)
+        var job = job()
+        _ = job.handle(.create, refusal(#"{"code":"PLAN_INACTIVE"}"#), now: then)
+        for _ in 0..<3 { _ = job.handle(.create, CaptureOutcome(status: 500), now: then) }
+        // Back to the notice that says why it is kept, quietly.
+        XCTAssertEqual(.refused(.planEnded, again: true), job.handle(.create, CaptureOutcome(status: 500), now: then))
+        XCTAssertEqual(.planEnded, job.refused)
+        XCTAssertEqual(0, job.progress.attempts)
+        XCTAssertEqual([.create], job.pending(live: []))
+        // It failed rather than being refused, so even a note now waits out a quiet
+        // spell, and one that has not failed is asked about ahead of it.
+        XCTAssertEqual(2 * CaptureJob.refusedQuiet, job.refusedWait(now: then))
+        var other = self.job()
+        other.id = "other"
+        _ = other.handle(.create, refusal(#"{"code":"PLAN_INACTIVE"}"#), now: then.addingTimeInterval(60))
+        XCTAssertEqual(["other"], CaptureJob.firstOfEachRefusal([job, other], now: then.addingTimeInterval(120)))
+        // And still behind it once every wait is over, though it has been kept longer.
+        XCTAssertEqual(["other"], CaptureJob.firstOfEachRefusal([job, other], now: then.addingTimeInterval(24 * 60 * 60)))
+        // A refusal is an answer: it is an ordinary kept capture again.
+        var answered = job
+        _ = answered.handle(.create, refusal(#"{"code":"PLAN_INACTIVE"}"#), now: then)
+        XCTAssertEqual(0, answered.refusedWait(now: then))
+
+        // A refusal that will not change is still final, and so is thirty days.
+        XCTAssertEqual(.failed, job.handle(.create, CaptureOutcome(status: 400), now: then))
+        var old = self.job()
+        _ = old.handle(.create, refusal(#"{"code":"PLAN_INACTIVE"}"#), now: then)
+        let later = then.addingTimeInterval(31 * 24 * 60 * 60)
+        for _ in 0..<3 { _ = old.handle(.create, CaptureOutcome(status: 500), now: later) }
+        XCTAssertEqual(.failed, old.handle(.create, CaptureOutcome(status: 500), now: later))
+    }
+
+    /// Kept through a sign-out, a capture must not become a note in the library of
+    /// whoever signs in next.
+    func testAKeptCaptureGoesOnlyAsTheAccountItWasRefusedFor() {
+        var kept = job()
+        _ = kept.handle(.create, refusal(#"{"code":"PLAN_INACTIVE"}"#))
+        // Not asked yet, or the asking failed: it goes as every capture did.
+        XCTAssertTrue(kept.mayGo(as: "user-2"))
+        XCTAssertTrue(kept.mayGo(as: nil))
+
+        kept.account = "user-1"
+        XCTAssertTrue(kept.mayGo(as: "user-1"))
+        XCTAssertFalse(kept.mayGo(as: "user-2"))
+        // Who is signed in is not known on this pass: it waits for one that knows.
+        XCTAssertFalse(kept.mayGo(as: nil))
+
+        // The session runs out while it is kept, which clears the refusal and not the
+        // hold: after the sign-in it still goes only as the account it was kept for.
+        XCTAssertEqual(.signInNeeded, kept.handle(.create, CaptureOutcome(status: 401)))
+        XCTAssertNil(kept.refused)
+        XCTAssertFalse(kept.mayGo(as: "user-2"))
+        XCTAssertTrue(kept.mayGo(as: "user-1"))
+
+        // Nor does it go again at once with a session that replaced the one it was sent
+        // with: it waits for a pass that asks who that is, and the try is not counted,
+        // not even against a capture that has one try left.
+        for _ in 0..<3 { _ = kept.handle(.create, CaptureOutcome(status: 500)) }
+        XCTAssertEqual(.wait, kept.handle(.create, CaptureOutcome(status: 401, currentSession: false)))
+        XCTAssertEqual(3, kept.progress.attempts)
+
+        // Its note taken, its files are held to that account's library too.
+        _ = kept.handle(.create, ok)
+        XCTAssertFalse(kept.mayGo(as: "user-2"))
+        // A capture that was never kept is held to nobody.
+        XCTAssertTrue(job().mayGo(as: nil))
+    }
+
+    /// A session that runs out does not start the thirty days over.
+    func testASignInDoesNotGiveAKeptCaptureAFreshThirtyDays() {
+        let day: TimeInterval = 24 * 60 * 60
+        let first = Date(timeIntervalSince1970: 1_000_000)
+        var job = job()
+        _ = job.handle(.create, refusal(#"{"code":"PLAN_INACTIVE"}"#), now: first)
+        _ = job.handle(.create, CaptureOutcome(status: 401), now: first.addingTimeInterval(20 * day))
+        XCTAssertEqual(first, job.refusedSince)
+        XCTAssertEqual(.expired(.planEnded), job.handle(.create, refusal(#"{"code":"PLAN_INACTIVE"}"#), now: first.addingTimeInterval(31 * day)))
+    }
+
+    /// When one capture is ended at thirty days, the others past theirs have had the
+    /// same answer and are not each uploaded once more to hear it.
+    func testACaptureKnowsWhenItHasBeenKeptItsThirtyDays() {
+        let day: TimeInterval = 24 * 60 * 60
+        let first = Date(timeIntervalSince1970: 1_000_000)
+        var kept = job()
+        _ = kept.handle(.create, refusal(#"{"code":"PLAN_INACTIVE"}"#), now: first)
+        XCTAssertFalse(kept.keptTooLong(now: first.addingTimeInterval(29 * day)))
+        XCTAssertTrue(kept.keptTooLong(now: first.addingTimeInterval(31 * day)))
+        XCTAssertFalse(job().keptTooLong(now: first.addingTimeInterval(31 * day)))
+
+        // The reason the others end for is the one just heard, not the one it was kept for.
+        XCTAssertEqual(.expired(.storageFull), kept.handle(.create, refusal(#"{"code":"STORAGE_FULL","of":"files"}"#), now: first.addingTimeInterval(31 * day)))
+        // And only a refusal ends them: a request the server will never take is this capture's alone.
+        XCTAssertEqual(.failed, kept.handle(.create, CaptureOutcome(status: 400), now: first.addingTimeInterval(31 * day)))
+    }
+
+    // MARK: - A pass over the captures on disk
+
+    private func resends(
+        _ jobs: [CaptureJob],
+        live: Set<CaptureStep.Key> = [],
+        signedIn: Bool = true,
+        current: [String: String] = [:],
+        refused: Bool,
+        roomFor: Set<CaptureRefusal> = [],
+        now: Date
+    ) -> [CaptureJob.Resend] {
+        CaptureJob.resends(jobs, live: live, signedIn: { _ in signedIn }, current: current, refused: refused, roomFor: roomFor, now: now)
+    }
+
+    func testAPassSendsWhatCapturesStillNeedAndLeavesRefusedOnesToAPassThatAsks() {
+        let then = Date(timeIntervalSince1970: 1_000_000)
+        var fresh = job()
+        fresh.id = "fresh"
+        var kept = job()
+        kept.id = "kept"
+        _ = kept.handle(.create, refusal(#"{"code":"PLAN_INACTIVE"}"#), now: then)
+
+        // A launch in the background: the fresh one goes, the refused one is not asked about.
+        XCTAssertEqual(
+            [CaptureJob.Resend(job: "fresh", steps: [.create], wait: 0)],
+            resends([fresh, kept], refused: false, now: then)
+        )
+        // The app has come forward: both.
+        XCTAssertEqual(["fresh", "kept"], resends([fresh, kept], refused: true, now: then).map(\.job))
+        // Nothing the system is already carrying, and nothing with nobody signed in.
+        XCTAssertEqual(["kept"], resends([fresh, kept], live: ["fresh|create"], refused: true, now: then).map(\.job))
+        XCTAssertEqual([], resends([fresh, kept], signedIn: false, refused: true, now: then))
+    }
+
+    func testAPassLeavesAnotherAccountsCaptureAndItDoesNotStandInFrontOfTheRest() {
+        let then = Date(timeIntervalSince1970: 1_000_000)
+        var theirs = job()
+        theirs.id = "theirs"
+        _ = theirs.handle(.create, refusal(#"{"code":"PLAN_INACTIVE"}"#), now: then)
+        theirs.account = "user-1"
+        var mine = job()
+        mine.id = "mine"
+        _ = mine.handle(.create, refusal(#"{"code":"PLAN_INACTIVE"}"#), now: then.addingTimeInterval(60))
+        mine.account = "user-2"
+
+        let origin = mine.origin
+        // The older one would be chosen for the reason; it is not this account's, so the next is.
+        XCTAssertEqual(["mine"], resends([theirs, mine], current: [origin: "user-2"], refused: true, now: then.addingTimeInterval(120)).map(\.job))
+        // Who is signed in is not known: neither goes on a guess.
+        XCTAssertEqual([], resends([theirs, mine], refused: true, now: then.addingTimeInterval(120)))
+    }
+
+    /// A clip waits out a quiet spell, and one that lands means there is room for the
+    /// others kept for the same reason, which then do not wait.
+    func testWhenACaptureLandsTheOthersKeptForItsReasonGoWithoutAWait() {
+        let then = Date(timeIntervalSince1970: 1_000_000)
+        var waiting = clipJob()
+        waiting.id = "waiting"
+        _ = waiting.handle(.create, refusal(#"{"code":"PLAN_INACTIVE"}"#), now: then)
+        var behind = clipJob()
+        behind.id = "behind"
+        _ = behind.handle(.create, refusal(#"{"code":"PLAN_INACTIVE"}"#), now: then.addingTimeInterval(10))
+        let soon = then.addingTimeInterval(60)
+
+        XCTAssertEqual(
+            [CaptureJob.Resend(job: "waiting", steps: [.create], wait: CaptureJob.refusedQuiet - 60)],
+            resends([waiting, behind], refused: true, now: soon)
+        )
+        XCTAssertEqual(
+            [CaptureJob.Resend(job: "waiting", steps: [.create], wait: 0)],
+            resends([waiting, behind], refused: true, roomFor: [.planEnded], now: soon)
+        )
+        // The first is already with the system, on its wait, and cannot be hurried: the
+        // pass sends the one behind it now rather than choosing it again and sending nothing.
+        XCTAssertEqual(
+            [CaptureJob.Resend(job: "behind", steps: [.create], wait: 0)],
+            resends([waiting, behind], live: ["waiting|create"], refused: true, roomFor: [.planEnded], now: soon)
+        )
+        // Room for one reason is not room for another.
+        XCTAssertEqual(
+            CaptureJob.refusedQuiet - 60,
+            resends([waiting], refused: true, roomFor: [.storageFull], now: soon).first?.wait
+        )
+    }
+
+    func testAClipThePlanRefusedStaysAClip() {
+        var job = clipJob()
+        XCTAssertEqual(.refused(.planEnded, again: false), job.handle(.create, refusal(#"{"code":"PLAN_INACTIVE"}"#)))
+        XCTAssertNotNil(job.clip)
+    }
+
+    func testTheRefusalSurvivesTheRecordOnDiskAndAnOlderRecordHasNone() throws {
+        var job = job()
+        _ = job.handle(.create, refusal(#"{"code":"STORAGE_FULL","of":"notes"}"#))
+        let data = try JSONEncoder().encode(job)
+        XCTAssertEqual(.notesFull, try JSONDecoder().decode(CaptureJob.self, from: data).refused)
+
+        var old = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        old.removeValue(forKey: "refused")
+        let read = try JSONDecoder().decode(CaptureJob.self, from: JSONSerialization.data(withJSONObject: old))
+        XCTAssertNil(read.refused)
+    }
+
     /// The page replaced the session while the request waited: go again with the new one.
     func testA401ForASessionSinceReplacedGoesAgainAtOnce() {
         var job = job()
@@ -267,7 +674,7 @@ final class CaptureJobTests: XCTestCase {
     /// What the server says about the account or the session is not about the page.
     func testARefusalEveryCaptureHandlesIsNotAReasonToFallBack() {
         var plan = clipJob()
-        XCTAssertEqual(.failed, plan.handle(.create, CaptureOutcome(status: 402)))
+        XCTAssertEqual(.refused(.plan, again: false), plan.handle(.create, CaptureOutcome(status: 402)))
         XCTAssertNotNil(plan.clip)
         var session = clipJob()
         XCTAssertEqual(.signInNeeded, session.handle(.create, CaptureOutcome(status: 401)))

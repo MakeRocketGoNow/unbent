@@ -50,21 +50,76 @@ public struct CaptureNotifications: CaptureNotifying {
     /// The capture is kept, so there is nothing to share again: signing in finishes it.
     public func signInNeeded(_ job: CaptureJob) { post(job, "Sign in to Unbent to finish saving") }
 
-    /// The note a tapped notification is for, when it is one that names a note.
-    public static func noteId(in userInfo: [AnyHashable: Any]) -> String? {
-        guard let id = userInfo[noteKey] as? String, UUID(uuidString: id) != nil else { return nil }
-        return id
+    /// The plan would not take the capture, and it is kept (`CaptureRefusal`).
+    ///
+    /// The title names the room there is none of, short enough for a notification's first
+    /// line. The first is the web app's own word for the state (its banner says "Your
+    /// notes are read-only"), and on purpose not "Your plan has ended": a renewal that
+    /// failed is answered with the same code, and that account's plan has not ended, its
+    /// card has to be updated. A tap opens the Plan page, which has the numbers for
+    /// every one of these and says what to delete. Inside the app that page draws no
+    /// Subscribe or storage buttons (the stores' billing rules; `isHosted` in the web
+    /// app's `Plan.tsx`) and says to do those on the web, so the notice promises a
+    /// reason, not a checkout. The second line says the one thing the person cannot see
+    /// for themselves, which is that what they shared has not been lost and needs no
+    /// sharing again. The words are the Android app's (`refused_*` in its `strings.xml`).
+    ///
+    /// `again` for a capture that was refused before and has been again, which happens
+    /// each time the app is opened while the plan stays as it is. The first notice may
+    /// drop down over the app; a repeat is passive, which `quiet(_:)` reads to keep it to
+    /// Notification Center. Without that, the same notice came down over the page on
+    /// every return to the app. Android's repeat is silent for the same reason.
+    public func refused(_ job: CaptureJob, _ refusal: CaptureRefusal, again: Bool) {
+        let title = switch refusal {
+        case .planEnded: "Your notes are read-only"
+        case .freeNotesFull: "The free plan is full"
+        case .storageFull: "Out of storage"
+        case .notesFull: "Out of room for notes"
+        case .plan: "Your plan has no room for this"
+        }
+        post(job, title, detail: "Not saved yet. It is kept on this device and tried again after you open Unbent.", plan: true, quiet: again)
+    }
+
+    /// Whether a notification is one to list without showing over the app: a repeat of a
+    /// refusal the person has already been told about.
+    public static func quiet(_ content: UNNotificationContent) -> Bool {
+        content.interruptionLevel == .passive
+    }
+
+    /// The page a tapped notification is for, as a path on the site: the note "Saved"
+    /// names, or the Plan page for a capture the plan refused. Nil for one that names
+    /// neither. Built here from what the notification carries, never carried as a path,
+    /// so nothing in a notification's payload chooses where the app goes.
+    public static func path(in userInfo: [AnyHashable: Any]) -> String? {
+        if let id = userInfo[noteKey] as? String, UUID(uuidString: id) != nil { return "/notes/\(id)" }
+        if userInfo[planKey] as? Bool == true { return "/settings/plan" }
+        return nil
     }
 
     private static let noteKey = "noteId"
+    private static let planKey = "plan"
 
     /// The note's title is the second line throughout, so "Saved" says what was saved.
-    private func post(_ job: CaptureJob, _ title: String, noteId: String? = nil) {
+    ///
+    /// `quiet` only brings a notice up to date; it does not bring it back. Someone who
+    /// cleared it has read it, and a note that is refused on every return to the app
+    /// would put it in Notification Center again each time.
+    private func post(_ job: CaptureJob, _ title: String, noteId: String? = nil, detail: String? = nil, plan: Bool = false, quiet: Bool = false) {
         let content = UNMutableNotificationContent()
         content.title = title
-        content.body = job.title.isEmpty ? "Untitled" : job.title
+        content.body = [job.title.isEmpty ? "Untitled" : job.title, detail].compactMap { $0 }.joined(separator: "\n")
         if let noteId { content.userInfo = [Self.noteKey: noteId] }
-        // Notifications may be off; the capture itself is unaffected.
-        UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: job.id, content: content, trigger: nil))
+        if plan { content.userInfo = [Self.planKey: true] }
+        if quiet { content.interruptionLevel = .passive }
+        let request = UNNotificationRequest(identifier: job.id, content: content, trigger: nil)
+        let center = UNUserNotificationCenter.current()
+        guard quiet else {
+            // Notifications may be off; the capture itself is unaffected.
+            center.add(request)
+            return
+        }
+        center.getDeliveredNotifications { delivered in
+            if delivered.contains(where: { $0.request.identifier == job.id }) { center.add(request) }
+        }
     }
 }

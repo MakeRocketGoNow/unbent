@@ -1,0 +1,267 @@
+package com.makerocketgonow.unbent.share
+
+import android.content.Context
+import androidx.work.BackoffPolicy
+import androidx.work.Constraints
+import androidx.work.Data
+import androidx.work.ExistingWorkPolicy
+import androidx.work.NetworkType
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkInfo
+import androidx.work.WorkManager
+import com.makerocketgonow.unbent.Prefs
+import java.io.File
+import java.util.concurrent.TimeUnit
+import kotlin.concurrent.thread
+
+/**
+ * Starts a capture's jobs: at Save, and again for one the plan refused and the phone kept.
+ *
+ * One place for both so the second is the first, exactly: the same constraint, the same
+ * backoff, the same indexing job chained after a PDF. A capture sent again from a copy of
+ * this would drift from it the next time the share sheet's half changed.
+ */
+object CaptureWork {
+
+    /**
+     * Enqueues the upload for [input] (the keys are [UploadWorker]'s), and the indexing
+     * job after it when a file needs one.
+     *
+     * Unique by capture, and an existing job is kept: [resumeRefused] is called every time
+     * the app comes to the screen, and without the name a capture already going again
+     * would be started once more for each, uploading its files side by side.
+     */
+    fun enqueue(context: Context, input: Data, delayMs: Long = 0, hurry: Boolean = false) {
+        val jobId = input.getString(UploadWorker.KEY_JOB_ID) ?: return
+        val request = OneTimeWorkRequestBuilder<UploadWorker>()
+            .setConstraints(
+                Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build(),
+            )
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
+            .setInputData(input)
+            .setInitialDelay(delayMs, TimeUnit.MILLISECONDS)
+            .build()
+
+        /*
+         * A PDF gets a second job, chained after the upload, that makes its text
+         * searchable. Chained rather than done inside the upload so that a WebView
+         * failure in the second can never re-run the first and create the note twice;
+         * photos have no text to extract and skip it, so no WebView spins up for a
+         * screenshot.
+         */
+        val manager = WorkManager.getInstance(context.applicationContext)
+        val name = workName(jobId)
+        /*
+         * [hurry] for a kept capture that is to go now, though an earlier call may have
+         * enqueued it on a wait of hours (see [resumeRefused]'s `roomFor`): KEEP would
+         * drop this for that one, and the capture would sit out a wait it was meant to
+         * be spared. A job that is only waiting is replaced; one that is running is left,
+         * since replacing it would cancel an upload in flight. The read and the replace
+         * are two steps, so a job that starts between them is cancelled all the same:
+         * its capture is sent again by the replacement, safely because of the ids, at
+         * the cost of an upload. Called off the main thread, which the blocking read
+         * needs.
+         */
+        val waiting = hurry && runCatching {
+            val infos = manager.getWorkInfosForUniqueWork(name).get()
+            infos.isNotEmpty() && infos.none { it.state == WorkInfo.State.RUNNING }
+        }.getOrDefault(false)
+        val work = manager.beginUniqueWork(name, if (waiting) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP, request)
+        val types = input.getStringArray(UploadWorker.KEY_TYPES).orEmpty().toList()
+        if (IndexWorker.needsIndexing(types)) {
+            val index = OneTimeWorkRequestBuilder<IndexWorker>()
+                .setConstraints(
+                    Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build(),
+                )
+                .setBackoffCriteria(BackoffPolicy.LINEAR, 30, TimeUnit.SECONDS)
+                .build()
+            work.then(index).enqueue()
+        } else {
+            work.enqueue()
+        }
+    }
+
+    /** Stops a capture's job, waiting or running, for one that is being ended from elsewhere. */
+    fun cancel(context: Context, jobId: String) {
+        WorkManager.getInstance(context.applicationContext).cancelUniqueWork(workName(jobId))
+    }
+
+    private fun workName(jobId: String) = "capture-$jobId"
+
+    /**
+     * Sends again every capture the plan refused ([CaptureRefusal]), from the input kept
+     * beside its files. Called when the app comes to the screen and when something else
+     * is shared; [UploadWorker] says why those and not a timer or a button.
+     *
+     * The marker is left where it is. The job this starts reads it to know it is a second
+     * asking, and it goes with the directory when the capture lands or is given up on. A
+     * job refused again rewrites it. Until then a call that finds the capture already
+     * going is dropped by the unique name, so calling this often costs nothing.
+     *
+     * [roomFor] is the reasons a capture that has just landed shows there is room for
+     * now ([roomShownBy], [CaptureRefusal] names): captures kept for those go without
+     * waiting out a quiet spell that can be six hours. Otherwise the scans behind the
+     * first one to land arrived hours apart.
+     *
+     * Off the main thread: it lists a directory and reads a small file per capture.
+     */
+    fun resumeRefused(context: Context, roomFor: Set<String> = emptySet()) {
+        val app = context.applicationContext
+        thread {
+            val prefs = Prefs(app)
+            // Signed out, the worker waits five minutes for a sign-in and then clears
+            // the capture and says to share again: right for a share just made, and the
+            // loss of one the person was told is kept. It stays for the next sign-in.
+            if (!prefs.isSignedIn) return@thread
+            val now = System.currentTimeMillis()
+            val waiting = Staging.jobDirs(app).mapNotNull { dir ->
+                val kept = CaptureResume.refusedJob(dir) ?: return@mapNotNull null
+                // Shared to another instance than the app is on now; see `KeptCapture`.
+                // The account is the worker's to check, since it takes a request.
+                val record = CaptureResume.kept(dir) ?: return@mapNotNull null
+                if (!sameInstance(record.instance, prefs.instance)) return@mapNotNull null
+                // Someone else's, where the app knows who is signed in. Passed over
+                // before the choosing and left untouched: chosen, it would be refused by
+                // the worker's own check on every return to the app, with the signed-in
+                // account's captures for the same reason never asked about behind it,
+                // and touched each time, so never swept either.
+                if (!sameAccount(record.account, prefs.account)) return@mapNotNull null
+                // A record this build cannot read is left for the sweep, not sent blind.
+                val input = runCatching { Data.fromByteArray(kept) }.getOrNull() ?: return@mapNotNull null
+                val dear = record.stuck || CaptureResume.readNoteId(dir) != null || isClip(input)
+                // A capture kept for the reason one has just landed after has had its
+                // answer: its quiet spell was for an account with no room.
+                val wait = if (record.refusal in roomFor) 0 else refusedWaitMs(dear, record.at, record.count, now)
+                Waiting(dir, input, record, wait)
+            }
+            for (one in firstOfEach(waiting)) {
+                // Touched, so the sweep (which goes by the newest file) counts from the
+                // last time anything was done for this capture and cannot take it from
+                // under the job being started here.
+                CaptureResume.touch(one.dir)
+                // Not skipped while it waits: enqueued for when the wait ends, so it
+                // goes then without anyone having to open the app a second time. The
+                // unique name drops every call that finds it already waiting.
+                val input = one.input ?: continue
+                enqueue(
+                    app,
+                    Data.Builder().putAll(input).putBoolean(UploadWorker.KEY_RESUMED, true).build(),
+                    one.waitMs,
+                    hurry = one.record.refusal in roomFor,
+                )
+            }
+        }
+    }
+
+    /**
+     * What a capture that has just landed shows there is room for, as the reasons a
+     * capture can be kept for.
+     *
+     * A note that was made means the plan holds (or the free plan has room for a note)
+     * and the notes have room; a file that was uploaded means the plan holds and its
+     * storage has room. Neither says anything about the other's room, so each clears
+     * only its own. [kept] is the reason the landed capture had itself been refused for,
+     * which has certainly been answered.
+     *
+     * Only a kept capture's own reason counted at first, and trying it on a phone showed
+     * what that missed: someone subscribes, shares something new, and it lands, while
+     * the page they shared last week stays on its quarter of an hour, or its six hours.
+     */
+    internal fun roomShownBy(madeNote: Boolean, uploadedFile: Boolean, kept: String?): Set<String> = buildSet {
+        if (madeNote) addAll(listOf(CaptureRefusal.PLAN_ENDED, CaptureRefusal.FREE_NOTES_FULL, CaptureRefusal.NOTES_FULL).map { it.name })
+        if (uploadedFile) addAll(listOf(CaptureRefusal.PLAN_ENDED, CaptureRefusal.STORAGE_FULL).map { it.name })
+        kept?.let(::add)
+    }
+
+    /**
+     * The other kept captures that end with [ended], one that has just been given up on
+     * at its thirty days: those kept for the same reason, instance and account that are
+     * past their own thirty days too. [UploadWorker] says why.
+     */
+    internal fun expiredWith(dirs: List<File>, endedDir: File, ended: KeptCapture, now: Long): List<File> =
+        dirs.filter { dir ->
+            if (dir == endedDir) return@filter false
+            val other = CaptureResume.kept(dir) ?: return@filter false
+            other.refusal == ended.refusal && other.account == ended.account &&
+                sameInstance(other.instance, ended.instance) && other.expired(now)
+        }
+
+    /**
+     * A kept capture that could be sent again, and how long it has still to wait first.
+     * [input] is nullable only so a test can make one without WorkManager's `Data`.
+     */
+    internal class Waiting(val dir: File, val input: Data?, val record: KeptCapture, val waitMs: Long)
+
+    /**
+     * The captures to ask the server about: one for each reason captures were refused.
+     *
+     * A lapsed account that shared a dozen things has a dozen kept captures, and the
+     * answer to the first is the answer to all of them: every return to the app was a
+     * dozen jobs, a dozen requests each paying a call to the account's store to hear 402,
+     * and a dozen notices posted again. So one goes, the one that can go soonest and
+     * among those the longest kept, and [UploadWorker] calls back here when a kept
+     * capture lands, which sends the next. By reason, because the reasons have different
+     * answers: an account out of storage for files still takes a note.
+     */
+    internal fun firstOfEach(waiting: List<Waiting>): List<Waiting> =
+        waiting.groupBy { it.record.refusal }.values.map { same ->
+            // With every wait over, one that failed last time still stands behind those
+            // that have not, however long it has been kept.
+            same.minWith(compareBy<Waiting> { it.waitMs }.thenBy { it.record.stuck }.thenBy { it.record.since })
+        }
+
+    /**
+     * How long a capture the plan refused waits before it is sent again: nothing for most,
+     * and the rest of a quiet spell for the two that are dear to ask about.
+     *
+     * A note that was refused is a few hundred bytes, and goes every time: someone back
+     * from subscribing should not wait. Two captures cost more ([dear]). One whose note
+     * exists was refused at a file, and uploads the whole file to hear the answer, a scan
+     * of tens of megabytes over a phone connection; and a clip has the server fetch and
+     * read someone else's page before the store refuses it. `onStart` runs on every
+     * return to the app, from the camera and the file chooser included, so those two
+     * wait out [quietMs] from their last refusal first.
+     *
+     * Asking the server for the plan first was the other way. It answers a different
+     * question for each of the four refusals (a state, a count of notes, two sizes of
+     * room), and the write itself is the only check that is never out of step with the
+     * rule it checks. The iOS app's half is `CaptureJob.refusedWait`.
+     */
+    internal fun refusedWaitMs(dear: Boolean, refusedAt: Long, count: Int, now: Long): Long =
+        // A refusal "in the future" is a clock that was set back, not a reason to wait
+        // until the wall time catches up with it.
+        if (!dear || now < refusedAt) 0 else (refusedAt + quietMs(count) - now).coerceAtLeast(0)
+
+    /**
+     * The quiet spell after a capture's [count]th refusal: a quarter of an hour, doubling,
+     * to six hours.
+     *
+     * A fixed quarter of an hour was first. It is right for the person adding storage,
+     * who is back within it, and wrong for the account that simply stays full: that one
+     * uploaded the same scan four times in every hour the app was in use, for as long as
+     * it was used. Doubling leaves the first few askings close together and settles at
+     * four a day.
+     */
+    internal fun quietMs(count: Int): Long =
+        (REFUSED_QUIET_MS shl (count - 1).coerceIn(0, 16)).coerceAtMost(REFUSED_QUIET_MAX_MS)
+
+    /** Whether a capture kept for [kept] may be sent to [current], the instance the app is on. */
+    internal fun sameInstance(kept: String?, current: String): Boolean =
+        kept != null && Prefs.normalizeOrigin(kept) == Prefs.normalizeOrigin(current)
+
+    /**
+     * Whether a capture kept for the account [kept] may be chosen while [current] is
+     * signed in. Either unknown counts as the same: the worker asks the server before it
+     * sends anything, and remembers the answer for the next choosing.
+     */
+    internal fun sameAccount(kept: String?, current: String?): Boolean =
+        kept == null || current == null || kept == current
+
+    /** Whether [input] is a share the worker will ask the server to read as a page. */
+    private fun isClip(input: Data): Boolean =
+        input.getStringArray(UploadWorker.KEY_FILENAMES).isNullOrEmpty() &&
+            UploadWorker.lonePageUrl(input.getString(UploadWorker.KEY_BODY).orEmpty()) != null
+
+    internal const val REFUSED_QUIET_MS = 15 * 60 * 1000L
+    internal const val REFUSED_QUIET_MAX_MS = 6 * 60 * 60 * 1000L
+}

@@ -2,6 +2,7 @@ package com.makerocketgonow.unbent.share
 
 import android.content.Context
 import androidx.work.CoroutineWorker
+import androidx.work.Data
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import com.makerocketgonow.unbent.Prefs
@@ -33,6 +34,10 @@ import kotlinx.coroutines.withContext
  * has not switched it on, or one from before the route), the capture falls back to that
  * note, so a share never fails for a page's sake: the link is kept either way, and the
  * notification says which of the two landed.
+ *
+ * A capture the account's plan has no room for (a 402) is neither retried nor given up
+ * on: it is kept on the phone, its notification says why, and it is sent again when
+ * there may be room. See [CaptureRefusal] and the 402 case below.
  */
 class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
 
@@ -47,9 +52,30 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
         val tags = inputData.getStringArray(KEY_TAGS).orEmpty().toList()
         val context = applicationContext
 
-        CaptureNotifications.saving(context, jobId, title)
+        val dir = Staging.jobDir(context, jobId)
+        // A capture the plan refused, being sent again (see the 402 below). It says
+        // nothing until it has an answer: "Saving…" would replace the notice that says
+        // why it is waiting, every time the app is opened, to be replaced by that notice
+        // again a second later.
+        val refusedBefore = CaptureResume.wasRefused(dir)
+        /*
+         * A resend whose capture is no longer kept has nothing to do: the job before it
+         * finished, saved or given up on, and cleared the directory between this one's
+         * input being read from it and its being enqueued, when the unique name no
+         * longer held it back. Carrying on would find no note id and no chosen id, and
+         * make a second note without its files, then say "Saved".
+         */
+        if (inputData.getBoolean(KEY_RESUMED, false) && !refusedBefore) return@withContext Result.success()
+        if (!refusedBefore) CaptureNotifications.saving(context, jobId, title)
 
         val prefs = Prefs(context)
+        if (!prefs.isSignedIn && refusedBefore) {
+            // Signed out since this resend was enqueued. Nobody is at a sign-in screen
+            // on its account, so there is nothing to wait five minutes for, and the
+            // wait below ends by clearing the capture. It is kept, marker and all, and
+            // `CaptureWork.resumeRefused` sends it once someone is signed in.
+            return@withContext Result.failure()
+        }
         if (!prefs.isSignedIn) {
             /*
              * No session yet. ShareActivity has already opened the sign-in screen: it can,
@@ -69,8 +95,23 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
             }
         }
 
-        val api = UnbentApi(prefs.instance, prefs.session?.bearer ?: return@withContext Result.failure())
-        val dir = Staging.jobDir(context, jobId)
+        // Read once, so the request, the check below and the record all mean the same
+        // instance, whatever App settings is changed to while this runs.
+        val instance = prefs.instance
+        // A resend can wait hours between being enqueued and running, and the instance
+        // was checked when it was enqueued. Checked again here: with the app pointed
+        // elsewhere since, it would go to that server as whoever is signed in there.
+        if (refusedBefore && !CaptureWork.sameInstance(CaptureResume.kept(dir)?.instance, instance)) {
+            return@withContext Result.failure()
+        }
+        val bearer = prefs.session?.bearer ?: return@withContext Result.failure()
+        val api = UnbentApi(instance, bearer)
+
+        // Only for the session that was asked with: someone may have signed in as
+        // another account while the request was out, and the answer is not theirs.
+        fun remember(account: String) {
+            if (prefs.session?.bearer == bearer) prefs.account = account
+        }
 
         fun giveUp(): Result {
             Staging.clear(context, jobId)
@@ -78,10 +119,60 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
             return Result.failure()
         }
 
+        /*
+         * Out of tries. For a share made a minute ago that is the end of it. A capture
+         * kept for the plan has a notice saying it is kept, and a bad afternoon for the
+         * server (four 500s, a day's read allowance spent) is not a reason to break
+         * that: it fails with its marker in place and goes again on a later return to
+         * the app, until the thirty days every kept capture has are up.
+         */
+        fun outOfTries(): Result {
+            val kept = if (refusedBefore) CaptureResume.kept(dir) else null
+            val now = System.currentTimeMillis()
+            if (kept == null || kept.expired(now)) return giveUp()
+            // Written down as an asking that failed, so its wait grows as a refusal's
+            // does and it stands behind the captures that have not failed (`stuck`).
+            // Through `keepRefused`, which also clears the 503 count: left, it was
+            // subtracted from the next job's attempts and gave that job nineteen tries.
+            CaptureResume.keepRefused(
+                dir,
+                inputData.toByteArray(),
+                kept.copy(at = now, count = kept.count + 1, stuck = true),
+            )
+            // Back to the notice that says why it is kept: the last one may be "Unbent
+            // is busy. Will try again later", and nothing is trying any more.
+            runCatching { CaptureRefusal.valueOf(kept.refusal) }.getOrNull()?.let {
+                CaptureNotifications.refused(context, jobId, title, it, quiet = true)
+            }
+            return Result.failure()
+        }
+
         // Attempts that failed for a reason of their own; see the 503 case below.
         fun attemptsSpent() = runAttemptCount - CaptureResume.unavailableAttempts(dir)
 
         try {
+            /*
+             * A kept capture goes only as the account it was shared from (see
+             * `KeptCapture`). Asked before anything is written, and of the server, since
+             * the app holds a session and not a name: someone else has signed in on this
+             * instance since, and the capture is left where it is, for its owner's return
+             * or the sweep. No session at all is the 401 below.
+             */
+            val owner = if (refusedBefore) CaptureResume.kept(dir)?.account else null
+            if (owner != null) {
+                // What the app remembers is the answer for the session it holds
+                // (`Prefs.account` goes whenever the session changes), so the server is
+                // asked only until it has said once: a refused note is sent again on
+                // every return to the app, and each was a request to hear the same name.
+                // Remembered, too, so the next choosing passes this capture over without
+                // asking, and it does not stand in front of the signed-in account's own.
+                // Only while the session is still the one this job sends with.
+                val me = prefs.account?.takeIf { prefs.session?.bearer == bearer }
+                    ?: api.me()?.id?.also(::remember)
+                    ?: throw ApiException(401, "Session check")
+                if (me != owner) return@withContext Result.failure()
+            }
+
             /*
              * Create once, remember the id, reuse it on retry.
              *
@@ -96,6 +187,10 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
             // it, which is the one that posts "Saved"; a retry that finds the note made
             // says "Saved" like any other, since it cannot tell.
             var clipped = false
+            // What this attempt got the server to take, for what it shows there is room
+            // for when the capture lands (`CaptureWork.roomShownBy`).
+            var madeNote = false
+            var uploadedFile = false
             var noteTitle = title
             val noteId = CaptureResume.readNoteId(dir) ?: run {
                 /*
@@ -120,6 +215,7 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
                     }
                 }
                 noteTitle = note.title
+                madeNote = true
                 CaptureResume.writeNoteId(dir, note.id)
                 note.id
             }
@@ -147,11 +243,18 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
                 // rather than failing the whole capture and losing the others.
                 if (file.exists()) {
                     val uploaded = api.uploadFile(noteId, file, name, type)
+                    uploadedFile = true
                     if (IndexWorker.needsIndexing(listOf(type)) && !uploaded.indexedByServer) needsIndex = true
                 }
             }
 
+            val kept = if (refusedBefore) CaptureResume.kept(dir)?.refusal else null
             Staging.clear(context, jobId)
+            // Something landed, so there is room of some kind: the kept captures are
+            // looked at again, and those kept for a reason this one answers go at once
+            // (`CaptureWork.roomShownBy`, `firstOfEach`). After any capture, as on iOS:
+            // a share made today that lands is as good a sign as a kept one.
+            CaptureWork.resumeRefused(context, CaptureWork.roomShownBy(madeNote, uploadedFile, kept))
 
             // The page's own title where the server chose it: "Saved" names what landed.
             CaptureNotifications.saved(context, jobId, noteTitle, noteId, clipped)
@@ -159,13 +262,84 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
             // is anything left for it to do.
             Result.success(workDataOf(KEY_NOTE_ID to noteId, KEY_NEEDS_INDEX to needsIndex))
         } catch (e: ApiException) {
+            val refusal = CaptureRefusal.of(e)
             if (e.status == 401) {
                 // The session is gone, not merely unreachable. Retrying cannot fix it, and
                 // the stale token would keep failing silently on every later share.
                 prefs.clearSession()
-                Staging.clear(context, jobId)
-                CaptureNotifications.signInNeeded(context, jobId, title)
+                if (refusedBefore) {
+                    /*
+                     * A capture kept for the plan is kept for the sign-in too. A lapsed
+                     * account that has not opened the app in weeks is exactly whose
+                     * session has run out, and clearing here deleted what the notice
+                     * had said was kept, then asked for it to be shared again from a
+                     * source that may be gone. The marker stays, which is what has
+                     * `CaptureWork.resumeRefused` send it after the sign-in. The iOS
+                     * app keeps every capture through a 401 (`CaptureJob.handle`).
+                     */
+                    CaptureNotifications.signInNeeded(context, jobId, title, kept = true)
+                } else {
+                    Staging.clear(context, jobId)
+                    CaptureNotifications.signInNeeded(context, jobId, title)
+                }
                 Result.failure()
+            } else if (refusal != null) {
+                /*
+                 * The plan has no room for this: it has ended, or its storage is full.
+                 * Nothing is wrong with the capture and trying again now changes
+                 * nothing, but the answer changes the moment the person subscribes or
+                 * deletes something, so the capture is kept rather than given up on, and
+                 * the notice says which it was and opens the Plan page.
+                 *
+                 * Failed, not retried. WorkManager's backoff would ask again in thirty
+                 * seconds and then ever more rarely, up to five hours apart: wrong both
+                 * ways, since a person who has just subscribed waits hours and one who
+                 * has not is asked about all day. The capture is sent again when the app
+                 * is next opened or something else is shared (`CaptureWork.resumeRefused`),
+                 * which are the moments after someone could have done something about it.
+                 * A Retry button on the notice was the other way, and is one more thing
+                 * to press for a result the app can find out for itself.
+                 *
+                 * Whatever landed stays landed: the note id and the files already on the
+                 * note are found again by the next attempt, as on any retry.
+                 */
+                val before = CaptureResume.kept(dir)
+                val now = System.currentTimeMillis()
+                // Asked at a refusal until it is known, and carried from then on. A
+                // failure to ask is not a reason to lose the capture; see
+                // `KeptCapture.account`.
+                val account = before?.account ?: runCatching { api.me()?.id }.getOrNull()?.also(::remember)
+                val kept = KeptCapture(
+                    refusal.name,
+                    instance,
+                    account,
+                    at = now,
+                    count = (before?.count ?: 0) + 1,
+                    since = before?.since ?: now,
+                )
+                if (kept.expired(now)) {
+                    // Thirty days of asking is enough; see `KeptCapture.expired`. The
+                    // others kept for the same reason and account past their thirty
+                    // days have had the same answer, moments ago, and end with it:
+                    // asked in turn, each was uploaded once more, one per opening of
+                    // the app, only to be refused and deleted.
+                    for (other in CaptureWork.expiredWith(Staging.jobDirs(context), dir, kept, now)) {
+                        val input = CaptureResume.refusedJob(other)?.let { runCatching { Data.fromByteArray(it) }.getOrNull() }
+                        val id = input?.getString(KEY_JOB_ID) ?: continue
+                        // Its job first, if one is waiting or running: left, a running
+                        // one lost its files mid-upload and said "Could not save" again,
+                        // or "Saved" over it.
+                        CaptureWork.cancel(context, id)
+                        Staging.clear(context, id)
+                        CaptureNotifications.failed(context, id, input.getString(KEY_TITLE).orEmpty())
+                    }
+                    giveUp()
+                } else {
+                    CaptureResume.keepRefused(dir, inputData.toByteArray(), kept)
+                    // Quietly the second time: it is the same news, about the same capture.
+                    CaptureNotifications.refused(context, jobId, title, refusal, quiet = refusedBefore)
+                    Result.failure()
+                }
             } else if (waitsOut(e)) {
                 /*
                  * The server is up but cannot serve right now, and has said so. The case
@@ -180,15 +354,19 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
                     CaptureNotifications.waiting(context, jobId, title)
                     Result.retry()
                 } else {
-                    giveUp()
+                    outOfTries()
                 }
+            } else if (refusedBefore && isPermanent(e)) {
+                // A request the server will never take is not worth a month of asking,
+                // whatever the capture was kept for.
+                giveUp()
             } else if (attemptsSpent() < MAX_ATTEMPTS) {
                 Result.retry()
             } else {
-                giveUp()
+                outOfTries()
             }
         } catch (e: Exception) {
-            if (attemptsSpent() < MAX_ATTEMPTS) Result.retry() else giveUp()
+            if (attemptsSpent() < MAX_ATTEMPTS) Result.retry() else outOfTries()
         }
     }
 
@@ -218,6 +396,17 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
          * check's 503, the one a spent read allowance produces, sends `Retry-After`.
          */
         internal fun waitsOut(e: ApiException): Boolean = e.status == 503 && e.retryAfter != null
+
+        /**
+         * Whether an answer will be the same however often it is asked for: a 4xx, which
+         * is the server refusing the request as it stands (a file too large, a name it
+         * will not take). Not 401 or 402, which are the session's and the plan's and are
+         * decided before this, nor 408 (a timeout) and 429 ("later"). The iOS app's
+         * `CaptureJob.isPermanent`, used here only for a kept capture: a share made a
+         * minute ago is given up on after four tries either way.
+         */
+        internal fun isPermanent(e: ApiException): Boolean =
+            e.status in 400..499 && e.status !in setOf(401, 402, 408, 429)
 
         /**
          * The address a share is, when it is one web address and nothing else: what the
@@ -273,8 +462,11 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
          * capture made before the route existed. The same chosen id on all of them, so a
          * clip that landed unheard and a create that follows meet at one note.
          *
-         * It also bounds a clip the plan refuses (402, which the store answers only after
-         * the page is read) at two reads of the page.
+         * A clip the plan refuses (402, which the store answers only after the page is
+         * read) spends none of these: the capture is kept as a clip and asks for the
+         * page again each time it is sent, which `CaptureWork.refusedWaitMs` spaces
+         * out, so that someone who then subscribes gets the
+         * page they shared and not its address.
          */
         internal fun clipsOnAttempt(attemptsSpent: Int): Boolean = attemptsSpent < CLIP_ATTEMPTS
 
@@ -290,6 +482,8 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
         /** Null means the Inbox. */
         const val KEY_NOTEBOOK = "notebook"
         const val KEY_TAGS = "tags"
+        /** True for a job started from a kept capture (`CaptureWork.resumeRefused`), not at Save. */
+        const val KEY_RESUMED = "resumed"
         /** Output: the note this capture became. */
         const val KEY_NOTE_ID = "noteId"
         /** Output: false when the server extracted every PDF's text itself. */
