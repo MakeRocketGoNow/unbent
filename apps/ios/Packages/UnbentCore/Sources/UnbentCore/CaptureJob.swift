@@ -189,8 +189,9 @@ public struct CaptureJob: Codable, Equatable, Sendable {
     /// resend is a second asking, which shows no "Saving…".
     /// Optional so a record written before the field existed still reads.
     public var refused: CaptureRefusal?
-    /// When it was last refused; see `resendsRefused`.
+    /// When it was last refused, and how many times it has been; see `refusedWait`.
     public var refusedAt: Date?
+    public var refusedCount: Int?
     /// The background session the extension started this capture's upload in, which the
     /// app joins to hear how it went. Nil for a capture nothing has been sent for yet,
     /// and for one made in the app.
@@ -314,31 +315,51 @@ public struct CaptureJob: Codable, Equatable, Sendable {
         return [400, 404, 413, 415, 502].contains(status)
     }
 
-    /// How long a refused capture that is dear to ask about waits before it is asked
-    /// about again; see `resendsRefused`.
+    /// The quiet spell after a capture's first refusal, and the longest it grows to.
     static let refusedQuiet: TimeInterval = 15 * 60
+    static let refusedQuietMax: TimeInterval = 6 * 60 * 60
 
-    /// Whether a capture the plan refused is sent again now, when the app has come
-    /// forward (`CaptureQueue.resumeAll`).
+    /// The quiet spell after a capture's `count`th refusal: a quarter of an hour,
+    /// doubling, to six hours.
+    ///
+    /// A fixed quarter of an hour was first. It is right for the person adding storage,
+    /// who is back within it, and wrong for the account that simply stays full: that one
+    /// uploaded the same scan four times in every hour the app was in use, for as long
+    /// as it was used. Doubling leaves the first few askings close together and settles
+    /// at four a day.
+    static func quiet(count: Int) -> TimeInterval {
+        min(refusedQuiet * pow(2, Double(min(max(count, 1), 16) - 1)), refusedQuietMax)
+    }
+
+    /// How long a capture the plan refused waits before it is sent again, when the app
+    /// has come forward (`CaptureQueue.resumeAll`): nothing for most, and the rest of a
+    /// quiet spell for the two that are dear to ask about.
     ///
     /// A note that was refused is a few hundred bytes, and goes every time: someone back
-    /// from subscribing should not wait. Two captures cost more to ask about. One refused
-    /// at a file uploads the whole file to hear the answer, a scan of tens of megabytes
-    /// over a phone connection; and a clip has the server fetch and read someone else's
-    /// page before the store refuses it. The app comes forward often (after Notification
-    /// Center, after a system sheet), so those two wait a quarter of an hour from their
-    /// last refusal: long enough that a full account is not uploading the same scan
-    /// each time the phone is picked up, short enough to pass while storage is added.
+    /// from subscribing should not wait. Two captures cost more. One refused at a file
+    /// uploads the whole file to hear the answer, a scan of tens of megabytes over a
+    /// phone connection; and a clip has the server fetch and read someone else's page
+    /// before the store refuses it. The app comes forward often (after Notification
+    /// Center, after a system sheet), so those two wait out `quiet(count:)` from their
+    /// last refusal first. The request is handed to the system with that wait on it
+    /// rather than held back, so it goes when the wait ends without the app being opened
+    /// a second time.
     ///
     /// Asking the server for the plan first was the other way. It answers a different
     /// question for each of the four refusals (a state, a count of notes, two sizes of
     /// room), and the write itself is the only check that is never out of step with the
-    /// rule it checks. Android's half is `CaptureWork.resendsRefused`.
-    public func resendsRefused(now: Date = Date()) -> Bool {
+    /// rule it checks. Android's half is `CaptureWork.refusedWaitMs`.
+    public func refusedWait(now: Date = Date()) -> TimeInterval {
         // A refusal "in the future" is a clock that was set back, not a reason to wait
         // until the wall time catches up with it.
-        guard refused != nil, created || clip != nil, let refusedAt, refusedAt <= now else { return true }
-        return now.timeIntervalSince(refusedAt) >= Self.refusedQuiet
+        guard refused != nil, created || clip != nil, let refusedAt, refusedAt <= now else { return 0 }
+        return max(0, Self.quiet(count: refusedCount ?? 1) - now.timeIntervalSince(refusedAt))
+    }
+
+    private mutating func forgetRefusal() {
+        refused = nil
+        refusedAt = nil
+        refusedCount = nil
     }
 
     /// Thirty seconds, doubling: WorkManager's backoff, which Android's worker runs on.
@@ -352,10 +373,7 @@ public struct CaptureJob: Codable, Equatable, Sendable {
             // The note was taken: there is room now, whatever was said before. Not for a
             // file, since several are out at once and one landing after another's
             // refusal says nothing about the refused one, which is still waiting.
-            if step == .create {
-                refused = nil
-                refusedAt = nil
-            }
+            if step == .create { forgetRefusal() }
             switch step {
             case .create:
                 // Twice is possible (the extension's request and the app's own resend
@@ -381,8 +399,7 @@ public struct CaptureJob: Codable, Equatable, Sendable {
             // A capture the plan had refused waits for the sign-in now, not for room:
             // left marked, the resend after signing in passed it over, and "Sign in to
             // finish saving" was not true of it until the app was next opened.
-            refused = nil
-            refusedAt = nil
+            forgetRefusal()
             return .signInNeeded
         }
 
@@ -395,6 +412,7 @@ public struct CaptureJob: Codable, Equatable, Sendable {
             let again = refused != nil
             refused = refusal
             refusedAt = now
+            refusedCount = (refusedCount ?? 0) + 1
             return .refused(refusal, again: again)
         }
 

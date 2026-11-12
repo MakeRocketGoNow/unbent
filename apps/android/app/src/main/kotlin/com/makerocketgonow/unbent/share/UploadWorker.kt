@@ -244,7 +244,13 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
                 CaptureResume.keepRefused(
                     dir,
                     inputData.toByteArray(),
-                    KeptCapture(refusal.name, prefs.instance, account, at = System.currentTimeMillis()),
+                    KeptCapture(
+                        refusal.name,
+                        prefs.instance,
+                        account,
+                        at = System.currentTimeMillis(),
+                        count = (before?.count ?: 0) + 1,
+                    ),
                 )
                 // Quietly the second time: it is the same news, about the same capture.
                 CaptureNotifications.refused(context, jobId, title, refusal, quiet = refusedBefore)
@@ -358,8 +364,8 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
          *
          * A clip the plan refuses (402, which the store answers only after the page is
          * read) spends none of these: the capture is kept as a clip and asks for the
-         * page again each time it is sent, which `CaptureWork.resendsRefused` holds
-         * to once in a quarter of an hour, so that someone who then subscribes gets the
+         * page again each time it is sent, which `CaptureWork.refusedWaitMs` spaces
+         * out, so that someone who then subscribes gets the
          * page they shared and not its address.
          */
         internal fun clipsOnAttempt(attemptsSpent: Int): Boolean = attemptsSpent < CLIP_ATTEMPTS

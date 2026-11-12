@@ -172,7 +172,10 @@ public final class CaptureQueue: NSObject, @unchecked Sendable {
                 // Read again: results may have been applied while the lists were fetched.
                 for job in self.jobsOnDisk() {
                     if job.isSaved { self.apply(.saved, to: job); continue }
-                    if job.refused != nil, !(refused && job.resendsRefused()) { continue }
+                    if job.refused != nil, !refused { continue }
+                    // Nothing for most; for a refused file or clip, the rest of its
+                    // quiet spell, which the system then holds the request for.
+                    let wait = job.refusedWait()
                     for step in job.pending(live: live) {
                         // A note going out for the first time from here is one that
                         // waited for a sign-in, and now there is something to say. Not
@@ -180,7 +183,7 @@ public final class CaptureQueue: NSObject, @unchecked Sendable {
                         // says why it is waiting, to be replaced by it again a moment
                         // later, every time the app is opened.
                         if step == .create, job.refused == nil, self.sessions.session(for: job.origin) != nil { self.notifier.saving(job) }
-                        self.send(step, of: job)
+                        self.send(step, of: job, after: wait)
                     }
                 }
                 for identifier in idle where identifier != self.home { self.retire(identifier) }

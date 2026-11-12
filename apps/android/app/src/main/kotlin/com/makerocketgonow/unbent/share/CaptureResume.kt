@@ -140,4 +140,6 @@ data class KeptCapture(
     val account: String? = null,
     /** When it was last refused, which the wait before asking again counts from. */
     val at: Long = 0,
+    /** How many times it has been refused, which that wait grows with (`CaptureWork.quietMs`). */
+    val count: Int = 1,
 )

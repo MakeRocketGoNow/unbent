@@ -58,18 +58,30 @@ class CaptureRefusalTest {
 
     @Test
     fun `a refused note goes again on every return to the app`() {
-        assertTrue(CaptureWork.resendsRefused(dear = false, refusedAt = 1_000, now = 1_001))
+        assertEquals(0, CaptureWork.refusedWaitMs(dear = false, refusedAt = 1_000, count = 9, now = 1_001))
     }
 
     @Test
-    fun `a refused file or clip waits a while between askings`() {
+    fun `a refused file or clip waits out the rest of a quiet spell, and no longer`() {
         val then = 1_000_000L
-        assertFalse(CaptureWork.resendsRefused(dear = true, refusedAt = then, now = then + 60_000))
-        assertTrue(CaptureWork.resendsRefused(dear = true, refusedAt = then, now = then + CaptureWork.REFUSED_QUIET_MS))
-        // Nor does a clock set back since: the refusal is then ahead of now.
-        assertTrue(CaptureWork.resendsRefused(dear = true, refusedAt = then, now = then - 3_600_000))
-        // A marker whose time cannot be read does not hold a capture back for good.
-        assertTrue(CaptureWork.resendsRefused(dear = true, refusedAt = null, now = then))
+        val quiet = CaptureWork.REFUSED_QUIET_MS
+        assertEquals(quiet - 60_000, CaptureWork.refusedWaitMs(dear = true, refusedAt = then, count = 1, now = then + 60_000))
+        assertEquals(0, CaptureWork.refusedWaitMs(dear = true, refusedAt = then, count = 1, now = then + quiet))
+        assertEquals(0, CaptureWork.refusedWaitMs(dear = true, refusedAt = then, count = 1, now = then + 10 * quiet))
+        // A clock set back since does not hold it: the refusal is then ahead of now.
+        assertEquals(0, CaptureWork.refusedWaitMs(dear = true, refusedAt = then, count = 1, now = then - 3_600_000))
+    }
+
+    @Test
+    fun `an account that stays full is asked less and less often, down to four times a day`() {
+        val quiet = CaptureWork.REFUSED_QUIET_MS
+        assertEquals(quiet, CaptureWork.quietMs(1))
+        assertEquals(2 * quiet, CaptureWork.quietMs(2))
+        assertEquals(4 * quiet, CaptureWork.quietMs(3))
+        assertEquals(CaptureWork.REFUSED_QUIET_MAX_MS, CaptureWork.quietMs(6))
+        assertEquals(CaptureWork.REFUSED_QUIET_MAX_MS, CaptureWork.quietMs(500))
+        // A record with a count it should never have still gets the shortest spell, not none.
+        assertEquals(quiet, CaptureWork.quietMs(0))
     }
 
     @Test

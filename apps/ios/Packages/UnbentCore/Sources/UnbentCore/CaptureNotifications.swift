@@ -74,7 +74,7 @@ public struct CaptureNotifications: CaptureNotifying {
         case .notesFull: "Out of room for notes"
         case .plan: "Your plan has no room for this"
         }
-        post(job, title, detail: "Not saved yet. It is kept on this device and sent again when you open Unbent.", plan: true, quiet: again)
+        post(job, title, detail: "Not saved yet. It is kept on this device and tried again after you open Unbent.", plan: true, quiet: again)
     }
 
     /// Whether a notification is one to list without showing over the app: a repeat of a

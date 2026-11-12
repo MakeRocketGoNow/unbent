@@ -114,7 +114,7 @@
     <string name="refused_notes_full">Out of room for notes</string>
     <string name="refused_plan">Your plan has no room for this</string>
     <!-- %1$s is the note's title. Two lines: what was shared, then what became of it. -->
-    <string name="refused_kept">%1$s\nNot saved yet. It is kept on this phone and sent again when you open Unbent.</string>
+    <string name="refused_kept">%1$s\nNot saved yet. It is kept on this phone and tried again after you open Unbent.</string>
     <string name="nothing_to_share">Nothing to share</string>
     <string name="channel_captures">Captures</string>
     <string name="channel_captures_desc">Progress and results for items shared to Unbent</string>

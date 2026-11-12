@@ -29,7 +29,7 @@ object CaptureWork {
      * the app comes to the screen, and without the name a capture already going again
      * would be started once more for each, uploading its files side by side.
      */
-    fun enqueue(context: Context, input: Data) {
+    fun enqueue(context: Context, input: Data, delayMs: Long = 0) {
         val jobId = input.getString(UploadWorker.KEY_JOB_ID) ?: return
         val request = OneTimeWorkRequestBuilder<UploadWorker>()
             .setConstraints(
@@ -37,6 +37,7 @@ object CaptureWork {
             )
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
             .setInputData(input)
+            .setInitialDelay(delayMs, TimeUnit.MILLISECONDS)
             .build()
 
         /*
@@ -91,34 +92,49 @@ object CaptureWork {
                 // A record this build cannot read is left for the sweep, not sent blind.
                 val input = runCatching { Data.fromByteArray(kept) }.getOrNull() ?: continue
                 val dear = CaptureResume.readNoteId(dir) != null || isClip(input)
-                if (!resendsRefused(dear, record.at, System.currentTimeMillis())) continue
-                enqueue(app, Data.Builder().putAll(input).putBoolean(UploadWorker.KEY_RESUMED, true).build())
+                // Not skipped while it waits: enqueued for when the wait ends, so it
+                // goes then without anyone having to open the app a second time. The
+                // unique name drops every call that finds it already waiting.
+                val wait = refusedWaitMs(dear, record.at, record.count, System.currentTimeMillis())
+                enqueue(app, Data.Builder().putAll(input).putBoolean(UploadWorker.KEY_RESUMED, true).build(), wait)
             }
         }
     }
 
     /**
-     * Whether a capture the plan refused is sent again now.
+     * How long a capture the plan refused waits before it is sent again: nothing for most,
+     * and the rest of a quiet spell for the two that are dear to ask about.
      *
      * A note that was refused is a few hundred bytes, and goes every time: someone back
-     * from subscribing should not wait. Two captures cost more to ask about ([dear]). One
-     * whose note exists was refused at a file, and uploads the whole file to hear the
-     * answer, a scan of tens of megabytes over a phone connection; and a clip has the
-     * server fetch and read someone else's page before the store refuses it. `onStart`
-     * runs on every return to the app, from the camera and the file chooser included, so
-     * those two wait [REFUSED_QUIET_MS] from their last refusal: long enough that a full
-     * account is not uploading the same scan each time the phone is picked up, short
-     * enough to pass while storage is added.
+     * from subscribing should not wait. Two captures cost more ([dear]). One whose note
+     * exists was refused at a file, and uploads the whole file to hear the answer, a scan
+     * of tens of megabytes over a phone connection; and a clip has the server fetch and
+     * read someone else's page before the store refuses it. `onStart` runs on every
+     * return to the app, from the camera and the file chooser included, so those two
+     * wait out [quietMs] from their last refusal first.
      *
      * Asking the server for the plan first was the other way. It answers a different
      * question for each of the four refusals (a state, a count of notes, two sizes of
      * room), and the write itself is the only check that is never out of step with the
-     * rule it checks. The iOS app's half is `CaptureJob.resendsRefused`.
+     * rule it checks. The iOS app's half is `CaptureJob.refusedWait`.
      */
-    internal fun resendsRefused(dear: Boolean, refusedAt: Long?, now: Long): Boolean =
+    internal fun refusedWaitMs(dear: Boolean, refusedAt: Long, count: Int, now: Long): Long =
         // A refusal "in the future" is a clock that was set back, not a reason to wait
         // until the wall time catches up with it.
-        !dear || refusedAt == null || now < refusedAt || now - refusedAt >= REFUSED_QUIET_MS
+        if (!dear || now < refusedAt) 0 else (refusedAt + quietMs(count) - now).coerceAtLeast(0)
+
+    /**
+     * The quiet spell after a capture's [count]th refusal: a quarter of an hour, doubling,
+     * to six hours.
+     *
+     * A fixed quarter of an hour was first. It is right for the person adding storage,
+     * who is back within it, and wrong for the account that simply stays full: that one
+     * uploaded the same scan four times in every hour the app was in use, for as long as
+     * it was used. Doubling leaves the first few askings close together and settles at
+     * four a day.
+     */
+    internal fun quietMs(count: Int): Long =
+        (REFUSED_QUIET_MS shl (count - 1).coerceIn(0, 16)).coerceAtMost(REFUSED_QUIET_MAX_MS)
 
     /** Whether a capture kept for [kept] may be sent to [current], the instance the app is on. */
     internal fun sameInstance(kept: String?, current: String): Boolean =
@@ -130,4 +146,5 @@ object CaptureWork {
             UploadWorker.lonePageUrl(input.getString(UploadWorker.KEY_BODY).orEmpty()) != null
 
     internal const val REFUSED_QUIET_MS = 15 * 60 * 1000L
+    internal const val REFUSED_QUIET_MAX_MS = 6 * 60 * 60 * 1000L
 }
