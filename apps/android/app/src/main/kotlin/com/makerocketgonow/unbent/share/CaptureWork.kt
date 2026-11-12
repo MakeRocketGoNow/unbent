@@ -114,7 +114,9 @@ object CaptureWork {
      * rule it checks. The iOS app's half is `CaptureJob.resendsRefused`.
      */
     internal fun resendsRefused(dear: Boolean, refusedAt: Long?, now: Long): Boolean =
-        !dear || refusedAt == null || now - refusedAt >= REFUSED_QUIET_MS
+        // A refusal "in the future" is a clock that was set back, not a reason to wait
+        // until the wall time catches up with it.
+        !dear || refusedAt == null || now < refusedAt || now - refusedAt >= REFUSED_QUIET_MS
 
     /** Whether a capture kept for [kept] may be sent to [current], the instance the app is on. */
     internal fun sameInstance(kept: String?, current: String): Boolean =

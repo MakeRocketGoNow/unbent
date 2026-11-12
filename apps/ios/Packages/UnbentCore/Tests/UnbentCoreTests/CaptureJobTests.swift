@@ -330,6 +330,8 @@ final class CaptureJobTests: XCTestCase {
         _ = clip.handle(.create, refusal(#"{"code":"PLAN_INACTIVE"}"#), now: then)
         XCTAssertFalse(clip.resendsRefused(now: soon))
         XCTAssertTrue(clip.resendsRefused(now: later))
+        // A clock set back since does not hold it until the wall time catches up.
+        XCTAssertTrue(clip.resendsRefused(now: then.addingTimeInterval(-3600)))
         // Each refusal starts the wait again.
         _ = clip.handle(.create, refusal(#"{"code":"PLAN_INACTIVE"}"#), now: later)
         XCTAssertFalse(clip.resendsRefused(now: later.addingTimeInterval(60)))

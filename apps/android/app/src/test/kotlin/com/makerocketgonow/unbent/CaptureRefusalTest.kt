@@ -66,6 +66,8 @@ class CaptureRefusalTest {
         val then = 1_000_000L
         assertFalse(CaptureWork.resendsRefused(dear = true, refusedAt = then, now = then + 60_000))
         assertTrue(CaptureWork.resendsRefused(dear = true, refusedAt = then, now = then + CaptureWork.REFUSED_QUIET_MS))
+        // Nor does a clock set back since: the refusal is then ahead of now.
+        assertTrue(CaptureWork.resendsRefused(dear = true, refusedAt = then, now = then - 3_600_000))
         // A marker whose time cannot be read does not hold a capture back for good.
         assertTrue(CaptureWork.resendsRefused(dear = true, refusedAt = null, now = then))
     }

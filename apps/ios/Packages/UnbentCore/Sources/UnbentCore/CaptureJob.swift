@@ -335,7 +335,9 @@ public struct CaptureJob: Codable, Equatable, Sendable {
     /// room), and the write itself is the only check that is never out of step with the
     /// rule it checks. Android's half is `CaptureWork.resendsRefused`.
     public func resendsRefused(now: Date = Date()) -> Bool {
-        guard refused != nil, created || clip != nil, let refusedAt else { return true }
+        // A refusal "in the future" is a clock that was set back, not a reason to wait
+        // until the wall time catches up with it.
+        guard refused != nil, created || clip != nil, let refusedAt, refusedAt <= now else { return true }
         return now.timeIntervalSince(refusedAt) >= Self.refusedQuiet
     }
 
