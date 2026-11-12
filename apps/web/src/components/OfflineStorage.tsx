@@ -109,7 +109,12 @@ export function OfflineStorage() {
           : elsewhere
             ? 'Your notes are open in another tab or window, and this one cannot reach it, so it keeps nothing on the device and reads from the server.'
             : 'Your notes are always on this device. Their files are kept when you open one, and for whole notebooks you choose.'}
-        {room ? ` Unbent is using ${formatBytes(stored ?? room.usage)} of the ${formatBytes(room.quota)} this device allows it.` : ''}
+        {/* What is stored, measured, and the room left as the browser judges it: the same
+            `free` Keep offline checks a notebook against, so the out-of-room line below
+            can never contradict this one. "Of the 13.98 GB this device allows it" was the
+            browser's quota, which Chrome reports as its usage plus 10 GiB, so beside a
+            measured figure it was a denominator holding gigabytes of the miscount. */}
+        {room ? ` Unbent is using ${formatBytes(stored ?? room.usage)}, and this device has room for ${formatBytes(room.free)} more.` : ''}
         {/* Said only when it is not so: what is kept here can then go without a word, and
             someone relying on it for a flight should know before the flight. */}
         {persisted === false && ' This browser has not agreed to keep it if the device runs low on space; installing the app usually settles that.'}

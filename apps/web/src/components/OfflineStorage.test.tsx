@@ -67,22 +67,23 @@ describe('OfflineStorage', () => {
 
   /**
    * What Unbent has stored is measured (`store/usage.ts`) and said in place of the
-   * browser's estimate, which Chrome has put gigabytes over; the room the device allows
-   * is still the browser's, since that is what it holds the site to.
+   * browser's estimate, which Chrome has put gigabytes over; the room left is still the
+   * browser's, the `free` a kept notebook is checked against, since that is what it holds
+   * the site to.
    */
-  it('says what Unbent has stored, measured, against the room the browser allows', async () => {
+  it('says what Unbent has stored, measured, and the room the browser leaves it', async () => {
     const GB = 1024 ** 3;
     vi.mocked(useDeviceRoom).mockReturnValue({ room: { usage: 3.98 * GB, quota: 13.98 * GB, free: 9 * GB }, refresh: () => {} });
     vi.mocked(storedBytes).mockResolvedValue(57 * 1024 ** 2);
     draw();
-    expect(await screen.findByText(/Unbent is using 57\.0 MB of the 13\.98 GB this device allows it\./)).toBeTruthy();
+    expect(await screen.findByText(/Unbent is using 57\.0 MB, and this device has room for 9\.00 GB more\./)).toBeTruthy();
   });
 
   it('says the browser\'s estimate while nothing could be measured', () => {
     const GB = 1024 ** 3;
     vi.mocked(useDeviceRoom).mockReturnValue({ room: { usage: 2 * GB, quota: 10 * GB, free: 7 * GB }, refresh: () => {} });
     draw();
-    expect(screen.getByText(/Unbent is using 2\.00 GB of the 10\.00 GB/)).toBeTruthy();
+    expect(screen.getByText(/Unbent is using 2\.00 GB, and this device has room for 7\.00 GB more\./)).toBeTruthy();
   });
 
   it('says this tab reads the server when it has no library to work through', () => {
