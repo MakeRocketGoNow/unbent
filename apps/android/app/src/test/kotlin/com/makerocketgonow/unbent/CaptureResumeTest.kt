@@ -2,6 +2,7 @@ package com.makerocketgonow.unbent
 
 import com.makerocketgonow.unbent.share.CaptureRefusal
 import com.makerocketgonow.unbent.share.CaptureResume
+import com.makerocketgonow.unbent.share.KeptCapture
 import java.io.File
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
@@ -111,11 +112,13 @@ class CaptureResumeTest {
         CaptureResume.writeNoteId(dir, "note-1")
         repeat(3) { CaptureResume.recordUnavailable(dir) }
         val input = byteArrayOf(1, 2, 3)
-        CaptureResume.keepRefused(dir, input, CaptureRefusal.STORAGE_FULL, "https://notes.example.com")
+        val kept = KeptCapture(CaptureRefusal.STORAGE_FULL.name, "https://notes.example.com", account = "user-1", at = 5_000)
+        CaptureResume.keepRefused(dir, input, kept)
 
         assertTrue(CaptureResume.wasRefused(dir))
         assertArrayEquals(input, CaptureResume.refusedJob(dir))
-        assertEquals("https://notes.example.com", CaptureResume.refusedInstance(dir))
+        // Where it was shared to and as whom, which a resend weeks later is held to.
+        assertEquals(kept, CaptureResume.kept(dir))
         // The note is found again, so the next attempt uploads to it rather than making another.
         assertEquals("note-1", CaptureResume.readNoteId(dir))
         // The count belonged to the job that failed; the next one's attempts start at nought.

@@ -1,6 +1,8 @@
 package com.makerocketgonow.unbent.share
 
+import com.makerocketgonow.unbent.api.ApiJson
 import java.io.File
+import kotlinx.serialization.Serializable
 import java.util.UUID
 
 /**
@@ -86,35 +88,24 @@ object CaptureResume {
      * this class so it stays testable without WorkManager), and `CaptureWork` starts a
      * new job from it when the app is next opened or something else is shared.
      *
-     * The marker's time is the refusal's: rewritten on each, so [Staging.sweepAbandoned]
-     * counts from the last time anyone was told. The 503 count is cleared, because it is
-     * subtracted from a run count that starts again at nought in the new job.
+     * The marker beside it is the capture's record while it waits ([KeptCapture]). The
+     * 503 count is cleared, because it is subtracted from a run count that starts again
+     * at nought in the new job.
      */
-    fun keepRefused(dir: File, job: ByteArray, refusal: CaptureRefusal, instance: String) {
+    fun keepRefused(dir: File, job: ByteArray, kept: KeptCapture) {
         dir.mkdirs()
         File(dir, JOB_FILE).writeBytes(job)
-        File(dir, REFUSED_FILE).writeText(refusal.name + "\n" + instance)
+        File(dir, REFUSED_FILE).writeText(ApiJson.encodeToString(KeptCapture.serializer(), kept))
         File(dir, UNAVAILABLE_FILE).delete()
     }
 
-    /**
-     * The instance a kept capture was shared to, on the marker's second line.
-     *
-     * A capture has no instance of its own: the worker sends to whichever the app is
-     * pointed at when it runs, which is the one it was shared to for the minutes a
-     * capture used to last. A kept one waits up to a month, and someone who points the
-     * app at their own server meanwhile would have had it sent there, and its note id
-     * asked of a server that never made the note. So the instance is kept with it and
-     * the resend goes only to that one.
-     */
-    fun refusedInstance(dir: File): String? =
-        File(dir, REFUSED_FILE).takeIf { it.isFile }?.readLines()?.getOrNull(1)?.takeIf { it.isNotEmpty() }
+    /** What the marker says of a kept capture; null when it is not one, or cannot be read. */
+    fun kept(dir: File): KeptCapture? = runCatching {
+        ApiJson.decodeFromString(KeptCapture.serializer(), File(dir, REFUSED_FILE).readText())
+    }.getOrNull()
 
     /** Whether the plan refused this capture on an earlier attempt, and it was kept. */
     fun wasRefused(dir: File): Boolean = File(dir, REFUSED_FILE).isFile
-
-    /** When the plan last refused this capture, or null when it has not. */
-    fun refusedAt(dir: File): Long? = File(dir, REFUSED_FILE).takeIf { it.isFile }?.lastModified()
 
     /** A kept capture's input, as [keepRefused] was given it; null when it is not one. */
     fun refusedJob(dir: File): ByteArray? =
@@ -126,3 +117,27 @@ object CaptureResume {
         return staged.filter { it !in have }
     }
 }
+
+/**
+ * What is known of a capture the plan refused, for as long as the phone keeps it: the
+ * `.refused` marker's contents.
+ *
+ * A capture has no instance and no account of its own. The worker sends to whichever
+ * instance the app is pointed at when it runs, as whoever is signed in then, which is
+ * where and as whom it was shared for the minutes a capture used to last. A kept one
+ * waits up to a month, through a sign-out and an address changed in App settings, so
+ * both are written here and a resend goes only to that instance and only as that
+ * account: sent as someone else, a scan would become a note in the wrong library, or be
+ * asked of a note the new account does not own. [account] is the user id `/api/me`
+ * answers, and null when that could not be asked at the refusal; a capture with none is
+ * sent to whoever is signed in on its instance, which is what every capture did before.
+ */
+@Serializable
+data class KeptCapture(
+    /** A [CaptureRefusal]'s name. */
+    val refusal: String,
+    val instance: String,
+    val account: String? = null,
+    /** When it was last refused, which the wait before asking again counts from. */
+    val at: Long = 0,
+)

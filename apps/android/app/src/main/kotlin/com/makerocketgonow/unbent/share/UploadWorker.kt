@@ -107,6 +107,19 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
 
         try {
             /*
+             * A kept capture goes only as the account it was shared from (see
+             * `KeptCapture`). Asked before anything is written, and of the server, since
+             * the app holds a session and not a name: someone else has signed in on this
+             * instance since, and the capture is left where it is, for its owner's return
+             * or the sweep. No session at all is the 401 below.
+             */
+            val owner = if (refusedBefore) CaptureResume.kept(dir)?.account else null
+            if (owner != null) {
+                val me = api.me()?.id ?: throw ApiException(401, "Session check")
+                if (me != owner) return@withContext Result.failure()
+            }
+
+            /*
              * Create once, remember the id, reuse it on retry.
              *
              * WorkManager re-runs this whole function after a network failure. Creating
@@ -224,7 +237,15 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
                  * Whatever landed stays landed: the note id and the files already on the
                  * note are found again by the next attempt, as on any retry.
                  */
-                CaptureResume.keepRefused(dir, inputData.toByteArray(), refusal, prefs.instance)
+                val before = CaptureResume.kept(dir)
+                // Asked once, at the first refusal, and carried from then on. A failure
+                // to ask is not a reason to lose the capture; see `KeptCapture.account`.
+                val account = before?.account ?: runCatching { api.me()?.id }.getOrNull()
+                CaptureResume.keepRefused(
+                    dir,
+                    inputData.toByteArray(),
+                    KeptCapture(refusal.name, prefs.instance, account, at = System.currentTimeMillis()),
+                )
                 // Quietly the second time: it is the same news, about the same capture.
                 CaptureNotifications.refused(context, jobId, title, refusal, quiet = refusedBefore)
                 Result.failure()

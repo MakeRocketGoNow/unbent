@@ -84,12 +84,14 @@ object CaptureWork {
             if (!prefs.isSignedIn) return@thread
             for (dir in Staging.jobDirs(app)) {
                 val kept = CaptureResume.refusedJob(dir) ?: continue
-                // Shared to another instance than the app is on now; see `refusedInstance`.
-                if (!sameInstance(CaptureResume.refusedInstance(dir), prefs.instance)) continue
+                // Shared to another instance than the app is on now; see `KeptCapture`.
+                // The account is the worker's to check, since it takes a request.
+                val record = CaptureResume.kept(dir) ?: continue
+                if (!sameInstance(record.instance, prefs.instance)) continue
                 // A record this build cannot read is left for the sweep, not sent blind.
                 val input = runCatching { Data.fromByteArray(kept) }.getOrNull() ?: continue
                 val dear = CaptureResume.readNoteId(dir) != null || isClip(input)
-                if (!resendsRefused(dear, CaptureResume.refusedAt(dir), System.currentTimeMillis())) continue
+                if (!resendsRefused(dear, record.at, System.currentTimeMillis())) continue
                 enqueue(app, Data.Builder().putAll(input).putBoolean(UploadWorker.KEY_RESUMED, true).build())
             }
         }

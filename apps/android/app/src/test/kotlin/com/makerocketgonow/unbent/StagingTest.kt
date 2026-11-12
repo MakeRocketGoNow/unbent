@@ -2,6 +2,7 @@ package com.makerocketgonow.unbent
 
 import com.makerocketgonow.unbent.share.CaptureRefusal
 import com.makerocketgonow.unbent.share.CaptureResume
+import com.makerocketgonow.unbent.share.KeptCapture
 import com.makerocketgonow.unbent.share.StagedFile
 import com.makerocketgonow.unbent.share.Staging
 import java.io.File
@@ -181,7 +182,7 @@ class StagingTest {
         fun refusedAt(name: String, age: Long) = File(root, name).apply {
             mkdirs()
             File(this, "scan.pdf").apply { writeText("x") }.setLastModified(now - age)
-            CaptureResume.keepRefused(this, name.toByteArray(), CaptureRefusal.PLAN_ENDED, "https://notes.example.com")
+            CaptureResume.keepRefused(this, name.toByteArray(), KeptCapture(CaptureRefusal.PLAN_ENDED.name, "https://notes.example.com"))
             listFiles().orEmpty().forEach { it.setLastModified(now - age) }
             setLastModified(now - age)
         }
