@@ -57,7 +57,7 @@ describe('needsAgreement', () => {
 
 describe('agreementGate', () => {
   const config = (legal?: typeof LEGAL) => ({ isPending: false, data: { providers: [], legal } });
-  const base = { unreachable: false, agreed: null, pathname: '/notes' };
+  const base = { unreachable: false, agreed: null, pathname: '/notes', drawn: false };
 
   /** What keeps someone in their notes with no connection. */
   it('never asks a session the server could not be asked about, and does not wait', () => {

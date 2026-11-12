@@ -68,7 +68,7 @@ export function agreementGate(opts: {
   agreed: string | null | undefined;
   pathname: string;
   /** Whether this shell has already drawn the app for this account. */
-  drawn?: boolean;
+  drawn: boolean;
 }): AgreementGate {
   if (opts.unreachable) return { kind: 'open' };
   if (opts.config.isPending) return opts.drawn ? { kind: 'open' } : { kind: 'wait' };
