@@ -43,7 +43,7 @@ export async function storedBytes(): Promise<number | null> {
  * library, its search index, the shelves of kept and waiting files, wa-sqlite's scratch
  * directories), and it is the whole origin's figure being replaced.
  */
-export async function fileSystemBytes(): Promise<number> {
+async function fileSystemBytes(): Promise<number> {
   return directoryBytes(await navigator.storage.getDirectory());
 }
 
