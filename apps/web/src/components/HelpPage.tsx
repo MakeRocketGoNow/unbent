@@ -181,8 +181,9 @@ export function HelpPage({ build = buildInfo }: { build?: BuildInfo | null }) {
         <Topic title="Bringing notes in">
           <p className="muted small">
             <Link to="/settings/import">Settings, then Import</Link> takes an Evernote export
-            (<code>.enex</code>), a Notion export, or an Unbent export from this app or any
-            other. Notebooks, tags and files come across with the notes.
+            (<code>.enex</code>), a Notion or Joplin export, an Unbent export from this app or
+            any other, and PDFs or images, one note per file. Notebooks, tags and files come
+            across with the notes.
           </p>
         </Topic>
 
