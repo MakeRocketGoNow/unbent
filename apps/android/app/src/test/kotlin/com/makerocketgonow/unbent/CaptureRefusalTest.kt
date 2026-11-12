@@ -69,4 +69,12 @@ class CaptureRefusalTest {
         // A marker whose time cannot be read does not hold a capture back for good.
         assertTrue(CaptureWork.resendsRefused(dear = true, refusedAt = null, now = then))
     }
+
+    @Test
+    fun `a kept capture goes only to the instance it was shared to`() {
+        assertTrue(CaptureWork.sameInstance("https://notes.example.com", "https://notes.example.com/"))
+        assertFalse(CaptureWork.sameInstance("https://notes.example.com", "http://localhost:5236"))
+        // A marker with no instance on it is not sent anywhere on a guess.
+        assertFalse(CaptureWork.sameInstance(null, "https://notes.example.com"))
+    }
 }

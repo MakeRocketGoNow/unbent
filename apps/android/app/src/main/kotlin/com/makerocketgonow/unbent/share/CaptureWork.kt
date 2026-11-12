@@ -8,6 +8,7 @@ import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
+import com.makerocketgonow.unbent.Prefs
 import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 
@@ -76,8 +77,15 @@ object CaptureWork {
     fun resumeRefused(context: Context) {
         val app = context.applicationContext
         thread {
+            val prefs = Prefs(app)
+            // Signed out, the worker waits five minutes for a sign-in and then clears
+            // the capture and says to share again: right for a share just made, and the
+            // loss of one the person was told is kept. It stays for the next sign-in.
+            if (!prefs.isSignedIn) return@thread
             for (dir in Staging.jobDirs(app)) {
                 val kept = CaptureResume.refusedJob(dir) ?: continue
+                // Shared to another instance than the app is on now; see `refusedInstance`.
+                if (!sameInstance(CaptureResume.refusedInstance(dir), prefs.instance)) continue
                 // A record this build cannot read is left for the sweep, not sent blind.
                 val input = runCatching { Data.fromByteArray(kept) }.getOrNull() ?: continue
                 val dear = CaptureResume.readNoteId(dir) != null || isClip(input)
@@ -107,6 +115,10 @@ object CaptureWork {
      */
     internal fun resendsRefused(dear: Boolean, refusedAt: Long?, now: Long): Boolean =
         !dear || refusedAt == null || now - refusedAt >= REFUSED_QUIET_MS
+
+    /** Whether a capture kept for [kept] may be sent to [current], the instance the app is on. */
+    internal fun sameInstance(kept: String?, current: String): Boolean =
+        kept != null && Prefs.normalizeOrigin(kept) == Prefs.normalizeOrigin(current)
 
     /** Whether [input] is a share the worker will ask the server to read as a page. */
     private fun isClip(input: Data): Boolean =

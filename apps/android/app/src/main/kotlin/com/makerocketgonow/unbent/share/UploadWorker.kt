@@ -196,7 +196,7 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
                  * note are found again by the next attempt, as on any retry.
                  */
                 val refusal = CaptureRefusal.of(e) ?: CaptureRefusal.PLAN
-                CaptureResume.keepRefused(dir, inputData.toByteArray(), refusal)
+                CaptureResume.keepRefused(dir, inputData.toByteArray(), refusal, prefs.instance)
                 // Quietly the second time: it is the same news, about the same capture.
                 CaptureNotifications.refused(context, jobId, title, refusal, quiet = refusedBefore)
                 Result.failure()

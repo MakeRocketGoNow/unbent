@@ -111,10 +111,11 @@ class CaptureResumeTest {
         CaptureResume.writeNoteId(dir, "note-1")
         repeat(3) { CaptureResume.recordUnavailable(dir) }
         val input = byteArrayOf(1, 2, 3)
-        CaptureResume.keepRefused(dir, input, CaptureRefusal.STORAGE_FULL)
+        CaptureResume.keepRefused(dir, input, CaptureRefusal.STORAGE_FULL, "https://notes.example.com")
 
         assertTrue(CaptureResume.wasRefused(dir))
         assertArrayEquals(input, CaptureResume.refusedJob(dir))
+        assertEquals("https://notes.example.com", CaptureResume.refusedInstance(dir))
         // The note is found again, so the next attempt uploads to it rather than making another.
         assertEquals("note-1", CaptureResume.readNoteId(dir))
         // The count belonged to the job that failed; the next one's attempts start at nought.
