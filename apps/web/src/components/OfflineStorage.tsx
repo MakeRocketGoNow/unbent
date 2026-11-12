@@ -5,6 +5,7 @@ import { notebookFilesQuery, notebooksQuery } from '../queries.js';
 import { useKeeper, useLibraryElsewhere, useLibraryPresence, useSyncStatus } from '../store/use-outbox.js';
 import { currentLibraryUser } from '../store/library.js';
 import { listShelf, storagePersisted } from '../store/files.js';
+import { storedBytes } from '../store/usage.js';
 import { FILES_BUDGET, openedFilesUsage } from '../sw/budget.js';
 import { FILES_CACHE } from '../sw/routes.js';
 import { formatBytes } from '../format-bytes.js';
@@ -44,8 +45,15 @@ export function OfflineStorage() {
   const [waiting, setWaiting] = useState<{ files: number; bytes: number }>({ files: 0, bytes: 0 });
   /** Whether the browser has agreed not to clear this storage under pressure; null until it says, or where it will not. */
   const [persisted, setPersisted] = useState<boolean | null>(null);
+  /**
+   * What Unbent has stored, measured (`store/usage.ts`), for the intro to say. Not `room`,
+   * which stays the browser's estimate because it is what fitting is judged against: the
+   * two differ by gigabytes when Chrome miscounts the file system.
+   */
+  const [stored, setStored] = useState<number | null>(null);
   const refresh = useCallback(async () => {
     setOpened(await openedFilesUsage());
+    setStored(await storedBytes());
     setPersisted(await storagePersisted());
     const user = currentLibraryUser();
     const shelf = user ? await listShelf(user, 'pending').catch(() => []) : [];
@@ -91,7 +99,7 @@ export function OfflineStorage() {
           : elsewhere
             ? 'Your notes are open in another tab or window, and this one cannot reach it, so it keeps nothing on the device and reads from the server.'
             : 'Your notes are always on this device. Their files are kept when you open one, and for whole notebooks you choose.'}
-        {room ? ` Unbent is using ${formatBytes(room.usage)} of the ${formatBytes(room.quota)} this device allows it.` : ''}
+        {room ? ` Unbent is using ${formatBytes(stored ?? room.usage)} of the ${formatBytes(room.quota)} this device allows it.` : ''}
         {/* Said only when it is not so: what is kept here can then go without a word, and
             someone relying on it for a flight should know before the flight. */}
         {persisted === false && ' This browser has not agreed to keep it if the device runs low on space; installing the app usually settles that.'}
