@@ -241,8 +241,13 @@ object Staging {
      * will. Touched means any file in it: a capture waiting on a 503
      * rewrites its count on every attempt, so a live one never looks abandoned.
      *
-     * A capture the plan refused is kept for [REFUSED_MS] instead, from its last refusal:
-     * it waits on a person, not on WorkManager, and its notification says it is kept.
+     * A capture the plan refused is not this sweep's to end while the app is in use: the
+     * worker gives it up at the first refusal past thirty days (`KeptCapture.expired`),
+     * so that its last act is an asking. This takes only one nothing has touched for
+     * [REFUSED_MS], twice that, which is a capture on a phone where the app was never
+     * opened again, or kept for an account that never came back. Sweeping at thirty
+     * days deleted a capture as its owner shared something new, moments before the
+     * resend that sharing starts. Its notification says it is kept.
      * Those are returned as they go (the input [CaptureResume.keepRefused] was given), so
      * the caller can say that what was kept no longer is; the rest go silently, since
      * nobody was told anything about them. The iOS app's sweep makes the same split.
@@ -268,10 +273,6 @@ object Staging {
      */
     private const val ABANDONED_MS = 3 * 24 * 60 * 60 * 1000L
 
-    /**
-     * Thirty days for a capture the plan refused: long enough to subscribe, or to delete
-     * down to the free plan, without the scan that prompted it having gone. The iOS app
-     * keeps a capture waiting for a sign-in as long (`CaptureStore.unclaimed`).
-     */
-    private const val REFUSED_MS = 30 * 24 * 60 * 60 * 1000L
+    /** Sixty days untouched for a capture the plan refused; see [sweepAbandoned]. */
+    private const val REFUSED_MS = 2 * KeptCapture.KEPT_MS
 }

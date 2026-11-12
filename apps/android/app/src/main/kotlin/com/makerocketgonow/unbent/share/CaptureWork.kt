@@ -96,6 +96,10 @@ object CaptureWork {
                 // goes then without anyone having to open the app a second time. The
                 // unique name drops every call that finds it already waiting.
                 val wait = refusedWaitMs(dear, record.at, record.count, System.currentTimeMillis())
+                // Touched, so the sweep (which goes by the newest file) counts from the
+                // last time anything was done for this capture and cannot take it from
+                // under the job being started here.
+                CaptureResume.touch(dir)
                 enqueue(app, Data.Builder().putAll(input).putBoolean(UploadWorker.KEY_RESUMED, true).build(), wait)
             }
         }

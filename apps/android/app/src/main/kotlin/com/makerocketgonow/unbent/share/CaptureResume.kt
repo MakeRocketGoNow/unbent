@@ -99,6 +99,11 @@ object CaptureResume {
         File(dir, UNAVAILABLE_FILE).delete()
     }
 
+    /** Marks a kept capture as looked after just now, for [Staging.sweepAbandoned]. */
+    fun touch(dir: File) {
+        File(dir, REFUSED_FILE).setLastModified(System.currentTimeMillis())
+    }
+
     /** What the marker says of a kept capture; null when it is not one, or cannot be read. */
     fun kept(dir: File): KeptCapture? = runCatching {
         ApiJson.decodeFromString(KeptCapture.serializer(), File(dir, REFUSED_FILE).readText())
@@ -142,4 +147,22 @@ data class KeptCapture(
     val at: Long = 0,
     /** How many times it has been refused, which that wait grows with (`CaptureWork.quietMs`). */
     val count: Int = 1,
-)
+    /** When it was first refused, which how long it is kept counts from ([expired]). */
+    val since: Long = at,
+) {
+    /**
+     * Whether a capture refused again at [now] has been kept long enough: thirty days
+     * from its first refusal. Long enough to subscribe, or to delete down to the free
+     * plan, without the scan that prompted it having gone; not for good, since each
+     * asking costs the server a request and a kept scan costs the phone its size.
+     *
+     * Decided at a refusal, never by a sweep: the capture's last act is then an asking
+     * that was refused, rather than being deleted on the very opening of the app that
+     * was to have sent it. The iOS app's half is `CaptureJob.keptLongEnough`.
+     */
+    fun expired(now: Long): Boolean = now - since > KEPT_MS
+
+    companion object {
+        const val KEPT_MS = 30 * 24 * 60 * 60 * 1000L
+    }
+}

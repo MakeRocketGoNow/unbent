@@ -186,9 +186,10 @@ class StagingTest {
             listFiles().orEmpty().forEach { it.setLastModified(now - age) }
             setLastModified(now - age)
         }
-        // Four days would have swept it as abandoned; it waits on a person, who is given a month.
-        val waiting = refusedAt("waiting", 4 * day)
-        val forgotten = refusedAt("forgotten", 31 * day)
+        // Four days would have swept it as abandoned, and at thirty-one it is still the
+        // worker's to end, at its next refusal. Only one nothing has touched in sixty goes.
+        val waiting = refusedAt("waiting", 31 * day)
+        val forgotten = refusedAt("forgotten", 61 * day)
 
         val promised = Staging.sweepAbandoned(root, now)
 

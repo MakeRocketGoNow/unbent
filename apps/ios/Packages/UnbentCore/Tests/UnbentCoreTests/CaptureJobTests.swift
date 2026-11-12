@@ -354,6 +354,18 @@ final class CaptureJobTests: XCTestCase {
         XCTAssertNil(note.refusedCount)
     }
 
+    /// Thirty days from the first refusal, ended by a refusal: the capture's last act is
+    /// an asking, not a sweep on the opening of the app that was to have sent it.
+    func testAKeptCaptureIsGivenUpOnAtTheFirstRefusalPastThirtyDays() {
+        let day: TimeInterval = 24 * 60 * 60
+        let first = Date(timeIntervalSince1970: 1_000_000)
+        var job = job()
+        _ = job.handle(.create, refusal(#"{"code":"PLAN_INACTIVE"}"#), now: first)
+        XCTAssertEqual(.refused(.planEnded, again: true), job.handle(.create, refusal(#"{"code":"PLAN_INACTIVE"}"#), now: first.addingTimeInterval(29 * day)))
+        XCTAssertEqual(first, job.refusedSince)
+        XCTAssertEqual(.failed, job.handle(.create, refusal(#"{"code":"PLAN_INACTIVE"}"#), now: first.addingTimeInterval(31 * day)))
+    }
+
     func testAClipThePlanRefusedStaysAClip() {
         var job = clipJob()
         XCTAssertEqual(.refused(.planEnded, again: false), job.handle(.create, refusal(#"{"code":"PLAN_INACTIVE"}"#)))

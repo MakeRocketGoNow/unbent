@@ -124,4 +124,15 @@ class CaptureResumeTest {
         // The count belonged to the job that failed; the next one's attempts start at nought.
         assertEquals(0, CaptureResume.unavailableAttempts(dir))
     }
+
+    @Test
+    fun `a kept capture is given up on at the first refusal past thirty days from its first`() {
+        val day = 24 * 60 * 60 * 1000L
+        val first = KeptCapture(CaptureRefusal.PLAN_ENDED.name, "https://notes.example.com", at = 10 * day)
+        assertEquals(10 * day, first.since)
+        // Refused again and again: the last refusal moves, the first does not.
+        val later = first.copy(at = 39 * day, count = 12)
+        assertFalse(later.expired(39 * day))
+        assertTrue(later.copy(at = 41 * day).expired(41 * day))
+    }
 }

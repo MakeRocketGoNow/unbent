@@ -238,23 +238,27 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
                  * note are found again by the next attempt, as on any retry.
                  */
                 val before = CaptureResume.kept(dir)
+                val now = System.currentTimeMillis()
                 // Asked once, at the first refusal, and carried from then on. A failure
                 // to ask is not a reason to lose the capture; see `KeptCapture.account`.
                 val account = before?.account ?: runCatching { api.me()?.id }.getOrNull()
-                CaptureResume.keepRefused(
-                    dir,
-                    inputData.toByteArray(),
-                    KeptCapture(
-                        refusal.name,
-                        prefs.instance,
-                        account,
-                        at = System.currentTimeMillis(),
-                        count = (before?.count ?: 0) + 1,
-                    ),
+                val kept = KeptCapture(
+                    refusal.name,
+                    prefs.instance,
+                    account,
+                    at = now,
+                    count = (before?.count ?: 0) + 1,
+                    since = before?.since ?: now,
                 )
-                // Quietly the second time: it is the same news, about the same capture.
-                CaptureNotifications.refused(context, jobId, title, refusal, quiet = refusedBefore)
-                Result.failure()
+                if (kept.expired(now)) {
+                    // Thirty days of asking is enough; see `KeptCapture.expired`.
+                    giveUp()
+                } else {
+                    CaptureResume.keepRefused(dir, inputData.toByteArray(), kept)
+                    // Quietly the second time: it is the same news, about the same capture.
+                    CaptureNotifications.refused(context, jobId, title, refusal, quiet = refusedBefore)
+                    Result.failure()
+                }
             } else if (waitsOut(e)) {
                 /*
                  * The server is up but cannot serve right now, and has said so. The case

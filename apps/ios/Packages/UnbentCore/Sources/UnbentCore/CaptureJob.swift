@@ -192,6 +192,8 @@ public struct CaptureJob: Codable, Equatable, Sendable {
     /// When it was last refused, and how many times it has been; see `refusedWait`.
     public var refusedAt: Date?
     public var refusedCount: Int?
+    /// When it was first refused, which how long it is kept counts from (`keptLongEnough`).
+    public var refusedSince: Date?
     /// The background session the extension started this capture's upload in, which the
     /// app joins to hear how it went. Nil for a capture nothing has been sent for yet,
     /// and for one made in the app.
@@ -315,6 +317,18 @@ public struct CaptureJob: Codable, Equatable, Sendable {
         return [400, 404, 413, 415, 502].contains(status)
     }
 
+    /// How long a capture the plan refused is kept: thirty days from its first refusal,
+    /// ended by the first refusal after that. Long enough to subscribe, or to delete
+    /// down to the free plan, without the scan that prompted it having gone; not for
+    /// good, since each asking costs the server a request and a kept scan costs the
+    /// phone its size.
+    ///
+    /// Decided at a refusal, never by the sweep (`CaptureStore.sweepAbandoned` leaves a
+    /// refused capture twice as long): the launch sweep runs before anything is sent, so
+    /// it deleted a capture on the very opening of the app that was to have sent it.
+    /// Android's half is `KeptCapture.expired`.
+    static let keptLongEnough: TimeInterval = 30 * 24 * 60 * 60
+
     /// The quiet spell after a capture's first refusal, and the longest it grows to.
     static let refusedQuiet: TimeInterval = 15 * 60
     static let refusedQuietMax: TimeInterval = 6 * 60 * 60
@@ -360,6 +374,7 @@ public struct CaptureJob: Codable, Equatable, Sendable {
         refused = nil
         refusedAt = nil
         refusedCount = nil
+        refusedSince = nil
     }
 
     /// Thirty seconds, doubling: WorkManager's backoff, which Android's worker runs on.
@@ -410,9 +425,13 @@ public struct CaptureJob: Codable, Equatable, Sendable {
             // the clip's fallback and `isPermanent`, both of which would otherwise have it:
             // the plain note is refused the same way, and giving up deletes the files.
             let again = refused != nil
+            let since = refusedSince ?? now
+            // Thirty days of asking is enough; see `keptLongEnough`.
+            guard now.timeIntervalSince(since) <= Self.keptLongEnough else { return .failed }
             refused = refusal
             refusedAt = now
             refusedCount = (refusedCount ?? 0) + 1
+            refusedSince = since
             return .refused(refusal, again: again)
         }
 
