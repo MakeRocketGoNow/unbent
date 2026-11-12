@@ -366,6 +366,24 @@ final class CaptureJobTests: XCTestCase {
         XCTAssertEqual(.failed, job.handle(.create, refusal(#"{"code":"PLAN_INACTIVE"}"#), now: first.addingTimeInterval(31 * day)))
     }
 
+    /// Three files and no room: sent together they are all uploaded to hear one answer.
+    /// A refused capture asks with one, and sends the next only when that one is taken.
+    func testARefusedCaptureSendsItsFilesOneAtATime() {
+        var job = job(files: ["a.pdf", "b.pdf", "c.pdf"])
+        _ = job.handle(.create, ok)
+        let then = Date(timeIntervalSince1970: 1_000_000)
+        _ = job.handle(.file("file-0"), refusal(#"{"code":"STORAGE_FULL","of":"files"}"#), now: then)
+        XCTAssertEqual([.file("file-0")], job.pending(live: []))
+        // While it is out, nothing joins it.
+        XCTAssertEqual([], job.pending(live: ["job-1|file|file-0"]))
+
+        // Sent again once its quiet spell is over, and taken: there is room, so the rest follow.
+        let later = then.addingTimeInterval(CaptureJob.refusedQuiet + 5)
+        XCTAssertEqual(.send([.file("file-1")]), job.handle(.file("file-0"), ok, now: later))
+        XCTAssertEqual(.send([.file("file-2")]), job.handle(.file("file-1"), ok, now: later))
+        XCTAssertEqual(.saved, job.handle(.file("file-2"), ok, now: later))
+    }
+
     func testAClipThePlanRefusedStaysAClip() {
         var job = clipJob()
         XCTAssertEqual(.refused(.planEnded, again: false), job.handle(.create, refusal(#"{"code":"PLAN_INACTIVE"}"#)))

@@ -398,7 +398,18 @@ public struct CaptureJob: Codable, Equatable, Sendable {
                 return remaining.isEmpty ? .saved : .send(remaining.map { .file($0.id) })
             case .file(let id):
                 mark(id) { $0.done = true }
-                return remaining.isEmpty && created ? .saved : .wait
+                if remaining.isEmpty, created { return .saved }
+                // A capture that was refused at a file sends its files one at a time
+                // (`pending`), so the next goes now that this one has been taken. Only
+                // when this one was that asking, which is never sent before the first
+                // quiet spell is over: a file that was already out when another was
+                // refused lands within moments of the refusal, and says nothing about
+                // room for the refused one, which would be uploaded again at once.
+                if refused != nil, let refusedAt, now.timeIntervalSince(refusedAt) >= Self.refusedQuiet,
+                   let next = remaining.first {
+                    return .send([.file(next.id)])
+                }
+                return .wait
             }
         }
 
@@ -485,9 +496,17 @@ public struct CaptureJob: Codable, Equatable, Sendable {
 
     /// The requests this capture still needs that nothing is carrying: what to send when
     /// the app finds the capture on disk. `live` is the requests the system still holds.
+    ///
+    /// A capture the plan refused sends one file and no more while any is out. Files
+    /// otherwise go together, several at a time, and a full account would upload all of
+    /// them side by side to hear the first 402, which recalls the rest: many times the
+    /// bytes one answer needs. `handle` sends the next as each is taken.
     public func pending(live: Set<CaptureStep.Key>) -> [CaptureStep] {
         guard created else { return live.contains(CaptureStep.create.key(job: id)) ? [] : [.create] }
-        return remaining.map { CaptureStep.file($0.id) }.filter { !live.contains($0.key(job: id)) }
+        let files = remaining.map { CaptureStep.file($0.id) }
+        let waiting = files.filter { !live.contains($0.key(job: id)) }
+        guard refused != nil else { return waiting }
+        return waiting.count == files.count ? Array(waiting.prefix(1)) : []
     }
 
     /// True once the note exists and every file is on it or has been given up on.
