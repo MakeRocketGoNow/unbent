@@ -4,6 +4,7 @@ import { instanceLine } from '../instance-marker.js';
 import { useOffline } from '../connectivity.js';
 import { isHosted } from '../app-bridge.js';
 import { buildInfo, feedbackUrl, shortCommit, type BuildInfo } from '../build-info.js';
+import { supportLink } from '../support-link.js';
 import { OverflowMenu, type OverflowItem } from './OverflowMenu.js';
 
 interface AccountMenuProps {
@@ -31,7 +32,7 @@ function initialOf(email: string): string {
 }
 
 /**
- * Who you are signed in as, where to report a problem, and how to leave.
+ * Who you are signed in as, where to get help or report a problem, and how to leave.
  *
  * One coherent menu behind one avatar, which is why it collapses at every width rather than
  * only on a phone: what it holds is account chrome, not navigation. Trash used to sit here
@@ -68,6 +69,7 @@ export function AccountMenu({
     : null;
   const signOutNeedsConnection = useOffline() && !isHosted();
   const feedback = build ? feedbackUrl(build) : null;
+  const support = supportLink(config.data);
 
   return (
     <OverflowMenu
@@ -108,6 +110,14 @@ export function AccountMenu({
             ]
           : []),
         { label: null, separator: true },
+        // How the app works, then who to ask when it does not (MAK-116): the order a
+        // stuck person reads in. Help is on every instance, since nothing on it depends
+        // on who runs the instance; Support only where an operator is named, and it is the
+        // support page where the instance has one, its address where it does not
+        // (`supportLink`), labelled for what pressing it does.
+        { label: 'Help', to: '/help' },
+        ...(support?.kind === 'page' ? [{ label: 'Support', to: support.to }] : []),
+        ...(support?.kind === 'mail' ? [{ label: 'Email support', external: support.href }] : []),
         // Here as well as in Settings › About because this menu is a click from every
         // view, and "where do I report this?" is asked from the view that broke, not from
         // Settings. GitHub's chooser rather than one form: the person picks bug or

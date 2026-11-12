@@ -35,6 +35,7 @@ import {
   imageDownIconMarkup,
   trashIconMarkup,
 } from '../components/icons.js';
+import { isAppleKeyboard } from '../apple-keyboard.js';
 
 /**
  * Rich markdown rendering inside CodeMirror.
@@ -1394,7 +1395,7 @@ function bareLinkTarget(text: string): string {
 }
 
 /** macOS and iOS spell "the platform modifier" ⌘; everywhere else it is Ctrl. */
-const MAC = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
+const MAC = isAppleKeyboard();
 
 /**
  * The opener for the link a mouse event lands on, if it should open one.
