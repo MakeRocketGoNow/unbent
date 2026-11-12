@@ -194,8 +194,17 @@ public final class CaptureStager: @unchecked Sendable {
             // same address (a section's own host and the site's path to the same article).
             // Kept, the two made a body of two links, which is a note and not a page, and
             // the share was never clipped. The link the sender offered as a link is the one
-            // kept. Text with anything else in it is someone's words, is not offered as a
-            // link at all, and stays; two links that both came as links stay too.
+            // kept.
+            //
+            // A provider that is only a string lands in `lines`, not `links`: `kind`
+            // classifies it as text, and it is never a `public.url`. Filtering `links`
+            // alone left that address in the body, and `pageUrl` still saw two links.
+            // Drop a line that is itself a lone address. Text with anything else in it
+            // is someone's words and stays. A provider offered as both a link and text
+            // is a `.link` (url wins), so it never became a line; `offeredLinks` still
+            // drops those from `links` when another item was a link-only provider.
+            // Two links that both came as links stay too.
+            lines.removeAll { CaptureNaming.isLonePageUrl($0) }
             if !offeredLinks.isEmpty { links.removeAll { !offeredLinks.contains($0) } }
         } else if lines.isEmpty, intake.files.isEmpty, !attached.isEmpty {
             lines.append(attached)
