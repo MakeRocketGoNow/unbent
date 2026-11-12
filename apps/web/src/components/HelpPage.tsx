@@ -51,11 +51,10 @@ const FORMATS: FormatRow[] = [
   { name: 'Code', writes: '`text`', shortcut: ['mod', 'E'] },
   { name: 'Heading 1', writes: '# Heading', shortcut: ['mod', 'alt', '1'] },
   { name: 'Heading 2', writes: '## Heading', shortcut: ['mod', 'alt', '2'] },
-  { name: 'Heading 3', writes: '### Heading', shortcut: ['mod', 'alt', '3'] },
   { name: 'Quote', writes: '> text', shortcut: ['mod', 'shift', '9'] },
   { name: 'Bullet list', writes: '- item', shortcut: ['mod', 'shift', '8'] },
   { name: 'Task list', writes: '- [ ] item', shortcut: null },
-  { name: 'Link', writes: '[text](https://…)', shortcut: ['mod', 'K'] },
+  { name: 'Link', writes: '[text](url)', shortcut: ['mod', 'K'] },
   // No keys: the editor binds Mod-Shift-T, but a browser tab keeps Ctrl+Shift+T (and
   // ⌘⇧T) for reopening a closed tab, so in a tab the key never reaches the page. Promising
   // it here would send someone to a key that reopens their last tab instead.
@@ -122,6 +121,11 @@ export function HelpPage({ build = buildInfo }: { build?: BuildInfo | null }) {
               ))}
             </tbody>
           </table>
+          {/* Not a row: the table is the bar, and the bar stops at Heading 2. */}
+          <p className="muted small">
+            A third-level heading (<code>### Heading</code>) has no button:{' '}
+            <kbd>{keys(apple, 'mod', 'alt', '3')}</kbd> makes one.
+          </p>
         </Topic>
 
         <Topic title="Tables">
