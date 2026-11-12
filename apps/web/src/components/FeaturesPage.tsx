@@ -5,6 +5,7 @@ import { useSession } from '../auth-client.js';
 import { HOME, LOGIN } from '../auth-gate.js';
 import { CARD_IMAGE, usePageMeta, type PageMeta } from '../page-meta.js';
 import { useMediaQuery } from '../useMediaQuery.js';
+import { useDarkSourceMedia, useTheme } from '../theme.js';
 import { Button } from './Button.js';
 import { FrontShell } from './FrontPage.js';
 import { PauseIcon, PlayIcon } from './icons.js';
@@ -295,9 +296,10 @@ function Feature({ title, media, children }: { title: string; media: ReactNode; 
 function Still({ name, phone = false, alt }: { name: string; phone?: boolean; alt: string }) {
   const file = phone ? `${name}-phone` : name;
   const [width, height] = phone ? [390, 844] : [1280, 800];
+  const darkMedia = useDarkSourceMedia();
   return (
     <picture className={`feature-shot${phone ? ' feature-shot-phone' : ''}`}>
-      <source srcSet={`/features/${file}-dark.webp`} media="(prefers-color-scheme: dark)" />
+      <source srcSet={`/features/${file}-dark.webp`} media={darkMedia} />
       <img src={`/features/${file}-light.webp`} width={width} height={height} loading="lazy" decoding="async" alt={alt} />
     </picture>
   );
@@ -323,11 +325,12 @@ function Still({ name, phone = false, alt }: { name: string; phone?: boolean; al
  * look the same, and a clip the reader paused is not started again by scrolling it into
  * view.
  *
- * The theme is read with `useMediaQuery` rather than `<source media>`, which `<video>`
+ * The theme is read with `useTheme` rather than `<source media>`, which `<video>`
  * does not honour. `label` says what the clip shows, since a video has no alt text.
  */
 function Clip({ name, label }: { name: string; label: string }) {
-  const dark = useMediaQuery('(prefers-color-scheme: dark)');
+  const dark = useTheme() === 'dark';
+  const darkMedia = useDarkSourceMedia();
   const still = useMediaQuery('(prefers-reduced-motion: reduce)');
   const [near, setNear] = useState(false);
   const [paused, setPaused] = useState(false);
@@ -383,7 +386,7 @@ function Clip({ name, label }: { name: string; label: string }) {
     return (
       <div ref={box} className="feature-shot feature-clip">
         <picture>
-          <source srcSet={`/features/${name}-dark-poster.webp`} media="(prefers-color-scheme: dark)" />
+          <source srcSet={`/features/${name}-dark-poster.webp`} media={darkMedia} />
           <img src={`/features/${name}-light-poster.webp`} width={1920} height={1200} loading="lazy" decoding="async" alt={label} />
         </picture>
       </div>

@@ -3,6 +3,7 @@ import { useRouter } from '@tanstack/react-router';
 import { exposeToApp, isHosted, postToApp } from './app-bridge.js';
 import { HOME } from './auth-gate.js';
 import { WORKER_PREFIXES } from './sw/routes.js';
+import { onThemeChange } from './theme.js';
 
 /**
  * The signed-in site's half of being hosted by the app, on Android or iOS. Does nothing
@@ -22,7 +23,8 @@ export function useHostApp(): void {
    * about the insets, so the topbar and every sheet would otherwise need to learn them)
    * and draws those strips itself. In the page's own colour they read as the page running
    * to the edge; in the app's theme colour they read as a frame around it. Sent again when
-   * the phone switches between light and dark, since the page's colour follows the system.
+   * the theme changes: the phone switching between light and dark while Auto is chosen,
+   * or a choice made in Settings › Appearance (`theme.ts`).
    */
   useEffect(() => {
     if (!isHosted()) return;
@@ -31,9 +33,7 @@ export function useHostApp(): void {
       if (background) postToApp({ type: 'theme', background });
     };
     post();
-    const scheme = window.matchMedia?.('(prefers-color-scheme: dark)');
-    scheme?.addEventListener('change', post);
-    return () => scheme?.removeEventListener('change', post);
+    return onThemeChange(post);
   }, []);
 
   useEffect(() => {

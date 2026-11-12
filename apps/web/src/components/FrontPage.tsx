@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { configQuery } from '../queries.js';
 import { DEFAULT_META, SITE_NAME, usePageMeta, type PageMeta } from '../page-meta.js';
 import { useSession } from '../auth-client.js';
+import { useDarkSourceMedia } from '../theme.js';
 import { FEATURES, FRONT, HOME, LOGIN, PRICING, SUPPORT, WHY } from '../auth-gate.js';
 import { EnexHelp, JoplinHelp, NotionHelp } from './ImportHelp.js';
 import { LegalLink } from './LegalLink.js';
@@ -684,9 +685,10 @@ function Shot({
   height: number;
   alt: string;
 }) {
+  const darkMedia = useDarkSourceMedia();
   return (
     <picture className={`front-shot front-shot-${name}`}>
-      <source srcSet={`/front/${name}-dark.webp`} media="(prefers-color-scheme: dark)" />
+      <source srcSet={`/front/${name}-dark.webp`} media={darkMedia} />
       <img src={`/front/${name}-light.webp`} width={width} height={height} alt={alt} />
     </picture>
   );

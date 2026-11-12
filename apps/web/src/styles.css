@@ -130,26 +130,32 @@ input[type='radio'] {
   accent-color: var(--accent);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #16151a;
-    --fg: #eae7e2;
-    --muted: #9a938c;
-    --border: #2e2c33;
-    --good: #5fbf85;
-    --bad: #f2857c;
-    --accent: #7fc3a0;
-    /* A deeper wash and a paler word: the same ten hues, read against a dark ground. */
-    --tint-wash: 26%;
-    --tint-ink: 50%;
-    /* Deeper washes for a dark ground; --bad is a light salmon here, under pale ink. */
-    --diff-added-line: color-mix(in srgb, var(--good) 15%, transparent);
-    --diff-removed-line: color-mix(in srgb, var(--bad) 14%, transparent);
-    --diff-added-mark: color-mix(in srgb, var(--good) 30%, transparent);
-    --diff-removed-mark: color-mix(in srgb, var(--bad) 28%, transparent);
-    --select-chevron: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%239a938c' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='m6 9 6 6 6-6'/></svg>");
-    color-scheme: dark;
-  }
+/*
+   The dark theme, under the attribute `index.html` and `theme.ts` keep on `<html>`
+   rather than under `prefers-color-scheme`, so Settings › Appearance can choose either
+   theme on any device. The attribute is the device's answer when Auto is chosen, which is
+   the default, so nobody who never chose sees a change. Every dark rule in this file keys
+   off `[data-theme='dark']` for the same reason: a media query here would follow the
+   device past the person's choice.
+*/
+:root[data-theme='dark'] {
+  --bg: #16151a;
+  --fg: #eae7e2;
+  --muted: #9a938c;
+  --border: #2e2c33;
+  --good: #5fbf85;
+  --bad: #f2857c;
+  --accent: #7fc3a0;
+  /* A deeper wash and a paler word: the same ten hues, read against a dark ground. */
+  --tint-wash: 26%;
+  --tint-ink: 50%;
+  /* Deeper washes for a dark ground; --bad is a light salmon here, under pale ink. */
+  --diff-added-line: color-mix(in srgb, var(--good) 15%, transparent);
+  --diff-removed-line: color-mix(in srgb, var(--bad) 14%, transparent);
+  --diff-added-mark: color-mix(in srgb, var(--good) 30%, transparent);
+  --diff-removed-mark: color-mix(in srgb, var(--bad) 28%, transparent);
+  --select-chevron: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%239a938c' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='m6 9 6 6 6-6'/></svg>");
+  color-scheme: dark;
 }
 
 * {
@@ -1066,10 +1072,8 @@ button.link {
 
 .btn-primary:disabled { box-shadow: none; }
 
-@media (prefers-color-scheme: dark) {
-  /* Flat at rest: see above. The `:active` inset above still wins here on specificity. */
-  .btn-primary, .primary { box-shadow: none; }
-}
+/* Flat at rest: see above. The `:active` inset above still wins here on specificity. */
+[data-theme='dark'] .btn-primary, [data-theme='dark'] .primary { box-shadow: none; }
 
 /* Outlined: a real action that is not the main one. The default, and the common case. */
 .btn-secondary {
@@ -1127,10 +1131,8 @@ button.link {
   color: #fff;
 }
 
-@media (prefers-color-scheme: dark) {
-  /* See above: --bad is light here, so the fill takes dark ink instead of white. */
-  .btn-danger.btn-primary { color: #16151a; }
-}
+/* See above: --bad is light here, so the fill takes dark ink instead of white. */
+[data-theme='dark'] .btn-danger.btn-primary { color: #16151a; }
 
 /*
    Neutral, filled: a primary's weight in the page's own ink rather than the brand green.
@@ -11233,9 +11235,7 @@ button.settings-nav-item {
   min-height: 100vh;
 }
 
-@media (prefers-color-scheme: dark) {
-  .front { --front-shadow: rgb(0 0 0 / 0.6); }
-}
+[data-theme='dark'] .front { --front-shadow: rgb(0 0 0 / 0.6); }
 
 .front-width {
   width: 100%;
