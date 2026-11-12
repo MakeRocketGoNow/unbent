@@ -53,8 +53,10 @@ public struct CaptureNotifications: CaptureNotifying {
     /// The plan would not take the capture, and it is kept (`CaptureRefusal`).
     ///
     /// The title is the web app's words for the same state, cut to a notification's first
-    /// line; the Plan page, which a tap opens, has the numbers and the way out for every
-    /// one of these: subscribing, adding storage, and what to delete instead. The second
+    /// line. A tap opens the Plan page, which has the numbers for every one of these and
+    /// says what to delete. Inside the app that page draws no Subscribe or storage
+    /// buttons (the stores' billing rules; `isHosted` in the web app's `Plan.tsx`) and
+    /// says to do those on the web, so the notice promises a reason, not a checkout. The second
     /// line says the one thing the person cannot see for themselves, which is that what
     /// they shared has not been lost and needs no sharing again. The words are the
     /// Android app's (`refused_*` in its `strings.xml`).

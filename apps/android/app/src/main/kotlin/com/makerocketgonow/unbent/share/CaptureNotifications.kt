@@ -25,7 +25,7 @@ object CaptureNotifications {
 
     private const val CHANNEL = "capture-status"
 
-    /** The site's Plan page, where every refusal a capture can be kept for is answered. */
+    /** The site's Plan page, which has the numbers behind every refusal a capture is kept for. */
     private const val PLAN_PATH = "/settings/plan"
 
     fun createChannel(context: Context) {
@@ -113,8 +113,10 @@ object CaptureNotifications {
      * The plan would not take the capture, and it is kept on the phone ([CaptureRefusal]).
      *
      * The title is the web app's words for the same state, cut to what a notification's
-     * first line holds; the Plan page, which a tap opens, has the numbers and the way out,
-     * for every one of these: subscribing, adding storage, and what to delete instead.
+     * first line holds. A tap opens the Plan page, which has the numbers for every one of
+     * these and says what to delete. Inside the app that page draws no Subscribe or
+     * storage buttons (the stores' billing rules; `isHosted` in the web app's `Plan.tsx`)
+     * and says to do those on the web, so the notice promises a reason, not a checkout.
      * The expanded text says the one thing the person cannot see for themselves, which is
      * that what they shared has not been lost and needs no sharing again.
      *

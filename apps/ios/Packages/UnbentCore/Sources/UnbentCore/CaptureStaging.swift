@@ -215,7 +215,8 @@ public struct CaptureStore: Sendable {
     /// - No record: a sheet whose extension was killed before Save or Cancel. Nobody is
     ///   waiting for it. Gone after three days, silently.
     /// - A record: a capture someone saved, which is waiting for a sign-in (made signed
-    ///   out, or refused for a lapsed session) and was told it would be saved. Kept for
+    ///   out, or refused for a lapsed session) or for the plan to have room
+    ///   (`CaptureJob.refused`), and was told it would be saved. Kept for
     ///   thirty days, and returned when it goes so the caller can say it was not. It was
     ///   three days and silent for these too, which broke the sheet's own promise.
     ///

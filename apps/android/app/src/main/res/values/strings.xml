@@ -104,7 +104,7 @@
     <!--
       A share the plan had no room for (402), which the phone keeps and sends again. The
       headings are the web app's words for the same states, cut to a notification's first
-      line; a tap opens the Plan page, which has the numbers and the ways out.
+      line; a tap opens the Plan page, which has the numbers and says what to do.
     -->
     <string name="refused_plan_ended">Your plan has ended</string>
     <string name="refused_free_notes_full">The free plan is full</string>

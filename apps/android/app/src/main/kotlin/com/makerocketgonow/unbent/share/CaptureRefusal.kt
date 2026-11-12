@@ -14,9 +14,9 @@ import kotlinx.serialization.json.jsonPrimitive
  * server will not take is refused the same way however often it is sent, so the capture
  * is given up on; a plan that has ended is not, the moment someone subscribes or deletes
  * their way under the free plan. So a refused capture is kept (see [CaptureResume]) and
- * its notification says which of these it was and opens the Plan page, where the way out
- * is. It used to say "Could not save to Unbent" and delete what was shared, which read as
- * the app being broken to the one person who could have fixed it in a minute.
+ * its notification says which of these it was and opens the Plan page, which has the
+ * numbers. It used to say "Could not save to Unbent" and delete what was shared, which
+ * read as the app being broken to the one person who could have fixed it in a minute.
  *
  * The web app keeps a refused write for the same reason (`plan-refused.ts` and
  * `store-full.ts` there), and the iOS app's half is `CaptureRefusal` in `CaptureJob.swift`.

@@ -38,7 +38,7 @@ public struct CaptureOutcome: Equatable, Sendable {
 /// capture is given up on; a plan that has ended is not, the moment someone subscribes or
 /// deletes their way under the free plan. So a refused capture is kept, like one waiting
 /// for a sign-in, and its notification says which of these it was and opens the Plan
-/// page, where the way out is. It used to say "Could not save" and delete what was
+/// page, which has the numbers. It used to say "Could not save" and delete what was
 /// shared, which read as the app being broken to the one person who could have fixed it.
 ///
 /// The web app keeps a refused write for the same reason (`plan-refused.ts` and
