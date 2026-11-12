@@ -1,4 +1,5 @@
-:root {
+:root,
+.theme-mini[data-theme='light'] {
   /*
      One family per job.
 
@@ -138,7 +139,8 @@ input[type='radio'] {
    off `[data-theme='dark']` for the same reason: a media query here would follow the
    device past the person's choice.
 */
-:root[data-theme='dark'] {
+:root[data-theme='dark'],
+.theme-mini[data-theme='dark'] {
   --bg: #16151a;
   --fg: #eae7e2;
   --muted: #9a938c;
@@ -6574,27 +6576,25 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 }
 
 /*
-   The two palettes, written out rather than read from the page's tokens: Dark's tile
-   has to be dark on a light page. The values are the themes' own --bg, --fg, --border
-   and --accent; change a theme and change its tile.
+   Each tile carries its theme's own tokens: the two token blocks at the top of this file
+   name `.theme-mini[data-theme]` beside `:root`, so Dark's tile is dark on a light page
+   and a change to a theme changes its tile with it. The tiles were once given copies of
+   the four colours, which was a drift waiting to happen.
 */
 .theme-mini {
   position: absolute;
   inset: 0;
   display: flex;
-  background: var(--m-bg);
+  background: var(--bg);
 }
 
-.theme-mini-light { --m-bg: #fbfaf8; --m-fg: #1c1a17; --m-border: #e3ded7; --m-accent: #2f6f4f; }
-.theme-mini-dark { --m-bg: #16151a; --m-fg: #eae7e2; --m-border: #2e2c33; --m-accent: #7fc3a0; }
-
 /* Auto: the dark half below the diagonal, as a device's own setting tends to draw it. */
-.theme-preview-auto .theme-mini-dark { clip-path: polygon(100% 0, 100% 100%, 0 100%); }
+.theme-preview-auto .theme-mini[data-theme='dark'] { clip-path: polygon(100% 0, 100% 100%, 0 100%); }
 
 .theme-mini-rail {
   flex: 0 0 22%;
-  background: color-mix(in srgb, var(--m-fg) 5%, var(--m-bg));
-  border-right: 1px solid var(--m-border);
+  background: color-mix(in srgb, var(--fg) 5%, var(--bg));
+  border-right: 1px solid var(--border);
 }
 
 .theme-mini-body {
@@ -6609,10 +6609,10 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   display: block;
   height: 0.3rem;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--m-fg) 22%, transparent);
+  background: color-mix(in srgb, var(--fg) 22%, transparent);
 }
 
-.theme-mini-head { width: 60%; height: 0.4rem; background: var(--m-fg); }
+.theme-mini-head { width: 60%; height: 0.4rem; background: var(--fg); }
 .theme-mini-short { width: 70%; }
 
 .theme-mini-chip {
@@ -6621,7 +6621,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   height: 0.5rem;
   margin-top: auto;
   border-radius: 999px;
-  background: var(--m-accent);
+  background: var(--accent);
 }
 
 /* Section heading within the edit page: "Fields", "Delete notebook". Quieter than the

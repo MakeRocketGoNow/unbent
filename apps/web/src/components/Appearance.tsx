@@ -78,7 +78,7 @@ function ThemePreview({ kind }: { kind: ThemeChoice }) {
 
 function Mini({ palette }: { palette: 'light' | 'dark' }) {
   return (
-    <span className={`theme-mini theme-mini-${palette}`}>
+    <span className="theme-mini" data-theme={palette}>
       <span className="theme-mini-rail" />
       <span className="theme-mini-body">
         <span className="theme-mini-line theme-mini-head" />
