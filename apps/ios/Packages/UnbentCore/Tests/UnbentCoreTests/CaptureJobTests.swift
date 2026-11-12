@@ -380,11 +380,14 @@ final class CaptureJobTests: XCTestCase {
         // While it is out, nothing joins it.
         XCTAssertEqual([], job.pending(live: ["job-1|file|file-0"]))
 
-        // Sent again once its quiet spell is over, and taken: there is room, so the rest follow.
-        let later = then.addingTimeInterval(CaptureJob.refusedQuiet + 5)
-        XCTAssertEqual(.send([.file("file-1")]), job.handle(.file("file-0"), ok, now: later))
-        XCTAssertEqual(.send([.file("file-2")]), job.handle(.file("file-1"), ok, now: later))
-        XCTAssertEqual(.saved, job.handle(.file("file-2"), ok, now: later))
+        // Sent again, which the sender writes down, and taken: there is room, so the rest
+        // follow. However soon: one sent early because another capture had just landed
+        // is as much an answer, and by the clock it used to leave the rest waiting.
+        job.asking(.file("file-0"))
+        let soon = then.addingTimeInterval(5)
+        XCTAssertEqual(.send([.file("file-1")]), job.handle(.file("file-0"), ok, now: soon))
+        XCTAssertEqual(.send([.file("file-2")]), job.handle(.file("file-1"), ok, now: soon))
+        XCTAssertEqual(.saved, job.handle(.file("file-2"), ok, now: soon))
     }
 
     func testOfManyKeptCapturesOneIsAskedAboutForEachReason() {
@@ -466,15 +469,125 @@ final class CaptureJobTests: XCTestCase {
         XCTAssertTrue(kept.mayGo(as: "user-1"))
 
         // Nor does it go again at once with a session that replaced the one it was sent
-        // with: it waits for a pass that asks who that is, and the try is not counted.
+        // with: it waits for a pass that asks who that is, and the try is not counted,
+        // not even against a capture that has one try left.
+        for _ in 0..<3 { _ = kept.handle(.create, CaptureOutcome(status: 500)) }
         XCTAssertEqual(.wait, kept.handle(.create, CaptureOutcome(status: 401, currentSession: false)))
-        XCTAssertEqual(0, kept.progress.attempts)
+        XCTAssertEqual(3, kept.progress.attempts)
 
         // Its note taken, its files are held to that account's library too.
         _ = kept.handle(.create, ok)
         XCTAssertFalse(kept.mayGo(as: "user-2"))
         // A capture that was never kept is held to nobody.
         XCTAssertTrue(job().mayGo(as: nil))
+    }
+
+    /// A session that runs out does not start the thirty days over.
+    func testASignInDoesNotGiveAKeptCaptureAFreshThirtyDays() {
+        let day: TimeInterval = 24 * 60 * 60
+        let first = Date(timeIntervalSince1970: 1_000_000)
+        var job = job()
+        _ = job.handle(.create, refusal(#"{"code":"PLAN_INACTIVE"}"#), now: first)
+        _ = job.handle(.create, CaptureOutcome(status: 401), now: first.addingTimeInterval(20 * day))
+        XCTAssertEqual(first, job.refusedSince)
+        XCTAssertEqual(.failed, job.handle(.create, refusal(#"{"code":"PLAN_INACTIVE"}"#), now: first.addingTimeInterval(31 * day)))
+    }
+
+    /// When one capture is ended at thirty days, the others past theirs have had the
+    /// same answer and are not each uploaded once more to hear it.
+    func testACaptureKnowsWhenItHasBeenKeptItsThirtyDays() {
+        let day: TimeInterval = 24 * 60 * 60
+        let first = Date(timeIntervalSince1970: 1_000_000)
+        var kept = job()
+        _ = kept.handle(.create, refusal(#"{"code":"PLAN_INACTIVE"}"#), now: first)
+        XCTAssertFalse(kept.keptTooLong(now: first.addingTimeInterval(29 * day)))
+        XCTAssertTrue(kept.keptTooLong(now: first.addingTimeInterval(31 * day)))
+        XCTAssertFalse(job().keptTooLong(now: first.addingTimeInterval(31 * day)))
+    }
+
+    // MARK: - A pass over the captures on disk
+
+    private func resends(
+        _ jobs: [CaptureJob],
+        live: Set<CaptureStep.Key> = [],
+        signedIn: Bool = true,
+        current: [String: String] = [:],
+        refused: Bool,
+        roomFor: CaptureRefusal? = nil,
+        now: Date
+    ) -> [CaptureJob.Resend] {
+        CaptureJob.resends(jobs, live: live, signedIn: { _ in signedIn }, current: current, refused: refused, roomFor: roomFor, now: now)
+    }
+
+    func testAPassSendsWhatCapturesStillNeedAndLeavesRefusedOnesToAPassThatAsks() {
+        let then = Date(timeIntervalSince1970: 1_000_000)
+        var fresh = job()
+        fresh.id = "fresh"
+        var kept = job()
+        kept.id = "kept"
+        _ = kept.handle(.create, refusal(#"{"code":"PLAN_INACTIVE"}"#), now: then)
+
+        // A launch in the background: the fresh one goes, the refused one is not asked about.
+        XCTAssertEqual(
+            [CaptureJob.Resend(job: "fresh", steps: [.create], wait: 0)],
+            resends([fresh, kept], refused: false, now: then)
+        )
+        // The app has come forward: both.
+        XCTAssertEqual(["fresh", "kept"], resends([fresh, kept], refused: true, now: then).map(\.job))
+        // Nothing the system is already carrying, and nothing with nobody signed in.
+        XCTAssertEqual(["kept"], resends([fresh, kept], live: ["fresh|create"], refused: true, now: then).map(\.job))
+        XCTAssertEqual([], resends([fresh, kept], signedIn: false, refused: true, now: then))
+    }
+
+    func testAPassLeavesAnotherAccountsCaptureAndItDoesNotStandInFrontOfTheRest() {
+        let then = Date(timeIntervalSince1970: 1_000_000)
+        var theirs = job()
+        theirs.id = "theirs"
+        _ = theirs.handle(.create, refusal(#"{"code":"PLAN_INACTIVE"}"#), now: then)
+        theirs.account = "user-1"
+        var mine = job()
+        mine.id = "mine"
+        _ = mine.handle(.create, refusal(#"{"code":"PLAN_INACTIVE"}"#), now: then.addingTimeInterval(60))
+        mine.account = "user-2"
+
+        let origin = mine.origin
+        // The older one would be chosen for the reason; it is not this account's, so the next is.
+        XCTAssertEqual(["mine"], resends([theirs, mine], current: [origin: "user-2"], refused: true, now: then.addingTimeInterval(120)).map(\.job))
+        // Who is signed in is not known: neither goes on a guess.
+        XCTAssertEqual([], resends([theirs, mine], refused: true, now: then.addingTimeInterval(120)))
+    }
+
+    /// A clip waits out a quiet spell, and one that lands means there is room for the
+    /// others kept for the same reason, which then do not wait.
+    func testWhenACaptureLandsTheOthersKeptForItsReasonGoWithoutAWait() {
+        let then = Date(timeIntervalSince1970: 1_000_000)
+        var waiting = clipJob()
+        waiting.id = "waiting"
+        _ = waiting.handle(.create, refusal(#"{"code":"PLAN_INACTIVE"}"#), now: then)
+        var behind = clipJob()
+        behind.id = "behind"
+        _ = behind.handle(.create, refusal(#"{"code":"PLAN_INACTIVE"}"#), now: then.addingTimeInterval(10))
+        let soon = then.addingTimeInterval(60)
+
+        XCTAssertEqual(
+            [CaptureJob.Resend(job: "waiting", steps: [.create], wait: CaptureJob.refusedQuiet - 60)],
+            resends([waiting, behind], refused: true, now: soon)
+        )
+        XCTAssertEqual(
+            [CaptureJob.Resend(job: "waiting", steps: [.create], wait: 0)],
+            resends([waiting, behind], refused: true, roomFor: .planEnded, now: soon)
+        )
+        // The first is already with the system, on its wait, and cannot be hurried: the
+        // pass sends the one behind it now rather than choosing it again and sending nothing.
+        XCTAssertEqual(
+            [CaptureJob.Resend(job: "behind", steps: [.create], wait: 0)],
+            resends([waiting, behind], live: ["waiting|create"], refused: true, roomFor: .planEnded, now: soon)
+        )
+        // Room for one reason is not room for another.
+        XCTAssertEqual(
+            CaptureJob.refusedQuiet - 60,
+            resends([waiting], refused: true, roomFor: .storageFull, now: soon).first?.wait
+        )
     }
 
     func testAClipThePlanRefusedStaysAClip() {

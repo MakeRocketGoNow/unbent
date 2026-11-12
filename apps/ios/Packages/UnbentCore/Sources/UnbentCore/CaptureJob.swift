@@ -209,6 +209,13 @@ public struct CaptureJob: Codable, Equatable, Sendable {
     /// the app, four tries at a time, with the captures that would be taken waiting
     /// behind it. The next refusal is an answer, and clears it.
     public var refusedStuck: Bool?
+    /// The file a refused capture is asking with: the one sent since its refusal, set by
+    /// whoever sends it (`asking`). Its landing is what says there is room, and sends
+    /// the next. By name rather than by how long ago the refusal was, which is what
+    /// this first went by: a capture sent early because another had just landed, or on
+    /// a phone whose clock had moved, landed "too soon" and its other files waited for
+    /// the app to be opened again.
+    public var refusedAsking: String?
     /// The background session the extension started this capture's upload in, which the
     /// app joins to hear how it went. Nil for a capture nothing has been sent for yet,
     /// and for one made in the app.
@@ -433,20 +440,79 @@ public struct CaptureJob: Codable, Equatable, Sendable {
         return Set(first.map(\.id))
     }
 
+    /// Whether a capture the plan refused has been kept its thirty days. Decided for the
+    /// capture itself at its own next refusal (`handle`); this is for the others, when
+    /// one has just been ended that way (`CaptureQueue`): the answer it was given is
+    /// theirs too, and asking each in turn uploaded every expired scan once more, one
+    /// per opening of the app, only to delete it.
+    public func keptTooLong(now: Date = Date()) -> Bool {
+        guard refused != nil, let refusedSince else { return false }
+        return now.timeIntervalSince(refusedSince) > Self.keptLongEnough
+    }
+
+    /// Notes which file a refused capture is being sent with; see `refusedAsking`.
+    public mutating func asking(_ step: CaptureStep) {
+        if refused != nil, case .file(let id) = step { refusedAsking = id }
+    }
+
+    /// One capture's part of a pass: what to send for it, and after how long.
+    public struct Resend: Equatable, Sendable {
+        public var job: String
+        public var steps: [CaptureStep]
+        public var wait: TimeInterval
+    }
+
+    /// What a pass over the captures on disk sends (`CaptureQueue.resumeAll`): the rules
+    /// of that pass in one place, with nothing of the system in them, so they can be
+    /// tested. Every one was first a line in the queue's loop, and most were got wrong
+    /// there at least once.
+    ///
+    /// - A capture with no session on its instance cannot go (`signedIn`), and one held
+    ///   to an account goes only as that account (`mayGo`, `current` by instance).
+    /// - A capture the plan refused goes only on a pass that sends those (`refused`),
+    ///   and then only one for each reason (`firstOfEachRefusal`), after the rest of its
+    ///   quiet spell (`refusedWait`).
+    /// - `roomFor` is the reason a capture that has just landed had been refused for:
+    ///   there is room of that kind now, so one kept for it goes without a wait. One
+    ///   that the system already holds a request for is left to it, and passed over in
+    ///   the choosing, so that the pass sends another kept for that reason now rather
+    ///   than choosing the one whose request cannot be hurried.
+    /// - Nothing the system is already carrying is sent again (`pending(live:)`).
+    public static func resends(
+        _ jobs: [CaptureJob],
+        live: Set<CaptureStep.Key>,
+        signedIn: (String) -> Bool,
+        current: [String: String],
+        refused: Bool,
+        roomFor: CaptureRefusal? = nil,
+        now: Date = Date()
+    ) -> [Resend] {
+        let able = jobs.filter { !$0.isSaved && signedIn($0.origin) && $0.mayGo(as: current[$0.origin]) }
+        func out(_ job: CaptureJob) -> Bool { live.contains { $0.hasPrefix(job.id + "|") } }
+        let choosable = able.filter { !(roomFor != nil && $0.refused == roomFor && out($0)) }
+        let asked = refused ? firstOfEachRefusal(choosable, now: now) : []
+        return able.compactMap { job in
+            if job.refused != nil, !asked.contains(job.id) { return nil }
+            let steps = job.pending(live: live)
+            guard !steps.isEmpty else { return nil }
+            let room = roomFor != nil && job.refused == roomFor
+            return Resend(job: job.id, steps: steps, wait: room ? 0 : job.refusedWait(now: now))
+        }
+    }
+
     /// The reason this capture had been refused for, for one that has landed: there is
     /// room of that kind now. Nil for a capture the plan never refused.
     public var landedAfter: CaptureRefusal? { refused ?? tookAfter }
 
     /// Writes down an asking that ran out of tries, so its wait grows as a refusal's
     /// does and it stands behind the captures that have not failed (`refusedStuck`).
-    /// True, for the action's `again`: the notice goes back, quietly, to the one that
-    /// says why the capture is kept, since the last may be "Waiting for Unbent to come
-    /// back" and nothing is waiting any more.
-    private mutating func stick(_ now: Date) -> Bool {
+    /// Its callers answer `.refused` with `again`, so the notice goes back, quietly, to
+    /// the one that says why the capture is kept: the last may be "Waiting for Unbent to
+    /// come back", and nothing is waiting any more.
+    private mutating func stick(_ now: Date) {
         refusedAt = now
         refusedCount = (refusedCount ?? 0) + 1
         refusedStuck = true
-        return true
     }
 
     private mutating func forgetRefusal() {
@@ -455,6 +521,7 @@ public struct CaptureJob: Codable, Equatable, Sendable {
         refusedCount = nil
         refusedSince = nil
         refusedStuck = nil
+        refusedAsking = nil
     }
 
     /// Thirty seconds, doubling: WorkManager's backoff, which Android's worker runs on.
@@ -484,12 +551,12 @@ public struct CaptureJob: Codable, Equatable, Sendable {
                 if remaining.isEmpty, created { return .saved }
                 // A capture that was refused at a file sends its files one at a time
                 // (`pending`), so the next goes now that this one has been taken. Only
-                // when this one was that asking, which is never sent before the first
-                // quiet spell is over: a file that was already out when another was
-                // refused lands within moments of the refusal, and says nothing about
-                // room for the refused one, which would be uploaded again at once.
-                if refused != nil, let refusedAt, now.timeIntervalSince(refusedAt) >= Self.refusedQuiet,
-                   let next = remaining.first {
+                // when this one was that asking (`refusedAsking`): a file that was
+                // already out when another was refused lands moments after the refusal,
+                // and says nothing about room for the refused one, which would be
+                // uploaded again at once.
+                if refused != nil, id == refusedAsking, let next = remaining.first {
+                    refusedAsking = next.id
                     return .send([.file(next.id)])
                 }
                 return .wait
@@ -507,8 +574,13 @@ public struct CaptureJob: Codable, Equatable, Sendable {
             //
             // A capture the plan had refused waits for the sign-in now, not for room:
             // left marked, the resend after signing in passed it over, and "Sign in to
-            // finish saving" was not true of it until the app was next opened.
-            forgetRefusal()
+            // finish saving" was not true of it until the app was next opened. Only the
+            // mark goes: how long it has been kept, and how often refused, are still
+            // true after the sign-in, and a fresh thirty days for each one would keep a
+            // capture for as long as its sessions kept running out.
+            refused = nil
+            refusedStuck = nil
+            refusedAsking = nil
             return .signInNeeded
         }
 
@@ -527,6 +599,7 @@ public struct CaptureJob: Codable, Equatable, Sendable {
             refusedCount = (refusedCount ?? 0) + 1
             refusedSince = since
             refusedStuck = nil
+            refusedAsking = nil
             return .refused(refusal, again: again)
         }
 
@@ -538,6 +611,12 @@ public struct CaptureJob: Codable, Equatable, Sendable {
             clip = nil
             return .send([.create])
         }
+
+        // A capture held to an account does not go again with a session that replaced
+        // the one it was sent with: that may be someone else's. It waits for the next
+        // pass, which asks who is signed in first (`mayGo`). Before anything is counted:
+        // below the count, a capture on its fourth try was given up on here instead.
+        if outcome.status == 401, account != nil { return .wait }
 
         var progress = self.progress(of: step)
         defer { setProgress(progress, of: step) }
@@ -554,7 +633,8 @@ public struct CaptureJob: Codable, Equatable, Sendable {
             guard progress.unavailable <= Self.maxUnavailable else {
                 guard keeps, let refused else { return .failed }
                 progress = Progress()
-                return .refused(refused, again: stick(now))
+                stick(now)
+                return .refused(refused, again: true)
             }
             return .retry(step, after: Self.wait(retryAfter: outcome.retryAfter), unavailable: true)
         }
@@ -563,7 +643,8 @@ public struct CaptureJob: Codable, Equatable, Sendable {
         guard progress.attempts < Self.maxAttempts, !Self.isPermanent(outcome) else {
             if keeps, !Self.isPermanent(outcome), let refused {
                 progress = Progress()
-                return .refused(refused, again: stick(now))
+                stick(now)
+                return .refused(refused, again: true)
             }
             switch step {
             case .create:
@@ -580,13 +661,6 @@ public struct CaptureJob: Codable, Equatable, Sendable {
             }
         }
         if step == .create, clip != nil, progress.attempts >= Self.clipAttempts { clip = nil }
-        // A capture held to an account does not go again with a session that replaced
-        // the one it was sent with: that may be someone else's. It waits for the next
-        // pass, which asks who is signed in first (`mayGo`), and the try is not counted.
-        if outcome.status == 401, account != nil {
-            progress.attempts -= 1
-            return .wait
-        }
         // A 401 for a session that has since been replaced goes again at once, with the
         // new one; everything else backs off.
         let delay = outcome.status == 401 ? 0 : Self.backoff(attempts: progress.attempts)

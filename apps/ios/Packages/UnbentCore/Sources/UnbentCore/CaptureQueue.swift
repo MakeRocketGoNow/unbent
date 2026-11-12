@@ -193,34 +193,37 @@ public final class CaptureQueue: NSObject, @unchecked Sendable {
                 // account. Asked before the choosing, so one that may not go is never
                 // chosen; on every pass, since one whose refusal a 401 cleared goes on
                 // an ordinary pass; and once per session, so most passes ask nothing.
-                let held = Set(self.jobsOnDisk().filter { $0.account != nil }.map(\.origin))
+                // Only where this pass could send one: a held capture still marked
+                // refused goes on a pass that sends those and no other. A launch in the
+                // background for an upload's answer otherwise waited on a request, up
+                // to its timeout offline, before sending anything at all.
+                let held = Set(self.jobsOnDisk().filter { $0.account != nil && (refused || $0.refused == nil) }.map(\.origin))
                 self.accounts(for: Array(held)) { current in
                     // Read again: results may have been applied while the lists were fetched.
                     let jobs = self.jobsOnDisk()
-                    // One refused capture for each reason, not all of them; see there.
-                    // Among those that can go: one kept for an instance nobody is signed
-                    // in to, or for another account than the one signed in, cannot, and
-                    // chosen it would stand in front of every capture kept for the same
-                    // reason that can.
-                    let sendable = jobs.filter {
-                        self.sessions.session(for: $0.origin) != nil && $0.mayGo(as: current[$0.origin])
-                    }
-                    let asked = refused ? CaptureJob.firstOfEachRefusal(sendable) : []
-                    for job in jobs {
-                        if job.isSaved { self.apply(.saved, to: job); continue }
-                        guard job.mayGo(as: current[job.origin]) else { continue }
-                        if job.refused != nil, !asked.contains(job.id) { continue }
-                        // Nothing for most; for a refused file or clip, the rest of its
-                        // quiet spell, which the system then holds the request for.
-                        let wait = job.refused == roomFor ? 0 : job.refusedWait()
-                        for step in job.pending(live: live) {
+                    for job in jobs where job.isSaved { self.apply(.saved, to: job) }
+                    // Which of the rest go, and when, is `CaptureJob.resends`.
+                    let plan = CaptureJob.resends(
+                        jobs,
+                        live: live,
+                        signedIn: { self.sessions.session(for: $0) != nil },
+                        current: current,
+                        refused: refused,
+                        roomFor: roomFor
+                    )
+                    for one in plan {
+                        guard let job = jobs.first(where: { $0.id == one.job }) else { continue }
+                        for step in one.steps {
                             // A note going out for the first time from here is one that
                             // waited for a sign-in, and now there is something to say. Not
                             // one the plan refused: "Saving…" would replace the notice that
                             // says why it is waiting, to be replaced by it again a moment
                             // later, every time the app is opened.
-                            if step == .create, job.refused == nil, self.sessions.session(for: job.origin) != nil { self.notifier.saving(job) }
-                            self.send(step, of: job, after: wait)
+                            if step == .create, job.refused == nil { self.notifier.saving(job) }
+                            // The file a refused capture asks with is written down, so
+                            // its landing is known for the answer it is.
+                            if job.refused != nil { self.update(job.id) { $0.asking(step); return .wait } }
+                            self.send(step, of: job, after: one.wait)
                         }
                     }
                     for identifier in idle where identifier != self.home { self.retire(identifier) }
@@ -288,6 +291,19 @@ public final class CaptureQueue: NSObject, @unchecked Sendable {
             _ = self.session(identifier)
         }
         return true
+    }
+
+    /// Recalls every request the system holds for captures on `origin`, at a sign-out.
+    ///
+    /// A kept capture's resend can be held for hours with its session already written on
+    /// it (`earliestBeginDate`). Left, it uploaded a whole file long after the person
+    /// had signed out, to be answered 401, which posted "Sign in to Unbent to finish
+    /// saving" at an hour nobody was sharing anything. The captures themselves stay,
+    /// and `resumeAll` sends what they still need after the next sign-in.
+    public func forget(origin: String) {
+        work.async {
+            for job in self.jobsOnDisk() where job.origin == origin { self.cancelRequests(of: job) }
+        }
     }
 
     /// Removes captures nobody finished or cancelled, and says so for the ones someone
@@ -418,6 +434,17 @@ public final class CaptureQueue: NSObject, @unchecked Sendable {
         case .failed:
             end(job)
             notifier.failed(job)
+            // A capture the plan refused that has been ended: its thirty days were up,
+            // or the server will never take it. The others kept for the same reason
+            // and account past their thirty days have had the same answer, moments
+            // ago, and go with it rather than each being uploaded once more to hear it.
+            if let reason = job.refused {
+                for other in jobsOnDisk() where other.id != job.id && other.refused == reason
+                    && other.account == job.account && other.origin == job.origin && other.keptTooLong() {
+                    end(other)
+                    notifier.failed(other)
+                }
+            }
         }
     }
 
@@ -487,8 +514,9 @@ extension CaptureQueue: URLSessionTaskDelegate {
             // A capture the plan refuses is kept for the account that sent it
             // (`CaptureJob.mayGo`), so whose that is gets written down: only while the
             // session that sent the request is still the one held, since it is that
-            // session the instance is asked about. Asked once; a failure to ask leaves
-            // the capture going as every capture did.
+            // session the instance is asked about. Asked at a refusal until it is
+            // known, and carried from then on; while it is not, the capture goes as
+            // every capture did.
             if error == nil, response?.statusCode == 402, job.account == nil, held != nil, sent == held {
                 self.account(for: job.origin) { id in
                     guard let id else { return }
