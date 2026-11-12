@@ -194,6 +194,10 @@ public struct CaptureJob: Codable, Equatable, Sendable {
     public var refusedCount: Int?
     /// When it was first refused, which how long it is kept counts from (`keptLongEnough`).
     public var refusedSince: Date?
+    /// The reason it had been refused for, once its note has been taken after all. Kept
+    /// past `refused` so that when the capture lands the queue knows what there is room
+    /// of now (`landedAfter`).
+    public var tookAfter: CaptureRefusal?
     /// The background session the extension started this capture's upload in, which the
     /// app joins to hear how it went. Nil for a capture nothing has been sent for yet,
     /// and for one made in the app.
@@ -391,6 +395,10 @@ public struct CaptureJob: Codable, Equatable, Sendable {
         return Set(first.map(\.id))
     }
 
+    /// The reason this capture had been refused for, for one that has landed: there is
+    /// room of that kind now. Nil for a capture the plan never refused.
+    public var landedAfter: CaptureRefusal? { refused ?? tookAfter }
+
     private mutating func forgetRefusal() {
         refused = nil
         refusedAt = nil
@@ -409,7 +417,10 @@ public struct CaptureJob: Codable, Equatable, Sendable {
             // The note was taken: there is room now, whatever was said before. Not for a
             // file, since several are out at once and one landing after another's
             // refusal says nothing about the refused one, which is still waiting.
-            if step == .create { forgetRefusal() }
+            if step == .create {
+                tookAfter = refused ?? tookAfter
+                forgetRefusal()
+            }
             switch step {
             case .create:
                 // Twice is possible (the extension's request and the app's own resend

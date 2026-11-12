@@ -203,10 +203,13 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
                 }
             }
 
+            val roomFor = if (refusedBefore) CaptureResume.kept(dir)?.refusal else null
             Staging.clear(context, jobId)
-            // A kept capture landed, so there is room: the others kept for the same
-            // reason were waiting on this answer (`CaptureWork.firstOfEach`).
-            if (refusedBefore) CaptureWork.resumeRefused(context)
+            // Something landed, so there may be room: the kept captures are looked at
+            // again, and those kept for the reason this one had been refused for go at
+            // once (`CaptureWork.firstOfEach`). After any capture, as on iOS: a share
+            // made today that lands is as good a sign as a kept one.
+            CaptureWork.resumeRefused(context, roomFor)
 
             // The page's own title where the server chose it: "Saved" names what landed.
             CaptureNotifications.saved(context, jobId, noteTitle, noteId, clipped)

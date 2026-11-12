@@ -285,6 +285,9 @@ final class CaptureJobTests: XCTestCase {
         XCTAssertEqual(.send([.file("file-0")]), job.handle(.create, ok))
         XCTAssertNil(job.refused)
         XCTAssertEqual(.saved, job.handle(.file("file-0"), ok))
+        // What it had been refused for is still known when it lands: there is room of that kind now.
+        XCTAssertEqual(.freeNotesFull, job.landedAfter)
+        XCTAssertNil(self.job().landedAfter)
     }
 
     /// The session lapsed while the capture waited on the plan. It is now one waiting for

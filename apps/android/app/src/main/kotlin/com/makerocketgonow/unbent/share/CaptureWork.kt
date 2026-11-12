@@ -74,9 +74,14 @@ object CaptureWork {
      * job refused again rewrites it. Until then a call that finds the capture already
      * going is dropped by the unique name, so calling this often costs nothing.
      *
+     * [roomFor] is the reason a kept capture that has just landed had been refused for
+     * (a [CaptureRefusal]'s name): there is room of that kind now, so the others kept
+     * for it go without waiting out a quiet spell that can be six hours. Otherwise the
+     * scans behind the first one to land arrived hours apart.
+     *
      * Off the main thread: it lists a directory and reads a small file per capture.
      */
-    fun resumeRefused(context: Context) {
+    fun resumeRefused(context: Context, roomFor: String? = null) {
         val app = context.applicationContext
         thread {
             val prefs = Prefs(app)
@@ -100,7 +105,10 @@ object CaptureWork {
                 // A record this build cannot read is left for the sweep, not sent blind.
                 val input = runCatching { Data.fromByteArray(kept) }.getOrNull() ?: return@mapNotNull null
                 val dear = CaptureResume.readNoteId(dir) != null || isClip(input)
-                Waiting(dir, input, record, refusedWaitMs(dear, record.at, record.count, now))
+                // A capture kept for the reason one has just landed after has had its
+                // answer: its quiet spell was for an account with no room.
+                val wait = if (record.refusal == roomFor) 0 else refusedWaitMs(dear, record.at, record.count, now)
+                Waiting(dir, input, record, wait)
             }
             for (one in firstOfEach(waiting)) {
                 // Touched, so the sweep (which goes by the newest file) counts from the
