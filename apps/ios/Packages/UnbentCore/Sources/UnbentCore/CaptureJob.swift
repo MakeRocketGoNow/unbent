@@ -88,6 +88,11 @@ public enum CaptureAction: Equatable, Sendable {
     /// goes again when the app is next opened (`CaptureQueue.resumeAll`). `again` when it
     /// had been refused before and this is the same news, which is then said quietly.
     case refused(CaptureRefusal, again: Bool)
+    /// Kept its thirty days and refused again, for this reason. Delete the files, say
+    /// so, and end the others kept for that reason that are past their own thirty days
+    /// (`keptTooLong`). Apart from `.failed` because only this is an answer about room:
+    /// a capture ended for anything else says nothing about the others.
+    case expired(CaptureRefusal)
     /// The note could not be made. Delete the files and say so.
     case failed
 }
@@ -593,7 +598,7 @@ public struct CaptureJob: Codable, Equatable, Sendable {
             let again = refused != nil
             let since = refusedSince ?? now
             // Thirty days of asking is enough; see `keptLongEnough`.
-            guard now.timeIntervalSince(since) <= Self.keptLongEnough else { return .failed }
+            guard now.timeIntervalSince(since) <= Self.keptLongEnough else { return .expired(refusal) }
             refused = refusal
             refusedAt = now
             refusedCount = (refusedCount ?? 0) + 1

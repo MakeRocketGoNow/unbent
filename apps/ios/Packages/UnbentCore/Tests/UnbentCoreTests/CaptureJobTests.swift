@@ -366,7 +366,7 @@ final class CaptureJobTests: XCTestCase {
         _ = job.handle(.create, refusal(#"{"code":"PLAN_INACTIVE"}"#), now: first)
         XCTAssertEqual(.refused(.planEnded, again: true), job.handle(.create, refusal(#"{"code":"PLAN_INACTIVE"}"#), now: first.addingTimeInterval(29 * day)))
         XCTAssertEqual(first, job.refusedSince)
-        XCTAssertEqual(.failed, job.handle(.create, refusal(#"{"code":"PLAN_INACTIVE"}"#), now: first.addingTimeInterval(31 * day)))
+        XCTAssertEqual(.expired(.planEnded), job.handle(.create, refusal(#"{"code":"PLAN_INACTIVE"}"#), now: first.addingTimeInterval(31 * day)))
     }
 
     /// Three files and no room: sent together they are all uploaded to hear one answer.
@@ -490,7 +490,7 @@ final class CaptureJobTests: XCTestCase {
         _ = job.handle(.create, refusal(#"{"code":"PLAN_INACTIVE"}"#), now: first)
         _ = job.handle(.create, CaptureOutcome(status: 401), now: first.addingTimeInterval(20 * day))
         XCTAssertEqual(first, job.refusedSince)
-        XCTAssertEqual(.failed, job.handle(.create, refusal(#"{"code":"PLAN_INACTIVE"}"#), now: first.addingTimeInterval(31 * day)))
+        XCTAssertEqual(.expired(.planEnded), job.handle(.create, refusal(#"{"code":"PLAN_INACTIVE"}"#), now: first.addingTimeInterval(31 * day)))
     }
 
     /// When one capture is ended at thirty days, the others past theirs have had the
@@ -503,6 +503,11 @@ final class CaptureJobTests: XCTestCase {
         XCTAssertFalse(kept.keptTooLong(now: first.addingTimeInterval(29 * day)))
         XCTAssertTrue(kept.keptTooLong(now: first.addingTimeInterval(31 * day)))
         XCTAssertFalse(job().keptTooLong(now: first.addingTimeInterval(31 * day)))
+
+        // The reason the others end for is the one just heard, not the one it was kept for.
+        XCTAssertEqual(.expired(.storageFull), kept.handle(.create, refusal(#"{"code":"STORAGE_FULL","of":"files"}"#), now: first.addingTimeInterval(31 * day)))
+        // And only a refusal ends them: a request the server will never take is this capture's alone.
+        XCTAssertEqual(.failed, kept.handle(.create, CaptureOutcome(status: 400), now: first.addingTimeInterval(31 * day)))
     }
 
     // MARK: - A pass over the captures on disk

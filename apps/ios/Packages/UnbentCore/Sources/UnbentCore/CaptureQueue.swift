@@ -434,16 +434,19 @@ public final class CaptureQueue: NSObject, @unchecked Sendable {
         case .failed:
             end(job)
             notifier.failed(job)
-            // A capture the plan refused that has been ended: its thirty days were up,
-            // or the server will never take it. The others kept for the same reason
-            // and account past their thirty days have had the same answer, moments
-            // ago, and go with it rather than each being uploaded once more to hear it.
-            if let reason = job.refused {
-                for other in jobsOnDisk() where other.id != job.id && other.refused == reason
-                    && other.account == job.account && other.origin == job.origin && other.keptTooLong() {
-                    end(other)
-                    notifier.failed(other)
-                }
+        case .expired(let reason):
+            end(job)
+            notifier.failed(job)
+            // The others kept for the reason just heard, by the same account, that are
+            // past their thirty days have had the same answer, moments ago, and go with
+            // it rather than each being uploaded once more to hear it. Only from here:
+            // a capture ended for any other cause (a request the server will never
+            // take, a file that could not be written) is no answer about room, and
+            // ending the rest on it deleted scans that would have landed.
+            for other in jobsOnDisk() where other.id != job.id && other.refused == reason
+                && other.account == job.account && other.origin == job.origin && other.keptTooLong() {
+                end(other)
+                notifier.failed(other)
             }
         }
     }
