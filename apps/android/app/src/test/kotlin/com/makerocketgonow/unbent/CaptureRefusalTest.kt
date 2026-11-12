@@ -95,6 +95,15 @@ class CaptureRefusalTest {
     }
 
     @Test
+    fun `another account's kept capture is passed over once the app knows who is signed in`() {
+        assertTrue(CaptureWork.sameAccount("user-1", "user-1"))
+        assertFalse(CaptureWork.sameAccount("user-1", "user-2"))
+        // Not known yet on either side: the worker asks the server before sending.
+        assertTrue(CaptureWork.sameAccount(null, "user-2"))
+        assertTrue(CaptureWork.sameAccount("user-1", null))
+    }
+
+    @Test
     fun `of many kept captures, one is asked about for each reason they were refused`() {
         fun kept(name: String, refusal: CaptureRefusal, since: Long, waitMs: Long = 0) = CaptureWork.Waiting(
             File(name), null, KeptCapture(refusal.name, "https://notes.example.com", since = since), waitMs,

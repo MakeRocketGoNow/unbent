@@ -91,6 +91,12 @@ object CaptureWork {
                 // The account is the worker's to check, since it takes a request.
                 val record = CaptureResume.kept(dir) ?: return@mapNotNull null
                 if (!sameInstance(record.instance, prefs.instance)) return@mapNotNull null
+                // Someone else's, where the app knows who is signed in. Passed over
+                // before the choosing and left untouched: chosen, it would be refused by
+                // the worker's own check on every return to the app, with the signed-in
+                // account's captures for the same reason never asked about behind it,
+                // and touched each time, so never swept either.
+                if (!sameAccount(record.account, prefs.account)) return@mapNotNull null
                 // A record this build cannot read is left for the sweep, not sent blind.
                 val input = runCatching { Data.fromByteArray(kept) }.getOrNull() ?: return@mapNotNull null
                 val dear = CaptureResume.readNoteId(dir) != null || isClip(input)
@@ -170,6 +176,14 @@ object CaptureWork {
     /** Whether a capture kept for [kept] may be sent to [current], the instance the app is on. */
     internal fun sameInstance(kept: String?, current: String): Boolean =
         kept != null && Prefs.normalizeOrigin(kept) == Prefs.normalizeOrigin(current)
+
+    /**
+     * Whether a capture kept for the account [kept] may be chosen while [current] is
+     * signed in. Either unknown counts as the same: the worker asks the server before it
+     * sends anything, and remembers the answer for the next choosing.
+     */
+    internal fun sameAccount(kept: String?, current: String?): Boolean =
+        kept == null || current == null || kept == current
 
     /** Whether [input] is a share the worker will ask the server to read as a page. */
     private fun isClip(input: Data): Boolean =

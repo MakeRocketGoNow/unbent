@@ -116,6 +116,9 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
             val owner = if (refusedBefore) CaptureResume.kept(dir)?.account else null
             if (owner != null) {
                 val me = api.me()?.id ?: throw ApiException(401, "Session check")
+                // Remembered, so the next choosing passes this capture over without
+                // asking, and it does not stand in front of the signed-in account's own.
+                prefs.account = me
                 if (me != owner) return@withContext Result.failure()
             }
 
@@ -244,7 +247,7 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
                 val now = System.currentTimeMillis()
                 // Asked once, at the first refusal, and carried from then on. A failure
                 // to ask is not a reason to lose the capture; see `KeptCapture.account`.
-                val account = before?.account ?: runCatching { api.me()?.id }.getOrNull()
+                val account = before?.account ?: runCatching { api.me()?.id }.getOrNull()?.also { prefs.account = it }
                 val kept = KeptCapture(
                     refusal.name,
                     prefs.instance,

@@ -172,7 +172,11 @@ public final class CaptureQueue: NSObject, @unchecked Sendable {
                 // Read again: results may have been applied while the lists were fetched.
                 let jobs = self.jobsOnDisk()
                 // One refused capture for each reason, not all of them; see there.
-                let asked = refused ? CaptureJob.firstOfEachRefusal(jobs) : []
+                // Among those there is a session to send with: one kept for an instance
+                // nobody is signed in to cannot go, and chosen it would stand in front
+                // of every capture kept for the same reason on this one.
+                let sendable = jobs.filter { self.sessions.session(for: $0.origin) != nil }
+                let asked = refused ? CaptureJob.firstOfEachRefusal(sendable) : []
                 for job in jobs {
                     if job.isSaved { self.apply(.saved, to: job); continue }
                     if job.refused != nil, !asked.contains(job.id) { continue }
