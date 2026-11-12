@@ -50,14 +50,17 @@ object CaptureWork {
          * screenshot.
          */
         val manager = WorkManager.getInstance(context.applicationContext)
-        val name = "capture-$jobId"
+        val name = workName(jobId)
         /*
          * [hurry] for a kept capture that is to go now, though an earlier call may have
          * enqueued it on a wait of hours (see [resumeRefused]'s `roomFor`): KEEP would
          * drop this for that one, and the capture would sit out a wait it was meant to
-         * be spared. A job that is only waiting is replaced; one that is running is
-         * never touched, since replacing it would cancel an upload in flight. Called
-         * off the main thread, which the blocking read needs.
+         * be spared. A job that is only waiting is replaced; one that is running is left,
+         * since replacing it would cancel an upload in flight. The read and the replace
+         * are two steps, so a job that starts between them is cancelled all the same:
+         * its capture is sent again by the replacement, safely because of the ids, at
+         * the cost of an upload. Called off the main thread, which the blocking read
+         * needs.
          */
         val waiting = hurry && runCatching {
             val infos = manager.getWorkInfosForUniqueWork(name).get()
@@ -77,6 +80,13 @@ object CaptureWork {
             work.enqueue()
         }
     }
+
+    /** Stops a capture's job, waiting or running, for one that is being ended from elsewhere. */
+    fun cancel(context: Context, jobId: String) {
+        WorkManager.getInstance(context.applicationContext).cancelUniqueWork(workName(jobId))
+    }
+
+    private fun workName(jobId: String) = "capture-$jobId"
 
     /**
      * Sends again every capture the plan refused ([CaptureRefusal]), from the input kept

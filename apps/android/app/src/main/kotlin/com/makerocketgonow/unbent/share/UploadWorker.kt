@@ -166,7 +166,8 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
                 // every return to the app, and each was a request to hear the same name.
                 // Remembered, too, so the next choosing passes this capture over without
                 // asking, and it does not stand in front of the signed-in account's own.
-                val me = prefs.account
+                // Only while the session is still the one this job sends with.
+                val me = prefs.account?.takeIf { prefs.session?.bearer == bearer }
                     ?: api.me()?.id?.also(::remember)
                     ?: throw ApiException(401, "Session check")
                 if (me != owner) return@withContext Result.failure()
@@ -319,6 +320,10 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
                     for (other in CaptureWork.expiredWith(Staging.jobDirs(context), dir, kept, now)) {
                         val input = CaptureResume.refusedJob(other)?.let { runCatching { Data.fromByteArray(it) }.getOrNull() }
                         val id = input?.getString(KEY_JOB_ID) ?: continue
+                        // Its job first, if one is waiting or running: left, a running
+                        // one lost its files mid-upload and said "Could not save" again,
+                        // or "Saved" over it.
+                        CaptureWork.cancel(context, id)
                         Staging.clear(context, id)
                         CaptureNotifications.failed(context, id, input.getString(KEY_TITLE).orEmpty())
                     }
