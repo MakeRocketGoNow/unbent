@@ -4,6 +4,7 @@ import android.content.ContentResolver
 import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
+import androidx.work.Data
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -27,7 +28,12 @@ data class StagedFile(
 object Staging {
 
     fun stageAll(context: Context, uris: List<Uri>, jobId: String): List<StagedFile> {
-        sweepAbandoned(File(context.noBackupFilesDir, SHARES), System.currentTimeMillis())
+        // A kept capture that has waited out its month was promised to someone; say it went.
+        for (kept in sweepAbandoned(File(context.noBackupFilesDir, SHARES), System.currentTimeMillis())) {
+            val input = runCatching { Data.fromByteArray(kept) }.getOrNull() ?: continue
+            val id = input.getString(UploadWorker.KEY_JOB_ID) ?: continue
+            CaptureNotifications.failed(context, id, input.getString(UploadWorker.KEY_TITLE).orEmpty())
+        }
         val dir = jobDir(context, jobId).apply { mkdirs() }
         val used = mutableSetOf<String>()
         return uris.mapIndexedNotNull { index, uri ->
@@ -237,14 +243,21 @@ object Staging {
      *
      * A capture the plan refused is kept for [REFUSED_MS] instead, from its last refusal:
      * it waits on a person, not on WorkManager, and its notification says it is kept.
+     * Those are returned as they go (the input [CaptureResume.keepRefused] was given), so
+     * the caller can say that what was kept no longer is; the rest go silently, since
+     * nobody was told anything about them. The iOS app's sweep makes the same split.
      */
-    internal fun sweepAbandoned(root: File, now: Long) {
+    internal fun sweepAbandoned(root: File, now: Long): List<ByteArray> {
+        val promised = mutableListOf<ByteArray>()
         for (dir in root.listFiles().orEmpty()) {
             if (!dir.isDirectory) continue
             val touched = (dir.listFiles().orEmpty().map { it.lastModified() } + dir.lastModified()).max()
             val kept = if (CaptureResume.wasRefused(dir)) REFUSED_MS else ABANDONED_MS
-            if (now - touched > kept) dir.deleteRecursively()
+            if (now - touched <= kept) continue
+            CaptureResume.refusedJob(dir)?.let(promised::add)
+            dir.deleteRecursively()
         }
+        return promised
     }
 
     private const val SHARES = "shares"

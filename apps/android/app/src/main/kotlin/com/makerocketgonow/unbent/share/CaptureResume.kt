@@ -26,7 +26,7 @@ object CaptureResume {
     private const val CHOSEN_ID_FILE = ".chosen-id"
     private const val UNAVAILABLE_FILE = ".unavailable"
     private const val JOB_FILE = ".job"
-    internal const val REFUSED_FILE = ".refused"
+    private const val REFUSED_FILE = ".refused"
 
     fun readNoteId(dir: File): String? =
         File(dir, NOTE_ID_FILE).takeIf { it.isFile }?.readText()?.trim()?.takeIf { it.isNotEmpty() }

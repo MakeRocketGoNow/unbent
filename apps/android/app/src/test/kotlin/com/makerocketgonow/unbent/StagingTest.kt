@@ -1,5 +1,7 @@
 package com.makerocketgonow.unbent
 
+import com.makerocketgonow.unbent.share.CaptureRefusal
+import com.makerocketgonow.unbent.share.CaptureResume
 import com.makerocketgonow.unbent.share.StagedFile
 import com.makerocketgonow.unbent.share.Staging
 import java.io.File
@@ -179,16 +181,19 @@ class StagingTest {
         fun refusedAt(name: String, age: Long) = File(root, name).apply {
             mkdirs()
             File(this, "scan.pdf").apply { writeText("x") }.setLastModified(now - age)
-            File(this, ".refused").apply { writeText("PLAN_ENDED") }.setLastModified(now - age)
+            CaptureResume.keepRefused(this, name.toByteArray(), CaptureRefusal.PLAN_ENDED, "https://notes.example.com")
+            listFiles().orEmpty().forEach { it.setLastModified(now - age) }
             setLastModified(now - age)
         }
         // Four days would have swept it as abandoned; it waits on a person, who is given a month.
         val waiting = refusedAt("waiting", 4 * day)
         val forgotten = refusedAt("forgotten", 31 * day)
 
-        Staging.sweepAbandoned(root, now)
+        val promised = Staging.sweepAbandoned(root, now)
 
         assertTrue(waiting.exists())
         assertFalse(forgotten.exists())
+        // The one that went is handed back, so the person who was told it is kept can be told it is not.
+        assertEquals(listOf("forgotten"), promised.map { String(it) })
     }
 }
