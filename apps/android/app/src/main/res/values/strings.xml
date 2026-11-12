@@ -101,6 +101,18 @@
     <string name="clipped">Page clipped to Unbent</string>
     <string name="save_failed">Could not save to Unbent</string>
     <string name="sign_in_needed">Sign in to Unbent, then share again</string>
+    <!--
+      A share the plan had no room for (402), which the phone keeps and sends again. The
+      headings are the web app's words for the same states, cut to a notification's first
+      line; a tap opens the Plan page, which has the numbers and the ways out.
+    -->
+    <string name="refused_plan_ended">Your plan has ended</string>
+    <string name="refused_free_notes_full">The free plan is full</string>
+    <string name="refused_storage_full">Out of storage</string>
+    <string name="refused_notes_full">Out of room for notes</string>
+    <string name="refused_plan">Your plan has no room for this</string>
+    <!-- %1$s is the note's title. Two lines: what was shared, then what became of it. -->
+    <string name="refused_kept">%1$s\nNot saved yet. It is kept on this phone and sent again when you open Unbent.</string>
     <string name="nothing_to_share">Nothing to share</string>
     <string name="channel_captures">Captures</string>
     <string name="channel_captures_desc">Progress and results for items shared to Unbent</string>

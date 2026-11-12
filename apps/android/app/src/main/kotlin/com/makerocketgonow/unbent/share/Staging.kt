@@ -220,6 +220,12 @@ object Staging {
         File(File(context.cacheDir, SHARES), jobId).deleteRecursively()
     }
 
+    /** Every capture's directory still on the device, wherever it was staged. */
+    fun jobDirs(context: Context): List<File> =
+        listOf(context.noBackupFilesDir, context.cacheDir)
+            .flatMap { File(it, SHARES).listFiles().orEmpty().toList() }
+            .filter { it.isDirectory }
+
     /**
      * Deletes job directories nothing has touched in [ABANDONED_MS].
      *
@@ -228,12 +234,16 @@ object Staging {
      * whose files the cache would once have reclaimed on its own and this directory never
      * will. Touched means any file in it: a capture waiting on a 503
      * rewrites its count on every attempt, so a live one never looks abandoned.
+     *
+     * A capture the plan refused is kept for [REFUSED_MS] instead, from its last refusal:
+     * it waits on a person, not on WorkManager, and its notification says it is kept.
      */
     internal fun sweepAbandoned(root: File, now: Long) {
         for (dir in root.listFiles().orEmpty()) {
             if (!dir.isDirectory) continue
             val touched = (dir.listFiles().orEmpty().map { it.lastModified() } + dir.lastModified()).max()
-            if (now - touched > ABANDONED_MS) dir.deleteRecursively()
+            val kept = if (CaptureResume.wasRefused(dir)) REFUSED_MS else ABANDONED_MS
+            if (now - touched > kept) dir.deleteRecursively()
         }
     }
 
@@ -244,4 +254,11 @@ object Staging {
      * cannot serve, at five-hour gaps) so only a job WorkManager has let go of is swept.
      */
     private const val ABANDONED_MS = 3 * 24 * 60 * 60 * 1000L
+
+    /**
+     * Thirty days for a capture the plan refused: long enough to subscribe, or to delete
+     * down to the free plan, without the scan that prompted it having gone. The iOS app
+     * keeps a capture waiting for a sign-in as long (`CaptureStore.unclaimed`).
+     */
+    private const val REFUSED_MS = 30 * 24 * 60 * 60 * 1000L
 }

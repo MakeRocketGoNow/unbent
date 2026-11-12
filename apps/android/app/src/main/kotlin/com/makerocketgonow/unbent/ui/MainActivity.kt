@@ -56,6 +56,7 @@ import com.makerocketgonow.unbent.Prefs
 import com.makerocketgonow.unbent.R
 import com.makerocketgonow.unbent.api.ApiException
 import com.makerocketgonow.unbent.api.UnbentApi
+import com.makerocketgonow.unbent.share.CaptureWork
 import com.makerocketgonow.unbent.ui.theme.Space
 import com.makerocketgonow.unbent.ui.theme.UnbentTheme
 import kotlinx.coroutines.Dispatchers
@@ -163,6 +164,18 @@ class MainActivity : ComponentActivity() {
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
         webView?.let { view -> outState.putBundle(KEY_WEB_STATE, Bundle().also { view.saveState(it) }) }
+    }
+
+    /**
+     * The app has come to the screen: the moment after someone could have subscribed, or
+     * deleted their way under a limit, in a browser or on another device. A capture the
+     * plan refused is sent again now (`CaptureWork.resumeRefused`). The page inside the
+     * WebView could say more exactly when the plan changed, but that is a message every
+     * deployed page would have to learn to send, for a wait this already ends.
+     */
+    override fun onStart() {
+        super.onStart()
+        CaptureWork.resumeRefused(applicationContext)
     }
 
     /*
@@ -566,6 +579,12 @@ class MainActivity : ComponentActivity() {
         fun openNote(context: Context, noteId: String): Intent =
             Intent(context, MainActivity::class.java)
                 .putExtra(EXTRA_NOTE_ID, noteId)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+
+        /** An intent that opens the app on one page of the site. Used by a refused capture's notification. */
+        fun openPath(context: Context, path: String): Intent =
+            Intent(context, MainActivity::class.java)
+                .putExtra(EXTRA_PATH, path)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
 
         /** `#rrggbb`, as the page sends it; null for anything else. */

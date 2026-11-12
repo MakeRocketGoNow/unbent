@@ -33,6 +33,10 @@ import kotlinx.coroutines.withContext
  * has not switched it on, or one from before the route), the capture falls back to that
  * note, so a share never fails for a page's sake: the link is kept either way, and the
  * notification says which of the two landed.
+ *
+ * A capture the account's plan has no room for (a 402) is neither retried nor given up
+ * on: it is kept on the phone, its notification says why, and it is sent again when
+ * there may be room. See [CaptureRefusal] and the 402 case below.
  */
 class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
 
@@ -47,7 +51,13 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
         val tags = inputData.getStringArray(KEY_TAGS).orEmpty().toList()
         val context = applicationContext
 
-        CaptureNotifications.saving(context, jobId, title)
+        val dir = Staging.jobDir(context, jobId)
+        // A capture the plan refused, being sent again (see the 402 below). It says
+        // nothing until it has an answer: "Saving…" would replace the notice that says
+        // why it is waiting, every time the app is opened, to be replaced by that notice
+        // again a second later.
+        val refusedBefore = CaptureResume.wasRefused(dir)
+        if (!refusedBefore) CaptureNotifications.saving(context, jobId, title)
 
         val prefs = Prefs(context)
         if (!prefs.isSignedIn) {
@@ -70,7 +80,6 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
         }
 
         val api = UnbentApi(prefs.instance, prefs.session?.bearer ?: return@withContext Result.failure())
-        val dir = Staging.jobDir(context, jobId)
 
         fun giveUp(): Result {
             Staging.clear(context, jobId)
@@ -165,6 +174,31 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
                 prefs.clearSession()
                 Staging.clear(context, jobId)
                 CaptureNotifications.signInNeeded(context, jobId, title)
+                Result.failure()
+            } else if (CaptureRefusal.of(e) != null) {
+                /*
+                 * The plan has no room for this: it has ended, or its storage is full.
+                 * Nothing is wrong with the capture and trying again now changes
+                 * nothing, but the answer changes the moment the person subscribes or
+                 * deletes something, so the capture is kept rather than given up on, and
+                 * the notice says which it was and opens the Plan page.
+                 *
+                 * Failed, not retried. WorkManager's backoff would ask again in thirty
+                 * seconds and then ever more rarely, up to five hours apart: wrong both
+                 * ways, since a person who has just subscribed waits hours and one who
+                 * has not is asked about all day. The capture is sent again when the app
+                 * is next opened or something else is shared (`CaptureWork.resumeRefused`),
+                 * which are the moments after someone could have done something about it.
+                 * A Retry button on the notice was the other way, and is one more thing
+                 * to press for a result the app can find out for itself.
+                 *
+                 * Whatever landed stays landed: the note id and the files already on the
+                 * note are found again by the next attempt, as on any retry.
+                 */
+                val refusal = CaptureRefusal.of(e) ?: CaptureRefusal.PLAN
+                CaptureResume.keepRefused(dir, inputData.toByteArray(), refusal)
+                // Quietly the second time: it is the same news, about the same capture.
+                CaptureNotifications.refused(context, jobId, title, refusal, quiet = refusedBefore)
                 Result.failure()
             } else if (waitsOut(e)) {
                 /*
@@ -273,8 +307,10 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
          * capture made before the route existed. The same chosen id on all of them, so a
          * clip that landed unheard and a create that follows meet at one note.
          *
-         * It also bounds a clip the plan refuses (402, which the store answers only after
-         * the page is read) at two reads of the page.
+         * A clip the plan refuses (402, which the store answers only after the page is
+         * read) spends none of these: the capture is kept as a clip and asks for the
+         * page again each time it is sent, which is once per opening of the app, so that
+         * someone who then subscribes gets the page they shared and not its address.
          */
         internal fun clipsOnAttempt(attemptsSpent: Int): Boolean = attemptsSpent < CLIP_ATTEMPTS
 

@@ -170,4 +170,25 @@ class StagingTest {
         assertFalse(abandoned.exists())
         assertTrue(waiting.exists())
     }
+
+    @Test
+    fun `a capture the plan refused outlasts the sweep that takes an abandoned one`() {
+        val root = temp.newFolder("shares-refused")
+        val day = 24 * 60 * 60 * 1000L
+        val now = 100 * day
+        fun refusedAt(name: String, age: Long) = File(root, name).apply {
+            mkdirs()
+            File(this, "scan.pdf").apply { writeText("x") }.setLastModified(now - age)
+            File(this, ".refused").apply { writeText("PLAN_ENDED") }.setLastModified(now - age)
+            setLastModified(now - age)
+        }
+        // Four days would have swept it as abandoned; it waits on a person, who is given a month.
+        val waiting = refusedAt("waiting", 4 * day)
+        val forgotten = refusedAt("forgotten", 31 * day)
+
+        Staging.sweepAbandoned(root, now)
+
+        assertTrue(waiting.exists())
+        assertFalse(forgotten.exists())
+    }
 }

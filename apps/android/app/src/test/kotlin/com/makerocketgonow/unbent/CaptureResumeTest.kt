@@ -1,9 +1,13 @@
 package com.makerocketgonow.unbent
 
+import com.makerocketgonow.unbent.share.CaptureRefusal
 import com.makerocketgonow.unbent.share.CaptureResume
 import java.io.File
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
@@ -95,5 +99,25 @@ class CaptureResumeTest {
             emptyList<String>(),
             CaptureResume.pendingFilenames(arrayOf("a.pdf"), listOf("a.pdf")),
         )
+    }
+
+    @Test
+    fun `a capture the plan refused keeps what the next attempt needs`() {
+        val dir = temp.newFolder("job")
+        assertFalse(CaptureResume.wasRefused(dir))
+        assertNull(CaptureResume.refusedJob(dir))
+
+        // What landed before the refusal: the note, and three waits on a busy server.
+        CaptureResume.writeNoteId(dir, "note-1")
+        repeat(3) { CaptureResume.recordUnavailable(dir) }
+        val input = byteArrayOf(1, 2, 3)
+        CaptureResume.keepRefused(dir, input, CaptureRefusal.STORAGE_FULL)
+
+        assertTrue(CaptureResume.wasRefused(dir))
+        assertArrayEquals(input, CaptureResume.refusedJob(dir))
+        // The note is found again, so the next attempt uploads to it rather than making another.
+        assertEquals("note-1", CaptureResume.readNoteId(dir))
+        // The count belonged to the job that failed; the next one's attempts start at nought.
+        assertEquals(0, CaptureResume.unavailableAttempts(dir))
     }
 }

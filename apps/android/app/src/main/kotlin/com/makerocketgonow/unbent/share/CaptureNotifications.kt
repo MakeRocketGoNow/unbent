@@ -25,6 +25,9 @@ object CaptureNotifications {
 
     private const val CHANNEL = "capture-status"
 
+    /** The site's Plan page, where every refusal a capture can be kept for is answered. */
+    private const val PLAN_PATH = "/settings/plan"
+
     fun createChannel(context: Context) {
         val manager = context.getSystemService(NotificationManager::class.java) ?: return
         /*
@@ -106,6 +109,39 @@ object CaptureNotifications {
         )
     }
 
+    /**
+     * The plan would not take the capture, and it is kept on the phone ([CaptureRefusal]).
+     *
+     * The title is the web app's words for the same state, cut to what a notification's
+     * first line holds; the Plan page, which a tap opens, has the numbers and the way out,
+     * for every one of these: subscribing, adding storage, and what to delete instead.
+     * The expanded text says the one thing the person cannot see for themselves, which is
+     * that what they shared has not been lost and needs no sharing again.
+     *
+     * [quiet] for a capture that was refused before and has been again: the first notice
+     * peeks, and a repeat of it each time the app is opened would be nagging.
+     */
+    fun refused(context: Context, jobId: String, title: String, refusal: CaptureRefusal, quiet: Boolean = false) {
+        val heading = when (refusal) {
+            CaptureRefusal.PLAN_ENDED -> R.string.refused_plan_ended
+            CaptureRefusal.FREE_NOTES_FULL -> R.string.refused_free_notes_full
+            CaptureRefusal.STORAGE_FULL -> R.string.refused_storage_full
+            CaptureRefusal.NOTES_FULL -> R.string.refused_notes_full
+            CaptureRefusal.PLAN -> R.string.refused_plan
+        }
+        val named = title.ifBlank { context.getString(R.string.untitled) }
+        post(
+            context, jobId,
+            builder(context, title)
+                .setSmallIcon(android.R.drawable.stat_notify_error)
+                .setContentTitle(context.getString(heading))
+                .setStyle(NotificationCompat.BigTextStyle().bigText(context.getString(R.string.refused_kept, named)))
+                .setContentIntent(openPlan(context))
+                .setSilent(quiet)
+                .setAutoCancel(true),
+        )
+    }
+
     fun signInNeeded(context: Context, jobId: String, title: String) {
         post(
             context, jobId,
@@ -133,6 +169,15 @@ object CaptureNotifications {
             context,
             noteId.hashCode(),
             MainActivity.openNote(context, noteId),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+
+    /** One request code for every capture: they all open the same page. */
+    private fun openPlan(context: Context): PendingIntent =
+        PendingIntent.getActivity(
+            context,
+            2,
+            MainActivity.openPath(context, PLAN_PATH),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 

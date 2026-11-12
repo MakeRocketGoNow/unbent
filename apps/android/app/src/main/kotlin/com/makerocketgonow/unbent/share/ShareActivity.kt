@@ -12,12 +12,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.work.BackoffPolicy
-import androidx.work.Constraints
 import androidx.work.Data
-import androidx.work.NetworkType
-import androidx.work.OneTimeWorkRequestBuilder
-import androidx.work.WorkManager
 import com.makerocketgonow.unbent.Prefs
 import com.makerocketgonow.unbent.R
 import com.makerocketgonow.unbent.api.UnbentApi
@@ -25,7 +20,6 @@ import com.makerocketgonow.unbent.ui.CaptureSheet
 import com.makerocketgonow.unbent.ui.SignInActivity
 import com.makerocketgonow.unbent.ui.theme.UnbentTheme
 import java.util.UUID
-import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 
 /**
@@ -126,46 +120,24 @@ class ShareActivity : ComponentActivity() {
         val title = typed.ifEmpty { this.title }
         Prefs(this).lastNotebook = notebook
 
-        val request = OneTimeWorkRequestBuilder<UploadWorker>()
-            .setConstraints(
-                Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build(),
-            )
-            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
-            .setInputData(
-                Data.Builder()
-                    .putString(UploadWorker.KEY_JOB_ID, jobId)
-                    .putString(UploadWorker.KEY_TITLE, title)
-                    // Whether the title is the person's or the one staging derived: a
-                    // clipped page keeps its own title unless someone typed one over it.
-                    .putBoolean(UploadWorker.KEY_TITLE_TYPED, title != this.title)
-                    .putString(UploadWorker.KEY_BODY, text)
-                    .putString(UploadWorker.KEY_NOTEBOOK, notebook)
-                    .putStringArray(UploadWorker.KEY_TAGS, tags.toTypedArray())
-                    .putStringArray(UploadWorker.KEY_FILENAMES, files.map { it.filename }.toTypedArray())
-                    .putStringArray(UploadWorker.KEY_TYPES, files.map { it.contentType }.toTypedArray())
-                    .build(),
-            )
-            .build()
-
-        /*
-         * A PDF gets a second job, chained after the upload, that makes its text
-         * searchable. Chained rather than done inside the upload so that a WebView
-         * failure in the second can never re-run the first and create the note twice;
-         * photos have no text to extract and skip it, so no WebView spins up for a
-         * screenshot.
-         */
-        val manager = WorkManager.getInstance(applicationContext)
-        if (IndexWorker.needsIndexing(files.map { it.contentType })) {
-            val index = OneTimeWorkRequestBuilder<IndexWorker>()
-                .setConstraints(
-                    Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build(),
-                )
-                .setBackoffCriteria(BackoffPolicy.LINEAR, 30, TimeUnit.SECONDS)
-                .build()
-            manager.beginWith(request).then(index).enqueue()
-        } else {
-            manager.enqueue(request)
-        }
+        CaptureWork.enqueue(
+            applicationContext,
+            Data.Builder()
+                .putString(UploadWorker.KEY_JOB_ID, jobId)
+                .putString(UploadWorker.KEY_TITLE, title)
+                // Whether the title is the person's or the one staging derived: a
+                // clipped page keeps its own title unless someone typed one over it.
+                .putBoolean(UploadWorker.KEY_TITLE_TYPED, title != this.title)
+                .putString(UploadWorker.KEY_BODY, text)
+                .putString(UploadWorker.KEY_NOTEBOOK, notebook)
+                .putStringArray(UploadWorker.KEY_TAGS, tags.toTypedArray())
+                .putStringArray(UploadWorker.KEY_FILENAMES, files.map { it.filename }.toTypedArray())
+                .putStringArray(UploadWorker.KEY_TYPES, files.map { it.contentType }.toTypedArray())
+                .build(),
+        )
+        // A capture the plan refused earlier goes again with this one: someone sharing
+        // again may well have made room since, and if not, each is told so once more.
+        CaptureWork.resumeRefused(applicationContext)
         // The toast is the word on screen as the sheet closes; the notification is the
         // one that can turn into "Saved" and be tapped.
         Toast.makeText(this, R.string.saving, Toast.LENGTH_SHORT).show()

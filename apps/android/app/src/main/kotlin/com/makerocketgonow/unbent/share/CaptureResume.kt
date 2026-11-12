@@ -25,6 +25,8 @@ object CaptureResume {
     private const val NOTE_ID_FILE = ".note-id"
     private const val CHOSEN_ID_FILE = ".chosen-id"
     private const val UNAVAILABLE_FILE = ".unavailable"
+    private const val JOB_FILE = ".job"
+    internal const val REFUSED_FILE = ".refused"
 
     fun readNoteId(dir: File): String? =
         File(dir, NOTE_ID_FILE).takeIf { it.isFile }?.readText()?.trim()?.takeIf { it.isNotEmpty() }
@@ -71,6 +73,36 @@ object CaptureResume {
         File(dir, UNAVAILABLE_FILE).writeText(count.toString())
         return count
     }
+
+    /**
+     * Keeps a capture the plan refused ([CaptureRefusal]), so it can be sent again once
+     * there is room for it.
+     *
+     * Everything else a capture is lives in WorkManager's input data, which goes with
+     * the job when the worker fails, and a refused job has to fail: there is no telling
+     * WorkManager "again when the person has subscribed", and a retry on its backoff
+     * asks a lapsed account the same question for a day and then gives up. So the input
+     * is written here beside the staged files ([job] is `Data.toByteArray()`, opaque to
+     * this class so it stays testable without WorkManager), and `CaptureWork` starts a
+     * new job from it when the app is next opened or something else is shared.
+     *
+     * The marker's time is the refusal's: rewritten on each, so [Staging.sweepAbandoned]
+     * counts from the last time anyone was told. The 503 count is cleared, because it is
+     * subtracted from a run count that starts again at nought in the new job.
+     */
+    fun keepRefused(dir: File, job: ByteArray, refusal: CaptureRefusal) {
+        dir.mkdirs()
+        File(dir, JOB_FILE).writeBytes(job)
+        File(dir, REFUSED_FILE).writeText(refusal.name)
+        File(dir, UNAVAILABLE_FILE).delete()
+    }
+
+    /** Whether the plan refused this capture on an earlier attempt, and it was kept. */
+    fun wasRefused(dir: File): Boolean = File(dir, REFUSED_FILE).isFile
+
+    /** A kept capture's input, as [keepRefused] was given it; null when it is not one. */
+    fun refusedJob(dir: File): ByteArray? =
+        if (wasRefused(dir)) File(dir, JOB_FILE).takeIf { it.isFile }?.readBytes() else null
 
     /** Staged names that are not already attached to the note. */
     fun pendingFilenames(staged: Array<String>, alreadyOnNote: Collection<String>): List<String> {
