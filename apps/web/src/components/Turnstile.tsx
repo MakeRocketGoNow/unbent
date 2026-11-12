@@ -3,7 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { emailOtp, signIn } from '../auth-client.js';
 import { keys } from '../queries.js';
 import { CAPTCHA_HEADER, loadTurnstile } from '../turnstile.js';
-import { readChoice, resolveTheme } from '../theme.js';
+import { currentTheme } from '../theme.js';
 
 /** What the sentence under a widget that could not run says; the one place it is worded. */
 export const TURNSTILE_FAILED_MESSAGE =
@@ -73,7 +73,7 @@ export function Turnstile({ siteKey, onToken, onFail, onInteractive }: Turnstile
         try {
           widgetId = turnstile.render(element, {
             sitekey: siteKey,
-            theme: resolveTheme(readChoice()),
+            theme: currentTheme(),
             size: 'flexible',
             appearance: 'always',
             callback: (token) => handlers.current.onToken(token),

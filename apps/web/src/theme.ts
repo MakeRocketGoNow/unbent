@@ -97,6 +97,11 @@ function currentChoice(): ThemeChoice {
   return fallback ?? readChoice();
 }
 
+/** The theme in effect now, for script that draws once (a third-party widget). */
+export function currentTheme(): Theme {
+  return resolveTheme(currentChoice());
+}
+
 function subscribe(listener: () => void): () => void {
   listeners.add(listener);
   return () => listeners.delete(listener);
