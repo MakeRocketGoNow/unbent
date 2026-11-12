@@ -28,19 +28,24 @@ describe('HelpPage', () => {
     vi.unstubAllGlobals();
   });
 
-  it('says what the table button writes and how to press it, in this keyboard\'s keys', async () => {
-    vi.stubGlobal('navigator', { ...navigator, platform: 'Win32', userAgent: 'Windows' });
+  it('says what the table button writes', async () => {
     const { findByRole } = harness();
     const row = (await findByRole('rowheader', { name: 'Table' })).closest('tr')!;
     expect(row.textContent).toContain('| a | b |');
-    expect(row.textContent).toContain('Ctrl+Shift+T');
+  });
+
+  it('writes keys as this keyboard does: Ctrl off a Mac', async () => {
+    vi.stubGlobal('navigator', { ...navigator, platform: 'Win32', userAgent: 'Windows' });
+    const { findByRole } = harness();
+    const row = (await findByRole('rowheader', { name: 'Strikethrough' })).closest('tr')!;
+    expect(row.textContent).toContain('Ctrl+Shift+X');
   });
 
   it('writes the same keys with Apple\'s symbols on a Mac', async () => {
     vi.stubGlobal('navigator', { ...navigator, platform: 'MacIntel' });
     const { findByRole } = harness();
-    const row = (await findByRole('rowheader', { name: 'Table' })).closest('tr')!;
-    expect(row.textContent).toContain('⌘⇧T');
+    const row = (await findByRole('rowheader', { name: 'Strikethrough' })).closest('tr')!;
+    expect(row.textContent).toContain('⌘⇧X');
   });
 
   it('points at the support page where the instance has one', async () => {

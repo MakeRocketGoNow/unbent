@@ -56,7 +56,10 @@ const FORMATS: FormatRow[] = [
   { name: 'Bullet list', writes: '- item', shortcut: ['mod', 'shift', '8'] },
   { name: 'Task list', writes: '- [ ] item', shortcut: null },
   { name: 'Link', writes: '[text](https://…)', shortcut: ['mod', 'K'] },
-  { name: 'Table', writes: '| a | b |', shortcut: ['mod', 'shift', 'T'] },
+  // No keys: the editor binds Mod-Shift-T, but a browser tab keeps Ctrl+Shift+T (and
+  // ⌘⇧T) for reopening a closed tab, so in a tab the key never reaches the page. Promising
+  // it here would send someone to a key that reopens their last tab instead.
+  { name: 'Table', writes: '| a | b |', shortcut: null },
 ];
 
 /**
@@ -123,8 +126,7 @@ export function HelpPage({ build = buildInfo }: { build?: BuildInfo | null }) {
 
         <Topic title="Tables">
           <p className="muted small">
-            Press the table button in the bar and pick a size from the grid, or press{' '}
-            <kbd>{keys(apple, 'mod', 'shift', 'T')}</kbd> for two rows of three. In a table,{' '}
+            Press the table button in the bar and pick a size from the grid. In a table,{' '}
             <kbd>Tab</kbd> moves to the next cell and adds a row at the end, and{' '}
             <kbd>{keys(apple, 'mod', 'shift', 'F')}</kbd> lines the columns up.
           </p>
