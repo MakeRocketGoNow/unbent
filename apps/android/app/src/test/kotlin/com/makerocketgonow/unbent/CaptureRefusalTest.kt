@@ -120,4 +120,14 @@ class CaptureRefusalTest {
         )
         assertEquals(setOf("oldest", "scan"), chosen.map { it.dir.name }.toSet())
     }
+
+    @Test
+    fun `a kept capture whose last resend failed stands behind one that has not, however old`() {
+        fun kept(name: String, since: Long, stuck: Boolean) = CaptureWork.Waiting(
+            File(name), null,
+            KeptCapture(CaptureRefusal.PLAN_ENDED.name, "https://notes.example.com", since = since, stuck = stuck), 0,
+        )
+        val chosen = CaptureWork.firstOfEach(listOf(kept("failing", since = 100, stuck = true), kept("fine", since = 900, stuck = false)))
+        assertEquals(listOf("fine"), chosen.map { it.dir.name })
+    }
 }

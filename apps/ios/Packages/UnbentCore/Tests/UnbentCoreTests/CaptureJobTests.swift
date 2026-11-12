@@ -427,6 +427,8 @@ final class CaptureJobTests: XCTestCase {
         other.id = "other"
         _ = other.handle(.create, refusal(#"{"code":"PLAN_INACTIVE"}"#), now: then.addingTimeInterval(60))
         XCTAssertEqual(["other"], CaptureJob.firstOfEachRefusal([job, other], now: then.addingTimeInterval(120)))
+        // And still behind it once every wait is over, though it has been kept longer.
+        XCTAssertEqual(["other"], CaptureJob.firstOfEachRefusal([job, other], now: then.addingTimeInterval(24 * 60 * 60)))
         // A refusal is an answer: it is an ordinary kept capture again.
         var answered = job
         _ = answered.handle(.create, refusal(#"{"code":"PLAN_INACTIVE"}"#), now: then)
@@ -456,9 +458,22 @@ final class CaptureJobTests: XCTestCase {
         // Who is signed in is not known on this pass: it waits for one that knows.
         XCTAssertFalse(kept.mayGo(as: nil))
 
-        // Only a kept capture is held to an account. One taken after all is an ordinary one.
+        // The session runs out while it is kept, which clears the refusal and not the
+        // hold: after the sign-in it still goes only as the account it was kept for.
+        XCTAssertEqual(.signInNeeded, kept.handle(.create, CaptureOutcome(status: 401)))
+        XCTAssertNil(kept.refused)
+        XCTAssertFalse(kept.mayGo(as: "user-2"))
+        XCTAssertTrue(kept.mayGo(as: "user-1"))
+
+        // Nor does it go again at once with a session that replaced the one it was sent
+        // with: it waits for a pass that asks who that is, and the try is not counted.
+        XCTAssertEqual(.wait, kept.handle(.create, CaptureOutcome(status: 401, currentSession: false)))
+        XCTAssertEqual(0, kept.progress.attempts)
+
+        // Its note taken, its files are held to that account's library too.
         _ = kept.handle(.create, ok)
-        XCTAssertTrue(kept.mayGo(as: "user-2"))
+        XCTAssertFalse(kept.mayGo(as: "user-2"))
+        // A capture that was never kept is held to nobody.
         XCTAssertTrue(job().mayGo(as: nil))
     }
 

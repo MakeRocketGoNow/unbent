@@ -185,7 +185,8 @@ public struct CaptureJob: Codable, Equatable, Sendable {
     public var progress = Progress()
     /// The id of the account this capture is kept for, once the plan has refused it and
     /// the server has said whose session it was sent with (`CaptureQueue`); nil before
-    /// that, and where it could not be asked. See `mayGo`.
+    /// that, and where it could not be asked. Never cleared: it outlasts the refusal,
+    /// so the hold does too. See `mayGo`.
     public var account: String?
     /// Why the plan refused this capture, while it is waiting on the person to make room
     /// (`CaptureRefusal`). Set by the refusal and cleared when the note is taken (a
@@ -391,13 +392,18 @@ public struct CaptureJob: Codable, Equatable, Sendable {
     /// while one lasted minutes. A kept one waits up to a month, through a sign-out, and
     /// was sent as whoever signed in next on that instance: a scan became a note in the
     /// wrong library, or was asked of a note the new account does not own and given up
-    /// on. So a kept capture goes only as the account it was refused for, and one whose
-    /// instance's account is not known yet waits for a pass that knows, rather than
-    /// going on a guess. A capture that was never refused, or whose account could not
-    /// be asked at the refusal, goes as it always did. Android's half is
-    /// `KeptCapture.account`.
+    /// on. So a capture that has been kept goes only as the account it was refused for,
+    /// and one whose instance's account is not known yet waits for a pass that knows,
+    /// rather than going on a guess. A capture that was never refused, or whose account
+    /// could not be asked at the refusal, goes as it always did.
+    ///
+    /// On the account alone, not on still being marked refused. A 401 clears the mark
+    /// (the capture then waits for a sign-in), and held only while marked, the capture
+    /// went as whoever signed in: the lapsed account whose session ran out is the very
+    /// case. It also holds the files of a capture whose note that account's library
+    /// took. Android's half is `KeptCapture.account`.
     public func mayGo(as current: String?) -> Bool {
-        guard refused != nil, let account else { return true }
+        guard let account else { return true }
         return current == account
     }
 
@@ -416,7 +422,12 @@ public struct CaptureJob: Codable, Equatable, Sendable {
         let first = Dictionary(grouping: refused, by: \.refused).values.compactMap { same in
             same.min { a, b in
                 let (wa, wb) = (a.refusedWait(now: now), b.refusedWait(now: now))
-                return wa != wb ? wa < wb : (a.refusedSince ?? now) < (b.refusedSince ?? now)
+                if wa != wb { return wa < wb }
+                // With every wait over, one that failed last time still stands behind
+                // those that have not, however long it has been kept.
+                let (sa, sb) = (a.refusedStuck == true, b.refusedStuck == true)
+                if sa != sb { return sb }
+                return (a.refusedSince ?? now) < (b.refusedSince ?? now)
             }
         }
         return Set(first.map(\.id))
@@ -569,6 +580,13 @@ public struct CaptureJob: Codable, Equatable, Sendable {
             }
         }
         if step == .create, clip != nil, progress.attempts >= Self.clipAttempts { clip = nil }
+        // A capture held to an account does not go again with a session that replaced
+        // the one it was sent with: that may be someone else's. It waits for the next
+        // pass, which asks who is signed in first (`mayGo`), and the try is not counted.
+        if outcome.status == 401, account != nil {
+            progress.attempts -= 1
+            return .wait
+        }
         // A 401 for a session that has since been replaced goes again at once, with the
         // new one; everything else backs off.
         let delay = outcome.status == 401 ? 0 : Self.backoff(attempts: progress.attempts)

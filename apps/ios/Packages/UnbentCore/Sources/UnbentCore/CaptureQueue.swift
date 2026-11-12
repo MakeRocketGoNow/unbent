@@ -189,10 +189,11 @@ public final class CaptureQueue: NSObject, @unchecked Sendable {
             guard !jobs.isEmpty else { return self.finishedResuming() }
             let identifiers = Set([self.home] + jobs.compactMap(\.shareSession))
             self.liveRequests(in: identifiers) { live, idle in
-                // Whose session each instance's is, for the kept captures that are held
-                // to an account. Asked before the choosing, so one that may not go is
-                // never chosen, and only on a pass that sends them.
-                let held = refused ? Set(self.jobsOnDisk().filter { $0.refused != nil && $0.account != nil }.map(\.origin)) : []
+                // Whose session each instance's is, for the captures that are held to an
+                // account. Asked before the choosing, so one that may not go is never
+                // chosen; on every pass, since one whose refusal a 401 cleared goes on
+                // an ordinary pass; and once per session, so most passes ask nothing.
+                let held = Set(self.jobsOnDisk().filter { $0.account != nil }.map(\.origin))
                 self.accounts(for: Array(held)) { current in
                     // Read again: results may have been applied while the lists were fetched.
                     let jobs = self.jobsOnDisk()
@@ -207,6 +208,7 @@ public final class CaptureQueue: NSObject, @unchecked Sendable {
                     let asked = refused ? CaptureJob.firstOfEachRefusal(sendable) : []
                     for job in jobs {
                         if job.isSaved { self.apply(.saved, to: job); continue }
+                        guard job.mayGo(as: current[job.origin]) else { continue }
                         if job.refused != nil, !asked.contains(job.id) { continue }
                         // Nothing for most; for a refused file or clip, the rest of its
                         // quiet spell, which the system then holds the request for.
@@ -413,19 +415,6 @@ public final class CaptureQueue: NSObject, @unchecked Sendable {
             // `resumeAll(refused: true)` sends what is left when the app is next opened.
             cancelRequests(of: job)
             notifier.refused(job, refusal, again: again)
-            // Whose it is, written down while the session that sent it is still the
-            // one held: a kept capture goes only as that account (`CaptureJob.mayGo`).
-            // Asked once; a failure to ask leaves it going as every capture did.
-            if job.account == nil {
-                let jobId = job.id
-                account(for: job.origin) { id in
-                    guard let id else { return }
-                    self.update(jobId) { kept in
-                        if kept.refused != nil, kept.account == nil { kept.account = id }
-                        return .wait
-                    }
-                }
-            }
         case .failed:
             end(job)
             notifier.failed(job)
@@ -495,6 +484,20 @@ extension CaptureQueue: URLSessionTaskDelegate {
             // The header the request went out with, against the session held now.
             let sent = task.originalRequest?.value(forHTTPHeaderField: "Authorization")
             let held = self.sessions.session(for: job.origin).map { "Bearer \($0.bearer)" }
+            // A capture the plan refuses is kept for the account that sent it
+            // (`CaptureJob.mayGo`), so whose that is gets written down: only while the
+            // session that sent the request is still the one held, since it is that
+            // session the instance is asked about. Asked once; a failure to ask leaves
+            // the capture going as every capture did.
+            if error == nil, response?.statusCode == 402, job.account == nil, held != nil, sent == held {
+                self.account(for: job.origin) { id in
+                    guard let id else { return }
+                    self.update(jobId) { kept in
+                        if kept.account == nil { kept.account = id }
+                        return .wait
+                    }
+                }
+            }
             return job.handle(step, CaptureOutcome(
                 // An answer that came with an error did not finish arriving.
                 status: error == nil ? response?.statusCode : nil,

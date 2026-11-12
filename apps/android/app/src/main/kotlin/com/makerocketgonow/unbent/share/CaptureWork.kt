@@ -143,7 +143,9 @@ object CaptureWork {
      */
     internal fun firstOfEach(waiting: List<Waiting>): List<Waiting> =
         waiting.groupBy { it.record.refusal }.values.map { same ->
-            same.minWith(compareBy<Waiting> { it.waitMs }.thenBy { it.record.since })
+            // With every wait over, one that failed last time still stands behind those
+            // that have not, however long it has been kept.
+            same.minWith(compareBy<Waiting> { it.waitMs }.thenBy { it.record.stuck }.thenBy { it.record.since })
         }
 
     /**
