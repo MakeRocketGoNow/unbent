@@ -5,7 +5,7 @@ import { createMemoryHistory, createRootRoute, createRouter, RouterProvider } fr
 import type { AppConfig } from '@unbent/shared';
 import { keys } from '../queries.js';
 import { markdownKeymap } from '../editor/markdown-commands.js';
-import { FORMATS, HelpPage } from './HelpPage.js';
+import { ALIGN_TABLE_KEYS, FORMATS, HEADING_3_KEYS, HelpPage } from './HelpPage.js';
 
 const OPERATOR = { name: 'Acme Notes', email: 'help@example.com', host: 'notes.example.com' };
 
@@ -57,6 +57,8 @@ describe('HelpPage', () => {
     for (const row of FORMATS) {
       if (row.shortcut) expect(bound, row.name).toContain(spelled(row.shortcut));
     }
+    expect(bound).toContain(spelled(HEADING_3_KEYS));
+    expect(bound).toContain(spelled(ALIGN_TABLE_KEYS));
   });
 
   it('points at the support page where the instance has one', async () => {

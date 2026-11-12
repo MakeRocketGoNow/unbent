@@ -59,6 +59,13 @@ export const FORMATS: FormatRow[] = [
 ];
 
 /**
+ * The keys the page names in its prose rather than in the table, held here so the test that
+ * checks the table's keys against the editor's keymap checks these too.
+ */
+export const HEADING_3_KEYS = ['mod', 'alt', '3'];
+export const ALIGN_TABLE_KEYS = ['mod', 'shift', 'F'];
+
+/**
  * Help, `/help`: how the editor writes, the keys, and where import, export and the
  * assistants live (MAK-116).
  *
@@ -120,7 +127,7 @@ export function HelpPage({ build = buildInfo }: { build?: BuildInfo | null }) {
           {/* Not a row: the table is the bar, and the bar stops at Heading 2. */}
           <p className="muted small">
             A third-level heading (<code>### Heading</code>) has no button:{' '}
-            <kbd>{keys(apple, 'mod', 'alt', '3')}</kbd> makes one.
+            <kbd>{keys(apple, ...HEADING_3_KEYS)}</kbd> makes one.
           </p>
         </Topic>
 
@@ -128,7 +135,7 @@ export function HelpPage({ build = buildInfo }: { build?: BuildInfo | null }) {
           <p className="muted small">
             Press the table button in the bar and pick a size from the grid. In a table,{' '}
             <kbd>Tab</kbd> moves to the next cell and adds a row at the end, and{' '}
-            <kbd>{keys(apple, 'mod', 'shift', 'F')}</kbd> lines the columns up.
+            <kbd>{keys(apple, ...ALIGN_TABLE_KEYS)}</kbd> lines the columns up.
           </p>
         </Topic>
 
