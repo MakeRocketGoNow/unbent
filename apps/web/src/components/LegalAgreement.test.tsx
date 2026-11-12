@@ -57,7 +57,7 @@ describe('needsAgreement', () => {
 
 describe('agreementGate', () => {
   const config = (legal?: typeof LEGAL) => ({ isPending: false, data: { providers: [], legal } });
-  const base = { unreachable: false, agreed: null, pathname: '/notes' };
+  const base = { unreachable: false, agreed: null, pathname: '/notes', drawn: false };
 
   /** What keeps someone in their notes with no connection. */
   it('never asks a session the server could not be asked about, and does not wait', () => {
@@ -67,6 +67,12 @@ describe('agreementGate', () => {
 
   it('waits for the config rather than drawing the app and then replacing it', () => {
     expect(agreementGate({ ...base, config: { isPending: true } }).kind).toBe('wait');
+  });
+
+  /** What keeps the app on screen when the connection returns to a page loaded offline. */
+  it('does not wait once the app is drawn, though the config is asked again', () => {
+    expect(agreementGate({ ...base, drawn: true, config: { isPending: true } })).toEqual({ kind: 'open' });
+    expect(agreementGate({ ...base, drawn: true, config: config(LEGAL) })).toEqual({ kind: 'ask', legal: LEGAL });
   });
 
   it('opens the app when the config could not be fetched', () => {
