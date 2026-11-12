@@ -4,7 +4,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createMemoryHistory, createRootRoute, createRouter, RouterProvider } from '@tanstack/react-router';
 import type { AppConfig } from '@unbent/shared';
 import { keys } from '../queries.js';
-import { HelpPage } from './HelpPage.js';
+import { markdownKeymap } from '../editor/markdown-commands.js';
+import { FORMATS, HelpPage } from './HelpPage.js';
 
 const OPERATOR = { name: 'Acme Notes', email: 'help@example.com', host: 'notes.example.com' };
 
@@ -46,6 +47,16 @@ describe('HelpPage', () => {
     const { findByRole } = harness();
     const row = (await findByRole('rowheader', { name: 'Strikethrough' })).closest('tr')!;
     expect(row.textContent).toContain('⌘⇧X');
+  });
+
+  /* A key rebound in the editor and not here would leave the page naming a dead key. */
+  it('names only keys the editor binds', () => {
+    const bound = new Set(markdownKeymap.map((b) => b.key));
+    const spelled = (parts: string[]) =>
+      parts.map((p, i) => (i === parts.length - 1 ? p.toLowerCase() : p[0]!.toUpperCase() + p.slice(1))).join('-');
+    for (const row of FORMATS) {
+      if (row.shortcut) expect(bound, row.name).toContain(spelled(row.shortcut));
+    }
   });
 
   it('points at the support page where the instance has one', async () => {

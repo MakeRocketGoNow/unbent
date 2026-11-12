@@ -30,7 +30,7 @@ function keys(apple: boolean, ...parts: string[]): string {
   return apple ? named.join('') : named.join('+');
 }
 
-interface FormatRow {
+export interface FormatRow {
   name: string;
   writes: string;
   shortcut: string[] | null;
@@ -40,11 +40,12 @@ interface FormatRow {
  * The formatting bar, in its own order, with what each button writes into the note.
  *
  * Taken from `EditorToolbar`'s actions and `markdownKeymap` in `markdown-commands.ts`; a
- * button added or a key rebound there belongs here as well. The Markdown column is the
+ * button added or a key rebound there belongs here as well, and the test fails on a key
+ * that the keymap no longer binds. The Markdown column is the
  * point: a note is plain Markdown underneath, and knowing what a button writes is what
  * lets someone type it instead, or read a note exported to a file.
  */
-const FORMATS: FormatRow[] = [
+export const FORMATS: FormatRow[] = [
   { name: 'Bold', writes: '**text**', shortcut: ['mod', 'B'] },
   { name: 'Italic', writes: '_text_', shortcut: ['mod', 'I'] },
   { name: 'Strikethrough', writes: '~~text~~', shortcut: ['mod', 'shift', 'X'] },
