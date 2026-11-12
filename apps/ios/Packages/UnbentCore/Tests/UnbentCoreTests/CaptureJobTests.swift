@@ -405,6 +405,27 @@ final class CaptureJobTests: XCTestCase {
         XCTAssertEqual(["oldest", "full"], CaptureJob.firstOfEachRefusal(jobs, now: then.addingTimeInterval(400)))
     }
 
+    /// Four failures end a share made a minute ago. A capture the person was told is
+    /// kept is still kept after them, and goes again on a later return to the app.
+    func testAKeptCaptureOutOfTriesIsStillKept() {
+        let then = Date(timeIntervalSince1970: 1_000_000)
+        var job = job()
+        _ = job.handle(.create, refusal(#"{"code":"PLAN_INACTIVE"}"#), now: then)
+        for _ in 0..<3 { _ = job.handle(.create, CaptureOutcome(status: 500), now: then) }
+        XCTAssertEqual(.wait, job.handle(.create, CaptureOutcome(status: 500), now: then))
+        XCTAssertEqual(.planEnded, job.refused)
+        XCTAssertEqual(0, job.progress.attempts)
+        XCTAssertEqual([.create], job.pending(live: []))
+
+        // A refusal that will not change is still final, and so is thirty days.
+        XCTAssertEqual(.failed, job.handle(.create, CaptureOutcome(status: 400), now: then))
+        var old = self.job()
+        _ = old.handle(.create, refusal(#"{"code":"PLAN_INACTIVE"}"#), now: then)
+        let later = then.addingTimeInterval(31 * 24 * 60 * 60)
+        for _ in 0..<3 { _ = old.handle(.create, CaptureOutcome(status: 500), now: later) }
+        XCTAssertEqual(.failed, old.handle(.create, CaptureOutcome(status: 500), now: later))
+    }
+
     func testAClipThePlanRefusedStaysAClip() {
         var job = clipJob()
         XCTAssertEqual(.refused(.planEnded, again: false), job.handle(.create, refusal(#"{"code":"PLAN_INACTIVE"}"#)))

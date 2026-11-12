@@ -479,14 +479,29 @@ public struct CaptureJob: Codable, Equatable, Sendable {
         var progress = self.progress(of: step)
         defer { setProgress(progress, of: step) }
 
+        // Out of tries is the end of a share made a minute ago. A capture kept for the
+        // plan has a notice saying it is kept, and a bad afternoon for the server is not
+        // a reason to break that: its count starts over and it waits, still marked, for
+        // the next return to the app, until the thirty days every kept capture has are
+        // up. Not for a refusal that will not change (`isPermanent`), which is final.
+        let keeps = refused != nil && now.timeIntervalSince(refusedSince ?? now) <= Self.keptLongEnough
+
         if Self.waitsOut(outcome) {
             progress.unavailable += 1
-            guard progress.unavailable <= Self.maxUnavailable else { return .failed }
+            guard progress.unavailable <= Self.maxUnavailable else {
+                guard keeps else { return .failed }
+                progress = Progress()
+                return .wait
+            }
             return .retry(step, after: Self.wait(retryAfter: outcome.retryAfter), unavailable: true)
         }
 
         progress.attempts += 1
         guard progress.attempts < Self.maxAttempts, !Self.isPermanent(outcome) else {
+            if keeps, !Self.isPermanent(outcome) {
+                progress = Progress()
+                return .wait
+            }
             switch step {
             case .create:
                 return .failed

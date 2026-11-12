@@ -102,6 +102,18 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
             return Result.failure()
         }
 
+        /*
+         * Out of tries. For a share made a minute ago that is the end of it. A capture
+         * kept for the plan has a notice saying it is kept, and a bad afternoon for the
+         * server (four 500s, a day's read allowance spent) is not a reason to break
+         * that: it fails with its marker in place and goes again on a later return to
+         * the app, until the thirty days every kept capture has are up.
+         */
+        fun outOfTries(): Result {
+            val kept = if (refusedBefore) CaptureResume.kept(dir) else null
+            return if (kept != null && !kept.expired(System.currentTimeMillis())) Result.failure() else giveUp()
+        }
+
         // Attempts that failed for a reason of their own; see the 503 case below.
         fun attemptsSpent() = runAttemptCount - CaptureResume.unavailableAttempts(dir)
 
@@ -279,15 +291,15 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
                     CaptureNotifications.waiting(context, jobId, title)
                     Result.retry()
                 } else {
-                    giveUp()
+                    outOfTries()
                 }
             } else if (attemptsSpent() < MAX_ATTEMPTS) {
                 Result.retry()
             } else {
-                giveUp()
+                outOfTries()
             }
         } catch (e: Exception) {
-            if (attemptsSpent() < MAX_ATTEMPTS) Result.retry() else giveUp()
+            if (attemptsSpent() < MAX_ATTEMPTS) Result.retry() else outOfTries()
         }
     }
 
