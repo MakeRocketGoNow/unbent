@@ -18,6 +18,7 @@ import { Route as DeleteMyAccountRouteImport } from './routes/delete-my-account'
 import { Route as DeviceRouteImport } from './routes/device'
 import { Route as FeaturesRouteImport } from './routes/features'
 import { Route as GoodbyeRouteImport } from './routes/goodbye'
+import { Route as HelpRouteImport } from './routes/help'
 import { Route as ImportRouteImport } from './routes/import'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as NotesRouteImport } from './routes/notes'
@@ -100,6 +101,11 @@ const FeaturesRoute = FeaturesRouteImport.update({
 const GoodbyeRoute = GoodbyeRouteImport.update({
   id: '/goodbye',
   path: '/goodbye',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const HelpRoute = HelpRouteImport.update({
+  id: '/help',
+  path: '/help',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ImportRoute = ImportRouteImport.update({
@@ -304,6 +310,7 @@ export interface FileRoutesByFullPath {
   '/device': typeof DeviceRoute
   '/features': typeof FeaturesRoute
   '/goodbye': typeof GoodbyeRoute
+  '/help': typeof HelpRoute
   '/import': typeof ImportRoute
   '/login': typeof LoginRoute
   '/notes': typeof NotesRouteWithChildren
@@ -353,6 +360,7 @@ export interface FileRoutesByTo {
   '/device': typeof DeviceRoute
   '/features': typeof FeaturesRoute
   '/goodbye': typeof GoodbyeRoute
+  '/help': typeof HelpRoute
   '/import': typeof ImportRoute
   '/login': typeof LoginRoute
   '/preview-relay': typeof PreviewRelayRoute
@@ -400,6 +408,7 @@ export interface FileRoutesById {
   '/device': typeof DeviceRoute
   '/features': typeof FeaturesRoute
   '/goodbye': typeof GoodbyeRoute
+  '/help': typeof HelpRoute
   '/import': typeof ImportRoute
   '/login': typeof LoginRoute
   '/notes': typeof NotesRouteWithChildren
@@ -451,6 +460,7 @@ export interface FileRouteTypes {
     | '/device'
     | '/features'
     | '/goodbye'
+    | '/help'
     | '/import'
     | '/login'
     | '/notes'
@@ -500,6 +510,7 @@ export interface FileRouteTypes {
     | '/device'
     | '/features'
     | '/goodbye'
+    | '/help'
     | '/import'
     | '/login'
     | '/preview-relay'
@@ -546,6 +557,7 @@ export interface FileRouteTypes {
     | '/device'
     | '/features'
     | '/goodbye'
+    | '/help'
     | '/import'
     | '/login'
     | '/notes'
@@ -596,6 +608,7 @@ export interface RootRouteChildren {
   DeviceRoute: typeof DeviceRoute
   FeaturesRoute: typeof FeaturesRoute
   GoodbyeRoute: typeof GoodbyeRoute
+  HelpRoute: typeof HelpRoute
   ImportRoute: typeof ImportRoute
   LoginRoute: typeof LoginRoute
   NotesRoute: typeof NotesRouteWithChildren
@@ -681,6 +694,13 @@ declare module '@tanstack/react-router' {
       path: '/goodbye'
       fullPath: '/goodbye'
       preLoaderRoute: typeof GoodbyeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/help': {
+      id: '/help'
+      path: '/help'
+      fullPath: '/help'
+      preLoaderRoute: typeof HelpRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/import': {
@@ -1024,6 +1044,7 @@ const rootRouteChildren: RootRouteChildren = {
   DeviceRoute: DeviceRoute,
   FeaturesRoute: FeaturesRoute,
   GoodbyeRoute: GoodbyeRoute,
+  HelpRoute: HelpRoute,
   ImportRoute: ImportRoute,
   LoginRoute: LoginRoute,
   NotesRoute: NotesRouteWithChildren,

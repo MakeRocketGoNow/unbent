@@ -1,0 +1,62 @@
+import { describe, it, expect, afterEach, vi } from 'vitest';
+import { render, cleanup } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { createMemoryHistory, createRootRoute, createRouter, RouterProvider } from '@tanstack/react-router';
+import type { AppConfig } from '@unbent/shared';
+import { keys } from '../queries.js';
+import { HelpPage } from './HelpPage.js';
+
+const OPERATOR = { name: 'Acme Notes', email: 'help@example.com', host: 'notes.example.com' };
+
+function harness(config: Partial<AppConfig> = {}) {
+  const rootRoute = createRootRoute({ component: () => <HelpPage build={null} /> });
+  const router = createRouter({ routeTree: rootRoute, history: createMemoryHistory({ initialEntries: ['/help'] }) });
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  client.setQueryData(keys.config(), { providers: ['password'], ...config });
+  return render(
+    <QueryClientProvider client={client}>
+      {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+      <RouterProvider router={router as any} />
+    </QueryClientProvider>,
+  );
+}
+
+/** The help page (MAK-116): it has to answer "how do I make a table" on the page itself. */
+describe('HelpPage', () => {
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  it('says what the table button writes and how to press it, in this keyboard\'s keys', async () => {
+    vi.stubGlobal('navigator', { ...navigator, platform: 'Win32', userAgent: 'Windows' });
+    const { findByRole } = harness();
+    const row = (await findByRole('rowheader', { name: 'Table' })).closest('tr')!;
+    expect(row.textContent).toContain('| a | b |');
+    expect(row.textContent).toContain('Ctrl+Shift+T');
+  });
+
+  it('writes the same keys with Apple\'s symbols on a Mac', async () => {
+    vi.stubGlobal('navigator', { ...navigator, platform: 'MacIntel' });
+    const { findByRole } = harness();
+    const row = (await findByRole('rowheader', { name: 'Table' })).closest('tr')!;
+    expect(row.textContent).toContain('⌘⇧T');
+  });
+
+  it('points at the support page where the instance has one', async () => {
+    const { findByText } = harness({ operator: OPERATOR, frontPage: true });
+    expect((await findByText('Support')).getAttribute('href')).toBe('/support');
+  });
+
+  it('gives the address where there is no support page', async () => {
+    const { findByText } = harness({ operator: OPERATOR });
+    expect((await findByText('help@example.com')).getAttribute('href')).toBe('mailto:help@example.com');
+  });
+
+  /* Nobody named and no repository to send feedback to: nothing to point at, so no panel. */
+  it('leaves out the last panel when there is nowhere to send anyone', async () => {
+    const { findByText, queryByText } = harness();
+    await findByText('Formatting');
+    expect(queryByText('Something else')).toBeNull();
+  });
+});

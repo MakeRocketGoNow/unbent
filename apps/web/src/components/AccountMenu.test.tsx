@@ -123,6 +123,53 @@ describe('AccountMenu', () => {
   });
 
   /*
+   * Help explains the app, so every instance has it; Support reaches the people who run
+   * this one, so only an instance that names them does (MAK-116).
+   */
+  const OPERATOR = { name: 'Acme Notes', email: 'help@example.com', host: 'notes.example.com' };
+
+  it('offers Help on every instance, and no Support where nobody is named', async () => {
+    const { findByLabelText, getByText, queryByText } = harness('someone@example.com', () => {}, {});
+    fireEvent.click(await findByLabelText('Account: someone@example.com'));
+    expect(getByText('Help').getAttribute('href')).toBe('/help');
+    expect(queryByText('Support')).toBeNull();
+    expect(queryByText('Email support')).toBeNull();
+  });
+
+  it('sends Support to the support page where the instance has one', async () => {
+    const { findByLabelText, getByText } = harness('someone@example.com', () => {}, {
+      legal: BUILT_IN,
+      operator: OPERATOR,
+      frontPage: true,
+    });
+    fireEvent.click(await findByLabelText('Account: someone@example.com'));
+    expect(getByText('Support').getAttribute('href')).toBe('/support');
+  });
+
+  /* `/support` sends everyone to sign in where there is no front page, so the address. */
+  it('offers the operator\'s address where there is no support page', async () => {
+    const { findByLabelText, getByText, queryByText } = harness('someone@example.com', () => {}, {
+      operator: OPERATOR,
+    });
+    fireEvent.click(await findByLabelText('Account: someone@example.com'));
+    expect(queryByText('Support')).toBeNull();
+    expect(getByText('Email support').getAttribute('href')).toBe('mailto:help@example.com');
+  });
+
+  it('keeps the order a stuck person reads in: help, support, legal, sign out', async () => {
+    const { findByLabelText, getByText } = harness('someone@example.com', () => {}, {
+      legal: BUILT_IN,
+      operator: OPERATOR,
+      frontPage: true,
+    });
+    fireEvent.click(await findByLabelText('Account: someone@example.com'));
+    const order = ['Help', 'Support', 'Privacy', 'Terms', 'Sign out'].map((t) => getByText(t));
+    for (let i = 1; i < order.length; i++) {
+      expect(order[i - 1]!.compareDocumentPosition(order[i]!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    }
+  });
+
+  /*
    * An instance that publishes neither document offers no way to them, rather than a menu
    * item leading to a page that says there is nothing there.
    */

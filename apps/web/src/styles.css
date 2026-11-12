@@ -4780,6 +4780,66 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   .about-list dt { font-size: 0.8rem; }
 }
 
+/*
+   The help page (MAK-116): the formatting bar as a table, and the keys as a list.
+
+   A real table for the formatting because it is one: each row is a button, what it
+   writes, and its keys, and reading across a row is the whole use. The same hairlines and
+   measure as `.about-list`, so the page reads as one of the settings pages it sits beside.
+   The Markdown column may wrap anywhere: on a phone the link's sample is the widest thing
+   on the page, and a table that will not shrink pushes the panel off the screen.
+*/
+.help-table {
+  width: 100%;
+  max-width: 46rem;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+.help-table th,
+.help-table td {
+  padding: 0.5rem 0.75rem 0.5rem 0;
+  text-align: left;
+  vertical-align: baseline;
+  border-top: 1px solid var(--border);
+}
+.help-table tr:last-child > * { border-bottom: 1px solid var(--border); }
+.help-table thead th { color: var(--muted); font-weight: 500; font-size: 0.8rem; border-top: 0; }
+.help-table tbody th { font-weight: 400; }
+.help-table td:last-child { padding-right: 0; white-space: nowrap; }
+.help-table code { overflow-wrap: anywhere; }
+
+.help-keys { width: 100%; max-width: 46rem; margin: 0; font-size: 0.85rem; }
+.help-keys > div {
+  display: grid;
+  grid-template-columns: 9rem minmax(0, 1fr);
+  gap: 0.25rem 1rem;
+  padding: 0.5rem 0;
+  border-top: 1px solid var(--border);
+}
+.help-keys > div:last-child { border-bottom: 1px solid var(--border); }
+.help-keys dd { margin: 0; }
+@media (width <= 860px) {
+  .help-keys > div { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* A key, drawn as a keycap: the same wash `.panel code` uses, with a hairline under it so
+   it reads as something pressed rather than something typed. */
+.help kbd {
+  display: inline-block;
+  padding: 0.05em 0.4em;
+  font: inherit;
+  font-size: 0.85em;
+  line-height: 1.4;
+  white-space: nowrap;
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 0.25rem;
+}
+
+/* The assistant's address sits in a sentence and has no spaces to break at. */
+.help-url { overflow-wrap: anywhere; }
+
 /* The files the picker takes, before one is chosen. A list rather than a sentence each:
    the reader is matching the file they have against a shape, and a list scans. Same
    measure and colour as the paragraphs around it, so it reads as part of the same run. */
