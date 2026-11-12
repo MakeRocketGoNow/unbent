@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { postToApp } from '../app-bridge.js';
 import { Turnstile } from '../components/Turnstile.js';
 import { configQuery } from '../queries.js';
+import { followDeviceTheme } from '../theme.js';
 
 /**
  * Mints a Turnstile token for the native apps, which have no widget of their own.
@@ -31,8 +32,24 @@ import { configQuery } from '../queries.js';
  */
 const WIDGET_FAILED = 'The widget could not run.';
 
+/** Undoes `followDeviceTheme` when the page is left; set on entry. */
+let releaseTheme: (() => void) | null = null;
+
+/*
+ * In the device's theme, not the one chosen in Settings › Appearance: the apps draw this
+ * page inside their native sign-in screens, which follow the phone, and the web view keeps
+ * the site's storage across a sign-out. On entry rather than in an effect, so the page and
+ * the widget are drawn in it from their first frame.
+ */
 export const Route = createFileRoute('/turnstile')({
   component: TurnstilePage,
+  onEnter: () => {
+    releaseTheme ??= followDeviceTheme();
+  },
+  onLeave: () => {
+    releaseTheme?.();
+    releaseTheme = null;
+  },
 });
 
 export function TurnstilePage() {

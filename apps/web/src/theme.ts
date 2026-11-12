@@ -93,13 +93,36 @@ export function setThemeChoice(choice: ThemeChoice): void {
   apply();
 }
 
+/**
+ * Set while a page drawn inside a native screen is showing; see `followDeviceTheme`. True
+ * from the start on a load of `/turnstile`, as the inline script in `index.html` has it,
+ * so the frames before the route's `onEnter` are not drawn in the chosen theme either.
+ */
+let deviceOnly = typeof location !== 'undefined' && location.pathname === '/turnstile';
+
 function currentChoice(): ThemeChoice {
+  if (deviceOnly) return 'auto';
   return fallback ?? readChoice();
 }
 
 /** The theme in effect now, for script that draws once (a third-party widget). */
 export function currentTheme(): Theme {
   return resolveTheme(currentChoice());
+}
+
+/**
+ * Draws the page in the device's theme, whatever was chosen, until the returned function
+ * is called. For a page the apps host inside a native screen (`/turnstile`): the native
+ * screen around it follows the phone, and the web view shares the site's storage, so a
+ * choice made in Settings would otherwise draw a dark box in the middle of a light screen.
+ */
+export function followDeviceTheme(): () => void {
+  deviceOnly = true;
+  apply();
+  return () => {
+    deviceOnly = false;
+    apply();
+  };
 }
 
 function subscribe(listener: () => void): () => void {

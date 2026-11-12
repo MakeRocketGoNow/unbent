@@ -2,7 +2,7 @@ import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AppConfig } from '@unbent/shared';
-import { TurnstilePage } from './turnstile.js';
+import { Route, TurnstilePage } from './turnstile.js';
 import * as api from '../notes-api.js';
 import type { TurnstileOptions } from '../turnstile.js';
 
@@ -53,14 +53,25 @@ describe('the Turnstile page', () => {
     delete window.UnbentApp;
   });
 
-  /** Cloudflare's `auto` follows the device, which a theme chosen in Settings overrides. */
-  it('draws the widget in the theme chosen on this device', async () => {
+  /**
+   * The apps draw this page inside a native screen that follows the phone, so a theme
+   * chosen on the web must not reach it: a dark box in a light sign-in screen.
+   */
+  it('draws the widget in the device\'s theme, not the one chosen in Settings', async () => {
     localStorage.setItem('unbent.theme', 'dark');
+    const enter = Route.options.onEnter as () => void;
+    const leave = Route.options.onLeave as () => void;
+    enter();
     try {
+      expect(document.documentElement.dataset.theme).toBe('light');
       harness({ turnstile: { siteKey: '1x00' } });
       await waitFor(() => expect(widgets).toHaveLength(1));
-      expect(widgets[0]!.theme).toBe('dark');
+      expect(widgets[0]!.theme).toBe('light');
+      // Leaving gives the page back to the choice.
+      leave();
+      expect(document.documentElement.dataset.theme).toBe('dark');
     } finally {
+      leave();
       localStorage.removeItem('unbent.theme');
     }
   });
