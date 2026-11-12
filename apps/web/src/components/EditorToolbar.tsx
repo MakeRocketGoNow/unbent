@@ -205,7 +205,10 @@ function TableButton({ view, disabled = false }: { view: EditorView | null; disa
       <button
         type="button"
         className="tb-btn"
-        data-tip="Table (⌘⇧T)"
+        // No key in the tip: the editor binds Mod-Shift-T, but a browser tab keeps
+        // Ctrl+Shift+T (⌘⇧T) for reopening a closed tab, so in a tab it never arrives and
+        // the tip would send people to a key that reopens their last tab.
+        data-tip="Table"
         aria-label="Table"
         aria-expanded={open}
         aria-haspopup="dialog"
