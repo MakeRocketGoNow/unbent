@@ -104,7 +104,7 @@ object CaptureWork {
                 if (!sameAccount(record.account, prefs.account)) return@mapNotNull null
                 // A record this build cannot read is left for the sweep, not sent blind.
                 val input = runCatching { Data.fromByteArray(kept) }.getOrNull() ?: return@mapNotNull null
-                val dear = CaptureResume.readNoteId(dir) != null || isClip(input)
+                val dear = record.stuck || CaptureResume.readNoteId(dir) != null || isClip(input)
                 // A capture kept for the reason one has just landed after has had its
                 // answer: its quiet spell was for an account with no room.
                 val wait = if (record.refusal == roomFor) 0 else refusedWaitMs(dear, record.at, record.count, now)

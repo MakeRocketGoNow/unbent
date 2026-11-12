@@ -415,10 +415,22 @@ final class CaptureJobTests: XCTestCase {
         var job = job()
         _ = job.handle(.create, refusal(#"{"code":"PLAN_INACTIVE"}"#), now: then)
         for _ in 0..<3 { _ = job.handle(.create, CaptureOutcome(status: 500), now: then) }
-        XCTAssertEqual(.wait, job.handle(.create, CaptureOutcome(status: 500), now: then))
+        // Back to the notice that says why it is kept, quietly.
+        XCTAssertEqual(.refused(.planEnded, again: true), job.handle(.create, CaptureOutcome(status: 500), now: then))
         XCTAssertEqual(.planEnded, job.refused)
         XCTAssertEqual(0, job.progress.attempts)
         XCTAssertEqual([.create], job.pending(live: []))
+        // It failed rather than being refused, so even a note now waits out a quiet
+        // spell, and one that has not failed is asked about ahead of it.
+        XCTAssertEqual(2 * CaptureJob.refusedQuiet, job.refusedWait(now: then))
+        var other = self.job()
+        other.id = "other"
+        _ = other.handle(.create, refusal(#"{"code":"PLAN_INACTIVE"}"#), now: then.addingTimeInterval(60))
+        XCTAssertEqual(["other"], CaptureJob.firstOfEachRefusal([job, other], now: then.addingTimeInterval(120)))
+        // A refusal is an answer: it is an ordinary kept capture again.
+        var answered = job
+        _ = answered.handle(.create, refusal(#"{"code":"PLAN_INACTIVE"}"#), now: then)
+        XCTAssertEqual(0, answered.refusedWait(now: then))
 
         // A refusal that will not change is still final, and so is thirty days.
         XCTAssertEqual(.failed, job.handle(.create, CaptureOutcome(status: 400), now: then))

@@ -149,6 +149,14 @@ data class KeptCapture(
     val count: Int = 1,
     /** When it was first refused, which how long it is kept counts from ([expired]). */
     val since: Long = at,
+    /**
+     * True when its last resend ended out of tries rather than in a refusal: something
+     * about sending it is failing. It then waits out a quiet spell whatever it is
+     * (`CaptureWork.refusedWaitMs`), so that it does not go first for its reason on
+     * every return to the app, four attempts at a time, with the captures that would be
+     * taken waiting behind it. The next refusal is an answer, and clears it.
+     */
+    val stuck: Boolean = false,
 ) {
     /**
      * Whether a capture refused again at [now] has been kept long enough: thirty days

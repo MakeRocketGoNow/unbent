@@ -198,6 +198,12 @@ public struct CaptureJob: Codable, Equatable, Sendable {
     /// past `refused` so that when the capture lands the queue knows what there is room
     /// of now (`landedAfter`).
     public var tookAfter: CaptureRefusal?
+    /// True when its last resend ended out of tries rather than in a refusal: something
+    /// about sending it is failing. It then waits out a quiet spell whatever it is
+    /// (`refusedWait`), so that it does not go first for its reason on every return to
+    /// the app, four tries at a time, with the captures that would be taken waiting
+    /// behind it. The next refusal is an answer, and clears it.
+    public var refusedStuck: Bool?
     /// The background session the extension started this capture's upload in, which the
     /// app joins to hear how it went. Nil for a capture nothing has been sent for yet,
     /// and for one made in the app.
@@ -370,7 +376,7 @@ public struct CaptureJob: Codable, Equatable, Sendable {
     public func refusedWait(now: Date = Date()) -> TimeInterval {
         // A refusal "in the future" is a clock that was set back, not a reason to wait
         // until the wall time catches up with it.
-        guard refused != nil, created || clip != nil, let refusedAt, refusedAt <= now else { return 0 }
+        guard refused != nil, created || clip != nil || refusedStuck == true, let refusedAt, refusedAt <= now else { return 0 }
         return max(0, Self.quiet(count: refusedCount ?? 1) - now.timeIntervalSince(refusedAt))
     }
 
@@ -399,11 +405,24 @@ public struct CaptureJob: Codable, Equatable, Sendable {
     /// room of that kind now. Nil for a capture the plan never refused.
     public var landedAfter: CaptureRefusal? { refused ?? tookAfter }
 
+    /// Writes down an asking that ran out of tries, so its wait grows as a refusal's
+    /// does and it stands behind the captures that have not failed (`refusedStuck`).
+    /// True, for the action's `again`: the notice goes back, quietly, to the one that
+    /// says why the capture is kept, since the last may be "Waiting for Unbent to come
+    /// back" and nothing is waiting any more.
+    private mutating func stick(_ now: Date) -> Bool {
+        refusedAt = now
+        refusedCount = (refusedCount ?? 0) + 1
+        refusedStuck = true
+        return true
+    }
+
     private mutating func forgetRefusal() {
         refused = nil
         refusedAt = nil
         refusedCount = nil
         refusedSince = nil
+        refusedStuck = nil
     }
 
     /// Thirty seconds, doubling: WorkManager's backoff, which Android's worker runs on.
@@ -475,6 +494,7 @@ public struct CaptureJob: Codable, Equatable, Sendable {
             refusedAt = now
             refusedCount = (refusedCount ?? 0) + 1
             refusedSince = since
+            refusedStuck = nil
             return .refused(refusal, again: again)
         }
 
@@ -500,18 +520,18 @@ public struct CaptureJob: Codable, Equatable, Sendable {
         if Self.waitsOut(outcome) {
             progress.unavailable += 1
             guard progress.unavailable <= Self.maxUnavailable else {
-                guard keeps else { return .failed }
+                guard keeps, let refused else { return .failed }
                 progress = Progress()
-                return .wait
+                return .refused(refused, again: stick(now))
             }
             return .retry(step, after: Self.wait(retryAfter: outcome.retryAfter), unavailable: true)
         }
 
         progress.attempts += 1
         guard progress.attempts < Self.maxAttempts, !Self.isPermanent(outcome) else {
-            if keeps, !Self.isPermanent(outcome) {
+            if keeps, !Self.isPermanent(outcome), let refused {
                 progress = Progress()
-                return .wait
+                return .refused(refused, again: stick(now))
             }
             switch step {
             case .create:

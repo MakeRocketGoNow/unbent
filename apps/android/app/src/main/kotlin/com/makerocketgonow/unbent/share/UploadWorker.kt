@@ -94,7 +94,14 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
             }
         }
 
-        val api = UnbentApi(prefs.instance, prefs.session?.bearer ?: return@withContext Result.failure())
+        val bearer = prefs.session?.bearer ?: return@withContext Result.failure()
+        val api = UnbentApi(prefs.instance, bearer)
+
+        // Only for the session that was asked with: someone may have signed in as
+        // another account while the request was out, and the answer is not theirs.
+        fun remember(account: String) {
+            if (prefs.session?.bearer == bearer) prefs.account = account
+        }
 
         fun giveUp(): Result {
             Staging.clear(context, jobId)
@@ -111,7 +118,23 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
          */
         fun outOfTries(): Result {
             val kept = if (refusedBefore) CaptureResume.kept(dir) else null
-            return if (kept != null && !kept.expired(System.currentTimeMillis())) Result.failure() else giveUp()
+            val now = System.currentTimeMillis()
+            if (kept == null || kept.expired(now)) return giveUp()
+            // Written down as an asking that failed, so its wait grows as a refusal's
+            // does and it stands behind the captures that have not failed (`stuck`).
+            // Through `keepRefused`, which also clears the 503 count: left, it was
+            // subtracted from the next job's attempts and gave that job nineteen tries.
+            CaptureResume.keepRefused(
+                dir,
+                inputData.toByteArray(),
+                kept.copy(at = now, count = kept.count + 1, stuck = true),
+            )
+            // Back to the notice that says why it is kept: the last one may be "Unbent
+            // is busy. Will try again later", and nothing is trying any more.
+            runCatching { CaptureRefusal.valueOf(kept.refusal) }.getOrNull()?.let {
+                CaptureNotifications.refused(context, jobId, title, it, quiet = true)
+            }
+            return Result.failure()
         }
 
         // Attempts that failed for a reason of their own; see the 503 case below.
@@ -130,7 +153,7 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
                 val me = api.me()?.id ?: throw ApiException(401, "Session check")
                 // Remembered, so the next choosing passes this capture over without
                 // asking, and it does not stand in front of the signed-in account's own.
-                prefs.account = me
+                remember(me)
                 if (me != owner) return@withContext Result.failure()
             }
 
@@ -262,7 +285,7 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
                 val now = System.currentTimeMillis()
                 // Asked once, at the first refusal, and carried from then on. A failure
                 // to ask is not a reason to lose the capture; see `KeptCapture.account`.
-                val account = before?.account ?: runCatching { api.me()?.id }.getOrNull()?.also { prefs.account = it }
+                val account = before?.account ?: runCatching { api.me()?.id }.getOrNull()?.also(::remember)
                 val kept = KeptCapture(
                     refusal.name,
                     prefs.instance,
@@ -296,6 +319,10 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
                 } else {
                     outOfTries()
                 }
+            } else if (refusedBefore && isPermanent(e)) {
+                // A request the server will never take is not worth a month of asking,
+                // whatever the capture was kept for.
+                giveUp()
             } else if (attemptsSpent() < MAX_ATTEMPTS) {
                 Result.retry()
             } else {
@@ -332,6 +359,17 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
          * check's 503, the one a spent read allowance produces, sends `Retry-After`.
          */
         internal fun waitsOut(e: ApiException): Boolean = e.status == 503 && e.retryAfter != null
+
+        /**
+         * Whether an answer will be the same however often it is asked for: a 4xx, which
+         * is the server refusing the request as it stands (a file too large, a name it
+         * will not take). Not 401 or 402, which are the session's and the plan's and are
+         * decided before this, nor 408 (a timeout) and 429 ("later"). The iOS app's
+         * `CaptureJob.isPermanent`, used here only for a kept capture: a share made a
+         * minute ago is given up on after four tries either way.
+         */
+        internal fun isPermanent(e: ApiException): Boolean =
+            e.status in 400..499 && e.status !in setOf(401, 402, 408, 429)
 
         /**
          * The address a share is, when it is one web address and nothing else: what the
