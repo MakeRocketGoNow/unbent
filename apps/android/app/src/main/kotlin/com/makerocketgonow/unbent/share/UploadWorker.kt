@@ -2,6 +2,7 @@ package com.makerocketgonow.unbent.share
 
 import android.content.Context
 import androidx.work.CoroutineWorker
+import androidx.work.Data
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import com.makerocketgonow.unbent.Prefs
@@ -94,8 +95,17 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
             }
         }
 
+        // Read once, so the request, the check below and the record all mean the same
+        // instance, whatever App settings is changed to while this runs.
+        val instance = prefs.instance
+        // A resend can wait hours between being enqueued and running, and the instance
+        // was checked when it was enqueued. Checked again here: with the app pointed
+        // elsewhere since, it would go to that server as whoever is signed in there.
+        if (refusedBefore && !CaptureWork.sameInstance(CaptureResume.kept(dir)?.instance, instance)) {
+            return@withContext Result.failure()
+        }
         val bearer = prefs.session?.bearer ?: return@withContext Result.failure()
-        val api = UnbentApi(prefs.instance, bearer)
+        val api = UnbentApi(instance, bearer)
 
         // Only for the session that was asked with: someone may have signed in as
         // another account while the request was out, and the answer is not theirs.
@@ -150,10 +160,15 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
              */
             val owner = if (refusedBefore) CaptureResume.kept(dir)?.account else null
             if (owner != null) {
-                val me = api.me()?.id ?: throw ApiException(401, "Session check")
-                // Remembered, so the next choosing passes this capture over without
+                // What the app remembers is the answer for the session it holds
+                // (`Prefs.account` goes whenever the session changes), so the server is
+                // asked only until it has said once: a refused note is sent again on
+                // every return to the app, and each was a request to hear the same name.
+                // Remembered, too, so the next choosing passes this capture over without
                 // asking, and it does not stand in front of the signed-in account's own.
-                remember(me)
+                val me = prefs.account
+                    ?: api.me()?.id?.also(::remember)
+                    ?: throw ApiException(401, "Session check")
                 if (me != owner) return@withContext Result.failure()
             }
 
@@ -283,19 +298,30 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
                  */
                 val before = CaptureResume.kept(dir)
                 val now = System.currentTimeMillis()
-                // Asked once, at the first refusal, and carried from then on. A failure
-                // to ask is not a reason to lose the capture; see `KeptCapture.account`.
+                // Asked at a refusal until it is known, and carried from then on. A
+                // failure to ask is not a reason to lose the capture; see
+                // `KeptCapture.account`.
                 val account = before?.account ?: runCatching { api.me()?.id }.getOrNull()?.also(::remember)
                 val kept = KeptCapture(
                     refusal.name,
-                    prefs.instance,
+                    instance,
                     account,
                     at = now,
                     count = (before?.count ?: 0) + 1,
                     since = before?.since ?: now,
                 )
                 if (kept.expired(now)) {
-                    // Thirty days of asking is enough; see `KeptCapture.expired`.
+                    // Thirty days of asking is enough; see `KeptCapture.expired`. The
+                    // others kept for the same reason and account past their thirty
+                    // days have had the same answer, moments ago, and end with it:
+                    // asked in turn, each was uploaded once more, one per opening of
+                    // the app, only to be refused and deleted.
+                    for (other in CaptureWork.expiredWith(Staging.jobDirs(context), dir, kept, now)) {
+                        val input = CaptureResume.refusedJob(other)?.let { runCatching { Data.fromByteArray(it) }.getOrNull() }
+                        val id = input?.getString(KEY_JOB_ID) ?: continue
+                        Staging.clear(context, id)
+                        CaptureNotifications.failed(context, id, input.getString(KEY_TITLE).orEmpty())
+                    }
                     giveUp()
                 } else {
                     CaptureResume.keepRefused(dir, inputData.toByteArray(), kept)

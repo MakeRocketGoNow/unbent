@@ -2,6 +2,7 @@ package com.makerocketgonow.unbent
 
 import com.makerocketgonow.unbent.share.CaptureRefusal
 import com.makerocketgonow.unbent.share.CaptureResume
+import com.makerocketgonow.unbent.share.CaptureWork
 import com.makerocketgonow.unbent.share.KeptCapture
 import java.io.File
 import org.junit.Assert.assertArrayEquals
@@ -134,5 +135,26 @@ class CaptureResumeTest {
         val later = first.copy(at = 39 * day, count = 12)
         assertFalse(later.expired(39 * day))
         assertTrue(later.copy(at = 41 * day).expired(41 * day))
+    }
+
+    @Test
+    fun `when a kept capture is ended at thirty days, the others past theirs end with it`() {
+        val day = 24 * 60 * 60 * 1000L
+        val now = 100 * day
+        fun kept(name: String, since: Long, refusal: CaptureRefusal = CaptureRefusal.PLAN_ENDED, account: String? = "user-1") =
+            temp.newFolder(name).also {
+                CaptureResume.keepRefused(
+                    it, byteArrayOf(1),
+                    KeptCapture(refusal.name, "https://notes.example.com", account, at = now - day, since = since),
+                )
+            }
+        val ended = kept("ended", since = now - 40 * day)
+        val alsoOld = kept("also-old", since = now - 35 * day)
+        kept("recent", since = now - 5 * day)
+        kept("another-reason", since = now - 35 * day, refusal = CaptureRefusal.STORAGE_FULL)
+        kept("another-account", since = now - 35 * day, account = "user-2")
+
+        val dirs = temp.root.listFiles().orEmpty().toList()
+        assertEquals(listOf(alsoOld), CaptureWork.expiredWith(dirs, ended, CaptureResume.kept(ended)!!, now))
     }
 }

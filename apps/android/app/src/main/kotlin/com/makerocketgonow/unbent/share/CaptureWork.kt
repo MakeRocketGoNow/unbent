@@ -7,6 +7,7 @@ import androidx.work.Data
 import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import com.makerocketgonow.unbent.Prefs
 import java.io.File
@@ -30,7 +31,7 @@ object CaptureWork {
      * the app comes to the screen, and without the name a capture already going again
      * would be started once more for each, uploading its files side by side.
      */
-    fun enqueue(context: Context, input: Data, delayMs: Long = 0) {
+    fun enqueue(context: Context, input: Data, delayMs: Long = 0, hurry: Boolean = false) {
         val jobId = input.getString(UploadWorker.KEY_JOB_ID) ?: return
         val request = OneTimeWorkRequestBuilder<UploadWorker>()
             .setConstraints(
@@ -48,8 +49,21 @@ object CaptureWork {
          * photos have no text to extract and skip it, so no WebView spins up for a
          * screenshot.
          */
-        val work = WorkManager.getInstance(context.applicationContext)
-            .beginUniqueWork("capture-$jobId", ExistingWorkPolicy.KEEP, request)
+        val manager = WorkManager.getInstance(context.applicationContext)
+        val name = "capture-$jobId"
+        /*
+         * [hurry] for a kept capture that is to go now, though an earlier call may have
+         * enqueued it on a wait of hours (see [resumeRefused]'s `roomFor`): KEEP would
+         * drop this for that one, and the capture would sit out a wait it was meant to
+         * be spared. A job that is only waiting is replaced; one that is running is
+         * never touched, since replacing it would cancel an upload in flight. Called
+         * off the main thread, which the blocking read needs.
+         */
+        val waiting = hurry && runCatching {
+            val infos = manager.getWorkInfosForUniqueWork(name).get()
+            infos.isNotEmpty() && infos.none { it.state == WorkInfo.State.RUNNING }
+        }.getOrDefault(false)
+        val work = manager.beginUniqueWork(name, if (waiting) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP, request)
         val types = input.getStringArray(UploadWorker.KEY_TYPES).orEmpty().toList()
         if (IndexWorker.needsIndexing(types)) {
             val index = OneTimeWorkRequestBuilder<IndexWorker>()
@@ -119,10 +133,28 @@ object CaptureWork {
                 // goes then without anyone having to open the app a second time. The
                 // unique name drops every call that finds it already waiting.
                 val input = one.input ?: continue
-                enqueue(app, Data.Builder().putAll(input).putBoolean(UploadWorker.KEY_RESUMED, true).build(), one.waitMs)
+                enqueue(
+                    app,
+                    Data.Builder().putAll(input).putBoolean(UploadWorker.KEY_RESUMED, true).build(),
+                    one.waitMs,
+                    hurry = roomFor != null && one.record.refusal == roomFor,
+                )
             }
         }
     }
+
+    /**
+     * The other kept captures that end with [ended], one that has just been given up on
+     * at its thirty days: those kept for the same reason, instance and account that are
+     * past their own thirty days too. [UploadWorker] says why.
+     */
+    internal fun expiredWith(dirs: List<File>, endedDir: File, ended: KeptCapture, now: Long): List<File> =
+        dirs.filter { dir ->
+            if (dir == endedDir) return@filter false
+            val other = CaptureResume.kept(dir) ?: return@filter false
+            other.refusal == ended.refusal && other.account == ended.account &&
+                sameInstance(other.instance, ended.instance) && other.expired(now)
+        }
 
     /**
      * A kept capture that could be sent again, and how long it has still to wait first.
