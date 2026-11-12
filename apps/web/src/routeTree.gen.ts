@@ -43,6 +43,7 @@ import { Route as NotesIndexRouteImport } from './routes/notes.index'
 import { Route as NotesNoteIdRouteImport } from './routes/notes.$noteId'
 import { Route as SettingsIndexRouteImport } from './routes/settings.index'
 import { Route as SettingsAboutRouteImport } from './routes/settings.about'
+import { Route as SettingsAppearanceRouteImport } from './routes/settings.appearance'
 import { Route as SettingsConnectedAppsRouteImport } from './routes/settings.connected-apps'
 import { Route as SettingsExportRouteImport } from './routes/settings.export'
 import { Route as SettingsImportRouteImport } from './routes/settings.import'
@@ -228,6 +229,11 @@ const SettingsAboutRoute = SettingsAboutRouteImport.update({
   path: '/about',
   getParentRoute: () => SettingsRoute,
 } as any)
+const SettingsAppearanceRoute = SettingsAppearanceRouteImport.update({
+  id: '/appearance',
+  path: '/appearance',
+  getParentRoute: () => SettingsRoute,
+} as any)
 const SettingsConnectedAppsRoute = SettingsConnectedAppsRouteImport.update({
   id: '/connected-apps',
   path: '/connected-apps',
@@ -332,6 +338,7 @@ export interface FileRoutesByFullPath {
   '/embed/index-files': typeof EmbedIndexFilesRoute
   '/notes/$noteId': typeof NotesNoteIdRoute
   '/settings/about': typeof SettingsAboutRoute
+  '/settings/appearance': typeof SettingsAppearanceRoute
   '/settings/connected-apps': typeof SettingsConnectedAppsRoute
   '/settings/export': typeof SettingsExportRoute
   '/settings/import': typeof SettingsImportRoute
@@ -379,6 +386,7 @@ export interface FileRoutesByTo {
   '/embed/index-files': typeof EmbedIndexFilesRoute
   '/notes/$noteId': typeof NotesNoteIdRoute
   '/settings/about': typeof SettingsAboutRoute
+  '/settings/appearance': typeof SettingsAppearanceRoute
   '/settings/connected-apps': typeof SettingsConnectedAppsRoute
   '/settings/export': typeof SettingsExportRoute
   '/settings/import': typeof SettingsImportRoute
@@ -430,6 +438,7 @@ export interface FileRoutesById {
   '/embed/index-files': typeof EmbedIndexFilesRoute
   '/notes/$noteId': typeof NotesNoteIdRoute
   '/settings/about': typeof SettingsAboutRoute
+  '/settings/appearance': typeof SettingsAppearanceRoute
   '/settings/connected-apps': typeof SettingsConnectedAppsRoute
   '/settings/export': typeof SettingsExportRoute
   '/settings/import': typeof SettingsImportRoute
@@ -482,6 +491,7 @@ export interface FileRouteTypes {
     | '/embed/index-files'
     | '/notes/$noteId'
     | '/settings/about'
+    | '/settings/appearance'
     | '/settings/connected-apps'
     | '/settings/export'
     | '/settings/import'
@@ -529,6 +539,7 @@ export interface FileRouteTypes {
     | '/embed/index-files'
     | '/notes/$noteId'
     | '/settings/about'
+    | '/settings/appearance'
     | '/settings/connected-apps'
     | '/settings/export'
     | '/settings/import'
@@ -579,6 +590,7 @@ export interface FileRouteTypes {
     | '/embed/index-files'
     | '/notes/$noteId'
     | '/settings/about'
+    | '/settings/appearance'
     | '/settings/connected-apps'
     | '/settings/export'
     | '/settings/import'
@@ -871,6 +883,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsAboutRouteImport
       parentRoute: typeof SettingsRoute
     }
+    '/settings/appearance': {
+      id: '/settings/appearance'
+      path: '/appearance'
+      fullPath: '/settings/appearance'
+      preLoaderRoute: typeof SettingsAppearanceRouteImport
+      parentRoute: typeof SettingsRoute
+    }
     '/settings/connected-apps': {
       id: '/settings/connected-apps'
       path: '/connected-apps'
@@ -986,6 +1005,7 @@ const NotesRouteWithChildren = NotesRoute._addFileChildren(NotesRouteChildren)
 
 interface SettingsRouteChildren {
   SettingsAboutRoute: typeof SettingsAboutRoute
+  SettingsAppearanceRoute: typeof SettingsAppearanceRoute
   SettingsConnectedAppsRoute: typeof SettingsConnectedAppsRoute
   SettingsExportRoute: typeof SettingsExportRoute
   SettingsImportRoute: typeof SettingsImportRoute
@@ -1003,6 +1023,7 @@ interface SettingsRouteChildren {
 
 const SettingsRouteChildren: SettingsRouteChildren = {
   SettingsAboutRoute: SettingsAboutRoute,
+  SettingsAppearanceRoute: SettingsAppearanceRoute,
   SettingsConnectedAppsRoute: SettingsConnectedAppsRoute,
   SettingsExportRoute: SettingsExportRoute,
   SettingsImportRoute: SettingsImportRoute,

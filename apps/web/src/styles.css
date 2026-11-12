@@ -6473,6 +6473,128 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
    A notebook's name is unbounded, so it truncates before the button wraps.
 */
 .offline-storage { gap: 1.25rem; }
+
+/*
+   Settings › Appearance: three tiles, each the app drawn small in its theme.
+
+   One row at every width, phone included: three tiles fit a 320px screen at a little
+   under 6rem each, and a column of three pictures would push the explanation under them
+   off the first screen for no gain. Each grows to a cap so a desktop's wide panel does not
+   turn them into banners.
+
+   The radio stays drawn, beside its word, under the picture. The picture is the hit area
+   (the whole tile is the label) but a round button is what says "pick one of these"
+   without being read; a tile that is only a picture with a ring around the chosen one
+   left the choice to be guessed at. The ring is there too: thicker and green on the
+   chosen tile, so the change is in its shape and not only its colour.
+*/
+.theme-choices {
+  display: flex;
+  gap: 0.75rem;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: none;
+  min-inline-size: 0;
+}
+
+.theme-choice {
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 9.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  cursor: pointer;
+}
+
+.theme-choice-label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.9rem;
+}
+
+.theme-choice input { margin: 0; }
+
+.theme-preview {
+  position: relative;
+  display: block;
+  aspect-ratio: 4 / 3;
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+
+/* The ring, over the picture rather than as the box's own shadow, which the picture would
+   cover; inset, so choosing a tile never moves it. */
+.theme-preview::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 1px var(--border);
+  pointer-events: none;
+}
+
+.theme-choice:hover .theme-preview::after { box-shadow: inset 0 0 0 1px var(--muted); }
+
+.theme-choice:has(input:checked) .theme-preview::after { box-shadow: inset 0 0 0 2px var(--accent); }
+
+.theme-choice:has(input:focus-visible) .theme-preview {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/*
+   The two palettes, written out rather than read from the page's tokens: Dark's tile
+   has to be dark on a light page. The values are the themes' own --bg, --fg, --border
+   and --accent; change a theme and change its tile.
+*/
+.theme-mini {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  background: var(--m-bg);
+}
+
+.theme-mini-light { --m-bg: #fbfaf8; --m-fg: #1c1a17; --m-border: #e3ded7; --m-accent: #2f6f4f; }
+.theme-mini-dark { --m-bg: #16151a; --m-fg: #eae7e2; --m-border: #2e2c33; --m-accent: #7fc3a0; }
+
+/* Auto: the dark half below the diagonal, as a device's own setting tends to draw it. */
+.theme-preview-auto .theme-mini-dark { clip-path: polygon(100% 0, 100% 100%, 0 100%); }
+
+.theme-mini-rail {
+  flex: 0 0 22%;
+  background: color-mix(in srgb, var(--m-fg) 5%, var(--m-bg));
+  border-right: 1px solid var(--m-border);
+}
+
+.theme-mini-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 9%;
+  padding: 14% 12%;
+}
+
+.theme-mini-line {
+  display: block;
+  height: 0.3rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--m-fg) 22%, transparent);
+}
+
+.theme-mini-head { width: 60%; height: 0.4rem; background: var(--m-fg); }
+.theme-mini-short { width: 70%; }
+
+.theme-mini-chip {
+  display: block;
+  width: 35%;
+  height: 0.5rem;
+  margin-top: auto;
+  border-radius: 999px;
+  background: var(--m-accent);
+}
 .offline-kept {
   align-self: stretch;
   list-style: none;

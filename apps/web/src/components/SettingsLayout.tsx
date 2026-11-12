@@ -13,6 +13,8 @@ const TABS = [
   { to: '/settings/import', label: 'Import' },
   { to: '/settings/export', label: 'Export' },
   { to: '/settings/offline', label: 'Offline' },
+  // Beside Offline: both are about this device rather than the account.
+  { to: '/settings/appearance', label: 'Appearance' },
   { to: '/settings/maintenance', label: 'Maintenance' },
   { to: '/settings/security', label: 'Security' },
   { to: '/settings/connected-apps', label: 'AI assistants' },
