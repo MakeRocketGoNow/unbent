@@ -252,15 +252,16 @@ final class CaptureJobTests: XCTestCase {
     /// same request is what goes again.
     func testACaptureThePlanRefusedIsKeptWholeAndGoesAgain() {
         var fresh = job()
-        XCTAssertEqual(.refused(.planEnded), fresh.handle(.create, refusal(#"{"code":"PLAN_INACTIVE"}"#)))
+        XCTAssertEqual(.refused(.planEnded, again: false), fresh.handle(.create, refusal(#"{"code":"PLAN_INACTIVE"}"#)))
         XCTAssertEqual(.planEnded, fresh.refused)
         XCTAssertEqual(0, fresh.progress.attempts)
         XCTAssertFalse(fresh.created)
         XCTAssertEqual([.create], fresh.pending(live: []))
 
-        // However often it is asked: a 4xx is otherwise final at once, and four tries are all there are.
+        // However often it is asked: a 4xx is otherwise final at once, and four tries are all
+        // there are. Each after the first is the same news, to be said quietly.
         for _ in 0..<6 {
-            XCTAssertEqual(.refused(.planEnded), fresh.handle(.create, refusal(#"{"code":"PLAN_INACTIVE"}"#)))
+            XCTAssertEqual(.refused(.planEnded, again: true), fresh.handle(.create, refusal(#"{"code":"PLAN_INACTIVE"}"#)))
         }
         XCTAssertEqual(0, fresh.progress.attempts)
     }
@@ -271,7 +272,7 @@ final class CaptureJobTests: XCTestCase {
         var job = job()
         _ = job.handle(.create, ok)
         _ = job.handle(.file("file-0"), ok)
-        XCTAssertEqual(.refused(.storageFull), job.handle(.file("file-1"), refusal(#"{"code":"STORAGE_FULL","of":"files"}"#)))
+        XCTAssertEqual(.refused(.storageFull, again: false), job.handle(.file("file-1"), refusal(#"{"code":"STORAGE_FULL","of":"files"}"#)))
         XCTAssertNotEqual(true, job.file("file-1")?.failed)
         XCTAssertEqual(0, job.filesNotAdded)
         XCTAssertEqual([.file("file-1")], job.pending(live: []))
@@ -288,7 +289,7 @@ final class CaptureJobTests: XCTestCase {
 
     func testAClipThePlanRefusedStaysAClip() {
         var job = clipJob()
-        XCTAssertEqual(.refused(.planEnded), job.handle(.create, refusal(#"{"code":"PLAN_INACTIVE"}"#)))
+        XCTAssertEqual(.refused(.planEnded, again: false), job.handle(.create, refusal(#"{"code":"PLAN_INACTIVE"}"#)))
         XCTAssertNotNil(job.clip)
     }
 
@@ -354,7 +355,7 @@ final class CaptureJobTests: XCTestCase {
     /// What the server says about the account or the session is not about the page.
     func testARefusalEveryCaptureHandlesIsNotAReasonToFallBack() {
         var plan = clipJob()
-        XCTAssertEqual(.refused(.plan), plan.handle(.create, CaptureOutcome(status: 402)))
+        XCTAssertEqual(.refused(.plan, again: false), plan.handle(.create, CaptureOutcome(status: 402)))
         XCTAssertNotNil(plan.clip)
         var session = clipJob()
         XCTAssertEqual(.signInNeeded, session.handle(.create, CaptureOutcome(status: 401)))

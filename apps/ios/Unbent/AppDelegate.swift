@@ -55,9 +55,10 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
     }
 
     /// With the app on screen a notification is otherwise swallowed, and a file opened in
-    /// the app is captured with the app on screen.
+    /// the app is captured with the app on screen. Not as a banner for a refusal the
+    /// person has been told of already: that one is repeated whenever the app is opened.
     func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
-        [.banner, .list]
+        CaptureNotifications.quiet(notification.request.content) ? [.list] : [.banner, .list]
     }
 }
 

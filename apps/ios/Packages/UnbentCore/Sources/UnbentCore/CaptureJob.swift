@@ -85,8 +85,9 @@ public enum CaptureAction: Equatable, Sendable {
     /// made while signed out, and goes again after the next sign-in.
     case signInNeeded
     /// The plan has no room for it. Say which room; the capture is kept as it is, and
-    /// goes again when the app is next opened (`CaptureQueue.resumeAll`).
-    case refused(CaptureRefusal)
+    /// goes again when the app is next opened (`CaptureQueue.resumeAll`). `again` when it
+    /// had been refused before and this is the same news, which is then said quietly.
+    case refused(CaptureRefusal, again: Bool)
     /// The note could not be made. Delete the files and say so.
     case failed
 }
@@ -350,8 +351,9 @@ public struct CaptureJob: Codable, Equatable, Sendable {
             // stays a clip, and the same requests go again once there may be room. Before
             // the clip's fallback and `isPermanent`, both of which would otherwise have it:
             // the plain note is refused the same way, and giving up deletes the files.
+            let again = refused != nil
             refused = refusal
-            return .refused(refusal)
+            return .refused(refusal, again: again)
         }
 
         if step == .create, clip != nil, Self.clipFallsBack(outcome) {

@@ -58,7 +58,13 @@ public struct CaptureNotifications: CaptureNotifying {
     /// line says the one thing the person cannot see for themselves, which is that what
     /// they shared has not been lost and needs no sharing again. The words are the
     /// Android app's (`refused_*` in its `strings.xml`).
-    public func refused(_ job: CaptureJob, _ refusal: CaptureRefusal) {
+    ///
+    /// `again` for a capture that was refused before and has been again, which happens
+    /// each time the app is opened while the plan stays as it is. The first notice may
+    /// drop down over the app; a repeat is passive, which `quiet(_:)` reads to keep it to
+    /// Notification Center. Without that, "Your plan has ended" came down over the page
+    /// on every return to the app. Android's repeat is silent for the same reason.
+    public func refused(_ job: CaptureJob, _ refusal: CaptureRefusal, again: Bool) {
         let title = switch refusal {
         case .planEnded: "Your plan has ended"
         case .freeNotesFull: "The free plan is full"
@@ -66,7 +72,13 @@ public struct CaptureNotifications: CaptureNotifying {
         case .notesFull: "Out of room for notes"
         case .plan: "Your plan has no room for this"
         }
-        post(job, title, detail: "Not saved yet. It is kept on this device and sent again when you open Unbent.", plan: true)
+        post(job, title, detail: "Not saved yet. It is kept on this device and sent again when you open Unbent.", plan: true, quiet: again)
+    }
+
+    /// Whether a notification is one to list without showing over the app: a repeat of a
+    /// refusal the person has already been told about.
+    public static func quiet(_ content: UNNotificationContent) -> Bool {
+        content.interruptionLevel == .passive
     }
 
     /// The page a tapped notification is for, as a path on the site: the note "Saved"
@@ -83,12 +95,13 @@ public struct CaptureNotifications: CaptureNotifying {
     private static let planKey = "plan"
 
     /// The note's title is the second line throughout, so "Saved" says what was saved.
-    private func post(_ job: CaptureJob, _ title: String, noteId: String? = nil, detail: String? = nil, plan: Bool = false) {
+    private func post(_ job: CaptureJob, _ title: String, noteId: String? = nil, detail: String? = nil, plan: Bool = false, quiet: Bool = false) {
         let content = UNMutableNotificationContent()
         content.title = title
         content.body = [job.title.isEmpty ? "Untitled" : job.title, detail].compactMap { $0 }.joined(separator: "\n")
         if let noteId { content.userInfo = [Self.noteKey: noteId] }
         if plan { content.userInfo = [Self.planKey: true] }
+        if quiet { content.interruptionLevel = .passive }
         // Notifications may be off; the capture itself is unaffected.
         UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: job.id, content: content, trigger: nil))
     }

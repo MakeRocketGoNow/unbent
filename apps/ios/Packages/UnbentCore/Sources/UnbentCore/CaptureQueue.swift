@@ -9,7 +9,7 @@ public protocol CaptureNotifying: Sendable {
     func saved(_ job: CaptureJob)
     func failed(_ job: CaptureJob)
     func signInNeeded(_ job: CaptureJob)
-    func refused(_ job: CaptureJob, _ refusal: CaptureRefusal)
+    func refused(_ job: CaptureJob, _ refusal: CaptureRefusal, again: Bool)
 }
 
 /// Uploads captures in the system's background sessions, and applies what comes back.
@@ -331,13 +331,13 @@ public final class CaptureQueue: NSObject, @unchecked Sendable {
             cancelRequests(of: job)
             notifier.signInNeeded(job)
             onSignedOut(job.origin)
-        case .refused(let refusal):
+        case .refused(let refusal, let again):
             // The files stay, and so does the record, which now says why
             // (`CaptureJob.refused`). Its other requests would be refused one by one for
             // the same reason, each a file uploaded to hear it, so they are recalled;
             // `resumeAll(refused: true)` sends what is left when the app is next opened.
             cancelRequests(of: job)
-            notifier.refused(job, refusal)
+            notifier.refused(job, refusal, again: again)
         case .failed:
             end(job)
             notifier.failed(job)
