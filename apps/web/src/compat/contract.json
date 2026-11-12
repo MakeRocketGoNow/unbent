@@ -1986,7 +1986,8 @@
       "apps/web/src/store/library-lock.ts": "556ffd6d09b70bc7",
       "apps/web/src/store/locks.ts": "eeb36647ea9525a7",
       "apps/web/src/store/names.ts": "1058b118c0b6b786",
-      "apps/web/src/store/wipe.ts › CloseMessage": "505c1bac8cea94ca"
+      "apps/web/src/store/wipe.ts › CloseMessage": "505c1bac8cea94ca",
+      "apps/web/src/store/wipe.ts › ShrinkState": "6c73f6b43edf47ba"
     },
     "worker": {
       "apps/web/src/store/files.ts": "a2ccb0a59753100b",
