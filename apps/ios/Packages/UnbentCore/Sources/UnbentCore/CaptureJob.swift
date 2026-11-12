@@ -477,8 +477,8 @@ public struct CaptureJob: Codable, Equatable, Sendable {
     /// - A capture the plan refused goes only on a pass that sends those (`refused`),
     ///   and then only one for each reason (`firstOfEachRefusal`), after the rest of its
     ///   quiet spell (`refusedWait`).
-    /// - `roomFor` is the reason a capture that has just landed had been refused for:
-    ///   there is room of that kind now, so one kept for it goes without a wait. One
+    /// - `roomFor` is the reasons a capture that has just landed shows there is room for
+    ///   now (`roomShown`), so one kept for any of them goes without a wait. One
     ///   that the system already holds a request for is left to it, and passed over in
     ///   the choosing, so that the pass sends another kept for that reason now rather
     ///   than choosing the one whose request cannot be hurried.
@@ -489,25 +489,44 @@ public struct CaptureJob: Codable, Equatable, Sendable {
         signedIn: (String) -> Bool,
         current: [String: String],
         refused: Bool,
-        roomFor: CaptureRefusal? = nil,
+        roomFor: Set<CaptureRefusal> = [],
         now: Date = Date()
     ) -> [Resend] {
         let able = jobs.filter { !$0.isSaved && signedIn($0.origin) && $0.mayGo(as: current[$0.origin]) }
         func out(_ job: CaptureJob) -> Bool { live.contains { $0.hasPrefix(job.id + "|") } }
-        let choosable = able.filter { !(roomFor != nil && $0.refused == roomFor && out($0)) }
+        func room(_ job: CaptureJob) -> Bool { job.refused.map(roomFor.contains) ?? false }
+        let choosable = able.filter { !(room($0) && out($0)) }
         let asked = refused ? firstOfEachRefusal(choosable, now: now) : []
         return able.compactMap { job in
             if job.refused != nil, !asked.contains(job.id) { return nil }
             let steps = job.pending(live: live)
             guard !steps.isEmpty else { return nil }
-            let room = roomFor != nil && job.refused == roomFor
-            return Resend(job: job.id, steps: steps, wait: room ? 0 : job.refusedWait(now: now))
+            return Resend(job: job.id, steps: steps, wait: room(job) ? 0 : job.refusedWait(now: now))
         }
     }
 
     /// The reason this capture had been refused for, for one that has landed: there is
     /// room of that kind now. Nil for a capture the plan never refused.
     public var landedAfter: CaptureRefusal? { refused ?? tookAfter }
+
+    /// What a capture that has landed shows there is room for, as the reasons a capture
+    /// can be kept for.
+    ///
+    /// A note with no files means the plan holds (or the free plan has room for a note)
+    /// and the notes have room; one with files means the plan holds and its storage has
+    /// room, and its note may have been made long before. Neither says anything of the
+    /// other's room, so each clears only its own, with the reason the capture itself had
+    /// been refused for, which has certainly been answered.
+    ///
+    /// Only that last reason counted at first, and trying it on a phone showed what that
+    /// missed: someone subscribes, shares something new, and it lands, while the page
+    /// they shared last week stays on its quarter of an hour, or its six hours.
+    /// Android's half is `CaptureWork.roomShownBy`.
+    public var roomShown: Set<CaptureRefusal> {
+        var room: Set<CaptureRefusal> = files.isEmpty ? [.planEnded, .freeNotesFull, .notesFull] : [.planEnded, .storageFull]
+        if let landedAfter { room.insert(landedAfter) }
+        return room
+    }
 
     /// Writes down an asking that ran out of tries, so its wait grows as a refusal's
     /// does and it stands behind the captures that have not failed (`refusedStuck`).

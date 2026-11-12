@@ -187,6 +187,10 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
             // it, which is the one that posts "Saved"; a retry that finds the note made
             // says "Saved" like any other, since it cannot tell.
             var clipped = false
+            // What this attempt got the server to take, for what it shows there is room
+            // for when the capture lands (`CaptureWork.roomShownBy`).
+            var madeNote = false
+            var uploadedFile = false
             var noteTitle = title
             val noteId = CaptureResume.readNoteId(dir) ?: run {
                 /*
@@ -211,6 +215,7 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
                     }
                 }
                 noteTitle = note.title
+                madeNote = true
                 CaptureResume.writeNoteId(dir, note.id)
                 note.id
             }
@@ -238,17 +243,18 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
                 // rather than failing the whole capture and losing the others.
                 if (file.exists()) {
                     val uploaded = api.uploadFile(noteId, file, name, type)
+                    uploadedFile = true
                     if (IndexWorker.needsIndexing(listOf(type)) && !uploaded.indexedByServer) needsIndex = true
                 }
             }
 
-            val roomFor = if (refusedBefore) CaptureResume.kept(dir)?.refusal else null
+            val kept = if (refusedBefore) CaptureResume.kept(dir)?.refusal else null
             Staging.clear(context, jobId)
-            // Something landed, so there may be room: the kept captures are looked at
-            // again, and those kept for the reason this one had been refused for go at
-            // once (`CaptureWork.firstOfEach`). After any capture, as on iOS: a share
-            // made today that lands is as good a sign as a kept one.
-            CaptureWork.resumeRefused(context, roomFor)
+            // Something landed, so there is room of some kind: the kept captures are
+            // looked at again, and those kept for a reason this one answers go at once
+            // (`CaptureWork.roomShownBy`, `firstOfEach`). After any capture, as on iOS:
+            // a share made today that lands is as good a sign as a kept one.
+            CaptureWork.resumeRefused(context, CaptureWork.roomShownBy(madeNote, uploadedFile, kept))
 
             // The page's own title where the server chose it: "Saved" names what landed.
             CaptureNotifications.saved(context, jobId, noteTitle, noteId, clipped)

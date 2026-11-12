@@ -290,6 +290,17 @@ final class CaptureJobTests: XCTestCase {
         XCTAssertNil(self.job().landedAfter)
     }
 
+    /// A share made today that lands answers for the ones kept last week, as far as it
+    /// can: a note says the plan holds and notes have room, a file that storage has.
+    func testACaptureThatLandsSaysWhatThereIsRoomFor() {
+        XCTAssertEqual([.planEnded, .freeNotesFull, .notesFull], job(files: []).roomShown)
+        XCTAssertEqual([.planEnded, .storageFull], job().roomShown)
+        var kept = job(files: [])
+        _ = kept.handle(.create, refusal(#"{"code":"STORAGE_FULL","of":"files"}"#))
+        _ = kept.handle(.create, ok)
+        XCTAssertTrue(kept.roomShown.contains(.storageFull))
+    }
+
     /// The session lapsed while the capture waited on the plan. It is now one waiting for
     /// a sign-in, which is what its notice says, and the resend after signing in is a
     /// first asking again.
@@ -518,7 +529,7 @@ final class CaptureJobTests: XCTestCase {
         signedIn: Bool = true,
         current: [String: String] = [:],
         refused: Bool,
-        roomFor: CaptureRefusal? = nil,
+        roomFor: Set<CaptureRefusal> = [],
         now: Date
     ) -> [CaptureJob.Resend] {
         CaptureJob.resends(jobs, live: live, signedIn: { _ in signedIn }, current: current, refused: refused, roomFor: roomFor, now: now)
@@ -580,18 +591,18 @@ final class CaptureJobTests: XCTestCase {
         )
         XCTAssertEqual(
             [CaptureJob.Resend(job: "waiting", steps: [.create], wait: 0)],
-            resends([waiting, behind], refused: true, roomFor: .planEnded, now: soon)
+            resends([waiting, behind], refused: true, roomFor: [.planEnded], now: soon)
         )
         // The first is already with the system, on its wait, and cannot be hurried: the
         // pass sends the one behind it now rather than choosing it again and sending nothing.
         XCTAssertEqual(
             [CaptureJob.Resend(job: "behind", steps: [.create], wait: 0)],
-            resends([waiting, behind], live: ["waiting|create"], refused: true, roomFor: .planEnded, now: soon)
+            resends([waiting, behind], live: ["waiting|create"], refused: true, roomFor: [.planEnded], now: soon)
         )
         // Room for one reason is not room for another.
         XCTAssertEqual(
             CaptureJob.refusedQuiet - 60,
-            resends([waiting], refused: true, roomFor: .storageFull, now: soon).first?.wait
+            resends([waiting], refused: true, roomFor: [.storageFull], now: soon).first?.wait
         )
     }
 

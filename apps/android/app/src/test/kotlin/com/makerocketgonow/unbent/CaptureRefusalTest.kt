@@ -130,4 +130,19 @@ class CaptureRefusalTest {
         val chosen = CaptureWork.firstOfEach(listOf(kept("failing", since = 100, stuck = true), kept("fine", since = 900, stuck = false)))
         assertEquals(listOf("fine"), chosen.map { it.dir.name })
     }
+
+    @Test
+    fun `a capture that lands says what there is room for, and no more`() {
+        val ended = CaptureRefusal.PLAN_ENDED.name
+        val freeFull = CaptureRefusal.FREE_NOTES_FULL.name
+        val notesFull = CaptureRefusal.NOTES_FULL.name
+        val storage = CaptureRefusal.STORAGE_FULL.name
+        // A note was made: the plan holds and notes have room. Nothing is known of the files' storage.
+        assertEquals(setOf(ended, freeFull, notesFull), CaptureWork.roomShownBy(madeNote = true, uploadedFile = false, kept = null))
+        // A file went up onto a note made earlier: the plan holds and storage has room.
+        assertEquals(setOf(ended, storage), CaptureWork.roomShownBy(madeNote = false, uploadedFile = true, kept = null))
+        // A kept capture that landed has had its own reason answered, whatever else.
+        assertEquals(setOf(ended, storage), CaptureWork.roomShownBy(madeNote = false, uploadedFile = true, kept = storage))
+        assertEquals(emptySet<String>(), CaptureWork.roomShownBy(madeNote = false, uploadedFile = false, kept = null))
+    }
 }

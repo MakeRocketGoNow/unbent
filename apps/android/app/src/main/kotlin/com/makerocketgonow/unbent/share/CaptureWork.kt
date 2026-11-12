@@ -98,14 +98,14 @@ object CaptureWork {
      * job refused again rewrites it. Until then a call that finds the capture already
      * going is dropped by the unique name, so calling this often costs nothing.
      *
-     * [roomFor] is the reason a kept capture that has just landed had been refused for
-     * (a [CaptureRefusal]'s name): there is room of that kind now, so the others kept
-     * for it go without waiting out a quiet spell that can be six hours. Otherwise the
-     * scans behind the first one to land arrived hours apart.
+     * [roomFor] is the reasons a capture that has just landed shows there is room for
+     * now ([roomShownBy], [CaptureRefusal] names): captures kept for those go without
+     * waiting out a quiet spell that can be six hours. Otherwise the scans behind the
+     * first one to land arrived hours apart.
      *
      * Off the main thread: it lists a directory and reads a small file per capture.
      */
-    fun resumeRefused(context: Context, roomFor: String? = null) {
+    fun resumeRefused(context: Context, roomFor: Set<String> = emptySet()) {
         val app = context.applicationContext
         thread {
             val prefs = Prefs(app)
@@ -131,7 +131,7 @@ object CaptureWork {
                 val dear = record.stuck || CaptureResume.readNoteId(dir) != null || isClip(input)
                 // A capture kept for the reason one has just landed after has had its
                 // answer: its quiet spell was for an account with no room.
-                val wait = if (record.refusal == roomFor) 0 else refusedWaitMs(dear, record.at, record.count, now)
+                val wait = if (record.refusal in roomFor) 0 else refusedWaitMs(dear, record.at, record.count, now)
                 Waiting(dir, input, record, wait)
             }
             for (one in firstOfEach(waiting)) {
@@ -147,10 +147,30 @@ object CaptureWork {
                     app,
                     Data.Builder().putAll(input).putBoolean(UploadWorker.KEY_RESUMED, true).build(),
                     one.waitMs,
-                    hurry = roomFor != null && one.record.refusal == roomFor,
+                    hurry = one.record.refusal in roomFor,
                 )
             }
         }
+    }
+
+    /**
+     * What a capture that has just landed shows there is room for, as the reasons a
+     * capture can be kept for.
+     *
+     * A note that was made means the plan holds (or the free plan has room for a note)
+     * and the notes have room; a file that was uploaded means the plan holds and its
+     * storage has room. Neither says anything about the other's room, so each clears
+     * only its own. [kept] is the reason the landed capture had itself been refused for,
+     * which has certainly been answered.
+     *
+     * Only a kept capture's own reason counted at first, and trying it on a phone showed
+     * what that missed: someone subscribes, shares something new, and it lands, while
+     * the page they shared last week stays on its quarter of an hour, or its six hours.
+     */
+    internal fun roomShownBy(madeNote: Boolean, uploadedFile: Boolean, kept: String?): Set<String> = buildSet {
+        if (madeNote) addAll(listOf(CaptureRefusal.PLAN_ENDED, CaptureRefusal.FREE_NOTES_FULL, CaptureRefusal.NOTES_FULL).map { it.name })
+        if (uploadedFile) addAll(listOf(CaptureRefusal.PLAN_ENDED, CaptureRefusal.STORAGE_FULL).map { it.name })
+        kept?.let(::add)
     }
 
     /**

@@ -80,7 +80,7 @@ public final class CaptureQueue: NSObject, @unchecked Sendable {
     /// Whether the pass waiting behind this one was asked to send refused captures too,
     /// and what it was told there is room of.
     private var resumeAgainRefused = false
-    private var resumeAgainRoom: CaptureRefusal?
+    private var resumeAgainRoom: Set<CaptureRefusal> = []
     /// What the server has said so far with each 402 still arriving, by the request's
     /// label. Read and written on `work`. See `urlSession(_:dataTask:didReceive:)`.
     private var refusals: [CaptureStep.Key: Data] = [:]
@@ -172,16 +172,16 @@ public final class CaptureQueue: NSObject, @unchecked Sendable {
     /// launch that sent a refused capture again would be launched again for its refusal,
     /// for as long as the plan stayed as it was.
     ///
-    /// `roomFor` is the reason a capture that has just landed had been refused for:
-    /// there is room of that kind now, so the others kept for it go without waiting out
-    /// a quiet spell that can be six hours. Otherwise the scans behind the first one to
+    /// `roomFor` is the reasons a capture that has just landed shows there is room for
+    /// now (`CaptureJob.roomShown`): the others kept for those go without waiting out a
+    /// quiet spell that can be six hours. Otherwise the scans behind the first one to
     /// land arrived hours apart.
-    public func resumeAll(refused: Bool = false, roomFor: CaptureRefusal? = nil) {
+    public func resumeAll(refused: Bool = false, roomFor: Set<CaptureRefusal> = []) {
         work.async {
             guard !self.resuming else {
                 self.resumeAgain = true
                 self.resumeAgainRefused = self.resumeAgainRefused || refused
-                self.resumeAgainRoom = roomFor ?? self.resumeAgainRoom
+                self.resumeAgainRoom.formUnion(roomFor)
                 return
             }
             self.resuming = true
@@ -265,7 +265,7 @@ public final class CaptureQueue: NSObject, @unchecked Sendable {
         let room = resumeAgainRoom
         resumeAgain = false
         resumeAgainRefused = false
-        resumeAgainRoom = nil
+        resumeAgainRoom = []
         resumeAll(refused: refused, roomFor: room)
     }
 
@@ -409,10 +409,9 @@ public final class CaptureQueue: NSObject, @unchecked Sendable {
             // were waiting on an answer like this one (`CaptureJob.firstOfEachRefusal`).
             // Only after a success, so a wake-up for a refusal never sends another, and
             // after any capture, as on Android: a share made today that lands is as good
-            // a sign as a kept one. Those kept for the reason this one had been refused
-            // for go at once.
+            // a sign as a kept one. Those kept for a reason this one answers go at once.
             if jobsOnDisk().contains(where: { $0.refused != nil }) {
-                resumeAll(refused: true, roomFor: job.landedAfter)
+                resumeAll(refused: true, roomFor: job.roomShown)
             }
         case .signInNeeded:
             // The stale session would fail every later share the same way, silently.
