@@ -4781,7 +4781,8 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 }
 
 /*
-   The help page (MAK-116): the formatting bar as a table, and the keys as a list.
+   The help page (MAK-116): the formatting bar as a table, and the keys as a list in
+   `.about-list`'s rows.
 
    A real table for the formatting because it is one: each row is a button, what it
    writes, and its keys, and reading across a row is the whole use. The same hairlines and
@@ -4808,19 +4809,9 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 .help-table td:last-child { padding-right: 0; white-space: nowrap; }
 .help-table code { overflow-wrap: anywhere; }
 
-.help-keys { width: 100%; max-width: 46rem; margin: 0; font-size: 0.85rem; }
-.help-keys > div {
-  display: grid;
-  grid-template-columns: 9rem minmax(0, 1fr);
-  gap: 0.25rem 1rem;
-  padding: 0.5rem 0;
-  border-top: 1px solid var(--border);
-}
-.help-keys > div:last-child { border-bottom: 1px solid var(--border); }
-.help-keys dd { margin: 0; }
-@media (width <= 860px) {
-  .help-keys > div { grid-template-columns: minmax(0, 1fr); }
-}
+/* The keys take About's rows, so the two pages share one rhythm; only the label column
+   is not muted, since here the key is what a reader scans for. */
+.help-keys dt { color: inherit; }
 
 /* A key, drawn as a keycap: the same wash `.panel code` uses, with a hairline under it so
    it reads as something pressed rather than something typed. */

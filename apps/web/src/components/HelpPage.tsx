@@ -138,7 +138,7 @@ export function HelpPage({ build = buildInfo }: { build?: BuildInfo | null }) {
         </Topic>
 
         <Topic title="Keys">
-          <dl className="help-keys">
+          <dl className="about-list help-keys">
             <div>
               <dt>
                 <kbd>{keys(apple, 'mod', 'F')}</kbd>
