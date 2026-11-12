@@ -59,6 +59,9 @@ export function resolveTheme(choice: ThemeChoice): Theme {
 
 const listeners = new Set<() => void>();
 
+/** A choice storage refused to keep, held for this page so the control still answers. */
+let fallback: ThemeChoice | null = null;
+
 function apply(): void {
   document.documentElement.dataset.theme = resolveTheme(currentChoice());
   for (const listener of listeners) listener();
@@ -89,9 +92,6 @@ export function setThemeChoice(choice: ThemeChoice): void {
   }
   apply();
 }
-
-/** A choice storage refused to keep, held for this page so the control still answers. */
-let fallback: ThemeChoice | null = null;
 
 function currentChoice(): ThemeChoice {
   return fallback ?? readChoice();
