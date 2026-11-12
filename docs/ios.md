@@ -141,12 +141,12 @@ tries with a backoff, and none for a 4xx that will be the same next time; a file
 on is left out of a capture that is otherwise saved; a 503 with `Retry-After` waited
 out, up to fourteen times, without spending a try; a 401 for the session the phone still
 holds forgets the session and keeps the capture, which then waits for a sign-in like one
-made signed out; a 402, which is the plan having no room (below), keeps it too. A retry is
-a request created at once with `earliestBeginDate`, so the
-wait is the system's to keep. The note's id is chosen on the phone, and each file's is
-sent as `X-Attachment-Id`, which is what makes any of this safe to send twice. An app the
-person force-quit is not relaunched for a result, so whatever is on disk is also looked
-at on every launch and every return to the app.
+made signed out; a 402, which is the plan having no room (below), keeps it too. A retry
+is a request created at once with `earliestBeginDate`, so the wait is the system's to
+keep. The note's id is chosen on the phone, and each file's is sent as `X-Attachment-Id`,
+which is what makes any of this safe to send twice. An app the person force-quit is not
+relaunched for a result, so whatever is on disk is also looked at on every launch and
+every return to the app.
 
 The app has one background session; the extension has one per capture, named in the
 capture's record, which the app joins to collect what the extension started. Only one
