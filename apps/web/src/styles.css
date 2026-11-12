@@ -6474,6 +6474,34 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 */
 .offline-storage { gap: 1.25rem; }
 
+.offline-kept {
+  align-self: stretch;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.offline-kept-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.75rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.offline-kept-info {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.offline-kept-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.offline-kept-row > .confirm { flex: 1 0 100%; margin: 0.25rem 0 0.5rem; }
+
 /*
    Settings › Appearance: three tiles, each the app drawn small in its theme.
 
@@ -6595,32 +6623,6 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   border-radius: 999px;
   background: var(--m-accent);
 }
-.offline-kept {
-  align-self: stretch;
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-.offline-kept-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.25rem 0.75rem;
-  padding: 0.5rem 0;
-  border-bottom: 1px solid var(--border);
-}
-.offline-kept-info {
-  flex: 1 1 0;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-}
-.offline-kept-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.offline-kept-row > .confirm { flex: 1 0 100%; margin: 0.25rem 0 0.5rem; }
 
 /* Section heading within the edit page: "Fields", "Delete notebook". Quieter than the
    panel's h2, since the page title already names the notebook. */
