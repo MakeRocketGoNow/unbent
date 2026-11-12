@@ -68,6 +68,8 @@ export async function shrinkAndRemove(root: ShrinkRoot, names: string[], onRemov
       const handle = await file.createSyncAccessHandle();
       try {
         handle.truncate(0);
+        // Not for durability, since the file goes next: this is the sequence the counter was
+        // measured with in Chrome, and a variant without it has not been.
         handle.flush();
       } finally {
         handle.close();
