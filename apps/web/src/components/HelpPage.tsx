@@ -4,14 +4,9 @@ import { useQuery } from '@tanstack/react-query';
 import { configQuery } from '../queries.js';
 import { supportLink } from '../support-link.js';
 import { buildInfo, feedbackUrl, type BuildInfo } from '../build-info.js';
+import { isAppleKeyboard } from '../apple-keyboard.js';
 import { BackArrow } from './BackArrow.js';
 import { McpUrl } from './McpUrl.js';
-
-/** Whether this device's shortcuts are written with ⌘ and ⌥ rather than Ctrl and Alt. */
-function isApple(): boolean {
-  if (typeof navigator === 'undefined') return false;
-  return /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent);
-}
 
 /**
  * A shortcut as this device writes it: `['mod', 'shift', 'T']` is ⌘⇧T on a Mac and
@@ -84,7 +79,7 @@ export function HelpPage({ build = buildInfo }: { build?: BuildInfo | null }) {
   const config = useQuery(configQuery());
   const support = supportLink(config.data);
   const feedback = build ? feedbackUrl(build) : null;
-  const apple = isApple();
+  const apple = isAppleKeyboard();
 
   return (
     <div className="settings help">
