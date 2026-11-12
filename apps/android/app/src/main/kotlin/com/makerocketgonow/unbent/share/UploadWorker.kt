@@ -176,6 +176,7 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
             // is anything left for it to do.
             Result.success(workDataOf(KEY_NOTE_ID to noteId, KEY_NEEDS_INDEX to needsIndex))
         } catch (e: ApiException) {
+            val refusal = CaptureRefusal.of(e)
             if (e.status == 401) {
                 // The session is gone, not merely unreachable. Retrying cannot fix it, and
                 // the stale token would keep failing silently on every later share.
@@ -183,7 +184,7 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
                 Staging.clear(context, jobId)
                 CaptureNotifications.signInNeeded(context, jobId, title)
                 Result.failure()
-            } else if (CaptureRefusal.of(e) != null) {
+            } else if (refusal != null) {
                 /*
                  * The plan has no room for this: it has ended, or its storage is full.
                  * Nothing is wrong with the capture and trying again now changes
@@ -203,7 +204,6 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
                  * Whatever landed stays landed: the note id and the files already on the
                  * note are found again by the next attempt, as on any retry.
                  */
-                val refusal = CaptureRefusal.of(e) ?: CaptureRefusal.PLAN
                 CaptureResume.keepRefused(dir, inputData.toByteArray(), refusal, prefs.instance)
                 // Quietly the second time: it is the same news, about the same capture.
                 CaptureNotifications.refused(context, jobId, title, refusal, quiet = refusedBefore)
