@@ -183,6 +183,10 @@ public struct CaptureJob: Codable, Equatable, Sendable {
     /// Whether the server has answered that the note exists.
     public var created = false
     public var progress = Progress()
+    /// The id of the account this capture is kept for, once the plan has refused it and
+    /// the server has said whose session it was sent with (`CaptureQueue`); nil before
+    /// that, and where it could not be asked. See `mayGo`.
+    public var account: String?
     /// Why the plan refused this capture, while it is waiting on the person to make room
     /// (`CaptureRefusal`). Set by the refusal and cleared when the note is taken (a
     /// capture refused at a file keeps it until it is saved and gone), so it also says a
@@ -378,6 +382,23 @@ public struct CaptureJob: Codable, Equatable, Sendable {
         // until the wall time catches up with it.
         guard refused != nil, created || clip != nil || refusedStuck == true, let refusedAt, refusedAt <= now else { return 0 }
         return max(0, Self.quiet(count: refusedCount ?? 1) - now.timeIntervalSince(refusedAt))
+    }
+
+    /// Whether this capture may be sent while `current` is the account signed in on its
+    /// instance (nil when that is not known).
+    ///
+    /// A capture carries its instance and nothing of who shared it, which was enough
+    /// while one lasted minutes. A kept one waits up to a month, through a sign-out, and
+    /// was sent as whoever signed in next on that instance: a scan became a note in the
+    /// wrong library, or was asked of a note the new account does not own and given up
+    /// on. So a kept capture goes only as the account it was refused for, and one whose
+    /// instance's account is not known yet waits for a pass that knows, rather than
+    /// going on a guess. A capture that was never refused, or whose account could not
+    /// be asked at the refusal, goes as it always did. Android's half is
+    /// `KeptCapture.account`.
+    public func mayGo(as current: String?) -> Bool {
+        guard refused != nil, let account else { return true }
+        return current == account
     }
 
     /// Of the captures the plan refused, the ones to ask the server about: one for each

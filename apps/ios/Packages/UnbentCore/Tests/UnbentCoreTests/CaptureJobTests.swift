@@ -441,6 +441,27 @@ final class CaptureJobTests: XCTestCase {
         XCTAssertEqual(.failed, old.handle(.create, CaptureOutcome(status: 500), now: later))
     }
 
+    /// Kept through a sign-out, a capture must not become a note in the library of
+    /// whoever signs in next.
+    func testAKeptCaptureGoesOnlyAsTheAccountItWasRefusedFor() {
+        var kept = job()
+        _ = kept.handle(.create, refusal(#"{"code":"PLAN_INACTIVE"}"#))
+        // Not asked yet, or the asking failed: it goes as every capture did.
+        XCTAssertTrue(kept.mayGo(as: "user-2"))
+        XCTAssertTrue(kept.mayGo(as: nil))
+
+        kept.account = "user-1"
+        XCTAssertTrue(kept.mayGo(as: "user-1"))
+        XCTAssertFalse(kept.mayGo(as: "user-2"))
+        // Who is signed in is not known on this pass: it waits for one that knows.
+        XCTAssertFalse(kept.mayGo(as: nil))
+
+        // Only a kept capture is held to an account. One taken after all is an ordinary one.
+        _ = kept.handle(.create, ok)
+        XCTAssertTrue(kept.mayGo(as: "user-2"))
+        XCTAssertTrue(job().mayGo(as: nil))
+    }
+
     func testAClipThePlanRefusedStaysAClip() {
         var job = clipJob()
         XCTAssertEqual(.refused(.planEnded, again: false), job.handle(.create, refusal(#"{"code":"PLAN_INACTIVE"}"#)))

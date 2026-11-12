@@ -57,6 +57,11 @@ public final class CaptureQueue: NSObject, @unchecked Sendable {
     private let sessions: SessionStoring
     private let notifier: CaptureNotifying
     private let onSignedOut: @Sendable (String) -> Void
+    private let whoAmI: @Sendable (_ origin: String, _ bearer: String) async -> String?
+    /// The account each instance's session belongs to, as last answered, with the
+    /// session it was answered for: asked once per session, not once per pass. Read and
+    /// written on `work`.
+    private var accounts: [String: (bearer: String, id: String)] = [:]
 
     /// Everything below runs here: the sessions' delegate calls, and every read and write
     /// of a capture's record. One queue is what makes "load, change, save" a step nothing
@@ -92,6 +97,9 @@ public final class CaptureQueue: NSObject, @unchecked Sendable {
     ///   - home: the session new requests go into: `appSession` or `shareSession`.
     ///   - appGroup: where the system keeps what it is uploading for the extension.
     ///   - onSignedOut: an instance's session was refused and has been forgotten.
+    ///   - whoAmI: the id of the account a session belongs to, asked of its instance
+    ///     (`/api/me`), or nil when it could not be asked. What a kept capture is held
+    ///     to; see `CaptureJob.mayGo`.
     public init(
         store: CaptureStore,
         home: String,
@@ -99,7 +107,10 @@ public final class CaptureQueue: NSObject, @unchecked Sendable {
         appGroup: String?,
         sessions: SessionStoring,
         notifier: CaptureNotifying,
-        onSignedOut: @escaping @Sendable (String) -> Void = { _ in }
+        onSignedOut: @escaping @Sendable (String) -> Void = { _ in },
+        whoAmI: @escaping @Sendable (_ origin: String, _ bearer: String) async -> String? = { origin, bearer in
+            (try? await UnbentApi(origin: origin, bearer: bearer).me())?.id
+        }
     ) {
         self.store = store
         self.home = home
@@ -108,6 +119,7 @@ public final class CaptureQueue: NSObject, @unchecked Sendable {
         self.sessions = sessions
         self.notifier = notifier
         self.onSignedOut = onSignedOut
+        self.whoAmI = whoAmI
     }
 
     // MARK: - In
@@ -177,33 +189,67 @@ public final class CaptureQueue: NSObject, @unchecked Sendable {
             guard !jobs.isEmpty else { return self.finishedResuming() }
             let identifiers = Set([self.home] + jobs.compactMap(\.shareSession))
             self.liveRequests(in: identifiers) { live, idle in
-                // Read again: results may have been applied while the lists were fetched.
-                let jobs = self.jobsOnDisk()
-                // One refused capture for each reason, not all of them; see there.
-                // Among those there is a session to send with: one kept for an instance
-                // nobody is signed in to cannot go, and chosen it would stand in front
-                // of every capture kept for the same reason on this one.
-                let sendable = jobs.filter { self.sessions.session(for: $0.origin) != nil }
-                let asked = refused ? CaptureJob.firstOfEachRefusal(sendable) : []
-                for job in jobs {
-                    if job.isSaved { self.apply(.saved, to: job); continue }
-                    if job.refused != nil, !asked.contains(job.id) { continue }
-                    // Nothing for most; for a refused file or clip, the rest of its
-                    // quiet spell, which the system then holds the request for.
-                    let wait = job.refused == roomFor ? 0 : job.refusedWait()
-                    for step in job.pending(live: live) {
-                        // A note going out for the first time from here is one that
-                        // waited for a sign-in, and now there is something to say. Not
-                        // one the plan refused: "Saving…" would replace the notice that
-                        // says why it is waiting, to be replaced by it again a moment
-                        // later, every time the app is opened.
-                        if step == .create, job.refused == nil, self.sessions.session(for: job.origin) != nil { self.notifier.saving(job) }
-                        self.send(step, of: job, after: wait)
+                // Whose session each instance's is, for the kept captures that are held
+                // to an account. Asked before the choosing, so one that may not go is
+                // never chosen, and only on a pass that sends them.
+                let held = refused ? Set(self.jobsOnDisk().filter { $0.refused != nil && $0.account != nil }.map(\.origin)) : []
+                self.accounts(for: Array(held)) { current in
+                    // Read again: results may have been applied while the lists were fetched.
+                    let jobs = self.jobsOnDisk()
+                    // One refused capture for each reason, not all of them; see there.
+                    // Among those that can go: one kept for an instance nobody is signed
+                    // in to, or for another account than the one signed in, cannot, and
+                    // chosen it would stand in front of every capture kept for the same
+                    // reason that can.
+                    let sendable = jobs.filter {
+                        self.sessions.session(for: $0.origin) != nil && $0.mayGo(as: current[$0.origin])
                     }
+                    let asked = refused ? CaptureJob.firstOfEachRefusal(sendable) : []
+                    for job in jobs {
+                        if job.isSaved { self.apply(.saved, to: job); continue }
+                        if job.refused != nil, !asked.contains(job.id) { continue }
+                        // Nothing for most; for a refused file or clip, the rest of its
+                        // quiet spell, which the system then holds the request for.
+                        let wait = job.refused == roomFor ? 0 : job.refusedWait()
+                        for step in job.pending(live: live) {
+                            // A note going out for the first time from here is one that
+                            // waited for a sign-in, and now there is something to say. Not
+                            // one the plan refused: "Saving…" would replace the notice that
+                            // says why it is waiting, to be replaced by it again a moment
+                            // later, every time the app is opened.
+                            if step == .create, job.refused == nil, self.sessions.session(for: job.origin) != nil { self.notifier.saving(job) }
+                            self.send(step, of: job, after: wait)
+                        }
+                    }
+                    for identifier in idle where identifier != self.home { self.retire(identifier) }
+                    self.finishedResuming()
                 }
-                for identifier in idle where identifier != self.home { self.retire(identifier) }
-                self.finishedResuming()
             }
+        }
+    }
+
+    /// The account signed in on `origin`, on `work`: from what was last answered for the
+    /// session held now, or asked. Nil with no session, or when the asking failed, which
+    /// is not remembered, so the next pass asks again.
+    private func account(for origin: String, then: @escaping @Sendable (String?) -> Void) {
+        guard let bearer = sessions.session(for: origin)?.bearer else { return then(nil) }
+        if let known = accounts[origin], known.bearer == bearer { return then(known.id) }
+        Task {
+            let id = await self.whoAmI(origin, bearer)
+            self.work.async {
+                if let id { self.accounts[origin] = (bearer, id) }
+                then(id)
+            }
+        }
+    }
+
+    /// `account(for:)` for several instances, one after another, then all of them.
+    private func accounts(for origins: [String], found: [String: String] = [:], then: @escaping @Sendable ([String: String]) -> Void) {
+        guard let origin = origins.first else { return then(found) }
+        account(for: origin) { id in
+            var found = found
+            found[origin] = id
+            self.accounts(for: Array(origins.dropFirst()), found: found, then: then)
         }
     }
 
@@ -367,6 +413,19 @@ public final class CaptureQueue: NSObject, @unchecked Sendable {
             // `resumeAll(refused: true)` sends what is left when the app is next opened.
             cancelRequests(of: job)
             notifier.refused(job, refusal, again: again)
+            // Whose it is, written down while the session that sent it is still the
+            // one held: a kept capture goes only as that account (`CaptureJob.mayGo`).
+            // Asked once; a failure to ask leaves it going as every capture did.
+            if job.account == nil {
+                let jobId = job.id
+                account(for: job.origin) { id in
+                    guard let id else { return }
+                    self.update(jobId) { kept in
+                        if kept.refused != nil, kept.account == nil { kept.account = id }
+                        return .wait
+                    }
+                }
+            }
         case .failed:
             end(job)
             notifier.failed(job)
