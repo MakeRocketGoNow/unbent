@@ -50,20 +50,28 @@ export type AgreementGate =
  *   server cannot record would lock them out of their notes. So an unreachable session
  *   opens the app at once, without waiting on a config fetch that cannot answer either.
  * - **Wait for the config**, so the app is not drawn and then replaced by the agreement.
+ * - **But only before the app is drawn** (`drawn`). A config that failed has no data,
+ *   and React Query reports a query with no data as pending again while it is asked
+ *   again, which it is when the connection comes back. Waiting then replaced the whole
+ *   app with "Loading…" and drew it again from nothing: the list, the search and an open
+ *   note's editor. The agreement can still replace a drawn app, since asking is a real
+ *   answer (the terms changed); waiting is not.
  * - **A config that could not be fetched opens the app**, as the remembered session does.
  *
- * Pure, and here rather than in `AppShell`, so these three rules are tested by name: a
- * regression in any of them either locks people out offline or lets the app through
- * without asking.
+ * Pure, and here rather than in `AppShell`, so these rules are tested by name: a
+ * regression in any of them either locks people out offline, throws the app away under
+ * them, or lets the app through without asking.
  */
 export function agreementGate(opts: {
   unreachable: boolean;
   config: { isPending: boolean; data?: AppConfig };
   agreed: string | null | undefined;
   pathname: string;
+  /** Whether this shell has already drawn the app for this account. */
+  drawn?: boolean;
 }): AgreementGate {
   if (opts.unreachable) return { kind: 'open' };
-  if (opts.config.isPending) return { kind: 'wait' };
+  if (opts.config.isPending) return opts.drawn ? { kind: 'open' } : { kind: 'wait' };
   const legal = opts.config.data?.legal;
   if (!legal?.version || coversLegalVersion(opts.agreed, legal.version)) return { kind: 'open' };
   if (!needsAgreement(legal, opts.agreed, opts.pathname)) return { kind: 'open', pending: true };

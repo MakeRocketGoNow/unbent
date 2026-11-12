@@ -69,6 +69,12 @@ describe('agreementGate', () => {
     expect(agreementGate({ ...base, config: { isPending: true } }).kind).toBe('wait');
   });
 
+  /** What keeps the app on screen when the connection returns to a page loaded offline. */
+  it('does not wait once the app is drawn, though the config is asked again', () => {
+    expect(agreementGate({ ...base, drawn: true, config: { isPending: true } })).toEqual({ kind: 'open' });
+    expect(agreementGate({ ...base, drawn: true, config: config(LEGAL) })).toEqual({ kind: 'ask', legal: LEGAL });
+  });
+
   it('opens the app when the config could not be fetched', () => {
     expect(agreementGate({ ...base, config: { isPending: false } }).kind).toBe('open');
   });

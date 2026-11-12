@@ -1,5 +1,5 @@
 import { createRootRouteWithContext, Outlet, useNavigate, useRouterState } from '@tanstack/react-router';
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useAppSession } from '../useAppSession.js';
 import { useSignOut } from '../useSignOut.js';
@@ -151,6 +151,7 @@ function AppShell() {
   const isMobile = useMediaQuery(MOBILE_QUERY);
   const railWidth = useRailWidth();
   const shellRef = useRef<HTMLDivElement>(null);
+  const [drawnFor, setDrawnFor] = useState<string | null>(null);
   // Back, a notification's note and the colour around the page, when the Android app
   // hosts the site; nothing in a browser.
   useHostApp();
@@ -237,8 +238,16 @@ function AppShell() {
   }, [isPending, session, navigate]);
 
   const gate = session?.user
-    ? agreementGate({ unreachable, config, agreed: session.user.legalVersion, pathname })
+    ? agreementGate({ unreachable, config, agreed: session.user.legalVersion, pathname, drawn: drawnFor === userId })
     : ({ kind: 'wait' } as const);
+  /*
+   * Whom the app has been drawn for, so a config asked again (on reconnect, after it
+   * failed offline) does not send it back to "Loading…"; see `agreementGate`. By account,
+   * so whoever signs in next waits for the config as the first did.
+   */
+  useEffect(() => {
+    if (gate.kind === 'open' && userId) setDrawnFor(userId);
+  }, [gate.kind, userId]);
   if (!session?.user || gate.kind === 'wait') {
     return (
       <main className="shell">
