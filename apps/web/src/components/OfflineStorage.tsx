@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { notebookFilesQuery, notebooksQuery } from '../queries.js';
 import { useKeeper, useLibraryElsewhere, useLibraryPresence, useSyncStatus } from '../store/use-outbox.js';
 import { currentLibraryUser } from '../store/library.js';
 import { listShelf, storagePersisted } from '../store/files.js';
+import { storedBytes } from '../store/usage.js';
 import { FILES_BUDGET, openedFilesUsage } from '../sw/budget.js';
 import { FILES_CACHE } from '../sw/routes.js';
 import { formatBytes } from '../format-bytes.js';
@@ -44,7 +45,24 @@ export function OfflineStorage() {
   const [waiting, setWaiting] = useState<{ files: number; bytes: number }>({ files: 0, bytes: 0 });
   /** Whether the browser has agreed not to clear this storage under pressure; null until it says, or where it will not. */
   const [persisted, setPersisted] = useState<boolean | null>(null);
+  /**
+   * What Unbent has stored, measured (`store/usage.ts`), for the intro to say. Not `room`,
+   * which stays the browser's estimate because it is what fitting is judged against: the
+   * two differ by gigabytes when Chrome miscounts the file system.
+   *
+   * Measured beside the other figures rather than before them: the walk sizes every file
+   * on the device, which is thousands with a notebook kept, and the waiting uploads and
+   * the persistence line have no reason to wait for it. Only the newest walk's answer is
+   * kept, so a slow one cannot land over a later one, and a walk that met a file SQLite
+   * held (null) leaves the last measure standing rather than the miscount it replaces.
+   */
+  const [stored, setStored] = useState<number | null>(null);
+  const measuring = useRef(0);
   const refresh = useCallback(async () => {
+    const ask = ++measuring.current;
+    void storedBytes().then((bytes) => {
+      if (ask === measuring.current && bytes !== null) setStored(bytes);
+    });
     setOpened(await openedFilesUsage());
     setPersisted(await storagePersisted());
     const user = currentLibraryUser();
@@ -91,7 +109,12 @@ export function OfflineStorage() {
           : elsewhere
             ? 'Your notes are open in another tab or window, and this one cannot reach it, so it keeps nothing on the device and reads from the server.'
             : 'Your notes are always on this device. Their files are kept when you open one, and for whole notebooks you choose.'}
-        {room ? ` Unbent is using ${formatBytes(room.usage)} of the ${formatBytes(room.quota)} this device allows it.` : ''}
+        {/* What is stored, measured, and the room left as the browser judges it: the same
+            `free` Keep offline checks a notebook against, so the out-of-room line below
+            can never contradict this one. "Of the 13.98 GB this device allows it" was the
+            browser's quota, which Chrome reports as its usage plus 10 GiB, so beside a
+            measured figure it was a denominator holding gigabytes of the miscount. */}
+        {room ? ` Unbent is using ${formatBytes(stored ?? room.usage)}, and this device has room for ${formatBytes(room.free)} more.` : ''}
         {/* Said only when it is not so: what is kept here can then go without a word, and
             someone relying on it for a flight should know before the flight. */}
         {persisted === false && ' This browser has not agreed to keep it if the device runs low on space; installing the app usually settles that.'}

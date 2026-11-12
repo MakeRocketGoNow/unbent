@@ -18,11 +18,14 @@ vi.mock('../store/library.js', () => ({ currentLibraryUser: () => null, takeOver
 vi.mock('../store/files.js', () => ({ listShelf: async () => [], storagePersisted: async () => null }));
 vi.mock('../sw/budget.js', () => ({ FILES_BUDGET: { bytes: 500 * 1024 * 1024, files: 500, ageMs: 30 * 86400000 }, openedFilesUsage: async () => ({ files: 0, bytes: 0 }) }));
 vi.mock('../sw/routes.js', () => ({ FILES_CACHE: 'unbent-files' }));
-vi.mock('./KeepOffline.js', () => ({ useDeviceRoom: () => ({ room: null, refresh: () => {} }) }));
+vi.mock('./KeepOffline.js', () => ({ useDeviceRoom: vi.fn(() => ({ room: null, refresh: () => {} })) }));
+vi.mock('../store/usage.js', () => ({ storedBytes: vi.fn(async () => null) }));
 vi.mock('../sw-register.js', () => ({ useOfflineReady: () => 'ready' }));
 vi.mock('../connectivity.js', () => ({ useConnectivityReport: () => ({ offline: false, browserOnLine: true, decided: { by: 'start', at: 0 }, since: null }) }));
 import { useLibraryElsewhere, useLibraryPresence } from '../store/use-outbox.js';
 import { takeOverLibrary } from '../store/library.js';
+import { useDeviceRoom } from './KeepOffline.js';
+import { storedBytes } from '../store/usage.js';
 
 /**
  * The intro says which of three things this tab is (the holder, a client working
@@ -35,6 +38,8 @@ afterEach(() => {
   vi.clearAllMocks();
   vi.mocked(useLibraryElsewhere).mockReturnValue(null);
   vi.mocked(useLibraryPresence).mockReturnValue('open');
+  vi.mocked(useDeviceRoom).mockReturnValue({ room: null, refresh: () => {} });
+  vi.mocked(storedBytes).mockResolvedValue(null);
 });
 
 const draw = () => render(<QueryClientProvider client={new QueryClient()}><OfflineStorage /></QueryClientProvider>);
@@ -58,6 +63,27 @@ describe('OfflineStorage', () => {
       cleanup();
     }
     expect(takeOverLibrary).toHaveBeenCalledTimes(2);
+  });
+
+  /**
+   * What Unbent has stored is measured (`store/usage.ts`) and said in place of the
+   * browser's estimate, which Chrome has put gigabytes over; the room left is still the
+   * browser's, the `free` a kept notebook is checked against, since that is what it holds
+   * the site to.
+   */
+  it('says what Unbent has stored, measured, and the room the browser leaves it', async () => {
+    const GB = 1024 ** 3;
+    vi.mocked(useDeviceRoom).mockReturnValue({ room: { usage: 3.98 * GB, quota: 13.98 * GB, free: 9 * GB }, refresh: () => {} });
+    vi.mocked(storedBytes).mockResolvedValue(57 * 1024 ** 2);
+    draw();
+    expect(await screen.findByText(/Unbent is using 57\.0 MB, and this device has room for 9\.00 GB more\./)).toBeTruthy();
+  });
+
+  it('says the browser\'s estimate while nothing could be measured', () => {
+    const GB = 1024 ** 3;
+    vi.mocked(useDeviceRoom).mockReturnValue({ room: { usage: 2 * GB, quota: 10 * GB, free: 7 * GB }, refresh: () => {} });
+    draw();
+    expect(screen.getByText(/Unbent is using 2\.00 GB, and this device has room for 7\.00 GB more\./)).toBeTruthy();
   });
 
   it('says this tab reads the server when it has no library to work through', () => {
