@@ -362,6 +362,23 @@ describe('emptying the store files before they go', () => {
     }
   });
 
+  it('waits on a silent worker once per wipe, not once per try', async () => {
+    vi.useFakeTimers();
+    try {
+      const { removed } = device(files, dbs, { refuse: (name, attempt) => name === 'unbent-b.sqlite' && attempt < 2 });
+      const { started } = workers('silent');
+      let done = false;
+      void wipeLocalStores().then(() => (done = true));
+      // The first try waits out the worker; the retry, half a second on, goes straight to the page.
+      await vi.advanceTimersByTimeAsync(2_000 + 500);
+      expect(done).toBe(true);
+      expect(started).toHaveLength(1);
+      expect(removed).toContain('unbent-b.sqlite');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('removes on the page what a browser without sync access handles cannot empty', async () => {
     const { removed, order } = device(files, dbs);
     workers();

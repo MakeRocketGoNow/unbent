@@ -39,16 +39,19 @@ export async function wipeLocalStores(except?: string): Promise<void> {
    *
    * A sign-out waits for the tries, so "signed out" means the files are gone, and can
    * take up to `STORE_FILE_RETRIES` × `STORE_FILE_RETRY_MS` longer, a second and a half,
-   * when a file will not go. A sign-in does not: the wipe that keeps the arriving
+   * when a file will not go, and `SHRINK_WAIT_MS` more when the worker that empties the
+   * files does not answer: one wait, not one per try, since a wipe stops starting the
+   * worker once one has failed it (`shrink`). A sign-in does not: the wipe that keeps the arriving
    * account runs on the route guard's path, before the first page loads, and nothing
    * that account loads needs the other accounts' files gone first.
    */
   await wipeOutboxes(keep?.outbox);
-  if (await wipeStoreFiles(keep?.stores, keep?.files)) return;
+  const shrink: ShrinkState = { works: true };
+  if (await wipeStoreFiles(shrink, keep?.stores, keep?.files)) return;
   const tried = (async () => {
     for (let attempt = 1; attempt <= STORE_FILE_RETRIES; attempt += 1) {
       await new Promise((resolve) => setTimeout(resolve, STORE_FILE_RETRY_MS));
-      if (await wipeStoreFiles(keep?.stores, keep?.files)) return;
+      if (await wipeStoreFiles(shrink, keep?.stores, keep?.files)) return;
     }
   })();
   if (!keep) await tried;
@@ -162,7 +165,7 @@ export async function closeLocalStores(): Promise<void> {
 }
 
 /** Removes what it can; true when nothing is left that should have gone. */
-async function wipeStoreFiles(keep: string[] = [], keepFiles?: string): Promise<boolean> {
+async function wipeStoreFiles(shrink: ShrinkState, keep: string[] = [], keepFiles?: string): Promise<boolean> {
   if (typeof navigator === 'undefined' || !navigator.storage?.getDirectory) return true;
   try {
     const root = await navigator.storage.getDirectory();
@@ -176,7 +179,7 @@ async function wipeStoreFiles(keep: string[] = [], keepFiles?: string): Promise<
     // so their removal does not take Chrome's usage counter below zero (`shrink.ts`). The
     // files directories are not: their bytes are written with `createWritable`, which
     // Chrome counts properly, and a recursive removal of them subtracts what was added.
-    const shrunk = await removeInWorker(names);
+    const shrunk = await removeInWorker(names, shrink);
     const outcomes = await Promise.all([
       ...names.map((name) => (shrunk.has(name) ? true : root.removeEntry(name).then(() => true, gone))),
       ...dirs.map((name) => root.removeEntry(name, { recursive: true }).then(() => true, () => false)),
@@ -204,33 +207,44 @@ const gone = (error: unknown) => error instanceof DOMException && error.name ===
 const SHRINK_WAIT_MS = 2_000;
 
 /**
+ * Whether this wipe still starts the worker. One per wipe, across its tries: a worker that
+ * failed to start, errored or ran past `SHRINK_WAIT_MS` will do no better half a second
+ * later, and starting it again on every try made a sign-out wait for each one (found in
+ * review). Per wipe rather than for the page's life, so the next sign-out tries again.
+ */
+type ShrinkState = { works: boolean };
+
+/**
  * Empties and removes `names` in a worker (`shrink-worker.ts`) and answers which went.
  * Never throws and never waits past `SHRINK_WAIT_MS`: a browser with no workers, a worker
  * that fails to start or errors, and one that is slow all answer with what was reported so
  * far, which may be nothing, and the caller removes the rest with a plain `removeEntry`.
+ * Each of those also marks `shrink`, so the wipe's later tries go straight to the page.
  */
-function removeInWorker(names: string[]): Promise<Set<string>> {
+function removeInWorker(names: string[], shrink: ShrinkState): Promise<Set<string>> {
   const removed = new Set<string>();
-  if (names.length === 0 || typeof Worker === 'undefined') return Promise.resolve(removed);
+  if (names.length === 0 || !shrink.works || typeof Worker === 'undefined') return Promise.resolve(removed);
   return new Promise((resolve) => {
     let worker: Worker;
     try {
       worker = new Worker(new URL('./shrink-worker.ts', import.meta.url), { type: 'module' });
     } catch {
+      shrink.works = false;
       resolve(removed);
       return;
     }
-    const finish = () => {
+    const finish = (failed: boolean) => {
       clearTimeout(timer);
       worker.terminate();
+      if (failed) shrink.works = false;
       resolve(removed);
     };
-    const timer = setTimeout(finish, SHRINK_WAIT_MS);
+    const timer = setTimeout(() => finish(true), SHRINK_WAIT_MS);
     worker.onmessage = (event: MessageEvent<Partial<{ removed: string; done: true }>>) => {
       if (typeof event.data?.removed === 'string') removed.add(event.data.removed);
-      if (event.data?.done) finish();
+      if (event.data?.done) finish(false);
     };
-    worker.onerror = worker.onmessageerror = finish;
+    worker.onerror = worker.onmessageerror = () => finish(true);
     worker.postMessage({ names });
   });
 }
