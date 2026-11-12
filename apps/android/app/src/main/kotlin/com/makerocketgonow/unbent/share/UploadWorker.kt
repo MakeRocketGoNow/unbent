@@ -57,6 +57,14 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
         // why it is waiting, every time the app is opened, to be replaced by that notice
         // again a second later.
         val refusedBefore = CaptureResume.wasRefused(dir)
+        /*
+         * A resend whose capture is no longer kept has nothing to do: the job before it
+         * finished, saved or given up on, and cleared the directory between this one's
+         * input being read from it and its being enqueued, when the unique name no
+         * longer held it back. Carrying on would find no note id and no chosen id, and
+         * make a second note without its files, then say "Saved".
+         */
+        if (inputData.getBoolean(KEY_RESUMED, false) && !refusedBefore) return@withContext Result.success()
         if (!refusedBefore) CaptureNotifications.saving(context, jobId, title)
 
         val prefs = Prefs(context)
@@ -327,6 +335,8 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
         /** Null means the Inbox. */
         const val KEY_NOTEBOOK = "notebook"
         const val KEY_TAGS = "tags"
+        /** True for a job started from a kept capture (`CaptureWork.resumeRefused`), not at Save. */
+        const val KEY_RESUMED = "resumed"
         /** Output: the note this capture became. */
         const val KEY_NOTE_ID = "noteId"
         /** Output: false when the server extracted every PDF's text itself. */

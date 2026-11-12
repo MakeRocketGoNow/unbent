@@ -90,7 +90,7 @@ object CaptureWork {
                 val input = runCatching { Data.fromByteArray(kept) }.getOrNull() ?: continue
                 val dear = CaptureResume.readNoteId(dir) != null || isClip(input)
                 if (!resendsRefused(dear, CaptureResume.refusedAt(dir), System.currentTimeMillis())) continue
-                enqueue(app, input)
+                enqueue(app, Data.Builder().putAll(input).putBoolean(UploadWorker.KEY_RESUMED, true).build())
             }
         }
     }
