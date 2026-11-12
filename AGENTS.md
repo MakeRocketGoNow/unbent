@@ -32,8 +32,11 @@ Some things that have been asked for repeatedly, so start from them:
   been phone layout. Check every change at both breakpoints. Long content (an email
   address, a filename, a tag list) must be assumed unbounded; it has broken the layout more
   than once.
-- **Dark mode is a real target too.** Both themes are defined in `styles.css`. `--bad` is a
-  light salmon in dark mode, so anything filled with it needs dark text, not white.
+- **Dark mode is a real target too.** Both themes are defined in `styles.css`. A dark
+  rule keys off `[data-theme='dark']` on `<html>` (see `apps/web/src/theme.ts`), never
+  `prefers-color-scheme`, which would follow the device past Settings › Appearance.
+  `--bad` is a light salmon in dark mode, so anything filled with it needs dark text,
+  not white.
 - **Red and green do not share a box.** A red border around a green button reads as
   Christmas, and as a warning about something safe. See
   [Destructive actions](#destructive-actions).

@@ -21,6 +21,7 @@ import { installLibraryCloser } from './store/wipe.js';
 import { indexUploadedFile } from './index-files.js';
 import { refuseStrayFileDrops } from './file-drop-guard.js';
 import { installTooltips } from './tooltips.js';
+import { installTheme } from './theme.js';
 import { canTypeTransitions, noteTransitionTypes, trackWhatIsBehind, watchHistoryMoves } from './note-nav.js';
 import './styles.css';
 
@@ -108,6 +109,12 @@ refuseStrayFileDrops();
  * Every `data-tip` in the app, from one listener and one bubble; see `tooltips.ts`.
  */
 installTooltips();
+
+/*
+ * Light, dark or the device's: `index.html` drew the first frame in it, and this keeps it
+ * current as the device or another tab changes it; see `theme.ts`.
+ */
+installTheme();
 
 /*
  * Error tracking, on the instances that have it (see `posthog.ts`).
