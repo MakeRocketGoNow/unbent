@@ -218,6 +218,24 @@ final class CaptureIntakeTests: XCTestCase {
         XCTAssertEqual("https://www.example.com/a-slug", intake.pageUrl)
     }
 
+    /// An app that offers the address only as plain text, with no `public.url` beside it,
+    /// still shares the same page: the text is dropped and the link is clipped. A string
+    /// made with `NSItemProvider(object:)` is offered as a URL too, so it cannot pin this.
+    func testAnAddressOfferedOnlyAsPlainTextBesideTheLinkIsTheSamePage() async throws {
+        let link = NSItemProvider(object: try XCTUnwrap(NSURL(string: "https://www.example.com/news/a-slug.html")))
+        let text = NSItemProvider()
+        text.registerDataRepresentation(forTypeIdentifier: UTType.utf8PlainText.identifier, visibility: .all) { done in
+            done(Data("https://news.example.com/a-slug.html".utf8), nil)
+            return nil
+        }
+        XCTAssertEqual(.text, CaptureStager.kind(of: text))
+
+        let intake = await CaptureStager(directory: directory).stage([text, link], contentText: nil)
+
+        XCTAssertEqual("https://www.example.com/news/a-slug.html", intake.text)
+        XCTAssertEqual("https://www.example.com/news/a-slug.html", intake.pageUrl)
+    }
+
     /// Words beside a link are someone's note about it, and the note is what is kept.
     func testWordsBesideALinkStayTheNotesBody() async throws {
         let link = NSItemProvider(object: try XCTUnwrap(NSURL(string: "https://www.example.com/a-slug")))
