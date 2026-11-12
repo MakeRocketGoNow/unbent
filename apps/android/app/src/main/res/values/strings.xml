@@ -101,6 +101,8 @@
     <string name="clipped">Page clipped to Unbent</string>
     <string name="save_failed">Could not save to Unbent</string>
     <string name="sign_in_needed">Sign in to Unbent, then share again</string>
+    <!-- For a share that is still kept on the phone: signing in sends it. The iOS app's words. -->
+    <string name="sign_in_to_finish">Sign in to Unbent to finish saving</string>
     <!--
       A share the plan had no room for (402), which the phone keeps and sends again. The
       headings are the web app's words for the same states, cut to a notification's first

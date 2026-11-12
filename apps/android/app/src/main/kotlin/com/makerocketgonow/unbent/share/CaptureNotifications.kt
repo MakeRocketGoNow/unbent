@@ -144,12 +144,17 @@ object CaptureNotifications {
         )
     }
 
-    fun signInNeeded(context: Context, jobId: String, title: String) {
+    /**
+     * [kept] for a capture that is still on the phone and goes when someone signs in (one
+     * the plan had refused), which must not be told to share again; every other capture
+     * has been cleared by the time this is posted.
+     */
+    fun signInNeeded(context: Context, jobId: String, title: String, kept: Boolean = false) {
         post(
             context, jobId,
             builder(context, title)
                 .setSmallIcon(android.R.drawable.stat_notify_error)
-                .setContentTitle(context.getString(R.string.sign_in_needed))
+                .setContentTitle(context.getString(if (kept) R.string.sign_in_to_finish else R.string.sign_in_needed))
                 .setContentIntent(signIn(context))
                 .setAutoCancel(true),
         )

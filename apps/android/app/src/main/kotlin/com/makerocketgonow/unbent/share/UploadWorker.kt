@@ -68,6 +68,13 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
         if (!refusedBefore) CaptureNotifications.saving(context, jobId, title)
 
         val prefs = Prefs(context)
+        if (!prefs.isSignedIn && refusedBefore) {
+            // Signed out since this resend was enqueued. Nobody is at a sign-in screen
+            // on its account, so there is nothing to wait five minutes for, and the
+            // wait below ends by clearing the capture. It is kept, marker and all, and
+            // `CaptureWork.resumeRefused` sends it once someone is signed in.
+            return@withContext Result.failure()
+        }
         if (!prefs.isSignedIn) {
             /*
              * No session yet. ShareActivity has already opened the sign-in screen: it can,
@@ -181,8 +188,21 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
                 // The session is gone, not merely unreachable. Retrying cannot fix it, and
                 // the stale token would keep failing silently on every later share.
                 prefs.clearSession()
-                Staging.clear(context, jobId)
-                CaptureNotifications.signInNeeded(context, jobId, title)
+                if (refusedBefore) {
+                    /*
+                     * A capture kept for the plan is kept for the sign-in too. A lapsed
+                     * account that has not opened the app in weeks is exactly whose
+                     * session has run out, and clearing here deleted what the notice
+                     * had said was kept, then asked for it to be shared again from a
+                     * source that may be gone. The marker stays, which is what has
+                     * `CaptureWork.resumeRefused` send it after the sign-in. The iOS
+                     * app keeps every capture through a 401 (`CaptureJob.handle`).
+                     */
+                    CaptureNotifications.signInNeeded(context, jobId, title, kept = true)
+                } else {
+                    Staging.clear(context, jobId)
+                    CaptureNotifications.signInNeeded(context, jobId, title)
+                }
                 Result.failure()
             } else if (refusal != null) {
                 /*
