@@ -3,6 +3,8 @@ package com.makerocketgonow.unbent
 import com.makerocketgonow.unbent.api.ApiException
 import com.makerocketgonow.unbent.share.CaptureRefusal
 import com.makerocketgonow.unbent.share.CaptureWork
+import com.makerocketgonow.unbent.share.KeptCapture
+import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -90,5 +92,23 @@ class CaptureRefusalTest {
         assertFalse(CaptureWork.sameInstance("https://notes.example.com", "http://localhost:5236"))
         // A marker with no instance on it is not sent anywhere on a guess.
         assertFalse(CaptureWork.sameInstance(null, "https://notes.example.com"))
+    }
+
+    @Test
+    fun `of many kept captures, one is asked about for each reason they were refused`() {
+        fun kept(name: String, refusal: CaptureRefusal, since: Long, waitMs: Long = 0) = CaptureWork.Waiting(
+            File(name), null, KeptCapture(refusal.name, "https://notes.example.com", since = since), waitMs,
+        )
+        val chosen = CaptureWork.firstOfEach(
+            listOf(
+                kept("newer", CaptureRefusal.PLAN_ENDED, since = 300),
+                kept("oldest", CaptureRefusal.PLAN_ENDED, since = 100),
+                // Older still, but a scan that has an hour to wait: a note that can go now answers sooner.
+                kept("waiting", CaptureRefusal.PLAN_ENDED, since = 50, waitMs = 3_600_000),
+                // Another reason has another answer, so it is asked about too.
+                kept("scan", CaptureRefusal.STORAGE_FULL, since = 200, waitMs = 60_000),
+            ),
+        )
+        assertEquals(setOf("oldest", "scan"), chosen.map { it.dir.name }.toSet())
     }
 }

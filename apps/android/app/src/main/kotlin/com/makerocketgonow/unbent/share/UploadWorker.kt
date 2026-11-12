@@ -189,6 +189,9 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
             }
 
             Staging.clear(context, jobId)
+            // A kept capture landed, so there is room: the others kept for the same
+            // reason were waiting on this answer (`CaptureWork.firstOfEach`).
+            if (refusedBefore) CaptureWork.resumeRefused(context)
 
             // The page's own title where the server chose it: "Saved" names what landed.
             CaptureNotifications.saved(context, jobId, noteTitle, noteId, clipped)

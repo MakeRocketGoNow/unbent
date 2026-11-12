@@ -384,6 +384,27 @@ final class CaptureJobTests: XCTestCase {
         XCTAssertEqual(.saved, job.handle(.file("file-2"), ok, now: later))
     }
 
+    func testOfManyKeptCapturesOneIsAskedAboutForEachReason() {
+        let then = Date(timeIntervalSince1970: 1_000_000)
+        func kept(_ id: String, _ body: String, at: TimeInterval, clip: Bool = false) -> CaptureJob {
+            var job = clip ? clipJob() : job()
+            job.id = id
+            _ = job.handle(.create, refusal(body), now: then.addingTimeInterval(at))
+            return job
+        }
+        let ended = #"{"code":"PLAN_INACTIVE"}"#
+        let jobs = [
+            kept("newer", ended, at: 300),
+            kept("oldest", ended, at: 100),
+            // Older still, but a clip with a quiet spell to wait out: a note that can go now answers sooner.
+            kept("waiting", ended, at: 50, clip: true),
+            // Another reason has another answer, so it is asked about too.
+            kept("full", #"{"code":"FREE_NOTES_FULL"}"#, at: 200),
+            job(),
+        ]
+        XCTAssertEqual(["oldest", "full"], CaptureJob.firstOfEachRefusal(jobs, now: then.addingTimeInterval(400)))
+    }
+
     func testAClipThePlanRefusedStaysAClip() {
         var job = clipJob()
         XCTAssertEqual(.refused(.planEnded, again: false), job.handle(.create, refusal(#"{"code":"PLAN_INACTIVE"}"#)))

@@ -9,6 +9,7 @@ import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import com.makerocketgonow.unbent.Prefs
+import java.io.File
 import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 
@@ -83,27 +84,53 @@ object CaptureWork {
             // the capture and says to share again: right for a share just made, and the
             // loss of one the person was told is kept. It stays for the next sign-in.
             if (!prefs.isSignedIn) return@thread
-            for (dir in Staging.jobDirs(app)) {
-                val kept = CaptureResume.refusedJob(dir) ?: continue
+            val now = System.currentTimeMillis()
+            val waiting = Staging.jobDirs(app).mapNotNull { dir ->
+                val kept = CaptureResume.refusedJob(dir) ?: return@mapNotNull null
                 // Shared to another instance than the app is on now; see `KeptCapture`.
                 // The account is the worker's to check, since it takes a request.
-                val record = CaptureResume.kept(dir) ?: continue
-                if (!sameInstance(record.instance, prefs.instance)) continue
+                val record = CaptureResume.kept(dir) ?: return@mapNotNull null
+                if (!sameInstance(record.instance, prefs.instance)) return@mapNotNull null
                 // A record this build cannot read is left for the sweep, not sent blind.
-                val input = runCatching { Data.fromByteArray(kept) }.getOrNull() ?: continue
+                val input = runCatching { Data.fromByteArray(kept) }.getOrNull() ?: return@mapNotNull null
                 val dear = CaptureResume.readNoteId(dir) != null || isClip(input)
-                // Not skipped while it waits: enqueued for when the wait ends, so it
-                // goes then without anyone having to open the app a second time. The
-                // unique name drops every call that finds it already waiting.
-                val wait = refusedWaitMs(dear, record.at, record.count, System.currentTimeMillis())
+                Waiting(dir, input, record, refusedWaitMs(dear, record.at, record.count, now))
+            }
+            for (one in firstOfEach(waiting)) {
                 // Touched, so the sweep (which goes by the newest file) counts from the
                 // last time anything was done for this capture and cannot take it from
                 // under the job being started here.
-                CaptureResume.touch(dir)
-                enqueue(app, Data.Builder().putAll(input).putBoolean(UploadWorker.KEY_RESUMED, true).build(), wait)
+                CaptureResume.touch(one.dir)
+                // Not skipped while it waits: enqueued for when the wait ends, so it
+                // goes then without anyone having to open the app a second time. The
+                // unique name drops every call that finds it already waiting.
+                val input = one.input ?: continue
+                enqueue(app, Data.Builder().putAll(input).putBoolean(UploadWorker.KEY_RESUMED, true).build(), one.waitMs)
             }
         }
     }
+
+    /**
+     * A kept capture that could be sent again, and how long it has still to wait first.
+     * [input] is nullable only so a test can make one without WorkManager's `Data`.
+     */
+    internal class Waiting(val dir: File, val input: Data?, val record: KeptCapture, val waitMs: Long)
+
+    /**
+     * The captures to ask the server about: one for each reason captures were refused.
+     *
+     * A lapsed account that shared a dozen things has a dozen kept captures, and the
+     * answer to the first is the answer to all of them: every return to the app was a
+     * dozen jobs, a dozen requests each paying a call to the account's store to hear 402,
+     * and a dozen notices posted again. So one goes, the one that can go soonest and
+     * among those the longest kept, and [UploadWorker] calls back here when a kept
+     * capture lands, which sends the next. By reason, because the reasons have different
+     * answers: an account out of storage for files still takes a note.
+     */
+    internal fun firstOfEach(waiting: List<Waiting>): List<Waiting> =
+        waiting.groupBy { it.record.refusal }.values.map { same ->
+            same.minWith(compareBy<Waiting> { it.waitMs }.thenBy { it.record.since })
+        }
 
     /**
      * How long a capture the plan refused waits before it is sent again: nothing for most,

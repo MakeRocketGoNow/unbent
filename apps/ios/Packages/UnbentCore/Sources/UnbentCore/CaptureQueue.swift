@@ -170,9 +170,12 @@ public final class CaptureQueue: NSObject, @unchecked Sendable {
             let identifiers = Set([self.home] + jobs.compactMap(\.shareSession))
             self.liveRequests(in: identifiers) { live, idle in
                 // Read again: results may have been applied while the lists were fetched.
-                for job in self.jobsOnDisk() {
+                let jobs = self.jobsOnDisk()
+                // One refused capture for each reason, not all of them; see there.
+                let asked = refused ? CaptureJob.firstOfEachRefusal(jobs) : []
+                for job in jobs {
                     if job.isSaved { self.apply(.saved, to: job); continue }
-                    if job.refused != nil, !refused { continue }
+                    if job.refused != nil, !asked.contains(job.id) { continue }
                     // Nothing for most; for a refused file or clip, the rest of its
                     // quiet spell, which the system then holds the request for.
                     let wait = job.refusedWait()
@@ -324,6 +327,10 @@ public final class CaptureQueue: NSObject, @unchecked Sendable {
         case .saved:
             store.clear(job.id)
             notifier.saved(job)
+            // Something landed, so there may be room: the captures the plan refused
+            // were waiting on an answer like this one (`CaptureJob.firstOfEachRefusal`).
+            // Only after a success, so a wake-up for a refusal never sends another.
+            if jobsOnDisk().contains(where: { $0.refused != nil }) { resumeAll(refused: true) }
         case .signInNeeded:
             // The stale session would fail every later share the same way, silently.
             sessions.clear(for: job.origin)

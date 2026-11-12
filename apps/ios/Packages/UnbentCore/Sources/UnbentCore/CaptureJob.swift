@@ -370,6 +370,27 @@ public struct CaptureJob: Codable, Equatable, Sendable {
         return max(0, Self.quiet(count: refusedCount ?? 1) - now.timeIntervalSince(refusedAt))
     }
 
+    /// Of the captures the plan refused, the ones to ask the server about: one for each
+    /// reason they were refused, by id.
+    ///
+    /// A lapsed account that shared a dozen things has a dozen kept captures, and the
+    /// answer to the first is the answer to all of them: every return to the app was a
+    /// dozen requests, each paying a call to the account's store to hear 402, and a dozen
+    /// notices posted again. So one goes, the one that can go soonest and among those
+    /// the longest kept, and the queue asks about the rest when a capture lands. By
+    /// reason, because the reasons have different answers: an account out of storage for
+    /// files still takes a note. Android's half is `CaptureWork.firstOfEach`.
+    public static func firstOfEachRefusal(_ jobs: [CaptureJob], now: Date = Date()) -> Set<String> {
+        let refused = jobs.filter { $0.refused != nil }
+        let first = Dictionary(grouping: refused, by: \.refused).values.compactMap { same in
+            same.min { a, b in
+                let (wa, wb) = (a.refusedWait(now: now), b.refusedWait(now: now))
+                return wa != wb ? wa < wb : (a.refusedSince ?? now) < (b.refusedSince ?? now)
+            }
+        }
+        return Set(first.map(\.id))
+    }
+
     private mutating func forgetRefusal() {
         refused = nil
         refusedAt = nil
