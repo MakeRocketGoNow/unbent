@@ -53,8 +53,11 @@ class ApiException(
      * own routes write one where the status alone does not say what to do (`ClipErrorCode`
      * on the server), and so does Better Auth's Turnstile plugin. Null when there is none.
      */
-    fun code(): String? = runCatching {
-        ApiJson.parseToJsonElement(body).jsonObject["code"]?.jsonPrimitive?.contentOrNull?.ifEmpty { null }
+    fun code(): String? = field("code")
+
+    /** One text field of the JSON body, for what travels beside the code; null when absent or empty. */
+    fun field(name: String): String? = runCatching {
+        ApiJson.parseToJsonElement(body).jsonObject[name]?.jsonPrimitive?.contentOrNull?.ifEmpty { null }
     }.getOrNull()
 
     /**

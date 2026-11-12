@@ -1,10 +1,6 @@
 package com.makerocketgonow.unbent.share
 
 import com.makerocketgonow.unbent.api.ApiException
-import com.makerocketgonow.unbent.api.ApiJson
-import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
 
 /**
  * Why the server would not take a capture that there is nothing wrong with: the account
@@ -48,13 +44,9 @@ enum class CaptureRefusal {
             return when (e.code()) {
                 "PLAN_INACTIVE" -> PLAN_ENDED
                 "FREE_NOTES_FULL" -> FREE_NOTES_FULL
-                "STORAGE_FULL" -> if (field(e.body, "of") == "notes") NOTES_FULL else STORAGE_FULL
+                "STORAGE_FULL" -> if (e.field("of") == "notes") NOTES_FULL else STORAGE_FULL
                 else -> PLAN
             }
         }
-
-        private fun field(body: String, name: String): String? = runCatching {
-            ApiJson.parseToJsonElement(body).jsonObject[name]?.jsonPrimitive?.contentOrNull
-        }.getOrNull()
     }
 }
