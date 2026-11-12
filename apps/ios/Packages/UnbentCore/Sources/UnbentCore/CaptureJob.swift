@@ -342,6 +342,11 @@ public struct CaptureJob: Codable, Equatable, Sendable {
             // But a session carries no expiry this app can read, so someone who shares
             // often and opens the app rarely finds out it lapsed only by sharing, and
             // for a scan opened from a scanner's app, the staged copy may be the only one.
+            //
+            // A capture the plan had refused waits for the sign-in now, not for room:
+            // left marked, the resend after signing in passed it over, and "Sign in to
+            // finish saving" was not true of it until the app was next opened.
+            refused = nil
             return .signInNeeded
         }
 

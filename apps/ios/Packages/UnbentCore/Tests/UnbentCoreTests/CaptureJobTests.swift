@@ -287,6 +287,17 @@ final class CaptureJobTests: XCTestCase {
         XCTAssertEqual(.saved, job.handle(.file("file-0"), ok))
     }
 
+    /// The session lapsed while the capture waited on the plan. It is now one waiting for
+    /// a sign-in, which is what its notice says, and the resend after signing in is a
+    /// first asking again.
+    func testARefusedCaptureWhoseSessionThenLapsesWaitsForTheSignInInstead() {
+        var job = job()
+        _ = job.handle(.create, refusal(#"{"code":"PLAN_INACTIVE"}"#))
+        XCTAssertEqual(.signInNeeded, job.handle(.create, CaptureOutcome(status: 401)))
+        XCTAssertNil(job.refused)
+        XCTAssertEqual(.refused(.planEnded, again: false), job.handle(.create, refusal(#"{"code":"PLAN_INACTIVE"}"#)))
+    }
+
     func testAClipThePlanRefusedStaysAClip() {
         var job = clipJob()
         XCTAssertEqual(.refused(.planEnded, again: false), job.handle(.create, refusal(#"{"code":"PLAN_INACTIVE"}"#)))
