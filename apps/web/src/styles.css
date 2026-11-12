@@ -6575,6 +6575,9 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   outline-offset: 2px;
 }
 
+/* The tile's ring is the focus mark; the radio's own beside the word would be a second. */
+.theme-choice input:focus-visible { outline: none; }
+
 /*
    Each tile carries its theme's own tokens: the two token blocks at the top of this file
    name `.theme-mini[data-theme]` beside `:root`, so Dark's tile is dark on a light page
