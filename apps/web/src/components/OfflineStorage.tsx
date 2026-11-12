@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { notebookFilesQuery, notebooksQuery } from '../queries.js';
@@ -49,11 +49,21 @@ export function OfflineStorage() {
    * What Unbent has stored, measured (`store/usage.ts`), for the intro to say. Not `room`,
    * which stays the browser's estimate because it is what fitting is judged against: the
    * two differ by gigabytes when Chrome miscounts the file system.
+   *
+   * Measured beside the other figures rather than before them: the walk sizes every file
+   * on the device, which is thousands with a notebook kept, and the waiting uploads and
+   * the persistence line have no reason to wait for it. Only the newest walk's answer is
+   * kept, so a slow one cannot land over a later one, and a walk that met a file SQLite
+   * held (null) leaves the last measure standing rather than the miscount it replaces.
    */
   const [stored, setStored] = useState<number | null>(null);
+  const measuring = useRef(0);
   const refresh = useCallback(async () => {
+    const ask = ++measuring.current;
+    void storedBytes().then((bytes) => {
+      if (ask === measuring.current && bytes !== null) setStored(bytes);
+    });
     setOpened(await openedFilesUsage());
-    setStored(await storedBytes());
     setPersisted(await storagePersisted());
     const user = currentLibraryUser();
     const shelf = user ? await listShelf(user, 'pending').catch(() => []) : [];

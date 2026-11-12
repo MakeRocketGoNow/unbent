@@ -43,14 +43,14 @@ describe('what Unbent says it has stored on the device', () => {
     expect(await storedBytes()).toBe(100 * MB);
   });
 
-  it('says the browser\'s total when a file cannot be sized, rather than a total that leaves it out', async () => {
+  it('is unknown when a file cannot be sized, rather than a total that leaves it out or the miscount', async () => {
     await put('unbent-u1.sqlite', 23 * MB);
     const held = await root.getFileHandle('unbent-u1.sqlite');
     held.getFile = async () => {
       throw Object.assign(new Error('held by an access handle'), { name: 'NoModificationAllowedError' });
     };
     estimate({ usage: 4272 * MB, quota: 15000 * MB, usageDetails: { fileSystem: 4245 * MB, caches: 27 * MB } });
-    expect(await storedBytes()).toBe(4272 * MB);
+    expect(await storedBytes()).toBeNull();
   });
 
   it('is unknown where the browser will not estimate at all', async () => {

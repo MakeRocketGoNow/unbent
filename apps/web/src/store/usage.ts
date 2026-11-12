@@ -20,8 +20,12 @@
  * number there would promise room the browser may then refuse.
  *
  * A file the walk cannot read (one SQLite holds open at that moment, on a browser that will
- * not size it then) makes the whole measure unknown, and the estimate is said instead: a
- * total that leaves out the library would be a smaller wrong number, not a right one.
+ * not size it then) makes the whole measure unknown, and the answer is null rather than the
+ * estimate: a total that leaves out the library would be a smaller wrong number, and the
+ * estimate is the number this exists to stop saying, so the caller keeps the last measure
+ * it had. The library's writes come in short transactions, and wa-sqlite's cooperative VFS
+ * lets a file go between them, so a walk mostly finds every file free: on 2026-11-12 one ran
+ * in Chrome beside a window holding the library open, and sized all of them.
  */
 export async function storedBytes(): Promise<number | null> {
   const estimate = await navigator.storage?.estimate?.().catch(() => null);
@@ -29,7 +33,7 @@ export async function storedBytes(): Promise<number | null> {
   const counted = (estimate as StorageEstimate & { usageDetails?: Record<string, number> }).usageDetails?.fileSystem;
   if (counted === undefined) return estimate.usage;
   const measured = await fileSystemBytes().catch(() => null);
-  if (measured === null) return estimate.usage;
+  if (measured === null) return null;
   return Math.max(0, estimate.usage - counted + measured);
 }
 
