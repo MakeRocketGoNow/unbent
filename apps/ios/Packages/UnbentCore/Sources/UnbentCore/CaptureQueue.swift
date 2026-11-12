@@ -392,11 +392,14 @@ public final class CaptureQueue: NSObject, @unchecked Sendable {
 extension CaptureQueue: URLSessionTaskDelegate {
     public func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
         guard let (jobId, step) = CaptureStep.parse(task.taskDescription) else { return }
+        // Taken before anything returns: a request recalled while its 402 was arriving
+        // would otherwise leave half a body under its label, for the same step's next
+        // answer to be appended to and no longer read.
+        let said = task.taskDescription.flatMap { refusals.removeValue(forKey: $0) }
         // One this queue cancelled itself: its capture ended, or is waiting for a sign-in.
         if (error as? URLError)?.code == .cancelled { return }
 
         let response = task.response as? HTTPURLResponse
-        let said = task.taskDescription.flatMap { refusals.removeValue(forKey: $0) }
         if let error {
             log.warning("\(task.taskDescription ?? "", privacy: .public) got no answer: \(error.localizedDescription, privacy: .public)")
         }
