@@ -41,7 +41,37 @@
   */
   --font-read: ui-serif, Charter, "Iowan Old Style", Georgia, serif;
 
-  --bg: #fbfaf8;
+  /*
+     Three surfaces, and the note is the paper.
+
+     `--bg` is the ground a note is read and written on, and everything that stands on the
+     same sheet as one: a menu, a sheet, the settings pages, the whole app on a phone.
+     White, because the archive is mostly scans and PDFs and a page of one should be the
+     brightest thing on screen, not a white rectangle on cream. `--bg-list` and `--bg-rail`
+     are the two columns beside it on a desktop, each a step further from the paper, so
+     the window reads as navigation, then a list, then the document, without a heavier
+     line between them. Warm greys, not neutral ones: the ink and the borders are warm,
+     and a cool grey beside them reads as a different app's chrome.
+
+     The ground was one warm off-white (#fbfaf8) for every column, with the rail a 3% mix
+     over it. Nothing was wrong with the hue; the trouble was that the list and the note
+     were the same surface, so nothing said which was content.
+
+     The columns take their surface by redefining `--bg` for what is inside them (see
+     `.sidebar` and `.rail`), so a sticky head or a field that paints `var(--bg)` to cover
+     what scrolls under it matches the column it is in without knowing which that is.
+     `--paper` is the sheet's own colour under a name a column does not redefine, for
+     what is raised out of a column: a menu opened from the rail stands on paper.
+
+     Only side by side: a phone shows one column at a time, and there the list is the
+     page and stays `--bg`. That is also the colour the apps are told to paint the system
+     bars with (`useHostApp`), read from the root, which is why the root's `--bg` must
+     stay the colour a phone's screen is.
+  */
+  --paper: #ffffff;
+  --bg: var(--paper);
+  --bg-list: #f9f8f5;
+  --bg-rail: #f2f0eb;
   --fg: #1c1a17;
   --muted: #6b6560;
   --border: #e3ded7;
@@ -130,9 +160,29 @@ input[type='radio'] {
   accent-color: var(--accent);
 }
 
+/*
+   What is raised out of a column stands on paper, whichever column it was opened from.
+
+   The rail and the list redefine `--bg` as their own surface for what is inside them,
+   and a menu, a sheet or a list of suggestions is inside one in the DOM while being
+   above all of them on screen. On the column's grey it would read as part of the column,
+   a panel let into it, where its border and shadow say it floats.
+*/
+.overflow-list,
+.tag-suggestions,
+.emoji-panel,
+.sheet,
+.selection-bar {
+  --bg: var(--paper);
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #16151a;
+    /* The same three steps, away from the paper and towards the ink, which on a dark
+       ground is lighter. The rail's is what its 3% mix over the page used to come to. */
+    --paper: #16151a;
+    --bg-list: #19181d;
+    --bg-rail: #1c1b20;
     --fg: #eae7e2;
     --muted: #9a938c;
     --border: #2e2c33;
@@ -7777,9 +7827,10 @@ button.settings-nav-item {
    removed outright are the things a strip cannot show at all: the notebooks (one glyph
    each, indistinguishable as icons), the section head, New notebook.
 
-   The surface is a mix over `--fg`, the idiom every second surface here uses, so it
-   inverts with the theme; the border on its right is the divider, as the resize handle
-   is between the list and the note. No width transition by default: nothing should
+   The surface is `--bg-rail`, the furthest of the three from the note's paper (see the
+   tokens at the top), and the rail redefines `--bg` as it for everything inside; the
+   border on its right is the divider, as the resize handle is between the list and the
+   note. No width transition by default: nothing should
    slide when a window is resized across 1200px. The toggle slides, through
    `data-sliding` (see "The slide", after the strip's rules).
    --------------------------------------------------------------------------------- */
@@ -7805,7 +7856,8 @@ button.settings-nav-item {
     */
     position: relative;
     z-index: 25;
-    background: color-mix(in srgb, var(--fg) 3%, transparent);
+    --bg: var(--bg-rail);
+    background: var(--bg);
   }
   /*
      While a menu is open, above the handle on its edge too. The handle has to outrank the
@@ -7848,6 +7900,41 @@ button.settings-nav-item {
     padding-left: 0.75rem;
     padding-right: 1.25rem;
   }
+
+  /*
+     The list's column is the middle surface, from the rail's edge to the divider and the
+     full height of the window.
+
+     The column itself is inset on every side (the shell's padding above, below and to
+     its left, the grid's channel to its right) and the surface must not be: a tinted box
+     with the page showing round it reads as a card, not as a column. So the surface is
+     drawn behind the column and reaches out through those insets: left by the shell's
+     gutter to the rail's edge, right by the grid's 0.5rem channel to the handle's line,
+     down by the shell's 1rem, and up past anything above the grid (the offline line is
+     a row of the same column) to the window's edge, where the shell clips it.
+     A pseudo-element and not a background on a wrapper, because the wrapper would have to
+     be the grid's track and the insets are what the head, the search field and the rows
+     are aligned by.
+
+     `--bg` is redefined for the column, so what paints the page's colour inside it to
+     cover what scrolls underneath paints the column's.
+  */
+  .sidebar { --bg: var(--bg-list); }
+  .sidebar::before {
+    content: '';
+    position: absolute;
+    inset: -100vh -0.5rem -1rem calc(-1 * var(--shell-pad-left));
+    z-index: -1;
+    background: var(--bg-list);
+    pointer-events: none;
+  }
+  /*
+     A table or a gallery with no note open is the whole window and the thing being read,
+     not a column beside it: it stands on paper. A window that was all the list's grey
+     had no paper in it at all. Open a note and it is the list beside one again.
+  */
+  .notes.wide-view:not(.note-open) > .sidebar { --bg: var(--paper); }
+  .notes.wide-view:not(.note-open) > .sidebar::before { display: none; }
 
   .shell.wide > .resize-handle {
     flex: 0 0 1px;
