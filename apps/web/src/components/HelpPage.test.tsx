@@ -73,6 +73,6 @@ describe('HelpPage', () => {
   it('leaves out the last panel when there is nowhere to send anyone', async () => {
     const { findByText, queryByText } = harness();
     await findByText('Formatting');
-    expect(queryByText('Something else')).toBeNull();
+    expect(queryByText('Still stuck?')).toBeNull();
   });
 });

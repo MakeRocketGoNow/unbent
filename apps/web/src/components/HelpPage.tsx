@@ -161,7 +161,7 @@ export function HelpPage({ build = buildInfo }: { build?: BuildInfo | null }) {
               <dt>
                 <kbd>{keys(apple, 'mod', 'A')}</kbd>
               </dt>
-              <dd>Select every note in the list, to move, tag or delete them together</dd>
+              <dd>From the list, select every note in it, to move, tag or delete them together</dd>
             </div>
             <div>
               <dt>
@@ -173,7 +173,7 @@ export function HelpPage({ build = buildInfo }: { build?: BuildInfo | null }) {
               <dt>
                 <kbd>Esc</kbd>
               </dt>
-              <dd>Close search</dd>
+              <dd>Close search, or clear a selection</dd>
             </div>
           </dl>
         </Topic>
@@ -210,7 +210,7 @@ export function HelpPage({ build = buildInfo }: { build?: BuildInfo | null }) {
         </Topic>
 
         {(support || feedback) && (
-          <Topic title="Something else">
+          <Topic title="Still stuck?">
             <p className="muted small">
               {support?.kind === 'page' && (
                 <>
