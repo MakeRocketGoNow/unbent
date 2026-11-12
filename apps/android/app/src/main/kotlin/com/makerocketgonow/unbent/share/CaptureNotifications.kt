@@ -132,6 +132,10 @@ object CaptureNotifications {
             CaptureRefusal.PLAN -> R.string.refused_plan
         }
         val named = title.ifBlank { context.getString(R.string.untitled) }
+        // A repeat only brings the notice up to date; it does not bring it back. Someone
+        // who swiped it away has read it, and a note that is refused on every return to
+        // the app would put it in the shade again each time.
+        if (quiet && !showing(context, jobId)) return
         post(
             context, jobId,
             builder(context, title)
@@ -164,6 +168,11 @@ object CaptureNotifications {
     private fun builder(context: Context, title: String): NotificationCompat.Builder =
         NotificationCompat.Builder(context, CHANNEL)
             .setContentText(title.ifBlank { context.getString(R.string.untitled) })
+
+    private fun showing(context: Context, jobId: String): Boolean {
+        val manager = context.getSystemService(NotificationManager::class.java) ?: return false
+        return runCatching { manager.activeNotifications.any { it.id == jobId.hashCode() } }.getOrDefault(false)
+    }
 
     private fun post(context: Context, jobId: String, builder: NotificationCompat.Builder) {
         val manager = context.getSystemService(NotificationManager::class.java) ?: return

@@ -100,6 +100,10 @@ public struct CaptureNotifications: CaptureNotifying {
     private static let planKey = "plan"
 
     /// The note's title is the second line throughout, so "Saved" says what was saved.
+    ///
+    /// `quiet` only brings a notice up to date; it does not bring it back. Someone who
+    /// cleared it has read it, and a note that is refused on every return to the app
+    /// would put it in Notification Center again each time.
     private func post(_ job: CaptureJob, _ title: String, noteId: String? = nil, detail: String? = nil, plan: Bool = false, quiet: Bool = false) {
         let content = UNMutableNotificationContent()
         content.title = title
@@ -107,7 +111,15 @@ public struct CaptureNotifications: CaptureNotifying {
         if let noteId { content.userInfo = [Self.noteKey: noteId] }
         if plan { content.userInfo = [Self.planKey: true] }
         if quiet { content.interruptionLevel = .passive }
-        // Notifications may be off; the capture itself is unaffected.
-        UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: job.id, content: content, trigger: nil))
+        let request = UNNotificationRequest(identifier: job.id, content: content, trigger: nil)
+        let center = UNUserNotificationCenter.current()
+        guard quiet else {
+            // Notifications may be off; the capture itself is unaffected.
+            center.add(request)
+            return
+        }
+        center.getDeliveredNotifications { delivered in
+            if delivered.contains(where: { $0.request.identifier == job.id }) { center.add(request) }
+        }
     }
 }
