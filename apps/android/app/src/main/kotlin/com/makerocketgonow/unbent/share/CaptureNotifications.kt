@@ -113,12 +113,13 @@ object CaptureNotifications {
      * The plan would not take the capture, and it is kept on the phone ([CaptureRefusal]).
      *
      * The title names the room there is none of, short enough for a notification's first
-     * line (`strings.xml` says why the first is the web app's "read-only"). A tap opens the Plan page, which has the numbers for every one of
-     * these and says what to delete. Inside the app that page draws no Subscribe or
-     * storage buttons (the stores' billing rules; `isHosted` in the web app's `Plan.tsx`)
-     * and says to do those on the web, so the notice promises a reason, not a checkout.
-     * The expanded text says the one thing the person cannot see for themselves, which is
-     * that what they shared has not been lost and needs no sharing again.
+     * line (`strings.xml` says why the first is the web app's "read-only"). A tap opens
+     * the Plan page, which has the numbers for every one of these and says what to
+     * delete. Inside the app that page draws no Subscribe or storage buttons (the stores'
+     * billing rules; `isHosted` in the web app's `Plan.tsx`) and says to do those on the
+     * web, so the notice promises a reason, not a checkout. The expanded text says the
+     * one thing the person cannot see for themselves, which is that what they shared has
+     * not been lost and needs no sharing again.
      *
      * [quiet] for a capture that was refused before and has been again: the first notice
      * peeks, and a repeat of it each time the app is opened would be nagging.

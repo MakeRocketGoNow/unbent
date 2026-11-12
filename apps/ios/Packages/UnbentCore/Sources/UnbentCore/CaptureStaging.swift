@@ -216,10 +216,10 @@ public struct CaptureStore: Sendable {
     ///   waiting for it. Gone after three days, silently.
     /// - A record: a capture someone saved, which is waiting for a sign-in (made signed
     ///   out, or refused for a lapsed session) or for the plan to have room
-    ///   (`CaptureJob.refused`, which waits twice as long here; see `refused`), and was
-    ///   told it would be saved. Kept for
-    ///   thirty days, and returned when it goes so the caller can say it was not. It was
-    ///   three days and silent for these too, which broke the sheet's own promise.
+    ///   (`CaptureJob.refused`), and was told it would be saved. Kept for thirty days
+    ///   (sixty for one the plan refused; see `refused`), and returned when it goes so
+    ///   the caller can say it was not. It was three days and silent for these too,
+    ///   which broke the sheet's own promise.
     ///
     /// Touched means any file in it. A capture that is being retried is never swept by
     /// either limit: its record is rewritten on every attempt, so the longest it goes
