@@ -80,8 +80,38 @@ object CaptureWork {
                 val kept = CaptureResume.refusedJob(dir) ?: continue
                 // A record this build cannot read is left for the sweep, not sent blind.
                 val input = runCatching { Data.fromByteArray(kept) }.getOrNull() ?: continue
+                val dear = CaptureResume.readNoteId(dir) != null || isClip(input)
+                if (!resendsRefused(dear, CaptureResume.refusedAt(dir), System.currentTimeMillis())) continue
                 enqueue(app, input)
             }
         }
     }
+
+    /**
+     * Whether a capture the plan refused is sent again now.
+     *
+     * A note that was refused is a few hundred bytes, and goes every time: someone back
+     * from subscribing should not wait. Two captures cost more to ask about ([dear]). One
+     * whose note exists was refused at a file, and uploads the whole file to hear the
+     * answer, a scan of tens of megabytes over a phone connection; and a clip has the
+     * server fetch and read someone else's page before the store refuses it. `onStart`
+     * runs on every return to the app, from the camera and the file chooser included, so
+     * those two wait [REFUSED_QUIET_MS] from their last refusal: long enough that a full
+     * account is not uploading the same scan each time the phone is picked up, short
+     * enough to pass while storage is added.
+     *
+     * Asking the server for the plan first was the other way. It answers a different
+     * question for each of the four refusals (a state, a count of notes, two sizes of
+     * room), and the write itself is the only check that is never out of step with the
+     * rule it checks. The iOS app's half is `CaptureJob.resendsRefused`.
+     */
+    internal fun resendsRefused(dear: Boolean, refusedAt: Long?, now: Long): Boolean =
+        !dear || refusedAt == null || now - refusedAt >= REFUSED_QUIET_MS
+
+    /** Whether [input] is a share the worker will ask the server to read as a page. */
+    private fun isClip(input: Data): Boolean =
+        input.getStringArray(UploadWorker.KEY_FILENAMES).isNullOrEmpty() &&
+            UploadWorker.lonePageUrl(input.getString(UploadWorker.KEY_BODY).orEmpty()) != null
+
+    internal const val REFUSED_QUIET_MS = 15 * 60 * 1000L
 }

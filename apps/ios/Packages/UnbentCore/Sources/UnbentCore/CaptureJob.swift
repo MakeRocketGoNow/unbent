@@ -189,6 +189,8 @@ public struct CaptureJob: Codable, Equatable, Sendable {
     /// resend is a second asking, which shows no "Saving…".
     /// Optional so a record written before the field existed still reads.
     public var refused: CaptureRefusal?
+    /// When it was last refused; see `resendsRefused`.
+    public var refusedAt: Date?
     /// The background session the extension started this capture's upload in, which the
     /// app joins to hear how it went. Nil for a capture nothing has been sent for yet,
     /// and for one made in the app.
@@ -312,18 +314,46 @@ public struct CaptureJob: Codable, Equatable, Sendable {
         return [400, 404, 413, 415, 502].contains(status)
     }
 
+    /// How long a refused capture that is dear to ask about waits before it is asked
+    /// about again; see `resendsRefused`.
+    static let refusedQuiet: TimeInterval = 15 * 60
+
+    /// Whether a capture the plan refused is sent again now, when the app has come
+    /// forward (`CaptureQueue.resumeAll`).
+    ///
+    /// A note that was refused is a few hundred bytes, and goes every time: someone back
+    /// from subscribing should not wait. Two captures cost more to ask about. One refused
+    /// at a file uploads the whole file to hear the answer, a scan of tens of megabytes
+    /// over a phone connection; and a clip has the server fetch and read someone else's
+    /// page before the store refuses it. The app comes forward often (after Notification
+    /// Center, after a system sheet), so those two wait a quarter of an hour from their
+    /// last refusal: long enough that a full account is not uploading the same scan
+    /// each time the phone is picked up, short enough to pass while storage is added.
+    ///
+    /// Asking the server for the plan first was the other way. It answers a different
+    /// question for each of the four refusals (a state, a count of notes, two sizes of
+    /// room), and the write itself is the only check that is never out of step with the
+    /// rule it checks. Android's half is `CaptureWork.resendsRefused`.
+    public func resendsRefused(now: Date = Date()) -> Bool {
+        guard refused != nil, created || clip != nil, let refusedAt else { return true }
+        return now.timeIntervalSince(refusedAt) >= Self.refusedQuiet
+    }
+
     /// Thirty seconds, doubling: WorkManager's backoff, which Android's worker runs on.
     static func backoff(attempts: Int) -> TimeInterval {
         30 * pow(2, Double(max(attempts, 1) - 1))
     }
 
     /// Applies how a request ended, and says what to do next.
-    public mutating func handle(_ step: CaptureStep, _ outcome: CaptureOutcome) -> CaptureAction {
+    public mutating func handle(_ step: CaptureStep, _ outcome: CaptureOutcome, now: Date = Date()) -> CaptureAction {
         if let status = outcome.status, (200..<300).contains(status) {
             // The note was taken: there is room now, whatever was said before. Not for a
             // file, since several are out at once and one landing after another's
             // refusal says nothing about the refused one, which is still waiting.
-            if step == .create { refused = nil }
+            if step == .create {
+                refused = nil
+                refusedAt = nil
+            }
             switch step {
             case .create:
                 // Twice is possible (the extension's request and the app's own resend
@@ -350,6 +380,7 @@ public struct CaptureJob: Codable, Equatable, Sendable {
             // left marked, the resend after signing in passed it over, and "Sign in to
             // finish saving" was not true of it until the app was next opened.
             refused = nil
+            refusedAt = nil
             return .signInNeeded
         }
 
@@ -361,6 +392,7 @@ public struct CaptureJob: Codable, Equatable, Sendable {
             // the plain note is refused the same way, and giving up deletes the files.
             let again = refused != nil
             refused = refusal
+            refusedAt = now
             return .refused(refusal, again: again)
         }
 

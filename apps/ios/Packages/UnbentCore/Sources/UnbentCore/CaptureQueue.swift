@@ -172,7 +172,7 @@ public final class CaptureQueue: NSObject, @unchecked Sendable {
                 // Read again: results may have been applied while the lists were fetched.
                 for job in self.jobsOnDisk() {
                     if job.isSaved { self.apply(.saved, to: job); continue }
-                    if job.refused != nil, !refused { continue }
+                    if job.refused != nil, !(refused && job.resendsRefused()) { continue }
                     for step in job.pending(live: live) {
                         // A note going out for the first time from here is one that
                         // waited for a sign-in, and now there is something to say. Not

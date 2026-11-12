@@ -308,6 +308,36 @@ final class CaptureJobTests: XCTestCase {
         XCTAssertEqual(.storageFull, job.refused)
     }
 
+    /// Coming back to the app asks again. A refused note is cheap to ask about; a file
+    /// is uploaded whole to hear the answer and a clip has the server read the page, so
+    /// those wait a while between askings.
+    func testARefusedFileOrClipIsNotSentAgainOnEveryReturnToTheApp() {
+        let then = Date(timeIntervalSince1970: 1_000_000)
+        let soon = then.addingTimeInterval(60)
+        let later = then.addingTimeInterval(CaptureJob.refusedQuiet)
+
+        var note = job()
+        _ = note.handle(.create, refusal(#"{"code":"PLAN_INACTIVE"}"#), now: then)
+        XCTAssertTrue(note.resendsRefused(now: soon))
+
+        var file = job()
+        _ = file.handle(.create, ok)
+        _ = file.handle(.file("file-0"), refusal(#"{"code":"STORAGE_FULL","of":"files"}"#), now: then)
+        XCTAssertFalse(file.resendsRefused(now: soon))
+        XCTAssertTrue(file.resendsRefused(now: later))
+
+        var clip = clipJob()
+        _ = clip.handle(.create, refusal(#"{"code":"PLAN_INACTIVE"}"#), now: then)
+        XCTAssertFalse(clip.resendsRefused(now: soon))
+        XCTAssertTrue(clip.resendsRefused(now: later))
+        // Each refusal starts the wait again.
+        _ = clip.handle(.create, refusal(#"{"code":"PLAN_INACTIVE"}"#), now: later)
+        XCTAssertFalse(clip.resendsRefused(now: later.addingTimeInterval(60)))
+
+        // A capture that was never refused is not held back by any of this.
+        XCTAssertTrue(job().resendsRefused(now: soon))
+    }
+
     func testAClipThePlanRefusedStaysAClip() {
         var job = clipJob()
         XCTAssertEqual(.refused(.planEnded, again: false), job.handle(.create, refusal(#"{"code":"PLAN_INACTIVE"}"#)))

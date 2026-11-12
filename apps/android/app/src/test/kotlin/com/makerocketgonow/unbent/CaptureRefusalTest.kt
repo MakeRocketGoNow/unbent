@@ -2,8 +2,11 @@ package com.makerocketgonow.unbent
 
 import com.makerocketgonow.unbent.api.ApiException
 import com.makerocketgonow.unbent.share.CaptureRefusal
+import com.makerocketgonow.unbent.share.CaptureWork
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -49,5 +52,21 @@ class CaptureRefusalTest {
         assertNull(CaptureRefusal.of(ApiException(401, "unauthorized")))
         assertNull(CaptureRefusal.of(ApiException(413, "too large")))
         assertNull(CaptureRefusal.of(ApiException(503, "busy", retryAfter = "60")))
+    }
+
+    // How often a kept capture is sent again, as the app comes to the screen.
+
+    @Test
+    fun `a refused note goes again on every return to the app`() {
+        assertTrue(CaptureWork.resendsRefused(dear = false, refusedAt = 1_000, now = 1_001))
+    }
+
+    @Test
+    fun `a refused file or clip waits a while between askings`() {
+        val then = 1_000_000L
+        assertFalse(CaptureWork.resendsRefused(dear = true, refusedAt = then, now = then + 60_000))
+        assertTrue(CaptureWork.resendsRefused(dear = true, refusedAt = then, now = then + CaptureWork.REFUSED_QUIET_MS))
+        // A marker whose time cannot be read does not hold a capture back for good.
+        assertTrue(CaptureWork.resendsRefused(dear = true, refusedAt = null, now = then))
     }
 }

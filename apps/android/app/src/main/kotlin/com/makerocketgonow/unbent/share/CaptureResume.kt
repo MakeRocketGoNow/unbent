@@ -100,6 +100,9 @@ object CaptureResume {
     /** Whether the plan refused this capture on an earlier attempt, and it was kept. */
     fun wasRefused(dir: File): Boolean = File(dir, REFUSED_FILE).isFile
 
+    /** When the plan last refused this capture, or null when it has not. */
+    fun refusedAt(dir: File): Long? = File(dir, REFUSED_FILE).takeIf { it.isFile }?.lastModified()
+
     /** A kept capture's input, as [keepRefused] was given it; null when it is not one. */
     fun refusedJob(dir: File): ByteArray? =
         if (wasRefused(dir)) File(dir, JOB_FILE).takeIf { it.isFile }?.readBytes() else null
