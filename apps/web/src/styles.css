@@ -2426,6 +2426,12 @@ a.overflow-item { text-decoration: none; }
 
 @media (width > 860px) {
   .notes.wide-view .note-close { display: inline-flex; }
+
+  /* A failed note's head is off at this width because it had nothing in it (see
+     `.workspace-error-head`). Beside a table or the cards it has the ✕, so it is drawn
+     there, rule and all: the cross then sits where the loaded note's does, and a note
+     that fails after another was open moves nothing in the corner. */
+  .notes.wide-view .workspace-error-head { display: flex; }
 }
 
 .title-input {

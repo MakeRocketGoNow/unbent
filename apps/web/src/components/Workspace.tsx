@@ -111,6 +111,29 @@ interface WorkspaceProps {
 /** What the History sheet is handed before it has ever been opened. */
 const CLOSED_HISTORY: HistoryCurrent = { title: '', body: '', notebook: null, tags: [], fields: [] };
 
+/**
+ * The ✕ that closes a note open beside a table or the cards. Why it exists, and why it is
+ * a cross and not the arrow, is said where the loaded note draws it; it is a component
+ * because the failed note's head draws the same one, and two copies of a link whose
+ * `replace` and click handler both matter would drift.
+ */
+function NoteClose({ backTo }: { backTo: '/notes' | '/trash' }) {
+  const router = useRouter();
+  return (
+    <Link
+      to={backTo}
+      search={(p) => p}
+      replace
+      onClick={onBackArrowClick(router, backTo)}
+      className="icon-btn note-close"
+      aria-label="Close note"
+      data-tip="Close note"
+    >
+      <CancelIcon />
+    </Link>
+  );
+}
+
 export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/notes' }: WorkspaceProps) {
   const navigate = useNavigate();
   const router = useRouter();
@@ -1508,6 +1531,11 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
               <BackArrow />
             </Link>
           </div>
+          {/* The loaded note's ✕, in the corner it has there. A note that failed to load
+              beside a table holds half the window like any other, and one that is not on
+              this device yet offers neither Clear nor Retry, so without this the table
+              only came back whole through the browser's Back. */}
+          <NoteClose backTo={backTo} />
         </div>
 
         <div className="workspace-error">
@@ -1802,17 +1830,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
               Last in the row, past the ⋯, so nothing else in the head moves when it
               comes and goes with the view.
           */}
-          <Link
-            to={backTo}
-            search={(p) => p}
-            replace
-            onClick={onBackArrowClick(router, backTo)}
-            className="icon-btn note-close"
-            aria-label="Close note"
-            data-tip="Close note"
-          >
-            <CancelIcon />
-          </Link>
+          <NoteClose backTo={backTo} />
         </div>
       </div>
 
