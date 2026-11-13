@@ -16,6 +16,11 @@ import { trackWhatIsBehind } from '../note-nav.js';
  * Escape on a row closes the note. Neither beside the plain list, where the note is the
  * page. Against the real layout, the in-memory library and a real memory history, with
  * the record of what is behind each entry kept as the app keeps it.
+ *
+ * The note here is a stub, so the ✕ in the note's head is not drawn and not pressed in
+ * this file. It closes through `onBackArrowClick`, the path Escape takes below; that it
+ * shows only beside a table or the cards is the stylesheet's, and was checked in a
+ * browser.
  */
 
 vi.mock('../useAppSession.js', () => ({
