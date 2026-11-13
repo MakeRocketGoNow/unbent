@@ -76,7 +76,7 @@ import { FilingRows } from './FilingRows.js';
 import { NoteFields } from './NoteFields.js';
 import { Confirm } from './Confirm.js';
 import { Snackbar } from './Snackbar.js';
-import { AutofillIcon } from './icons.js';
+import { AutofillIcon, CancelIcon } from './icons.js';
 import { LegalLink } from './LegalLink.js';
 import { formatFieldValue } from './format-field.js';
 import { applySaveToLists } from '../list-cache.js';
@@ -1781,6 +1781,38 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
               />
             </span>
           )}
+
+          {/*
+              Closes the note where the list beside it is a table or the cards, which
+              then take the whole window back. Without it the only way there was the
+              browser's Back, once for every note looked at on the way: five rows read
+              in a table was six presses to see the table whole again.
+
+              The phone's arrow again, drawn for a panel: the same link, the same
+              `onBackArrowClick`, so one press reaches the list however many notes were
+              opened since it was last on screen, and Back from there never lands on
+              the note just closed. A cross at the panel's outer corner rather than the
+              arrow shown at this width too: beside a list that is still on screen an
+              arrow next to the title reads as "the previous note", and the note here
+              is a panel to dismiss, not a page to go back from.
+
+              Hidden by the stylesheet everywhere else (`.note-close`), for `.view-back`'s
+              reason: beside the plain list, closing would trade the note for a pane
+              that says "Select a note", and on a phone the arrow is already the way.
+              Last in the row, past the ⋯, so nothing else in the head moves when it
+              comes and goes with the view.
+          */}
+          <Link
+            to={backTo}
+            search={(p) => p}
+            replace
+            onClick={onBackArrowClick(router, backTo)}
+            className="icon-btn note-close"
+            aria-label="Close note"
+            data-tip="Close note"
+          >
+            <CancelIcon />
+          </Link>
         </div>
       </div>
 

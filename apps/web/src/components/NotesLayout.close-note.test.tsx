@@ -12,8 +12,9 @@ import { trackWhatIsBehind } from '../note-nav.js';
 
 /**
  * Getting back from a note to the table or the cards it was opened beside: a row opens
- * its note in place of the one already open, so Back is the list from any of them. Not
- * beside the plain list, where the note is the page. Against the real layout, the in-memory library and a real memory history, with
+ * its note in place of the one already open, so Back is the list from any of them, and
+ * Escape on a row closes the note. Neither beside the plain list, where the note is the
+ * page. Against the real layout, the in-memory library and a real memory history, with
  * the record of what is behind each entry kept as the app keeps it.
  */
 
@@ -152,5 +153,55 @@ describe('opening one note after another beside a table', () => {
 
     router.history.back();
     await waitFor(() => expect(path()).toBe('/notes/a'));
+  });
+});
+
+describe('Escape on a row', () => {
+  it('closes the note beside a table, back through the history, so forward is the note', async () => {
+    setup();
+    const { router, path, search } = mount(TABLE);
+    await open('Alpha', path, 'a');
+    await open('Beta', path, 'b');
+
+    fireEvent.keyDown(await row('Beta'), { key: 'Escape' });
+    await waitFor(() => expect(path()).toBe('/notes'));
+    expect(search()).toMatchObject({ notebook: 'Receipts', view: 'table' });
+
+    // The list was the page behind, so the close went back to it, not on top of the note.
+    router.history.forward();
+    await waitFor(() => expect(path()).toBe('/notes/b'));
+  });
+
+  it('clears a selection first, and closes the note on the next press', async () => {
+    setup();
+    const { path } = mount(TABLE);
+    await open('Alpha', path, 'a');
+
+    fireEvent.click(await row('Beta'), { metaKey: true });
+    fireEvent.keyDown(await row('Alpha'), { key: 'Escape' });
+    expect(path()).toBe('/notes/a');
+
+    fireEvent.keyDown(await row('Alpha'), { key: 'Escape' });
+    await waitFor(() => expect(path()).toBe('/notes'));
+  });
+
+  it('is left to a field in a row', async () => {
+    setup();
+    const { path } = mount(TABLE);
+    await open('Alpha', path, 'a');
+
+    fireEvent.keyDown(screen.getAllByRole('checkbox')[1]!, { key: 'Escape' });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(path()).toBe('/notes/a');
+  });
+
+  it('does nothing beside the plain list', async () => {
+    setup();
+    const { path } = mount(LIST);
+    await open('Alpha', path, 'a');
+
+    fireEvent.keyDown(await row('Alpha'), { key: 'Escape' });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(path()).toBe('/notes/a');
   });
 });

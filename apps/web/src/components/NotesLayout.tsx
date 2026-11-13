@@ -32,6 +32,7 @@ import { ResizeHandle } from './ResizeHandle.js';
 import { NoteListItem, type RowSelection } from './NoteListItem.js';
 import { NoteCard } from './NoteCard.js';
 import { useListKeys, enterList } from '../useListKeys.js';
+import { goBackToList } from '../note-nav.js';
 import { useFocusSearch } from '../useFocusSearch.js';
 import { useCreateNote, useHoldWhileCreating } from '../useCreateNote.js';
 import { useNewNoteRequest } from '../useNewNoteRequest.js';
@@ -636,6 +637,27 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
     if (event.key === 'Escape' && selection.active) {
       event.preventDefault();
       selection.clear();
+      return;
+    }
+    /*
+     * Escape on a row closes the note beside a table or the cards, the keyboard's half
+     * of the note's ✕ (see `.note-close`) and through the same history rule. Escape in
+     * the note's body already puts focus on its row, so from the text it is two presses:
+     * out of the note, then away from it. After a selection's Escape, not instead of it:
+     * the press dismisses the nearest thing first. Never from a field (a cell being
+     * edited, a row's checkbox), whose Escape is its own, and never beside the plain
+     * list or on a phone, where there is nothing wider to go back to.
+     */
+    if (
+      event.key === 'Escape' &&
+      layout.open &&
+      shownView !== 'list' &&
+      !isMobile &&
+      !event.defaultPrevented &&
+      !(event.target instanceof Element && event.target.closest('input, textarea, select, [contenteditable]'))
+    ) {
+      event.preventDefault();
+      if (!goBackToList(router, '/notes')) void navigate({ to: '/notes', search: (p) => p, replace: true });
       return;
     }
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'a' && (results === null || shownView !== 'list')) {

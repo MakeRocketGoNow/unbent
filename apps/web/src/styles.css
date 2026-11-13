@@ -2406,6 +2406,28 @@ a.overflow-item { text-decoration: none; }
 
 .view-back:hover { color: var(--fg); }
 
+/*
+   The note's ✕, for a note open beside a table or the cards (see the comment on it in
+   `Workspace`). An `.icon-btn` in every other respect; this is only where it shows.
+   Off unless the grid is `wide-view` at desktop width, and switched by `display` so it
+   is always in the tree, for `.view-back`'s reason.
+
+   The pull takes back most of the row's gap: the ⋯ and the ✕ are two 44px targets
+   around small glyphs, and a full gap between them left the cross adrift of the head
+   it closes. Its right edge is pulled out too, so the glyph, not the empty half of
+   its target, ends the row where the rule under the head ends.
+*/
+.note-close {
+  display: none;
+  margin-left: -0.75rem;
+  margin-right: -0.75rem;
+  text-decoration: none;
+}
+
+@media (width > 860px) {
+  .notes.wide-view .note-close { display: inline-flex; }
+}
+
 .title-input {
   flex: 1;
   min-width: 0;
