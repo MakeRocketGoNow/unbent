@@ -426,6 +426,12 @@ export function FrontShell({ children }: { children: ReactNode }) {
  * of making the same account. The free plan's other limit, its gigabyte, is left to the
  * pricing card, as "Read-only, not gone" leaves it.
  *
+ * "Unlimited" and then the price, in that order. The line first ended "or $60 a year for
+ * more", and "more" left the reader to work out more of what. "For unlimited" at the end
+ * dangles, and reads as unlimited everything when the plan's files have a quota; beside
+ * "100 notes" it can only mean notes, and the price is last, where the old line had it.
+ * "Unlimited notes" in full says "notes" twice and breaks the line on most phones.
+ *
  * Two sentences, each a line of its own at every width: run together they are a line
  * three times the width of the button above them, and they are two thoughts.
  */
@@ -434,7 +440,7 @@ export function TrialTerms() {
     <p className="muted front-terms">
       <span>{TRIAL_DAYS} days of everything, no card needed.</span>{' '}
       <span>
-        Then free up to {FREE_NOTES} notes, or ${PLAN_PRICE_USD} a year for more.
+        Then free up to {FREE_NOTES} notes, or unlimited for ${PLAN_PRICE_USD} a year.
       </span>
     </p>
   );

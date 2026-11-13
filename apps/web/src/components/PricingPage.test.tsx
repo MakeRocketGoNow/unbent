@@ -67,7 +67,7 @@ describe('PricingPage', () => {
     const terms = (await findByText('Start your free trial')).nextElementSibling;
     expect(terms?.textContent).toContain(`${TRIAL_DAYS} days of everything, no card needed.`);
     expect(terms?.textContent).toContain(`free up to ${FREE_NOTES} notes`);
-    expect(terms?.textContent).toContain(`$${PLAN_PRICE_USD} a year`);
+    expect(terms?.textContent).toContain(`or unlimited for $${PLAN_PRICE_USD} a year.`);
   });
 
   /** A signed-in person asked for the page and gets it, with their notes as the way out. */
