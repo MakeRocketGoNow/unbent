@@ -11478,6 +11478,13 @@ button.settings-nav-item {
 
 .front-cta p { margin: 0; font-size: 0.9rem; }
 
+/* The trial's terms, one sentence to a line at every width (`TrialTerms`). `balance`
+   is for a phone narrow enough to break the second sentence: two even lines, not one
+   word left alone under a full one. */
+.front-terms { text-align: center; text-wrap: balance; }
+
+.front-terms span { display: block; }
+
 /* The page's one filled control, sized for the hero rather than for a toolbar. */
 .front-cta-button {
   padding: 0.75rem 1.5rem;

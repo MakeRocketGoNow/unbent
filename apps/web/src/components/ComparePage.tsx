@@ -1,9 +1,8 @@
 import { Link } from '@tanstack/react-router';
-import { PLAN_PRICE_USD, TRIAL_DAYS } from '@unbent/shared';
 import { useSession } from '../auth-client.js';
 import { HOME, LOGIN, WHY } from '../auth-gate.js';
 import { usePageMeta } from '../page-meta.js';
-import { FrontShell } from './FrontPage.js';
+import { FrontShell, TrialTerms } from './FrontPage.js';
 import { COMPARE_META, COMPARISONS, comparison, type Comparison } from './comparisons.js';
 
 /**
@@ -223,9 +222,7 @@ function TrialCta() {
           <Link to={LOGIN} className="btn btn-primary front-cta-button">
             Start your free trial
           </Link>
-          <p className="muted">
-            {TRIAL_DAYS} days free, no card needed. Then ${PLAN_PRICE_USD} a year.
-          </p>
+          <TrialTerms />
         </>
       )}
     </div>

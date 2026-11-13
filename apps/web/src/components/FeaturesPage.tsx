@@ -1,13 +1,12 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link } from '@tanstack/react-router';
-import { TRIAL_DAYS } from '@unbent/shared';
 import { useSession } from '../auth-client.js';
 import { HOME, LOGIN } from '../auth-gate.js';
 import { CARD_IMAGE, usePageMeta, type PageMeta } from '../page-meta.js';
 import { useMediaQuery } from '../useMediaQuery.js';
 import { useDarkSourceMedia, useTheme } from '../theme.js';
 import { Button } from './Button.js';
-import { FrontShell } from './FrontPage.js';
+import { FrontShell, TrialTerms } from './FrontPage.js';
 import { PauseIcon, PlayIcon } from './icons.js';
 
 /**
@@ -249,7 +248,7 @@ export function FeaturesPage() {
               <Link to={LOGIN} className="btn btn-primary front-cta-button">
                 Start your free trial
               </Link>
-              <p className="muted">{TRIAL_DAYS} days free, no card needed.</p>
+              <TrialTerms />
             </>
           )}
         </div>

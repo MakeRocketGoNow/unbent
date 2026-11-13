@@ -1,10 +1,9 @@
 import type { ReactNode } from 'react';
 import { Link } from '@tanstack/react-router';
-import { PLAN_PRICE_USD, TRIAL_DAYS } from '@unbent/shared';
 import { useSession } from '../auth-client.js';
 import { COMPARE, HOME, LOGIN } from '../auth-gate.js';
 import { CARD_IMAGE, usePageMeta, type PageMeta } from '../page-meta.js';
-import { FrontShell, SOURCE_URL } from './FrontPage.js';
+import { FrontShell, SOURCE_URL, TrialTerms } from './FrontPage.js';
 
 /**
  * What the tab, a search result and a link's card say this page is. Exported for the
@@ -251,9 +250,7 @@ export function WhyPage() {
               <Link to={LOGIN} className="btn btn-primary front-cta-button">
                 Start your free trial
               </Link>
-              <p className="muted">
-                {TRIAL_DAYS} days free, no card needed. Then ${PLAN_PRICE_USD} a year.
-              </p>
+              <TrialTerms />
             </>
           )}
         </div>
