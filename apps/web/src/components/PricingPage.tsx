@@ -1,9 +1,8 @@
 import { Link } from '@tanstack/react-router';
-import { TRIAL_DAYS } from '@unbent/shared';
 import { useSession } from '../auth-client.js';
 import { HOME, LOGIN } from '../auth-gate.js';
 import { CARD_IMAGE, usePageMeta } from '../page-meta.js';
-import { FrontShell, Pricing } from './FrontPage.js';
+import { FrontShell, Pricing, TrialTerms } from './FrontPage.js';
 
 /** What the tab and a link's card say this page is. Prices stay out of it, so a change to them cannot leave a card wrong. */
 export const PRICING_META = {
@@ -57,7 +56,7 @@ export function PricingPage() {
               <Link to={LOGIN} className="btn btn-primary front-cta-button">
                 Start your free trial
               </Link>
-              <p className="muted">{TRIAL_DAYS} days free, no card needed.</p>
+              <TrialTerms />
             </>
           )}
         </div>

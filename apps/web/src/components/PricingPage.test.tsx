@@ -7,7 +7,7 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router';
-import { PLAN_PRICE_USD, STORAGE_ADDON_PRICE_USD } from '@unbent/shared';
+import { FREE_NOTES, PLAN_PRICE_USD, STORAGE_ADDON_PRICE_USD, TRIAL_DAYS } from '@unbent/shared';
 import { keys } from '../queries.js';
 
 const useSession = vi.fn();
@@ -55,6 +55,19 @@ describe('PricingPage', () => {
     expect(getByText(new RegExp(`\\$${STORAGE_ADDON_PRICE_USD} a year`))).toBeTruthy();
     expect(getByText('Start your free trial').getAttribute('href')).toBe('/login');
     expect(getByText('Sign in').getAttribute('href')).toBe('/login');
+  });
+
+  /**
+   * The line beside the button is where the price is read, so it has to say both things
+   * that can follow the trial: it said only the days, and on other pages "Then $60 a
+   * year", after the free plan existed.
+   */
+  it('says under the trial button that a small library stays free afterwards', async () => {
+    const { findByText } = harness(null);
+    const terms = (await findByText('Start your free trial')).nextElementSibling;
+    expect(terms?.textContent).toContain(`${TRIAL_DAYS} days of everything, no card needed.`);
+    expect(terms?.textContent).toContain(`free up to ${FREE_NOTES} notes`);
+    expect(terms?.textContent).toContain(`$${PLAN_PRICE_USD} a year`);
   });
 
   /** A signed-in person asked for the page and gets it, with their notes as the way out. */

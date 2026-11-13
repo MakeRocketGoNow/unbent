@@ -123,7 +123,7 @@ export function FrontPage() {
           <Link to={LOGIN} className="btn btn-primary front-cta-button">
             Start your free trial
           </Link>
-          <p className="muted">{TRIAL_DAYS} days free, no card needed. Then ${PLAN_PRICE_USD} a year.</p>
+          <TrialTerms />
         </div>
       </section>
 
@@ -406,6 +406,37 @@ export function FrontShell({ children }: { children: ReactNode }) {
         {operator && <p className="muted">Unbent is run by {operator.name}.</p>}
       </footer>
     </div>
+  );
+}
+
+/**
+ * The line under every "Start your free trial", on every public page: what the fortnight
+ * is, and both things that can follow it.
+ *
+ * It used to end "Then $60 a year", which was the whole truth before the free plan and
+ * half of it after (2026-10-24): a small library never has to pay, and this line, beside
+ * the button, is where most people read the price. Someone leaving a fifty-note free tier
+ * read it as the same wall two weeks later, and had to find the pricing page to learn
+ * otherwise. The features and pricing pages said less still, the days and nothing after.
+ *
+ * Said here and not on the button or in the headline, deliberately. "Start free" would
+ * sell the free plan, and the product is the archive: for the person with thousands of
+ * notes "a trial, then $60" is exactly right, and "trial" is also what tells them the
+ * fortnight holds all of it. A second, free button would be a choice between two ways
+ * of making the same account. The free plan's other limit, its gigabyte, is left to the
+ * pricing card, as "Read-only, not gone" leaves it.
+ *
+ * Two sentences, each a line of its own at every width: run together they are a line
+ * three times the width of the button above them, and they are two thoughts.
+ */
+export function TrialTerms() {
+  return (
+    <p className="muted front-terms">
+      <span>{TRIAL_DAYS} days of everything, no card needed.</span>{' '}
+      <span>
+        Then free up to {FREE_NOTES} notes, or ${PLAN_PRICE_USD} a year for more.
+      </span>
+    </p>
   );
 }
 
