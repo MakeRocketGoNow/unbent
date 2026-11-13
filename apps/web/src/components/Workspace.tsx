@@ -119,12 +119,21 @@ const CLOSED_HISTORY: HistoryCurrent = { title: '', body: '', notebook: null, ta
  */
 function NoteClose({ backTo }: { backTo: '/notes' | '/trash' }) {
   const router = useRouter();
+  const back = onBackArrowClick(router, backTo);
   return (
     <Link
       to={backTo}
       search={(p) => p}
       replace
-      onClick={onBackArrowClick(router, backTo)}
+      onClick={(e) => {
+        // Focus goes to the note's row before the note goes, while the row is still the
+        // one marked active and so still findable. This link unmounts with the note, and
+        // focus left on it falls to the body: Enter on the ✕ then put the next Tab at
+        // the top of the page, where Escape on a row leaves it on the row. Not for a
+        // click that opens the list in another tab, which closes nothing here.
+        if (e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) focusActiveListItem();
+        back(e);
+      }}
       className="icon-btn note-close"
       aria-label="Close note"
       data-tip="Close note"
