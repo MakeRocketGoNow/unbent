@@ -2406,6 +2406,68 @@ a.overflow-item { text-decoration: none; }
 
 .view-back:hover { color: var(--fg); }
 
+/*
+   The note's ✕, for a note open beside a table or the cards (see the comment on it in
+   `Workspace`). An `.icon-btn` in every other respect; this is only where it shows.
+   Off unless the grid is `wide-view` at desktop width, and switched by `display` so it
+   is always in the tree, for `.view-back`'s reason.
+
+   The pull takes back most of the row's gap: the ⋯ and the ✕ are two 44px targets
+   around small glyphs, and a full gap between them left the cross adrift of the head
+   it closes. Its right edge is pulled out too, so the glyph, not the empty half of
+   its target, ends the row where the rule under the head ends.
+*/
+.note-close {
+  display: none;
+  margin-left: -0.75rem;
+  margin-right: -0.75rem;
+  text-decoration: none;
+}
+
+@media (width > 860px) {
+  .notes.wide-view .note-close { display: inline-flex; }
+
+  /* A failed note's head is off at this width because it had nothing in it (see
+     `.workspace-error-head`). Beside a table or the cards it has the ✕, so it is drawn
+     there, rule and all: the cross then sits where the loaded note's does, and a note
+     that fails after another was open moves nothing in the corner. */
+  .notes.wide-view .workspace-error-head { display: flex; }
+}
+
+/*
+   The head's icons under a mouse: 32px boxes around 18px glyphs, the list header's
+   numbers (see "Smaller again under a mouse") and for its reason. 44px is the thumb's
+   target; under a pointer it left the ⋯ and the ✕ as two squares half again the height
+   of the Auto-fill button between them and the title, their hover fills the largest
+   things in the row, and the cross drawn at 22px its heaviest mark. Keyed to the
+   pointer and not only the width, as there: a tablet in landscape is still a finger.
+
+   The row keeps the height the 44px boxes gave it. `--workspace-head-h` states that
+   height for the bar that sticks under the head, and a title that moved up 12px when a
+   mouse was plugged in would be motion nobody asked for. Held on the two rows the
+   icons sit in rather than on the head, whose own box also counts its padding and rule.
+*/
+@media (width > 860px) and (hover: hover) and (pointer: fine) {
+  .workspace-actions,
+  .workspace-error-head > .workspace-title-row { min-height: 2.75rem; }
+
+  .workspace-actions .icon-btn,
+  .workspace-actions .overflow-trigger,
+  .workspace-error-head .note-close {
+    min-width: 2rem;
+    height: 2rem;
+    /* `HeaderIcon` draws at 1.25em of this. */
+    font-size: 0.9rem;
+  }
+
+  /* The pulls again, for the smaller box: a quarter rem left between the ⋯ and the ✕,
+     and the right edge out by the 7px the box now keeps beside its glyph. */
+  .note-close {
+    margin-left: -0.65rem;
+    margin-right: -0.4375rem;
+  }
+}
+
 .title-input {
   flex: 1;
   min-width: 0;

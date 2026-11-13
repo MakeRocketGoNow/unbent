@@ -56,6 +56,8 @@ interface NoteCardProps {
   sort?: NoteSort;
   /** As on `NoteListItem`: whether the note replaces the cards when it opens. */
   replacedByNote?: boolean;
+  /** As on `NoteTable`: a note is open beside the cards, and this one takes its place. */
+  inPlace?: boolean;
   selection?: RowSelection | undefined;
   /**
    * Why a search matched, when the card is a search result whose own face cannot show
@@ -84,7 +86,7 @@ interface NoteCardProps {
  * what the arrow keys, the open note's tint, the selection ring and the list's motion all
  * find a row by; `.note-card` reshapes it.
  */
-export function NoteCard({ note, sort, replacedByNote = false, selection, hint }: NoteCardProps) {
+export function NoteCard({ note, sort, replacedByNote = false, inPlace = false, selection, hint }: NoteCardProps) {
   const when = sort === 'created' ? note.createdAt : note.updatedAt;
   const title = note.title || 'Untitled';
   const cover = coverOf(note);
@@ -129,6 +131,7 @@ export function NoteCard({ note, sort, replacedByNote = false, selection, hint }
         to="/notes/$noteId"
         params={{ noteId: note.id }}
         search={(prev) => prev}
+        replace={inPlace}
         className={linkClass}
         activeProps={{ className: `${linkClass} active` }}
         aria-selected={selection ? selection.selected : undefined}
