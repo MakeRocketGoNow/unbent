@@ -1809,6 +1809,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
             onLoadMore={() => void list.fetchNextPage()}
             onSort={sortBy}
             onKeyDown={onListKeysWithSelection}
+            inPlace={layout.open !== undefined}
             tableRef={tableRef}
             empty={searching ? searchEmpty : emptyMessage}
             onEdit={onEditCell}
@@ -1863,6 +1864,8 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
                   note={n}
                   sort={sort ?? DEFAULT_NOTE_SORT}
                   replacedByNote={isMobile}
+                  // Not on a phone, where the note has replaced the cards and is a page.
+                  inPlace={!isMobile && layout.open !== undefined}
                   hint={cardHints.get(n.id)}
                   selection={rowSelection(n.id)}
                 />

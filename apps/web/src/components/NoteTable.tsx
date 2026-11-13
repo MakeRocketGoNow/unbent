@@ -29,6 +29,20 @@ interface NoteTableProps {
   hints?: ReadonlyMap<string, string> | undefined;
   /** Each tag's colour, so the tags column agrees with the list rows and the note's head. */
   tagColor?: TagColorOf | undefined;
+  /**
+   * A note is already open beside the table, so a row opens its note in that one's place
+   * in the history rather than on top of it.
+   *
+   * The table is the page and the note a panel over it: reading down five rows used to
+   * leave five notes between the last one and the table, and Back walked every one of
+   * them before the table was whole again. Replaced, the history holds the table and
+   * the note on show, so Back from any note is the table, which is also what the note's
+   * ✕ does. The cost is that Back no longer steps to the note looked at before this
+   * one; its row is still on screen, a click away, which is the trade a mail client's
+   * reading pane makes. Not for the plain list, where the note is the page and there is
+   * no wider list behind it to get back to.
+   */
+  inPlace?: boolean;
   /** The notebook the rows belong to, which names the table. */
   notebook: string;
   /** Live notes in the notebook, for the table's row count; null until known. */
@@ -110,6 +124,7 @@ export function NoteTable({
   ranked = false,
   hints,
   tagColor,
+  inPlace = false,
   notebook,
   total,
   busy,
@@ -233,7 +248,7 @@ export function NoteTable({
               )}
               {columns.map((col) => (
                 <td key={col.id} data-align={col.align}>
-                  {cell(col, note, onEdit, selection, hints?.get(note.id), tagColor)}
+                  {cell(col, note, onEdit, selection, hints?.get(note.id), tagColor, inPlace)}
                 </td>
               ))}
             </tr>
@@ -299,6 +314,7 @@ function cell(
   selection: TableSelection | undefined,
   hint: string | undefined,
   tagColor: TagColorOf | undefined,
+  inPlace: boolean,
 ): ReactNode {
   switch (col.kind) {
     case 'name':
@@ -308,6 +324,7 @@ function cell(
           params={{ noteId: note.id }}
           // The filters ride along, as they do from a sidebar entry.
           search={(prev) => prev}
+          replace={inPlace}
           className="note-row-link"
           activeProps={{ className: 'note-row-link active' }}
           // The modifier clicks pick, as they do on a sidebar entry (see `NoteListItem`
