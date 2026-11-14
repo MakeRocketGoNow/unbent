@@ -148,8 +148,11 @@ export function Settings({ onChanged, createRequested = false, onCreateRequested
         renderNameCount={(item) => (
           <>
             {item.count > 0 && (
-              <span className="tag-count" data-tip={`${item.count} note${item.count === 1 ? '' : 's'}`}>
-                {item.count}
+              <span
+                className="tag-count"
+                data-tip={`${item.count.toLocaleString()} note${item.count === 1 ? '' : 's'}`}
+              >
+                {item.count.toLocaleString()}
               </span>
             )}
             {keep.kept.has(item.id) && <KeptMark status={keep} offline={offline} />}

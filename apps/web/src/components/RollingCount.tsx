@@ -58,11 +58,11 @@ export function RollingCount({ value, className }: RollingCountProps) {
     <span className={className ? `count-roll ${className}` : 'count-roll'}>
       {leaving && (
         <span key={`out-${turn}`} className={`count-out ${way}`} aria-hidden="true">
-          {leaving.value}
+          {leaving.value.toLocaleString()}
         </span>
       )}
       <span key={`in-${turn}`} className={leaving ? `count-in ${way}` : undefined}>
-        {shown}
+        {shown.toLocaleString()}
       </span>
     </span>
   );

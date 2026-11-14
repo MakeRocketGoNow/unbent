@@ -310,7 +310,7 @@ export function LabelEditor({
                 {renderNameCount?.(item)}
               </Link>
               {renderExtra?.(item)}
-              {!renderNameCount && <span className="tag-count">{item.count}</span>}
+              {!renderNameCount && <span className="tag-count">{item.count.toLocaleString()}</span>}
               <button
                 type="button"
                 className="icon-btn label-delete"
@@ -395,7 +395,7 @@ export function LabelEditor({
               </button>
               {renderExtra?.(item)}
               {/* The trailing number, unless the count moved against the name. */}
-              {!renderNameCount && <span className="tag-count">{item.count}</span>}
+              {!renderNameCount && <span className="tag-count">{item.count.toLocaleString()}</span>}
               <button
                 type="button"
                 className="icon-btn"

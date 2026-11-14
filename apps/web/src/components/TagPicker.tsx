@@ -120,7 +120,7 @@ export function TagPicker({ tags, selected }: TagPickerProps) {
                 onClick={() => setTags([...selected, t.name])}
               >
                 <span className="tag-picker-name">{t.name}</span>
-                <span className="tag-count">{t.count}</span>
+                <span className="tag-count">{t.count.toLocaleString()}</span>
               </button>
             </li>
           ))}
