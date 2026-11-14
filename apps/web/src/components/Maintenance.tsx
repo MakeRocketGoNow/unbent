@@ -141,8 +141,9 @@ export function Maintenance() {
         <h3>Files not yet searchable</h3>
         <p className="muted small">
           Search reads the text inside attachments. Files added before that existed, or
-          uploaded from the phone, may not have theirs yet; this pass catches up. Nothing is
-          changed or deleted, and it can be stopped and run again.
+          uploaded from the phone, may not have theirs yet; this pass catches up. It
+          downloads each PDF and reads it here, in the browser, so it runs while the app
+          is open. Nothing is changed or deleted, and it can be stopped and run again.
         </p>
         <Backfill />
       </section>

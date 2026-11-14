@@ -41,7 +41,7 @@ afterEach(cleanup);
 describe('Backfill', () => {
   it('offers the PDF pass and starts it on press, with nothing paid on offer', () => {
     mount();
-    expect(screen.getByText(/Read here, in the browser/)).toBeTruthy();
+    expect(screen.getByText('For notes imported before PDF search existed.')).toBeTruthy();
     expect(screen.queryByRole('button', { name: /Read/ })).toBeNull();
 
     fireEvent.click(button('Index existing PDFs'));

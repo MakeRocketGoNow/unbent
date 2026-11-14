@@ -66,6 +66,9 @@ describe('Maintenance: files not yet searchable', () => {
     expect(await screen.findByRole('button', { name: 'Index existing PDFs' })).toBeTruthy();
     const headings = [...document.querySelectorAll('.settings-section h3')].map((h) => h.textContent);
     expect(headings[0]).toBe('Files not yet searchable');
+    // Where the pass runs is said in the description, which every state of the row shows,
+    // and not in the row's line, which a deferred pass replaces with its count.
+    expect(screen.getByText(/reads it here, in the browser/)).toBeTruthy();
     // Without a vision model there is nothing paid to offer, and nothing is asked for.
     expect(screen.queryByRole('button', { name: /Read/ })).toBeNull();
   });

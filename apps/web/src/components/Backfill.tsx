@@ -1,7 +1,12 @@
 import { startIndexing, stopIndexing, useIndexing, type IndexingState } from '../index-files.js';
 import { Button } from './Button.js';
 
-const PDF_OFFER = 'For notes imported before PDF search existed. Read here, in the browser.';
+/**
+ * Where the pass runs is said once, in the section's description in `Maintenance`, which
+ * every state shows. It used to be said here too, but this line is the idle state's
+ * alone: once a pass has deferred, it is the count, and the one place it was said was gone.
+ */
+const PDF_OFFER = 'For notes imported before PDF search existed.';
 
 /**
  * The row's line. The app may have run this pass on its own before the panel was opened,
