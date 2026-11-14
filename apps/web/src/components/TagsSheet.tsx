@@ -88,7 +88,7 @@ export function TagsSheet({ open, onClose, notes, suggestions, busy, onChange, c
                     </span>
                     {!all && (
                       <span className="tag-count">
-                        {count} of {total}
+                        {count.toLocaleString()} of {total.toLocaleString()}
                       </span>
                     )}
                   </label>

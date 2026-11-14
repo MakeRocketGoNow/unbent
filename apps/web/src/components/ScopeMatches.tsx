@@ -128,7 +128,7 @@ export function ScopeMatches({
               <TagIcon />
             </span>
             <span className="scope-match-name">{t.name}</span>
-            <span className="tag-count">{t.count}</span>
+            <span className="tag-count">{t.count.toLocaleString()}</span>
           </button>
         </li>
       ))}
@@ -154,7 +154,7 @@ export function ScopeMatches({
               <NotebookGlyph emoji={nb.emoji} />
             </span>
             <span className="scope-match-name">{nb.name}</span>
-            <span className="tag-count">{nb.count}</span>
+            <span className="tag-count">{nb.count.toLocaleString()}</span>
           </button>
         </li>
       ))}

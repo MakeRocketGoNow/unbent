@@ -27,6 +27,19 @@ describe('RollingCount', () => {
     expect(document.querySelector('.count-out')).toBeNull();
   });
 
+  it('groups the digits of a large count, both numbers of a roll', () => {
+    reducedMotion(false);
+    const { rerender } = render(<RollingCount value={2354} />);
+    // The person's own locale decides the separator, so the test asks it rather than
+    // assuming a comma.
+    expect(cell()?.textContent).toBe((2354).toLocaleString());
+    expect(cell()?.textContent).not.toBe('2354');
+    vi.mocked(refiledLocallyWithin).mockReturnValue(true);
+    rerender(<RollingCount value={2355} />);
+    expect(document.querySelector('.count-out')?.textContent).toBe((2354).toLocaleString());
+    expect(document.querySelector('.count-in')?.textContent).toBe((2355).toLocaleString());
+  });
+
   it('rolls a change made here: a larger number up from below, the old one out above', () => {
     reducedMotion(false);
     vi.useFakeTimers();

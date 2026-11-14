@@ -76,7 +76,7 @@ export function MoveSheet({ open, onClose, count, notebooks, busy, onPick }: Mov
               <button type="button" className="drawer-item" disabled={busy} onClick={() => pick(null)}>
                 <InboxRowIcon />
                 <span className="drawer-item-label">Inbox</span>
-                {notebooks && <span className="tag-count">{notebooks.unfiled}</span>}
+                {notebooks && <span className="tag-count">{notebooks.unfiled.toLocaleString()}</span>}
               </button>
             </li>
           )}
@@ -90,7 +90,7 @@ export function MoveSheet({ open, onClose, count, notebooks, busy, onPick }: Mov
               >
                 <NotebookGlyph emoji={nb.emoji} />
                 <span className="drawer-item-label">{nb.name}</span>
-                <span className="tag-count">{nb.count}</span>
+                <span className="tag-count">{nb.count.toLocaleString()}</span>
               </button>
             </li>
           ))}
