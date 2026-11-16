@@ -304,7 +304,9 @@ function freshHits(results: api.SearchHit[], lib: Library, l: Lookups): api.Sear
      * has answered, with the field changed and `updatedAt` as it was, so the stamp is the
      * one thing that does not move. A match whose row came out the same keeps its object,
      * so a change elsewhere in the library does not redraw the table; a list row is
-     * small, and a page of fifty is compared in well under a frame.
+     * small, and a page of fifty is compared in well under a frame. The exception is the
+     * first change after the server answers: its rows are not spelled as `toSummary`
+     * spells them (key order, the excerpt), so that one redraws every match, once.
      */
     const note = toSummary(row, l);
     if (hit.title === row.title && JSON.stringify(note) === JSON.stringify(hit.note)) {
