@@ -253,15 +253,21 @@ export function installLibraryQueries(queryClient: QueryClient): () => void {
  * would be the jump this app avoids, and the next keystroke in the box settles it.
  */
 async function freshenSearches(queryClient: QueryClient): Promise<void> {
-  const searches = queryClient.getQueriesData<SearchAnswer>({ queryKey: ['search'] });
-  if (!searches.some(([, data]) => data?.results.length)) return;
+  const hasMatches = (data: unknown): data is SearchAnswer => ((data as SearchAnswer | undefined)?.results.length ?? 0) > 0;
+  if (!queryClient.getQueriesData<SearchAnswer>({ queryKey: ['search'] }).some(([, data]) => hasMatches(data))) return;
   const lib = await library();
   if (!lib) return;
   const v = view(lib);
-  for (const [key, data] of searches) {
-    if (!data?.results.length) continue;
+  /*
+   * Each answer is read here, after the wait, and not before it: a search's own answer
+   * can land while the library is being asked for, and writing back the one read before
+   * would put the old ranking over it. A query collected meanwhile is simply not found.
+   */
+  for (const query of queryClient.getQueryCache().findAll({ queryKey: ['search'] })) {
+    const data = query.state.data;
+    if (!hasMatches(data)) continue;
     const fresh = freshHits(data.results, lib, v.lookups);
-    if (fresh !== data.results) queryClient.setQueryData<SearchAnswer>(key, { ...data, results: fresh });
+    if (fresh !== data.results) queryClient.setQueryData<SearchAnswer>(query.queryKey, { ...data, results: fresh });
   }
 }
 
