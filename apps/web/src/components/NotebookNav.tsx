@@ -147,12 +147,20 @@ export function NotebookNav({
    * empty list with no visible cause. Field filters go with them: a field belongs to the
    * notebook being left. So does an open saved view, and its date range with it
    * (`leavingView`): a place is not the view.
+   *
+   * The search text goes too. It used to ride along, on the reasoning that a search
+   * that found nothing in one notebook could be carried to the next, or out to All
+   * notes, to try there; in use, picking a place is going somewhere, and arriving at a
+   * list narrowed by words typed about the last place read as the place being nearly
+   * empty. All notes included, so the rule has no exception to learn. The cost is that
+   * widening a search out of a notebook means typing it again.
    */
   const scopeOf = (next: string | undefined) => (prev: Record<string, unknown>) => ({
     ...prev,
     notebook: next,
     tag: undefined,
     field: undefined,
+    q: undefined,
     ...leavingView(prev),
     ...rememberedSort(next),
   });
@@ -161,8 +169,9 @@ export function NotebookNav({
    * A tag as a place: every note carrying it, across all notebooks (Evernote's tag view).
    * The notebook goes, and with it the field filter, which belongs to it; the order is
    * the one All notes remembers, since a tag place is the whole archive narrowed, and the
-   * dates stay. Only ever one tag from here: narrowing to several is the
-   * filter sheet's job, where a tag is a refinement of where you are rather than a place.
+   * dates stay. The search text goes, as it does for a notebook (`scopeOf`). Only ever
+   * one tag from here: narrowing to several is the filter sheet's job, where a tag is a
+   * refinement of where you are rather than a place.
    * A search pick made from All notes with nothing else set lands on this same URL, so
    * the row marks it (see `ScopeMatches`).
    */
@@ -171,6 +180,7 @@ export function NotebookNav({
     tag: [name],
     notebook: undefined,
     field: undefined,
+    q: undefined,
     ...leavingView(prev),
     ...rememberedSort(undefined),
   });
