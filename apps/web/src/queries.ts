@@ -262,12 +262,18 @@ async function freshenSearches(queryClient: QueryClient): Promise<void> {
    * Each answer is read here, after the wait, and not before it: a search's own answer
    * can land while the library is being asked for, and writing back the one read before
    * would put the old ranking over it. A query collected meanwhile is simply not found.
+   *
+   * The answer keeps the time it was answered. A redraw changes how the matches look,
+   * not what the search found, so it must not make a search read as fresh to `staleTime`
+   * (which would stop a remount asking the server again while edits keep arriving) or
+   * as answered during a doubt about the connection (`recover` in `connectivity.ts`
+   * would then ask it again on reconnect for nothing).
    */
   for (const query of queryClient.getQueryCache().findAll({ queryKey: ['search'] })) {
     const data = query.state.data;
     if (!hasMatches(data)) continue;
     const fresh = freshHits(data.results, lib, v.lookups);
-    if (fresh !== data.results) queryClient.setQueryData<SearchAnswer>(query.queryKey, { ...data, results: fresh });
+    if (fresh !== data.results) queryClient.setQueryData<SearchAnswer>(query.queryKey, { ...data, results: fresh }, { updatedAt: query.state.dataUpdatedAt });
   }
 }
 

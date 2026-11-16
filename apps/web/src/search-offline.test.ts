@@ -113,6 +113,8 @@ describe('searchQuery', () => {
     const observer = new QueryObserver(client, searchQuery('invoice', {}, true));
     const unsubscribe = observer.subscribe(() => {});
     await vi.waitFor(() => expect(observer.getCurrentResult().data?.results).toHaveLength(3));
+    const answeredAt = client.getQueryState(searchQuery('invoice', {}, true).queryKey)!.dataUpdatedAt;
+    await new Promise((r) => setTimeout(r, 5));
     const rowOf = (id: string) => {
       const hit = observer.getCurrentResult().data!.results.find((r) => r.id === id)!;
       return 'note' in hit ? hit.note : null;
@@ -123,6 +125,8 @@ describe('searchQuery', () => {
     await vi.waitFor(() => expect(rowOf('a')?.fields?.[0]?.value).toBe(22));
     const results = observer.getCurrentResult().data!.results;
     expect(results.map((r) => r.id)).toEqual(['b', 'a', 'c']);
+    // Redrawn, not answered again: the search keeps the time the server answered it.
+    expect(client.getQueryState(searchQuery('invoice', {}, true).queryKey)?.dataUpdatedAt).toBe(answeredAt);
     expect(results[1]).toMatchObject({ title: 'Invoice, January', snippet: '…a…' });
 
     // A change that leaves a match's row as it was keeps its object, so the table is not redrawn for it.
