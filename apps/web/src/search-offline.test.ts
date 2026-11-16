@@ -97,6 +97,53 @@ describe('searchQuery', () => {
     stop();
   });
 
+  it('redraws the matches from the library as their notes change, in the search’s order and without asking again', async () => {
+    const amount = { fieldId: 'f1', name: 'Amount', type: 'number', value: 12 };
+    await library([
+      note('a', { title: 'Invoice, January', fields: [amount] } as Partial<FeedNote>),
+      note('b', { title: 'Invoice, February' }),
+      note('c', { title: 'Invoice, March' }),
+    ]);
+    const client = new QueryClient();
+    const stop = installLibraryQueries(client);
+    // The server's order, not the library's, and rows as it drew them.
+    vi.mocked(api.searchNotes).mockResolvedValue(
+      ['b', 'a', 'c'].map((id) => ({ id, title: `Invoice ${id}`, updatedAt: 1, snippet: `…${id}…`, note: { id, title: `Invoice ${id}`, fields: [] } })) as unknown as api.SearchHit[],
+    );
+    const observer = new QueryObserver(client, searchQuery('invoice', {}, true));
+    const unsubscribe = observer.subscribe(() => {});
+    await vi.waitFor(() => expect(observer.getCurrentResult().data?.results).toHaveLength(3));
+    const answeredAt = client.getQueryState(searchQuery('invoice', {}, true).queryKey)!.dataUpdatedAt;
+    await new Promise((r) => setTimeout(r, 5));
+    const rowOf = (id: string) => {
+      const hit = observer.getCurrentResult().data!.results.find((r) => r.id === id)!;
+      return 'note' in hit ? hit.note : null;
+    };
+
+    // A field set from the open note lands on the library before the server answers, its stamp unmoved.
+    lib.upsert('note', { ...lib.notes.get('a')!, fields: [{ ...amount, value: 22 }] } as FeedNote);
+    await vi.waitFor(() => expect(rowOf('a')?.fields?.[0]?.value).toBe(22));
+    const results = observer.getCurrentResult().data!.results;
+    expect(results.map((r) => r.id)).toEqual(['b', 'a', 'c']);
+    // Redrawn, not answered again: the search keeps the time the server answered it.
+    expect(client.getQueryState(searchQuery('invoice', {}, true).queryKey)?.dataUpdatedAt).toBe(answeredAt);
+    expect(results[1]).toMatchObject({ title: 'Invoice, January', snippet: '…a…' });
+
+    // A change that leaves a match's row as it was keeps its object, so the table is not redrawn for it.
+    const untouched = rowOf('b');
+    lib.upsert('note', { ...lib.notes.get('c')!, title: 'Invoice, March (paid)' });
+    await vi.waitFor(() => expect(rowOf('c')?.title).toBe('Invoice, March (paid)'));
+    expect(rowOf('b')).toBe(untouched);
+
+    // A note trashed since leaves the matches, as it leaves every list.
+    lib.upsert('note', { ...lib.notes.get('b')!, deletedAt: 5 } as FeedNote);
+    await vi.waitFor(() => expect(observer.getCurrentResult().data?.results.map((r) => r.id)).toEqual(['a', 'c']));
+
+    expect(api.searchNotes).toHaveBeenCalledTimes(1);
+    unsubscribe();
+    stop();
+  });
+
   it('fails as offline on a device with no index, and passes on any other failure', async () => {
     lib = installTestLibrary({ notes: [note('a', { title: 'Passport renewal' })] });
     setReachableForTests(false);

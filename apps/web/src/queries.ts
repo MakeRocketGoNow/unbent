@@ -8,7 +8,7 @@ import type { AttachmentInfo, BackupsStatus, OperatorOrder, FieldDef, Note, Note
 import * as api from './notes-api.js';
 import { ApiError, OfflineError } from './notes-api.js';
 import { offlineNow } from './connectivity.js';
-import { count, fieldSums, list, lookups, notebookFields, notebookFiles, notebookList, summaries, tagSummaries, toAttachmentInfo, toNote, viewList, type LocalAttachmentInfo, type Lookups, type Snapshot } from './store/derive.js';
+import { count, fieldSums, list, lookups, notebookFields, notebookFiles, notebookList, summaries, tagSummaries, toAttachmentInfo, toNote, toSummary, viewList, type LocalAttachmentInfo, type Lookups, type Snapshot } from './store/derive.js';
 import type { LocalNote } from './store/collections.js';
 import { currentLibrary, onLibraryChange, onLibraryReset, onSearchIndexed, type ReadableLibrary as Library } from './store/library.js';
 import { LIBRARY_ROOTS } from './store/library-roots.js';
@@ -190,7 +190,10 @@ export function installLibraryQueries(queryClient: QueryClient): () => void {
   const refetch = (roots: ReadonlySet<string>) => {
     void queryClient.invalidateQueries({ predicate: ({ queryKey }) => roots.has(String(queryKey[0])) });
   };
-  const stopLibrary = onLibraryChange(refetch);
+  const stopLibrary = onLibraryChange((roots) => {
+    refetch(roots);
+    if (roots.has('notes')) void freshenSearches(queryClient);
+  });
   const reread = () => refetch(LIBRARY_ROOTS);
   rereadAll = reread;
   // What the write reaches, as the library's own notices say (a view's write, the views).
@@ -229,6 +232,91 @@ export function installLibraryQueries(queryClient: QueryClient): () => void {
     stopReset();
     stopIndexed();
   };
+}
+
+/**
+ * Brings every cached search's matches up to date with the library, in place.
+ *
+ * A search is not a library root (see `onSearchIndexed` above): a change to a note does
+ * not re-rank it, and asking the server again for every keystroke typed into a note would
+ * be a search per autosave, which could still answer from before the write while it waits
+ * in the outbox. But a match carries what the note looked like when the search ran: its
+ * title, and in the table and the cards its whole row. A field set from the note beside a
+ * searched table stayed at its old value in that table until the search was cleared.
+ *
+ * So the ranking stays the search's and the contents are the library's: each match is
+ * redrawn from the note as the library holds it now, in the same order, with the same
+ * snippet (which is about why it matched). A note trashed since leaves the matches, as
+ * it leaves every list. One the library does not hold (a copy still walking) is left as
+ * the search drew it. A note that no longer matches the term or the filter stays until
+ * the search is asked again: a row vanishing under the edit that made it stop matching
+ * would be the jump this app avoids, and the next keystroke in the box settles it.
+ */
+async function freshenSearches(queryClient: QueryClient): Promise<void> {
+  const hasMatches = (data: unknown): data is SearchAnswer => ((data as SearchAnswer | undefined)?.results.length ?? 0) > 0;
+  if (!queryClient.getQueriesData<SearchAnswer>({ queryKey: ['search'] }).some(([, data]) => hasMatches(data))) return;
+  const lib = await library();
+  if (!lib) return;
+  const v = view(lib);
+  /*
+   * Each answer is read here, after the wait, and not before it: a search's own answer
+   * can land while the library is being asked for, and writing back the one read before
+   * would put the old ranking over it. A query collected meanwhile is simply not found.
+   *
+   * The answer keeps the time it was answered. A redraw changes how the matches look,
+   * not what the search found, so it must not make a search read as fresh to `staleTime`
+   * (which would stop a remount asking the server again while edits keep arriving) or
+   * as answered during a doubt about the connection (`recover` in `connectivity.ts`
+   * would then ask it again on reconnect for nothing).
+   */
+  for (const query of queryClient.getQueryCache().findAll({ queryKey: ['search'] })) {
+    const data = query.state.data;
+    if (!hasMatches(data)) continue;
+    const fresh = freshHits(data.results, lib, v.lookups);
+    if (fresh !== data.results) queryClient.setQueryData<SearchAnswer>(query.queryKey, { ...data, results: fresh }, { updatedAt: query.state.dataUpdatedAt });
+  }
+}
+
+/** The matches as the library holds their notes now; the same array when nothing moved. */
+function freshHits(results: api.SearchHit[], lib: Library, l: Lookups): api.SearchHit[] {
+  let changed = false;
+  const out: api.SearchHit[] = [];
+  for (const hit of results) {
+    const row = lib.notes.get(hit.id) as LocalNote | undefined;
+    if (!row) {
+      out.push(hit);
+      continue;
+    }
+    if (row.deletedAt != null) {
+      changed = true;
+      continue;
+    }
+    if (!('note' in hit)) {
+      if (hit.title === row.title) out.push(hit);
+      else {
+        changed = true;
+        out.push({ ...hit, title: row.title });
+      }
+      continue;
+    }
+    /*
+     * Compared whole rather than by stamp: a save lands on the library before the server
+     * has answered, with the field changed and `updatedAt` as it was, so the stamp is the
+     * one thing that does not move. A match whose row came out the same keeps its object,
+     * so a change elsewhere in the library does not redraw the table; a list row is
+     * small, and a page of fifty is compared in well under a frame. The exception is the
+     * first change after the server answers: its rows are not spelled as `toSummary`
+     * spells them (key order, the excerpt), so that one redraws every match, once.
+     */
+    const note = toSummary(row, l);
+    if (hit.title === row.title && JSON.stringify(note) === JSON.stringify(hit.note)) {
+      out.push(hit);
+      continue;
+    }
+    changed = true;
+    out.push({ ...hit, title: row.title, note });
+  }
+  return changed ? out : results;
 }
 
 export interface NoteFilter {
