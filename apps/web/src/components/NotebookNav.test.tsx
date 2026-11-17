@@ -320,12 +320,13 @@ describe('NotebookNav', () => {
     it('leaves the search behind, as a notebook does', async () => {
       localStorage.setItem('unbent.navTagsOpen', 'true');
       const { findByRole, history } = harness({ tags: TAGS });
-      await history.push('/notes?q=milk');
+      await history.push('/notes?q=milk&from=2024-01-01');
       fireEvent.click(await findByRole('link', { name: /^Receipt/ }));
       await waitFor(() => {
         const href = history.location.href;
         expect(href).toContain('Receipt');
         expect(href).not.toContain('milk');
+        expect(href).toContain('from=2024-01-01');
       });
     });
 
