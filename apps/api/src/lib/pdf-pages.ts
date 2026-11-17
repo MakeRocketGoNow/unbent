@@ -140,10 +140,18 @@ function skipWs(b: Uint8Array, i: number): number {
   return i;
 }
 
+/**
+ * The longest token read. Names are at most 127 bytes and numbers far shorter; a longer run
+ * is no PDF's, and spread into `String.fromCharCode` a long enough one overflows the stack
+ * with a `RangeError` rather than the `PdfError` every caller expects.
+ */
+const MAX_TOKEN = 256;
+
 /** A run of regular characters: a number or a keyword. */
 function token(b: Uint8Array, i: number): { text: string; end: number } {
   let end = i;
   while (end < b.length && !isWs(b[end]) && !isDelim(b[end])) end++;
+  if (end - i > MAX_TOKEN) throw new PdfError('token too long');
   return { text: String.fromCharCode(...b.subarray(i, end)), end };
 }
 
@@ -269,6 +277,8 @@ function headerAt(b: Uint8Array, at: number): { num: number; start: number } | n
   while (k >= 0 && isDigit(b[k])) k--;
   if (k + 1 === numEnd) return null;
   if (k >= 0 && !isWs(b[k]) && !isDelim(b[k])) return null;
+  // An object number is at most ten digits; a longer run is not a header (see `MAX_TOKEN`).
+  if (numEnd - (k + 1) > 10) return null;
   return { num: Number(String.fromCharCode(...b.subarray(k + 1, numEnd))), start: k + 1 };
 }
 

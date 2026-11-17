@@ -29,8 +29,13 @@ describe('parseValue', () => {
     expect(d.get('Sp ace')).toBe(1);
   });
 
-  it('refuses nesting no file has, rather than run out of stack', () => {
+  it('refuses nesting no file has, and a run of digits no file has, rather than run out of stack', async () => {
     expect(() => parseValue(enc('['.repeat(500)), 0)).toThrow(PdfError);
+    const digits = '7'.repeat(300_000);
+    expect(() => parseValue(enc(digits), 0)).toThrow(PdfError);
+    // Before an `obj`, where the header is read outside the parse: not a header, not a crash.
+    const file = new Uint8Array([...pdfOf([...pageTree([3]), page(3, [])]), ...enc(`\n${digits} 0 obj\n<< >>\nendobj\n`)]);
+    expect((await openPdf(file)).pages).toHaveLength(1);
   });
 });
 
