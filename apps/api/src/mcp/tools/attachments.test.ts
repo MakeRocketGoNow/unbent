@@ -291,7 +291,7 @@ describe('get_attachment on a scanned PDF', () => {
     const { repo, blobs } = pictured();
     const result = await collect({ BLOBS: blobs }, repo).get('get_attachment')!({ noteId, filename: 'heavy.pdf' });
     expect((answer(result).sent as Array<{ page: number }>).map((s) => s.page)).toEqual([1]);
-    expect(answer(result).next).toMatch(/Pages 2 to 2 were not sent; ask for pages "2-2"/);
+    expect(answer(result).next).toMatch(/^Page 2 was not sent; ask for page "2" next/);
   });
 
   it('stops before a page whose pictures would pass the cap on pictures a call', async () => {
@@ -302,7 +302,7 @@ describe('get_attachment on a scanned PDF', () => {
     expect((answer(result).sent as Array<{ page: number }>).map((s) => s.page)).toEqual([1, 1, 1, 1, 1, 2, 2, 2, 2, 2]);
     expect(blocks(result).filter((b) => b.type === 'text' && b.text!.startsWith('Page'))).toHaveLength(2);
     expect(images.asked).toHaveLength(10);
-    expect(answer(result).next).toMatch(/ask for pages "3/);
+    expect(answer(result).next).toMatch(/^Page 3 was not sent; ask for page "3" next/);
   });
 
   it('says why a page was not sent, and refuses when nothing could be', async () => {

@@ -87,6 +87,12 @@ const MAX_ASSISTANT_TEXT_CHARS = 100_000;
 /** A size as `get_attachment` prints every one, in binary megabytes, so two sizes in one sentence share a unit. */
 const mb = (n: number) => `${(n / (1024 * 1024)).toFixed(1)} MB`;
 
+/** Pages `a` to `b` in a sentence, one page or several said as such: "Page 7", not "Pages 7 to 7". */
+const pagesOf = (a: number, b: number) => (a === b ? `Page ${a}` : `Pages ${a} to ${b}`);
+const rest = (a: number, b: number) => `${pagesOf(a, b)} ${a === b ? 'was' : 'were'}`;
+/** The same span as `pages` would be asked for: "3" or "3-5". */
+const span = (a: number, b: number) => (a === b ? `page "${a}"` : `pages "${a}-${b}"`);
+
 /** What a picture or a scan's answer says when the bytes are missing from the bucket. */
 const MISSING_BYTES = 'The bytes of this file could not be found; try again later.';
 
@@ -282,7 +288,7 @@ export function registerAttachmentTools(
           `Nothing on page${from === through ? ` ${from}` : `s ${from} to ${through}`} could be sent: ` +
             notSent.map((n) => `page ${n.page}: ${n.reason}`).join('. ') +
             '.' +
-            (through < total ? ` Pages ${through + 1} to ${total} may still be readable.` : '') +
+            (through < total ? ` ${pagesOf(through + 1, total)} may still be readable.` : '') +
             autofill,
         );
       }
@@ -297,7 +303,7 @@ export function registerAttachmentTools(
             : RECORD;
       const next =
         (through < total
-          ? `Pages ${through + 1} to ${total} were not sent; ask for pages "${through + 1}-${Math.min(through + PAGES_PER_CALL, total)}" next` +
+          ? `${rest(through + 1, total)} not sent; ask for ${span(through + 1, Math.min(through + PAGES_PER_CALL, total))} next` +
             (recordable ? ', and read them all before recording, since set_attachment_text takes the text of the whole file. ' : '. ')
           : 'That was the last page. ') +
         (through < total && recordable ? '' : `${record} `) +
