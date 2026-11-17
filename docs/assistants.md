@@ -35,10 +35,12 @@ Four are worth knowing about:
   A PDF with a text layer, or one the model has read, is not sent as pictures:
   `get_attachment_text` has its words. Pages asked for by number are the exception, for
   scanned pages a typed cover sheet's layer leaves out. The file itself is never changed,
-  and **`set_attachment_text`** records what it read, marked `assistant`, so search and the summaries have it. It may fill a file that
-  has no text, an empty row or its own earlier words, and never a text layer or the model's
-  reading; the next Auto-fill press on the note has the model read the file itself and
-  replaces it. See [Searching inside PDFs](search.md#searching-inside-pdfs). Before any of that, `get_note`
+  and **`set_attachment_text`** records what it read, marked `assistant`, so search and
+  the summaries have it. It may fill a file that has no text, an empty row or its own
+  earlier words, and never a text layer or the model's reading; the next Auto-fill press on
+  the note has the model read the file itself and replaces it, unless the file is past what
+  a press reads (a picture over 7 MB, a PDF over 8 MB), when the assistant's words stand.
+  See [Searching inside PDFs](search.md#searching-inside-pdfs). Before any of that, `get_note`
   (and `list_notes` or `search_notes` with `attachmentSummaries`) already give each file a
   line of what it is: the vision model's name and description for a picture or a text-less
   scan; for a text layer, its opening and then the total, dates, order number and amounts
