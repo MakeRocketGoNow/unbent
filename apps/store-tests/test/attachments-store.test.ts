@@ -249,6 +249,41 @@ describe('attachments', () => {
     expect((await stub.textsForNote('n1')).find((f) => f.filename === 'card.jpg')!.readBy).toBe('assistant');
   });
 
+  /**
+   * MAK-254: macOS puts a narrow no-break space (U+202F) before a screenshot's AM, and an
+   * assistant says the name back from get_note with a plain one. The three tools that take
+   * an assistant's filename find the file anyway; a route's exact resolve does not, and a
+   * name two files share once spaces are forgiven finds neither.
+   */
+  it('finds a file an assistant names with plain spaces where the stored name has others', async () => {
+    const { stub } = freshStore('att-loose');
+    await stub.create({ id: 'n1', title: 'T', body: '', tags: [] });
+    const stored = 'Screenshot 2026-04-04 at 10.22.13 AM.png';
+    const said = 'Screenshot 2026-04-04 at 10.22.13 AM.png';
+    await stub.recordAttachment(file('n1', { id: 'shot', filename: stored, contentType: 'image/png' }));
+
+    expect(await stub.resolveAttachment('n1', said, { loose: true })).toMatchObject({ id: 'shot', filename: stored });
+    expect(await stub.resolveAttachment('n1', said)).toBeNull();
+    expect(await stub.textWithRead('n1', said)).toEqual({ read: 'pending', text: null });
+    expect(await stub.writeAssistantText('n1', said, 'A settings screen')).toEqual({ ok: true, reason: null });
+    // Recorded against the file's own name, so its text reads back under either.
+    expect(await stub.textWithRead('n1', stored)).toEqual({ read: 'assistant', text: 'A settings screen' });
+    expect((await stub.search('settings', 5)).map((r) => r.matchedFile)).toEqual([stored]);
+
+    // A name from a Mac's file system may be decomposed where the assistant's is not.
+    await stub.recordAttachment(file('n1', { id: 'cafe', filename: 'Café receipt.jpg', contentType: 'image/jpeg' }));
+    expect(await stub.resolveAttachment('n1', 'Café receipt.jpg', { loose: true })).toMatchObject({ id: 'cafe' });
+    // Case is not forgiven: it is something a person can see.
+    expect(await stub.resolveAttachment('n1', 'screenshot 2026-04-04 at 10.22.13 AM.png', { loose: true })).toBeNull();
+
+    // Two files the loose form cannot tell apart: no guess, and an exact name still wins.
+    await stub.recordAttachment(file('n1', { id: 'nbsp', filename: 'a b.png', contentType: 'image/png' }));
+    await stub.recordAttachment(file('n1', { id: 'narrow', filename: 'a b.png', contentType: 'image/png' }));
+    expect(await stub.resolveAttachment('n1', 'a b.png', { loose: true })).toBeNull();
+    expect(await stub.writeAssistantText('n1', 'a b.png', 'x')).toEqual({ ok: false, reason: 'missing' });
+    expect(await stub.resolveAttachment('n1', 'a b.png', { loose: true })).toMatchObject({ id: 'narrow' });
+  });
+
   it('says what each file is in brief, on a note and on a page of notes', async () => {
     const BILL = `Globex Utilities\n\n  Statement  ${'x'.repeat(2000)}\nStatement date: 03/02/2026\nTotal amount due $84.12\n`;
     const { stub } = freshStore('summaries');

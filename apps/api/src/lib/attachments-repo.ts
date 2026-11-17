@@ -40,9 +40,10 @@ export class AttachmentsRepo extends StoreRepo {
 
   /**
    * Resolves `files/<filename>` within a live note, or a trashed one too with
-   * `includeTrashed`. Null when there is no such file.
+   * `includeTrashed`. Null when there is no such file. `loose` is for a name an assistant
+   * said back (see `AttachmentsStore.resolve`).
    */
-  resolve(noteId: string, filename: string, opts?: { includeTrashed?: boolean }): Promise<AttachmentRow | null> {
+  resolve(noteId: string, filename: string, opts?: { includeTrashed?: boolean; loose?: boolean }): Promise<AttachmentRow | null> {
     return this.call((s) => s.resolveAttachment(noteId, filename, opts));
   }
 
