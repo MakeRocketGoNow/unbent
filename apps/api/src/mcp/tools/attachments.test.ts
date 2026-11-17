@@ -158,10 +158,11 @@ function pictured() {
         return row ? { ...row, read: reads[filename] ?? 'pending', unread: unread.has(filename) } : null;
       },
       writeAssistantText: async (id: string, filename: string, text: string) => {
-        if (id !== noteId || !rows[filename]) return { ok: false, reason: 'missing', filename: null };
-        if (refuse[filename]) return { ok: false, reason: refuse[filename], filename: null };
+        const no = { filename: null, contentType: null, size: null };
+        if (id !== noteId || !rows[filename]) return { ok: false, reason: 'missing', ...no };
+        if (refuse[filename]) return { ok: false, reason: refuse[filename], ...no };
         written.push({ filename, text });
-        return { ok: true, reason: null, filename };
+        return { ok: true, reason: null, filename, contentType: rows[filename].content_type, size: rows[filename].size };
       },
     },
     blobs: {
@@ -497,6 +498,10 @@ describe('set_attachment_text', () => {
     expect(parse(result).note).toMatch(/Auto-fill/);
     expect(written).toEqual([{ filename: 'card.png', text: 'Plumber card\nJane Doe, Acme Plumbing\n\n555-0100' }]);
 
+    // Nor for a file past what a press hands the model, whose words are what it keeps.
+    const big = await collect({ ANTHROPIC_API_KEY: 'k' }, pictured().repo).get('set_attachment_text')!({ noteId, filename: 'bigfax.pdf', text: 'A long scan' });
+    expect(parse(big).note).toMatch(/No Auto-fill press reads a file of this kind or this size/);
+
     // Without a model key nothing will ever replace the words, and the tool says so.
     const bare = await collect({}, pictured().repo).get('set_attachment_text')!({ noteId, filename: 'card.png', text: 'A card' });
     expect(parse(bare).note).toMatch(/no vision model/);
@@ -524,7 +529,7 @@ describe('set_attachment_text', () => {
     // The store matched a plain space to the narrow one macOS writes (MAK-254); the answer
     // is what an assistant copies into a link, so it must be the name that resolves.
     const stored = 'Shot 10.22\u202FAM.png';
-    const repo = { writeAssistantText: async () => ({ ok: true, reason: null, filename: stored }) };
+    const repo = { writeAssistantText: async () => ({ ok: true, reason: null, filename: stored, contentType: 'image/png', size: 100 }) };
     const result = await collect({}, repo).get('set_attachment_text')!({ noteId, filename: 'Shot 10.22 AM.png', text: 'A screen' });
     expect(parse(result)).toMatchObject({ filename: stored, read: 'assistant' });
   });

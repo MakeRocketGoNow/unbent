@@ -199,7 +199,7 @@ describe('attachments', () => {
     // An assistant's words over MCP are a hint, not the model's reading: the press is
     // offered the file again, told whose words stand, so it can have the model read it.
     await stub.recordAttachment(file('n2', { id: 'told', filename: 'told.jpg', contentType: 'image/jpeg' }));
-    expect(await stub.writeAssistantText('n2', 'told.jpg', 'A card for a plumber')).toEqual({ ok: true, reason: null, filename: 'told.jpg' });
+    expect(await stub.writeAssistantText('n2', 'told.jpg', 'A card for a plumber')).toMatchObject({ ok: true, reason: null, filename: 'told.jpg' });
     const offered = (await stub.autofillPrelude('n2', 10))!.forVision.map((f) => [f.id, f.writtenBy ?? null]).sort();
     expect(offered).toEqual([['pic', null], ['told', 'assistant']]);
 
@@ -228,18 +228,25 @@ describe('attachments', () => {
     await stub.recordText({ attachmentId: 'blank', noteId: 'n1', filename: 'blank.pdf', text: '' });
 
     // Nothing there, its own earlier words, or a row the model left empty: all yield.
-    expect(await stub.writeAssistantText('n1', 'card.jpg', 'Plumber card\nJane Doe, Acme Plumbing, 555-0100')).toEqual({ ok: true, reason: null, filename: 'card.jpg' });
-    expect(await stub.writeAssistantText('n1', 'card.jpg', 'Jane Doe, Acme Plumbing')).toEqual({ ok: true, reason: null, filename: 'card.jpg' });
-    expect(await stub.writeAssistantText('n1', 'declined.jpg', 'A receipt the model would not read')).toEqual({ ok: true, reason: null, filename: 'declined.jpg' });
+    expect(await stub.writeAssistantText('n1', 'card.jpg', 'Plumber card\nJane Doe, Acme Plumbing, 555-0100')).toEqual({
+      ok: true,
+      reason: null,
+      filename: 'card.jpg',
+      // So the tool can tell whether a press will ever read the file again.
+      contentType: 'image/jpeg',
+      size: 3,
+    });
+    expect(await stub.writeAssistantText('n1', 'card.jpg', 'Jane Doe, Acme Plumbing')).toMatchObject({ ok: true, reason: null, filename: 'card.jpg' });
+    expect(await stub.writeAssistantText('n1', 'declined.jpg', 'A receipt the model would not read')).toMatchObject({ ok: true, reason: null, filename: 'declined.jpg' });
     // A PDF whose layer came back empty yields; one the free reader has not reached does
     // not, or it would never be reached and the next press would pay the model for it.
-    expect(await stub.writeAssistantText('n1', 'blank.pdf', 'A scan with no layer, read by eye')).toEqual({ ok: true, reason: null, filename: 'blank.pdf' });
-    expect(await stub.writeAssistantText('n1', 'fresh.pdf', 'x')).toEqual({ ok: false, reason: 'unread', filename: null });
+    expect(await stub.writeAssistantText('n1', 'blank.pdf', 'A scan with no layer, read by eye')).toMatchObject({ ok: true, reason: null, filename: 'blank.pdf' });
+    expect(await stub.writeAssistantText('n1', 'fresh.pdf', 'x')).toEqual({ ok: false, reason: 'unread', filename: null, contentType: null, size: null });
     expect((await stub.autofillPrelude('n1', 10))!.forText.map((f) => f.id)).toEqual(['fresh']);
     // The file's own text layer and the model's reading do not.
-    expect(await stub.writeAssistantText('n1', 'bill.pdf', 'x')).toEqual({ ok: false, reason: 'layer', filename: null });
-    expect(await stub.writeAssistantText('n1', 'seen.jpg', 'x')).toEqual({ ok: false, reason: 'vision', filename: null });
-    expect(await stub.writeAssistantText('n1', 'ghost.jpg', 'x')).toEqual({ ok: false, reason: 'missing', filename: null });
+    expect(await stub.writeAssistantText('n1', 'bill.pdf', 'x')).toEqual({ ok: false, reason: 'layer', filename: null, contentType: null, size: null });
+    expect(await stub.writeAssistantText('n1', 'seen.jpg', 'x')).toEqual({ ok: false, reason: 'vision', filename: null, contentType: null, size: null });
+    expect(await stub.writeAssistantText('n1', 'ghost.jpg', 'x')).toEqual({ ok: false, reason: 'missing', filename: null, contentType: null, size: null });
 
     // One call answers the file and how its text came to be, and whether anything has read
     // it, for get_attachment (MAK-255): a scan never reached is `unread`, one whose layer came
@@ -278,7 +285,7 @@ describe('attachments', () => {
     expect(await stub.resolveAttachment('n1', said, { loose: true })).toMatchObject({ id: 'shot', filename: stored });
     expect(await stub.resolveAttachment('n1', said)).toBeNull();
     expect(await stub.textWithRead('n1', said)).toEqual({ filename: stored, read: 'pending', text: null });
-    expect(await stub.writeAssistantText('n1', said, 'A settings screen')).toEqual({ ok: true, reason: null, filename: stored });
+    expect(await stub.writeAssistantText('n1', said, 'A settings screen')).toMatchObject({ ok: true, reason: null, filename: stored });
     // Recorded against the file's own name, so its text reads back under either.
     expect(await stub.textWithRead('n1', stored)).toEqual({ filename: stored, read: 'assistant', text: 'A settings screen' });
     expect((await stub.search('settings', 5)).map((r) => r.matchedFile)).toEqual([stored]);
@@ -293,7 +300,7 @@ describe('attachments', () => {
     await stub.recordAttachment(file('n1', { id: 'nbsp', filename: 'a b.png', contentType: 'image/png' }));
     await stub.recordAttachment(file('n1', { id: 'narrow', filename: 'a b.png', contentType: 'image/png' }));
     expect(await stub.resolveAttachment('n1', 'a b.png', { loose: true })).toBeNull();
-    expect(await stub.writeAssistantText('n1', 'a b.png', 'x')).toEqual({ ok: false, reason: 'missing', filename: null });
+    expect(await stub.writeAssistantText('n1', 'a b.png', 'x')).toEqual({ ok: false, reason: 'missing', filename: null, contentType: null, size: null });
     expect(await stub.resolveAttachment('n1', 'a b.png', { loose: true })).toMatchObject({ id: 'narrow' });
   });
 

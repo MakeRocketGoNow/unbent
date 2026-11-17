@@ -573,7 +573,7 @@ export function registerAttachmentTools(
             'note the instance has its model read the file itself and replaces it, so write ' +
             'it for search in the meantime, not as the last word. If the model declines the ' +
             'file, your words stay and it is offered again on later presses. For any other ' +
-            'kind of file what you record stands.'
+            'kind of file, and for a picture over 7 MB or a PDF over 8 MB, which no press reads, what you record stands.'
           : '. This instance has no vision model, so what you record is the text the file ' +
             'will have: write it as carefully as the file deserves.'),
       inputSchema: z.object({
@@ -621,9 +621,13 @@ export function registerAttachmentTools(
         filename: result.filename,
         read: 'assistant',
         chars: trimmed.length,
-        note: vision
-          ? 'Recorded. The next Auto-fill press on this note has the model read the file itself and replaces this.'
-          : 'Recorded. This instance has no vision model, so this is the text the file has.',
+        // A press replaces it only where a press would read the file: within the model's caps.
+        note:
+          vision && readableByLlm(result.contentType ?? '', result.size ?? Infinity)
+            ? 'Recorded. The next Auto-fill press on this note has the model read the file itself and replaces this.'
+            : vision
+              ? 'Recorded. No Auto-fill press reads a file of this kind or this size, so this is the text it will have.'
+              : 'Recorded. This instance has no vision model, so this is the text the file has.',
       });
     },
   );
