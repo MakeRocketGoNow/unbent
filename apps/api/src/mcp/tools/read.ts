@@ -98,9 +98,9 @@ const ATTACHMENT_SUMMARY =
   'total, dates and order or invoice number found in it ("Total: $18.67 · Date: ' +
   '2026-03-02 · Order #112-0042"), or up to three amounts in place of a total when none is ' +
   'labelled ("Amounts: $1,200.00, $14,350.10"), each left out when the text has none; "pending" ' +
-  'when it has not been read yet (for a picture, get_attachment hands you the file and ' +
-  'set_attachment_text records what you read; otherwise pressing Auto-fill on the note in ' +
-  'the app reads it); "none" when it was read and nothing was found, or nothing on ' +
+  'when it has not been read yet (for a picture or a scanned PDF, get_attachment hands you ' +
+  'the file, a scan as its pages, and set_attachment_text records what you read; pressing ' +
+  'Auto-fill on the note in the app reads it too); "none" when it was read and nothing was found, or nothing on ' +
   'this instance reads that kind of file. summary is null unless read is "vision", "text" ' +
   'or "assistant", and is a few hundred characters at most: get_attachment_text has the whole text.';
 
@@ -513,8 +513,8 @@ export function registerReadTools(
         "or a photo readable. A PDF's layer is read after upload and a picture only on a " +
         'press, so a file may have no text yet, which is reported as such rather than as an ' +
         'empty document. read says which, as it does on get_note: "pending" for a file still ' +
-        'to be read (a picture you can read yourself with get_attachment and record with ' +
-        'set_attachment_text) and "none" for one that was read and had nothing, or that ' +
+        'to be read (a picture or a scanned PDF you can read yourself with get_attachment and ' +
+        'record with set_attachment_text) and "none" for one that was read and had nothing, or that ' +
         'nothing on this instance reads. A receipt or a statement usually says what it is in its ' +
         'first page and spends the rest on terms: pass maxChars to read only the opening, ' +
         'and offset to read on from where a cut answer stopped.',
@@ -553,7 +553,7 @@ export function registerReadTools(
           read,
           note:
             read === 'pending'
-              ? 'This attachment has not been read yet. If it is a picture, get_attachment returns it for you to read and set_attachment_text records what you read; otherwise pressing Auto-fill on the note in the app reads it.'
+              ? 'This attachment has not been read yet. If it is a picture or a scanned PDF, get_attachment returns it (a scan as its pages) for you to read and set_attachment_text records what you read; pressing Auto-fill on the note in the app reads it too.'
               : 'This attachment has no text: it was read and nothing was found, or nothing on this instance reads this kind of file.',
         });
       }

@@ -27,11 +27,20 @@ Four are worth knowing about:
   picture goes as a JPEG shrunk to the long edge the model reads at, 1568 px unless the
   assistant asks for up to 2576, so a phone photo of a form at 15 MB is a few hundred
   kilobytes on the way; without the binding the original goes, and only under about 3.7 MB.
-  The file itself is never changed, and **`set_attachment_text`** records what it
-  read, marked `assistant`, so search and the summaries have it. It may fill a file that
-  has no text, an empty row or its own earlier words, and never a text layer or the model's
-  reading; the next Auto-fill press on the note has the model read the file itself and
-  replaces it. See [Searching inside PDFs](search.md#searching-inside-pdfs). Before any of that, `get_note`
+  A scanned PDF with no text layer comes the same way, as its pages: the pictures the
+  scanner stored, taken out of the file a few pages a call (`pages` asks for more), since
+  the Worker has no renderer to draw a page with. A JPEG or Flate page is taken out; a
+  black and white fax-encoded page, a JPEG 2000 one, an encrypted PDF and a page drawn as
+  shapes are named in the answer, and wait for a press (which reads a PDF of up to 8 MB).
+  A PDF with a text layer, or one the model has read, is not sent as pictures:
+  `get_attachment_text` has its words. Pages asked for by number are the exception, for
+  scanned pages a typed cover sheet's layer leaves out. The file itself is never changed,
+  and **`set_attachment_text`** records what it read, marked `assistant`, so search and
+  the summaries have it. It may fill a file that has no text, an empty row or its own
+  earlier words, and never a text layer or the model's reading; the next Auto-fill press on
+  the note has the model read the file itself and replaces it, unless the file is past what
+  a press reads (a picture over 7 MB, a PDF over 8 MB), when the assistant's words stand.
+  See [Searching inside PDFs](search.md#searching-inside-pdfs). Before any of that, `get_note`
   (and `list_notes` or `search_notes` with `attachmentSummaries`) already give each file a
   line of what it is: the vision model's name and description for a picture or a text-less
   scan; for a text layer, its opening and then the total, dates, order number and amounts
@@ -111,7 +120,7 @@ recipe needs nothing beyond the tools above:
 Read what is there before writing: a value a person set is theirs, and the `empty` filter
 is what keeps a second pass from touching it. A picture nothing has read yet shows as
 waiting in the summaries; `get_attachment` hands it over to read, as above, rather than
-having the instance read it.
+having the instance read it. So does a scanned PDF with no text layer, page by page.
 
 **An assistant can tell the operator what got in its way.** `send_feedback` takes a
 category (a wrong or unhelpful result, an error with no way forward, a missing capability,

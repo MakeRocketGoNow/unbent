@@ -132,6 +132,13 @@ export interface AssistantWrite {
    * it is answered into a link. Null when it was not written.
    */
   filename: string | null;
+  /**
+   * The file's type and size when it was written, so the tool can say whether a press will
+   * ever read it again: the model takes a picture or a PDF only up to its caps, and what an
+   * assistant records for a larger one is the text it keeps. Null when it was not written.
+   */
+  contentType: string | null;
+  size: number | null;
 }
 
 /** The row's `read_by` as the three values it may hold; anything else reads as a text layer. */
@@ -569,8 +576,8 @@ export class AttachmentsStore {
     return this.sql.tx(() => {
       // Matched loosely, as get_attachment is: the name came from an assistant.
       const row = this.byLooseName(noteId, filename, (name) =>
-        this.sql.first<{ id: string; filename: string; content_type: string; text: string | null; read_by: string | null }>(
-          `SELECT a.id, a.filename, a.content_type, t.text, t.read_by
+        this.sql.first<{ id: string; filename: string; content_type: string; size: number; text: string | null; read_by: string | null }>(
+          `SELECT a.id, a.filename, a.content_type, a.size, t.text, t.read_by
              FROM attachments a
              JOIN notes n ON n.id = a.note_id
              LEFT JOIN attachment_text t ON t.attachment_id = a.id
@@ -579,14 +586,13 @@ export class AttachmentsStore {
           name,
         ),
       );
-      if (!row) return { ok: false, reason: 'missing', filename: null };
-      if (row.content_type === 'application/pdf' && row.text === null) return { ok: false, reason: 'unread', filename: null };
-      if (row.text && row.read_by !== 'assistant') {
-        return { ok: false, reason: row.read_by === 'vision' ? 'vision' : 'layer', filename: null };
-      }
+      const refused = (reason: NonNullable<AssistantWrite['reason']>): AssistantWrite => ({ ok: false, reason, filename: null, contentType: null, size: null });
+      if (!row) return refused('missing');
+      if (row.content_type === 'application/pdf' && row.text === null) return refused('unread');
+      if (row.text && row.read_by !== 'assistant') return refused(row.read_by === 'vision' ? 'vision' : 'layer');
       // The stored name, not the one asked with: the text row names its file.
       this.recordText({ attachmentId: row.id, noteId, filename: row.filename, text, readBy: 'assistant' });
-      return { ok: true, reason: null, filename: row.filename };
+      return { ok: true, reason: null, filename: row.filename, contentType: row.content_type, size: row.size };
     });
   }
 
@@ -703,6 +709,36 @@ export class AttachmentsStore {
       filename,
     );
     return row?.text ?? null;
+  }
+
+  /**
+   * `resolve` loosely, with how the file's text came to be (`summarize`'s `read`) and
+   * whether anything has read it at all, for MCP's `get_attachment` in one call where it
+   * would otherwise be `resolve` and then `textWithRead` (two billable requests, the second
+   * carrying a whole text across only for `read` to be worked out). A scan's pages are
+   * refused when its text layer or the model already has its words, and `unread` says
+   * whether `set_attachment_text` will take what an assistant reads (`writeAssistantText`
+   * refuses a PDF nothing has read). Only the head of the text crosses, as for a summary.
+   * Null when there is no such file on a live note.
+   */
+  resolveWithRead(noteId: string, filename: string, vision = true): (AttachmentRow & { read: FileRead; unread: boolean }) | null {
+    const row = this.byLooseName(noteId, filename, (name) =>
+      this.sql.first<AttachmentRow & { head: string | null; read_by: string | null; has_row: number }>(
+        `SELECT a.id, a.filename, a.content_type, a.size, a.r2_key,
+                substr(t.text, 1, ?3) AS head, t.read_by, t.attachment_id IS NOT NULL AS has_row
+           FROM attachments a
+           JOIN notes n ON n.id = a.note_id
+           LEFT JOIN attachment_text t ON t.attachment_id = a.id
+          WHERE a.note_id = ?1 AND a.filename = ?2 AND n.deleted_at IS NULL`,
+        noteId,
+        name,
+        SUMMARY_SOURCE_CHARS,
+      ),
+    );
+    if (!row) return null;
+    const { head, read_by, has_row, ...file } = row;
+    const { read } = summarize(row.content_type, head === null ? null : head.trim(), read_by, vision);
+    return { ...file, read, unread: has_row === 0 };
   }
 
   /**

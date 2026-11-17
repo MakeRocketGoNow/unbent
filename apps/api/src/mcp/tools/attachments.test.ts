@@ -4,6 +4,8 @@ import { registerAttachmentTools } from './attachments.js';
 import type { AttachmentsRepo } from '../../lib/attachments-repo.js';
 import type { NotesRepo } from '../../lib/notes-repo.js';
 import type { UploadGrantsRepo } from '../../lib/upload-grants.js';
+import { fakeJpeg, page, pageTree, pdfOf, type TestObject } from '../../lib/test-pdf.js';
+import { withReaderSlot } from '../../lib/reader-gate.js';
 
 /**
  * The upload link, minted on the instance's own address for the caller's note only, with
@@ -67,8 +69,44 @@ function pngHead(width: number, height: number): Uint8Array {
   return head;
 }
 
+/** A JPEG page of a scan: its header, padded out to `bytes` when the test needs it heavy. */
+function jpegPage(num: number, width: number, height: number, bytes = 0): TestObject {
+  const head = fakeJpeg(width, height);
+  const stream = new Uint8Array(Math.max(bytes, head.length));
+  stream.set(head);
+  return { num, body: `<< /Subtype /Image /Width ${width} /Height ${height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode >>`, stream };
+}
+
+/** Seven scanned pages, the second shown turned a quarter clockwise. */
+const sevenPages = pdfOf([
+  ...pageTree([3, 4, 5, 6, 7, 8, 9]),
+  ...[3, 4, 5, 6, 7, 8, 9].map((n) => page(n, [n + 10], n === 4 ? { rotate: 90 } : {})),
+  ...[13, 14, 15, 16, 17, 18, 19].map((n) => jpegPage(n, 1700, 2200)),
+]);
+
+/** A page as a fax image, which is not taken out, and a page of text. */
+const faxed = pdfOf([
+  ...pageTree([3, 4]),
+  page(3, [10]),
+  page(4, [], { font: true }),
+  { num: 10, body: '<< /Subtype /Image /Width 1700 /Height 2200 /ImageMask true /Filter /CCITTFaxDecode >>', stream: new Uint8Array(8) },
+]);
+
+/** Three pages, each drawn in five strips, as some scanners store a page. */
+const striped = pdfOf([
+  ...pageTree([3, 4, 5]),
+  ...[3, 4, 5].map((n) => page(n, [0, 1, 2, 3, 4].map((k) => 10 * n + k))),
+  ...[3, 4, 5].flatMap((n) => [0, 1, 2, 3, 4].map((k) => jpegPage(10 * n + k, 1700, 440))),
+]);
+
 /** The bytes in the fake bucket, by key. */
 const stored: Record<string, Uint8Array> = {
+  'k/pages': sevenPages,
+  'k/fax': faxed,
+  'k/striped': striped,
+  'k/locked': pdfOf([...pageTree([3]), page(3, [])], '<< /Root 1 0 R /Encrypt 9 0 R >>'),
+  // Two pages whose pictures are 2 MB each as stored, so both do not fit one answer unshrunk.
+  'k/heavy': pdfOf([...pageTree([3, 4]), page(3, [10]), page(4, [11]), jpegPage(10, 1200, 1500, 2_000_000), jpegPage(11, 1200, 1500, 2_000_000)]),
   'k/card': png,
   'k/poster': png,
   'k/shot': pngHead(1200, 800),
@@ -89,24 +127,42 @@ function pictured() {
     'mural.png': { id: 'a5', filename: 'mural.png', content_type: 'image/png', size: 24 * 1024 * 1024, r2_key: 'k/mural' },
     'scan.pdf': { id: 'a3', filename: 'scan.pdf', content_type: 'application/pdf', size: 10, r2_key: 'k/scan' },
     'fresh.pdf': { id: 'a4', filename: 'fresh.pdf', content_type: 'application/pdf', size: 10, r2_key: 'k/fresh' },
+    'pages.pdf': { id: 'b1', filename: 'pages.pdf', content_type: 'application/pdf', size: sevenPages.length, r2_key: 'k/pages' },
+    'fax.pdf': { id: 'b2', filename: 'fax.pdf', content_type: 'application/pdf', size: faxed.length, r2_key: 'k/fax' },
+    'locked.pdf': { id: 'b3', filename: 'locked.pdf', content_type: 'application/pdf', size: 200, r2_key: 'k/locked' },
+    'heavy.pdf': { id: 'b4', filename: 'heavy.pdf', content_type: 'application/pdf', size: 4_000_400, r2_key: 'k/heavy' },
+    'striped.pdf': { id: 'b9', filename: 'striped.pdf', content_type: 'application/pdf', size: striped.length, r2_key: 'k/striped' },
+    'book.pdf': { id: 'b5', filename: 'book.pdf', content_type: 'application/pdf', size: 40 * 1024 * 1024, r2_key: 'k/book' },
+    // The fax scan again, past the size the model takes a PDF at, so no press reads it.
+    'bigfax.pdf': { id: 'b6', filename: 'bigfax.pdf', content_type: 'application/pdf', size: 9 * 1024 * 1024, r2_key: 'k/fax' },
   };
+  /** How each file's text came to be; anything unnamed is pending, and read by the layer. */
+  const reads: Record<string, string> = { 'scan.pdf': 'text', 'seen.pdf': 'vision', 'layered.pdf': 'text' };
+  /** The PDFs nothing has read yet. */
+  const unread = new Set(['fresh.pdf']);
+  rows['seen.pdf'] = { ...rows['pages.pdf']!, id: 'b7', filename: 'seen.pdf' };
+  rows['fresh.pdf'] = { ...rows['pages.pdf']!, id: 'a4', filename: 'fresh.pdf' };
+  // A typed cover sheet's layer in front of scanned pages.
+  rows['layered.pdf'] = { ...rows['pages.pdf']!, id: 'b8', filename: 'layered.pdf' };
   const written: Array<{ filename: string; text: string }> = [];
-  /** The options each `resolve` was asked with. */
+  /** The arguments each lookup was made with. */
   const resolved: unknown[] = [];
   const refuse: Record<string, 'unread' | 'layer' | 'vision'> = { 'scan.pdf': 'layer', 'poster.jpg': 'vision', 'fresh.pdf': 'unread' };
   return {
     written,
     resolved,
     repo: {
-      resolve: async (id: string, filename: string, opts?: unknown) => {
-        resolved.push(opts);
-        return id === noteId ? (rows[filename] ?? null) : null;
+      resolveWithRead: async (id: string, filename: string, vision: boolean) => {
+        resolved.push({ filename, vision });
+        const row = id === noteId ? rows[filename] : undefined;
+        return row ? { ...row, read: reads[filename] ?? 'pending', unread: unread.has(filename) } : null;
       },
       writeAssistantText: async (id: string, filename: string, text: string) => {
-        if (id !== noteId || !rows[filename]) return { ok: false, reason: 'missing', filename: null };
-        if (refuse[filename]) return { ok: false, reason: refuse[filename], filename: null };
+        const no = { filename: null, contentType: null, size: null };
+        if (id !== noteId || !rows[filename]) return { ok: false, reason: 'missing', ...no };
+        if (refuse[filename]) return { ok: false, reason: refuse[filename], ...no };
         written.push({ filename, text });
-        return { ok: true, reason: null, filename };
+        return { ok: true, reason: null, filename, contentType: rows[filename].content_type, size: rows[filename].size };
       },
     },
     blobs: {
@@ -161,11 +217,11 @@ describe('get_attachment', () => {
     expect(image).toEqual({ type: 'image', data: btoa(String.fromCharCode(...png)), mimeType: 'image/png' });
     expect(JSON.parse(text!.text!)).toMatchObject({ filename: 'card.png', contentType: 'image/png', size: png.length });
     expect(text!.text).toContain('set_attachment_text');
-    // The name came from an assistant, so the store may match it loosely (MAK-254).
-    expect(resolved).toEqual([{ loose: true }]);
+    // One lookup, which matches the name loosely (MAK-254) and says how the text came to be.
+    expect(resolved).toEqual([{ filename: 'card.png', vision: false }]);
   });
 
-  it('refuses a PDF, a picture past the cap, and a file that is not there', async () => {
+  it('refuses a PDF with a text layer, a picture past the cap, and a file that is not there', async () => {
     const { repo, blobs } = pictured();
     const get = collect({ BLOBS: blobs }, repo).get('get_attachment')!;
     const pdf = await get({ noteId, filename: 'scan.pdf' });
@@ -180,6 +236,142 @@ describe('get_attachment', () => {
     expect(big.content[0]!.text).toMatch(/smaller copy/);
     expect((await get({ noteId, filename: 'ghost.png' })).isError).toBe(true);
     expect((await get({ noteId: otherNote, filename: 'card.png' })).isError).toBe(true);
+  });
+});
+
+describe('get_attachment on a scanned PDF', () => {
+  type Block = { type: string; text?: string; data?: string; mimeType?: string };
+  const blocks = (result: { content: unknown[] }) => result.content as Block[];
+  const answer = (result: { content: unknown[] }) => JSON.parse(blocks(result).at(-1)!.text!) as Record<string, unknown>;
+
+  it('hands over the first five pages, each after a line naming it, and says what to ask for next', async () => {
+    const { repo, blobs } = pictured();
+    const get = collect({ BLOBS: blobs }, repo).get('get_attachment')!;
+    const result = await get({ noteId, filename: 'pages.pdf' });
+    expect(result.isError).toBeFalsy();
+    const content = blocks(result);
+    expect(content.slice(0, 4)).toEqual([
+      { type: 'text', text: 'Page 1 of 7' },
+      { type: 'image', data: btoa(String.fromCharCode(...fakeJpeg(1700, 2200))), mimeType: 'image/jpeg' },
+      { type: 'text', text: 'Page 2 of 7 (shown turned 90° clockwise)' },
+      expect.objectContaining({ type: 'image' }),
+    ]);
+    expect(content.filter((b) => b.type === 'image')).toHaveLength(5);
+    const said = answer(result);
+    expect(said).toMatchObject({ filename: 'pages.pdf', contentType: 'application/pdf', pages: 7, notSent: [] });
+    expect(said.sent).toHaveLength(5);
+    expect((said.sent as unknown[])[1]).toEqual({ page: 2, turned: 90, contentType: 'image/jpeg', width: 1700, height: 2200, bytes: 23, downscaled: false });
+    expect(said.next).toMatch(/ask for pages "6-7" next/);
+    expect(said.next).toMatch(/turned/);
+  });
+
+  it('sends the pages asked for, and says when the last has gone', async () => {
+    const { repo, blobs } = pictured();
+    const get = collect({ BLOBS: blobs }, repo).get('get_attachment')!;
+    const result = await get({ noteId, filename: 'pages.pdf', pages: '6-9' });
+    expect((answer(result).sent as Array<{ page: number }>).map((s) => s.page)).toEqual([6, 7]);
+    expect(answer(result).next).toMatch(/^That was the last page\. Record what you read with set_attachment_text/);
+    const one = await get({ noteId, filename: 'pages.pdf', pages: '3' });
+    expect((answer(one).sent as Array<{ page: number }>).map((s) => s.page)).toEqual([3]);
+    expect((await get({ noteId, filename: 'pages.pdf', pages: '8' })).content[0]!.text).toMatch(/has 7 pages/);
+    expect((await get({ noteId, filename: 'pages.pdf', pages: '4-2' })).isError).toBe(true);
+  });
+
+  it('shrinks a page larger than the edge where the instance binds Images', async () => {
+    const { repo, blobs } = pictured();
+    const images = fakeImages();
+    const get = collect({ BLOBS: blobs, IMAGES: images.binding }, repo).get('get_attachment')!;
+    const result = await get({ noteId, filename: 'pages.pdf', pages: '1' });
+    expect(blocks(result)[1]).toEqual({ type: 'image', data: btoa(String.fromCharCode(...shrunk)), mimeType: 'image/jpeg' });
+    expect((answer(result).sent as unknown[])[0]).toMatchObject({ page: 1, width: 1176, height: 1568, maxEdge: 1568, downscaled: true });
+    expect(answer(result).next).toMatch(/maxEdge 2576/);
+    expect(images.asked).toEqual([{ width: 1568, height: 1568, fit: 'scale-down' }]);
+  });
+
+  it('stops at a page boundary when the next page would make the answer too large', async () => {
+    const { repo, blobs } = pictured();
+    const result = await collect({ BLOBS: blobs }, repo).get('get_attachment')!({ noteId, filename: 'heavy.pdf' });
+    expect((answer(result).sent as Array<{ page: number }>).map((s) => s.page)).toEqual([1]);
+    expect(answer(result).next).toMatch(/^Page 2 was not sent; ask for page "2" next/);
+  });
+
+  it('stops before a page whose pictures would pass the cap on pictures a call', async () => {
+    const { repo, blobs } = pictured();
+    const images = fakeImages();
+    const result = await collect({ BLOBS: blobs, IMAGES: images.binding }, repo).get('get_attachment')!({ noteId, filename: 'striped.pdf' });
+    // Two pages of five strips fit under twelve; the third is left for the next call, undecoded.
+    expect((answer(result).sent as Array<{ page: number }>).map((s) => s.page)).toEqual([1, 1, 1, 1, 1, 2, 2, 2, 2, 2]);
+    expect(blocks(result).filter((b) => b.type === 'text' && b.text!.startsWith('Page'))).toHaveLength(2);
+    expect(images.asked).toHaveLength(10);
+    expect(answer(result).next).toMatch(/^Page 3 was not sent; ask for page "3" next/);
+  });
+
+  it('says why a page was not sent, and refuses when nothing could be', async () => {
+    const { repo, blobs } = pictured();
+    const result = await collect({ BLOBS: blobs, ANTHROPIC_API_KEY: 'k' }, repo).get('get_attachment')!({ noteId, filename: 'fax.pdf' });
+    expect(result.isError).toBe(true);
+    const text = result.content[0]!.text;
+    expect(text).toMatch(/page 1: its picture could not be sent: encoded as CCITT fax/);
+    expect(text).toMatch(/page 2: it is text, not a picture; get_attachment_text has the text layer/);
+    expect(text).toMatch(/Auto-fill press/);
+    // Without a model nothing else reads it, and nothing is promised; nor with one, for a
+    // PDF past the size a press hands the model.
+    const bare = await collect({ BLOBS: blobs }, repo).get('get_attachment')!({ noteId, filename: 'fax.pdf' });
+    expect(bare.content[0]!.text).not.toMatch(/Auto-fill/);
+    const big = await collect({ BLOBS: blobs, ANTHROPIC_API_KEY: 'k' }, repo).get('get_attachment')!({ noteId, filename: 'bigfax.pdf' });
+    expect(big.content[0]!.text).toMatch(/encoded as CCITT fax/);
+    expect(big.content[0]!.text).not.toMatch(/Auto-fill/);
+  });
+
+  it('refuses a scan the model has read, and says a scan nothing has read cannot be recorded yet', async () => {
+    const { repo, blobs } = pictured();
+    const get = collect({ BLOBS: blobs, ANTHROPIC_API_KEY: 'k' }, repo).get('get_attachment')!;
+    const seen = await get({ noteId, filename: 'seen.pdf' });
+    expect(seen.isError).toBe(true);
+    expect(seen.content[0]!.text).toMatch(/vision model has read this PDF, and get_attachment_text has its reading/);
+    const fresh = await get({ noteId, filename: 'fresh.pdf' });
+    expect(fresh.isError).toBeFalsy();
+    expect(answer(fresh).next).toMatch(/^Pages 6 to 7 were not sent; ask for pages "6-7" next\. Its text layer has not been read yet, and set_attachment_text takes nothing/);
+    expect(answer(fresh).next).not.toMatch(/read them all before recording/);
+  });
+
+  it('sends the pages asked for from a PDF with a text layer, with nothing to record', async () => {
+    const { repo, blobs } = pictured();
+    const get = collect({ BLOBS: blobs }, repo).get('get_attachment')!;
+    // Asked for whole, it points at the text and at asking for the pages the layer leaves out.
+    expect((await get({ noteId, filename: 'layered.pdf' })).content[0]!.text).toMatch(/ask for those with pages/);
+    const asked = await get({ noteId, filename: 'layered.pdf', pages: '6-7' });
+    expect(asked.isError).toBeFalsy();
+    expect(answer(asked).next).toMatch(/^That was the last page\. Its text layer is in get_attachment_text, and set_attachment_text does not replace it/);
+  });
+
+  it('waits its turn at the read gate before fetching the file', async () => {
+    const { repo, blobs } = pictured();
+    const fetched: string[] = [];
+    const watched = { get: async (key: string) => (fetched.push(key), blobs.get(key)) };
+    const get = collect({ BLOBS: watched }, repo).get('get_attachment')!;
+    // Two other reads hold the isolate's two slots, as an import's text-layer reads can.
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    const holders = [withReaderSlot(() => held), withReaderSlot(() => held)];
+    const pending = get({ noteId, filename: 'pages.pdf', pages: '1' });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(fetched).toEqual([]);
+    release();
+    await Promise.all(holders);
+    expect((await pending).isError).toBeFalsy();
+    expect(fetched).toEqual(['k/pages']);
+  });
+
+  it('refuses a PDF with a text layer before fetching it, and one that is encrypted or too large to open', async () => {
+    const { repo, blobs } = pictured();
+    const fetched: string[] = [];
+    const watched = { get: async (key: string) => (fetched.push(key), blobs.get(key)) };
+    const get = collect({ BLOBS: watched }, repo).get('get_attachment')!;
+    expect((await get({ noteId, filename: 'scan.pdf' })).content[0]!.text).toMatch(/get_attachment_text has its text/);
+    expect((await get({ noteId, filename: 'locked.pdf' })).content[0]!.text).toMatch(/encrypted/);
+    expect((await get({ noteId, filename: 'book.pdf' })).content[0]!.text).toMatch(/40\.0 MB, over the 16\.0 MB/);
+    expect(fetched).toEqual(['k/locked']);
   });
 });
 
@@ -306,6 +498,10 @@ describe('set_attachment_text', () => {
     expect(parse(result).note).toMatch(/Auto-fill/);
     expect(written).toEqual([{ filename: 'card.png', text: 'Plumber card\nJane Doe, Acme Plumbing\n\n555-0100' }]);
 
+    // Nor for a file past what a press hands the model, whose words are what it keeps.
+    const big = await collect({ ANTHROPIC_API_KEY: 'k' }, pictured().repo).get('set_attachment_text')!({ noteId, filename: 'bigfax.pdf', text: 'A long scan' });
+    expect(parse(big).note).toMatch(/No Auto-fill press reads a file of this kind or this size/);
+
     // Without a model key nothing will ever replace the words, and the tool says so.
     const bare = await collect({}, pictured().repo).get('set_attachment_text')!({ noteId, filename: 'card.png', text: 'A card' });
     expect(parse(bare).note).toMatch(/no vision model/);
@@ -333,7 +529,7 @@ describe('set_attachment_text', () => {
     // The store matched a plain space to the narrow one macOS writes (MAK-254); the answer
     // is what an assistant copies into a link, so it must be the name that resolves.
     const stored = 'Shot 10.22\u202FAM.png';
-    const repo = { writeAssistantText: async () => ({ ok: true, reason: null, filename: stored }) };
+    const repo = { writeAssistantText: async () => ({ ok: true, reason: null, filename: stored, contentType: 'image/png', size: 100 }) };
     const result = await collect({}, repo).get('set_attachment_text')!({ noteId, filename: 'Shot 10.22 AM.png', text: 'A screen' });
     expect(parse(result)).toMatchObject({ filename: stored, read: 'assistant' });
   });
