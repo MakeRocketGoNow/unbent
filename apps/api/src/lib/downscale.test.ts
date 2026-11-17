@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_MAX_EDGE, downscale, downscaleTransform, jpegSize, LARGEST_MAX_EDGE, type Downscaler } from './downscale.js';
+import {
+  DEFAULT_MAX_EDGE,
+  downscale,
+  downscaleTransform,
+  jpegSize,
+  LARGEST_MAX_EDGE,
+  pictureSize,
+  type Downscaler,
+} from './downscale.js';
 
 /**
  * What the Images binding is asked for (MAK-185's "a test pins the transform parameters"),
@@ -69,5 +77,19 @@ describe('jpegSize', () => {
     expect(jpegSize(png.buffer as ArrayBuffer)).toBeNull();
     expect(jpegSize(jpegHead(10, 10).slice(0, 30).buffer as ArrayBuffer)).toBeNull();
     expect(jpegSize(new ArrayBuffer(0))).toBeNull();
+  });
+});
+
+describe('pictureSize', () => {
+  it("reads a PNG's IHDR and a JPEG's frame, and nothing else", () => {
+    const head = new Uint8Array(24);
+    head.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52]);
+    new DataView(head.buffer).setUint32(16, 1200);
+    new DataView(head.buffer).setUint32(20, 800);
+    expect(pictureSize(head.buffer)).toEqual({ width: 1200, height: 800 });
+    expect(pictureSize(jpegHead(640, 480).buffer as ArrayBuffer)).toEqual({ width: 640, height: 480 });
+    // A GIF's size is not read: it goes through the binding instead.
+    expect(pictureSize(new TextEncoder().encode('GIF89a\x10\x00\x10\x00').buffer as ArrayBuffer)).toBeNull();
+    expect(pictureSize(head.slice(0, 20).buffer)).toBeNull();
   });
 });

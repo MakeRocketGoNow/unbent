@@ -58,11 +58,30 @@ function fakeAttachments() {
 
 const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
+/** A PNG's signature and IHDR, as far as the size: all the tool reads of an original. */
+function pngHead(width: number, height: number): Uint8Array {
+  const head = new Uint8Array(24);
+  head.set([...png, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52]);
+  new DataView(head.buffer).setUint32(16, width);
+  new DataView(head.buffer).setUint32(20, height);
+  return head;
+}
+
+/** The bytes in the fake bucket, by key. */
+const stored: Record<string, Uint8Array> = {
+  'k/card': png,
+  'k/poster': png,
+  'k/shot': pngHead(1200, 800),
+  'k/wide': pngHead(3000, 2000),
+};
+
 /** A note with a small picture, a big one and a PDF on it, and a record of what an assistant wrote. */
 function pictured() {
   const rows: Record<string, { id: string; filename: string; content_type: string; size: number; r2_key: string }> = {
     'card.png': { id: 'a1', filename: 'card.png', content_type: 'image/png', size: png.length, r2_key: 'k/card' },
     'poster.jpg': { id: 'a2', filename: 'poster.jpg', content_type: 'image/jpeg', size: 9 * 1024 * 1024, r2_key: 'k/poster' },
+    'shot.png': { id: 'a6', filename: 'shot.png', content_type: 'image/png', size: 2 * 1024 * 1024, r2_key: 'k/shot' },
+    'wide.png': { id: 'a7', filename: 'wide.png', content_type: 'image/png', size: 2 * 1024 * 1024, r2_key: 'k/wide' },
     'mural.png': { id: 'a5', filename: 'mural.png', content_type: 'image/png', size: 24 * 1024 * 1024, r2_key: 'k/mural' },
     'scan.pdf': { id: 'a3', filename: 'scan.pdf', content_type: 'application/pdf', size: 10, r2_key: 'k/scan' },
     'fresh.pdf': { id: 'a4', filename: 'fresh.pdf', content_type: 'application/pdf', size: 10, r2_key: 'k/fresh' },
@@ -81,10 +100,10 @@ function pictured() {
       },
     },
     blobs: {
-      get: async (key: string) =>
-        key === 'k/card' || key === 'k/poster'
-          ? { body: new Response(png).body!, arrayBuffer: async () => png.buffer as ArrayBuffer }
-          : null,
+      get: async (key: string) => {
+        const bytes = stored[key];
+        return bytes ? { body: new Response(bytes).body!, arrayBuffer: async () => bytes.slice().buffer as ArrayBuffer } : null;
+      },
     },
   };
 }
@@ -174,6 +193,27 @@ describe('get_attachment where the instance binds Images', () => {
     });
     expect(answer.next).toMatch(/JPEG copy no larger than 1568 px/);
     expect(answer.next).toMatch(/maxEdge 2576/);
+    expect(images.asked).toEqual([{ width: 1568, height: 1568, fit: 'scale-down' }]);
+  });
+
+  it('sends a picture already within the edge as it is, without asking the binding', async () => {
+    const { repo, blobs } = pictured();
+    const images = fakeImages();
+    const get = collect({ BLOBS: blobs, IMAGES: images.binding }, repo).get('get_attachment')!;
+    const result = await get({ noteId, filename: 'shot.png' });
+    expect(result.content[0]).toMatchObject({ type: 'image', mimeType: 'image/png' });
+    expect(JSON.parse(result.content[1]!.text)).toMatchObject({
+      sent: { contentType: 'image/png', width: 1200, height: 800, downscaled: false },
+    });
+    expect(images.asked).toEqual([]);
+  });
+
+  it('shrinks a picture small enough to send but larger than the edge', async () => {
+    const { repo, blobs } = pictured();
+    const images = fakeImages();
+    const get = collect({ BLOBS: blobs, IMAGES: images.binding }, repo).get('get_attachment')!;
+    const result = await get({ noteId, filename: 'wide.png' });
+    expect(result.content[0]).toMatchObject({ type: 'image', mimeType: 'image/jpeg' });
     expect(images.asked).toEqual([{ width: 1568, height: 1568, fit: 'scale-down' }]);
   });
 

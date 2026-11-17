@@ -13,10 +13,12 @@
  *
  * Why the binding and not JavaScript: a wasm codec is megabytes of bundle, and one phone
  * photo decodes to a 48 MB bitmap inside an isolate of 128 MB. The binding does the work
- * outside the isolate and is metered per unique transformation a month (5,000 free), so
- * reading the same picture at the same size again costs nothing more. It is optional:
- * `env.IMAGES` is absent on an instance that has not bound it, and the caller falls back
- * to handing over the original when it is small enough.
+ * outside the isolate and is metered per unique transformation a month (5,000 free; the
+ * pricing page counts calls through the binding that way too), so reading the same picture
+ * at the same size again should cost nothing more, and a picture already within the edge
+ * is not sent through it at all. It is optional: `env.IMAGES` is absent on an instance
+ * that has not bound it, and the caller falls back to handing over the original when it is
+ * small enough.
  */
 
 /** The long edge Claude reads a picture at by default; what an assistant gets unless it asks. */
@@ -116,4 +118,22 @@ export function jpegSize(buffer: ArrayBuffer): { width: number; height: number }
     i += 2 + length;
   }
   return null;
+}
+
+/**
+ * A PNG's or a JPEG's width and height from its header, or null for any other type or a
+ * header that cannot be read. `get_attachment` asks it of an original small enough to send
+ * as it is, to tell whether shrinking it would change anything; a PNG's size is the first
+ * thing after its signature (IHDR, bytes 16 to 23), a JPEG's is in its frame header.
+ */
+export function pictureSize(buffer: ArrayBuffer): { width: number; height: number } | null {
+  const b = new Uint8Array(buffer);
+  const png = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52];
+  if (b.length >= 24 && png.every((byte, i) => b[i] === byte)) {
+    const view = new DataView(buffer);
+    const width = view.getUint32(16);
+    const height = view.getUint32(20);
+    return width && height ? { width, height } : null;
+  }
+  return jpegSize(buffer);
 }

@@ -14,6 +14,7 @@ import {
   DEFAULT_MAX_EDGE,
   downscale,
   LARGEST_MAX_EDGE,
+  pictureSize,
   MAX_DOWNSCALE_INPUT_BYTES,
   SMALLEST_MAX_EDGE,
 } from '../../lib/downscale.js';
@@ -175,20 +176,57 @@ export function registerAttachmentTools(
         'Record what you read with set_attachment_text under this filename, so it is searchable and the ' +
         'next session has it.';
 
-      // Shrunk where the instance can, whatever the original's size: the model would shrink
-      // it to this edge anyway, so the rest is bytes in transit and in the assistant's
-      // context for nothing. A failure (not a picture after all, the free plan's month used
-      // up) falls through to the original, which is still sent when it is small enough.
+      const edge = maxEdge ?? DEFAULT_MAX_EDGE;
+      const original = (bytes: ArrayBuffer) => {
+        const size = pictureSize(bytes);
+        return answer(
+          toBase64(bytes),
+          row.content_type,
+          {
+            contentType: row.content_type,
+            width: size?.width ?? null,
+            height: size?.height ?? null,
+            bytes: row.size,
+            downscaled: false,
+          },
+          record,
+        );
+      };
+
+      // A picture small enough to send as it is goes as it is when its header says it is
+      // already within the edge: shrinking would only re-encode it, spending a
+      // transformation and softening its text with JPEG's ringing for nothing. A GIF's or a
+      // WebP's size is not read, so those go through the binding where there is one.
+      let bytes: ArrayBuffer | null = null;
+      if (row.size <= MAX_MCP_IMAGE_BYTES) {
+        const object = await env.BLOBS.get(row.r2_key);
+        if (!object) return missing();
+        bytes = await object.arrayBuffer();
+        const size = pictureSize(bytes);
+        if (!env.IMAGES || (size && size.width <= edge && size.height <= edge)) return original(bytes);
+      }
+
+      // Anything else is shrunk where the instance can: the model would shrink it to this
+      // edge anyway, so the rest is bytes in transit and in the assistant's context for
+      // nothing. A failure falls through to the original, which is still sent when it is
+      // small enough.
+      //
       // Why it was not shrunk, for the refusal: the binding refused it (a file that is not
       // a picture after all, the free plan's month used up), or the JPEG it made was still
       // over the cap, which a smaller edge would cure where waiting would not.
       let shrinkFailed: 'refused' | 'too large' | null = null;
-      const edge = maxEdge ?? DEFAULT_MAX_EDGE;
       if (env.IMAGES && row.size <= MAX_DOWNSCALE_INPUT_BYTES) {
-        const object = await env.BLOBS.get(row.r2_key);
-        if (!object) return missing();
+        // The bytes already read, or a stream straight from R2 for a picture too large to
+        // send, which the isolate then never holds whole.
+        let body: ReadableStream<Uint8Array>;
+        if (bytes) body = new Response(bytes).body!;
+        else {
+          const object = await env.BLOBS.get(row.r2_key);
+          if (!object) return missing();
+          body = object.body;
+        }
         try {
-          const small = await downscale(env.IMAGES, object.body, edge);
+          const small = await downscale(env.IMAGES, body, edge);
           // Never past the cap the original is held to, though at these edges a JPEG
           // comes to a few hundred kilobytes and never near it.
           if (small.bytes.byteLength <= MAX_MCP_IMAGE_BYTES) {
@@ -217,30 +255,22 @@ export function registerAttachmentTools(
         }
       }
 
-      if (row.size > MAX_MCP_IMAGE_BYTES) {
-        const mb = (n: number) => `${(n / (1024 * 1024)).toFixed(1)} MB`;
-        // Says what would get it read, which depends on why it could not be shrunk.
-        const why = !env.IMAGES
-          ? 'This instance has no Images binding to shrink it with.'
-          : shrinkFailed === 'too large'
-            ? `Shrunk to ${edge} px it was still larger than that; ask again with a smaller maxEdge.`
-            : shrinkFailed === 'refused'
-              ? 'Shrinking it failed on this instance.'
-              : `It is also over the ${mb(MAX_DOWNSCALE_INPUT_BYTES)} this instance can shrink.`;
-        return toolError(
-          `This picture is ${mb(row.size)}, over the ${mb(MAX_MCP_IMAGE_BYTES)} this tool returns as it is. ${why} ` +
-            (vision && readableByLlm(row.content_type, row.size)
-              ? 'An Auto-fill press on the note reads it on the instance.'
-              : 'The person could attach a smaller copy of it for you to read.'),
-        );
-      }
-      const object = await env.BLOBS.get(row.r2_key);
-      if (!object) return missing();
-      return answer(
-        toBase64(await object.arrayBuffer()),
-        row.content_type,
-        { contentType: row.content_type, bytes: row.size, downscaled: false },
-        record,
+      if (bytes) return original(bytes);
+
+      const mb = (n: number) => `${(n / (1024 * 1024)).toFixed(1)} MB`;
+      // Says what would get it read, which depends on why it could not be shrunk.
+      const why = !env.IMAGES
+        ? 'This instance has no Images binding to shrink it with.'
+        : shrinkFailed === 'too large'
+          ? `Shrunk to ${edge} px it was still larger than that; ask again with a smaller maxEdge.`
+          : shrinkFailed === 'refused'
+            ? 'Shrinking it failed on this instance.'
+            : `It is also over the ${mb(MAX_DOWNSCALE_INPUT_BYTES)} this instance can shrink.`;
+      return toolError(
+        `This picture is ${mb(row.size)}, over the ${mb(MAX_MCP_IMAGE_BYTES)} this tool returns as it is. ${why} ` +
+          (vision && readableByLlm(row.content_type, row.size)
+            ? 'An Auto-fill press on the note reads it on the instance.'
+            : 'The person could attach a smaller copy of it for you to read.'),
       );
     },
   );
