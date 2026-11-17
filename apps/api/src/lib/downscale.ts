@@ -34,7 +34,9 @@ export const SMALLEST_MAX_EDGE = 512;
 /**
  * What the binding accepts as input: "image bytes up to 20 MB from any source", in the
  * binding's documentation. Written in decimal megabytes, the lower reading of "MB", so a
- * file at the edge is refused with its size named rather than failing inside the call.
+ * file at the edge is refused with its size named rather than failing inside the call. A
+ * refusal prints it as `get_attachment` prints every size, in binary megabytes (19.1), so
+ * the sentence never compares a file's size with a limit in another unit.
  */
 export const MAX_DOWNSCALE_INPUT_BYTES = 20 * 1000 * 1000;
 

@@ -221,7 +221,7 @@ export function registerAttachmentTools(
           ? 'This instance has no Images binding to shrink it with.'
           : shrinkFailed
             ? 'Shrinking it failed; try again later.'
-            : `It is also over the ${MAX_DOWNSCALE_INPUT_BYTES / 1_000_000} MB this instance can shrink.`;
+            : `It is also over the ${mb(MAX_DOWNSCALE_INPUT_BYTES)} this instance can shrink.`;
         return toolError(
           `This picture is ${mb(row.size)}, over the ${mb(MAX_MCP_IMAGE_BYTES)} this tool returns as it is. ${why} ` +
             (vision && readableByLlm(row.content_type, row.size)

@@ -202,7 +202,7 @@ describe('get_attachment where the instance binds Images', () => {
     const get = collect({ BLOBS: blobs, IMAGES: images.binding }, repo).get('get_attachment')!;
     const huge = await get({ noteId, filename: 'mural.png' });
     expect(huge.isError).toBe(true);
-    expect(huge.content[0]!.text).toMatch(/24\.0 MB.*over the 20 MB this instance can shrink/);
+    expect(huge.content[0]!.text).toMatch(/24\.0 MB.*over the 19\.1 MB this instance can shrink/);
     expect(images.asked).toEqual([]);
   });
 });
