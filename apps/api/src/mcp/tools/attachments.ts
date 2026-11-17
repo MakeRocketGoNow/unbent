@@ -179,13 +179,20 @@ export function registerAttachmentTools(
 
       const edge = maxEdge ?? DEFAULT_MAX_EDGE;
       const original = (bytes: ArrayBuffer) => {
-        const size = pictureSize(bytes);
         // Sent as what the bytes are, not as what the upload called them; see
         // `sniffMediaType`. A PNG stored as `image/jpeg` (Evernote's snapshots are) is
         // refused by the model's API under the wrong type, and the refusal can stay in the
-        // assistant's conversation. A shrunk copy never had this problem: it is a JPEG.
-        const sniffed = sniffMediaType(bytes);
-        const mimeType = sniffed && LLM_IMAGE_TYPES.has(sniffed) ? sniffed : row.content_type;
+        // assistant's conversation. Bytes that are none of the four (a HEIC a client called
+        // a JPEG, a truncated upload) are refused here for the same reason rather than sent
+        // under a type they are not. A shrunk copy never had this problem: it is a JPEG.
+        const mimeType = sniffMediaType(bytes);
+        if (!mimeType || !LLM_IMAGE_TYPES.has(mimeType)) {
+          return toolError(
+            `This file is stored as ${row.content_type}, but its bytes are not a JPEG, PNG, GIF or WebP, ` +
+              'so it cannot be returned. The person could attach it again as one of those.',
+          );
+        }
+        const size = pictureSize(bytes);
         return answer(
           toBase64(bytes),
           mimeType,

@@ -73,6 +73,8 @@ const stored: Record<string, Uint8Array> = {
   'k/poster': png,
   'k/shot': pngHead(1200, 800),
   'k/wide': pngHead(3000, 2000),
+  // Stored as a JPEG, and none of the four types the model takes.
+  'k/odd': new Uint8Array([0, 0, 0, 0x18]),
 };
 
 /** A note with a small picture, a big one and a PDF on it, and a record of what an assistant wrote. */
@@ -82,6 +84,7 @@ function pictured() {
     'poster.jpg': { id: 'a2', filename: 'poster.jpg', content_type: 'image/jpeg', size: 9 * 1024 * 1024, r2_key: 'k/poster' },
     'shot.png': { id: 'a6', filename: 'shot.png', content_type: 'image/png', size: 2 * 1024 * 1024, r2_key: 'k/shot' },
     'snapshot.jpg': { id: 'a8', filename: 'snapshot.jpg', content_type: 'image/jpeg', size: 24, r2_key: 'k/shot' },
+    'odd.jpg': { id: 'a9', filename: 'odd.jpg', content_type: 'image/jpeg', size: 4, r2_key: 'k/odd' },
     'wide.png': { id: 'a7', filename: 'wide.png', content_type: 'image/png', size: 2 * 1024 * 1024, r2_key: 'k/wide' },
     'mural.png': { id: 'a5', filename: 'mural.png', content_type: 'image/png', size: 24 * 1024 * 1024, r2_key: 'k/mural' },
     'scan.pdf': { id: 'a3', filename: 'scan.pdf', content_type: 'application/pdf', size: 10, r2_key: 'k/scan' },
@@ -207,6 +210,17 @@ describe('get_attachment where the instance binds Images', () => {
       sent: { contentType: 'image/png', width: 1200, height: 800, downscaled: false },
     });
     expect(images.asked).toEqual([]);
+  });
+
+  it('refuses an original whose bytes are no picture the model takes, rather than mislabel it', async () => {
+    const { repo, blobs } = pictured();
+    // Without the binding the original is the only thing to send; with one that refuses
+    // the file, the original is the fallback. Neither may go out labelled a JPEG.
+    for (const env of [{ BLOBS: blobs }, { BLOBS: blobs, IMAGES: fakeImages('throw').binding }]) {
+      const result = await collect(env, repo).get('get_attachment')!({ noteId, filename: 'odd.jpg' });
+      expect(result.isError).toBe(true);
+      expect(result.content[0]!.text).toMatch(/stored as image\/jpeg, but its bytes are not/);
+    }
   });
 
   it('sends an original as the type its bytes are, not the type it was stored under', async () => {
