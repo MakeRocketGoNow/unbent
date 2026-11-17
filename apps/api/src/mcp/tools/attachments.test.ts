@@ -123,6 +123,8 @@ function pictured() {
     'locked.pdf': { id: 'b3', filename: 'locked.pdf', content_type: 'application/pdf', size: 200, r2_key: 'k/locked' },
     'heavy.pdf': { id: 'b4', filename: 'heavy.pdf', content_type: 'application/pdf', size: 4_000_400, r2_key: 'k/heavy' },
     'book.pdf': { id: 'b5', filename: 'book.pdf', content_type: 'application/pdf', size: 40 * 1024 * 1024, r2_key: 'k/book' },
+    // The fax scan again, past the size the model takes a PDF at, so no press reads it.
+    'bigfax.pdf': { id: 'b6', filename: 'bigfax.pdf', content_type: 'application/pdf', size: 9 * 1024 * 1024, r2_key: 'k/fax' },
   };
   /** What `textWithRead` says of each file; anything unnamed is pending. */
   const reads: Record<string, string> = { 'scan.pdf': 'text' };
@@ -285,9 +287,13 @@ describe('get_attachment on a scanned PDF', () => {
     expect(text).toMatch(/page 1: its picture could not be sent: encoded as CCITT fax/);
     expect(text).toMatch(/page 2: it is text, not a picture; get_attachment_text has the text layer/);
     expect(text).toMatch(/Auto-fill press/);
-    // Without a model nothing else reads it, and nothing is promised.
+    // Without a model nothing else reads it, and nothing is promised; nor with one, for a
+    // PDF past the size a press hands the model.
     const bare = await collect({ BLOBS: blobs }, repo).get('get_attachment')!({ noteId, filename: 'fax.pdf' });
     expect(bare.content[0]!.text).not.toMatch(/Auto-fill/);
+    const big = await collect({ BLOBS: blobs, ANTHROPIC_API_KEY: 'k' }, repo).get('get_attachment')!({ noteId, filename: 'bigfax.pdf' });
+    expect(big.content[0]!.text).toMatch(/encoded as CCITT fax/);
+    expect(big.content[0]!.text).not.toMatch(/Auto-fill/);
   });
 
   it('refuses a PDF with a text layer before fetching it, and one that is encrypted or too large to open', async () => {

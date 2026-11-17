@@ -54,7 +54,7 @@ const MAX_PDF_ANSWER_BYTES = MAX_MCP_IMAGE_BYTES;
  * The largest PDF whose pages `get_attachment` takes out. The whole file is held in the
  * isolate while its pictures are found (lib/pdf-pages.ts), beside a page's pixels when one
  * has to be turned into a PNG, and the isolate has 128 MB. A scan of a few dozen pages is a
- * few megabytes; past this it is a book, which Auto-fill does not read whole either.
+ * few megabytes; past this it is a book.
  */
 const MAX_PDF_READ_BYTES = 32 * 1024 * 1024;
 
@@ -153,7 +153,10 @@ export function registerAttachmentTools(
       return toolError("This PDF has a text layer, and get_attachment_text has its text; its pages are not sent as pictures.");
     }
     const mb = (n: number) => `${(n / (1024 * 1024)).toFixed(1)} MB`;
-    const autofill = vision ? ' An Auto-fill press on the note reads it on the instance.' : '';
+    // Only where a press would: the model takes a PDF up to `MAX_LLM_PDF_BYTES`, and a
+    // larger one is skipped by every press, so naming the button would send the person to it
+    // for nothing.
+    const autofill = vision && readableByLlm(row.content_type, row.size) ? ' An Auto-fill press on the note reads it on the instance.' : '';
     if (row.size > MAX_PDF_READ_BYTES) {
       return toolError(`This PDF is ${mb(row.size)}, over the ${mb(MAX_PDF_READ_BYTES)} this tool opens.${autofill}`);
     }
