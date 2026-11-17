@@ -149,7 +149,7 @@ export class AttachmentsRepo extends StoreRepo {
   }
 
   /** A file's text and how it came to be, for MCP's `get_attachment_text`; see `AttachmentsStore.textWithRead`. */
-  textWithRead(noteId: string, filename: string, vision: boolean): Promise<{ read: FileRead; text: string | null } | null> {
+  textWithRead(noteId: string, filename: string, vision: boolean): Promise<{ filename: string; read: FileRead; text: string | null } | null> {
     return this.call((s) => s.textWithRead(noteId, filename, vision));
   }
 

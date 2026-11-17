@@ -542,12 +542,13 @@ export function registerReadTools(
     async ({ noteId, filename, maxChars, offset = 0 }) => {
       const found = await attachments.textWithRead(noteId, filename, readers.vision);
       if (!found) return notFound('attachment', `${filename} on note ${noteId}`);
-      const { read, text } = found;
+      // The stored name, which a loose match may not have been asked with.
+      const { filename: stored, read, text } = found;
       // `indexed` stays beside `read`: it is what this tool has always answered, and a
       // client written against it should not have to learn the new word to keep working.
       if (text === null) {
         return jsonResult({
-          filename,
+          filename: stored,
           indexed: false,
           read,
           note:
@@ -562,11 +563,11 @@ export function registerReadTools(
          Cut here rather than in the store: the store's read is the same row either way,
          and what the cut saves is the model's context, not the object's rows.
       */
-      if (maxChars === undefined && offset === 0) return jsonResult({ filename, indexed: true, read, text });
+      if (maxChars === undefined && offset === 0) return jsonResult({ filename: stored, indexed: true, read, text });
       const end = maxChars === undefined ? text.length : Math.min(text.length, offset + maxChars);
       const truncated = end < text.length;
       return jsonResult({
-        filename,
+        filename: stored,
         indexed: true,
         read,
         text: text.slice(offset, end),

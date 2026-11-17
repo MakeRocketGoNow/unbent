@@ -506,7 +506,7 @@ describe('file summaries on get_note and list_notes (MAK-172)', () => {
       'blank.pdf': { read: 'none', text: null },
     };
     const text = collect({} as NotesRepo, {
-      textWithRead: async (_note: string, filename: string) => files[filename] ?? null,
+      textWithRead: async (_note: string, filename: string) => (files[filename] ? { filename, ...files[filename] } : null),
     }).get('get_attachment_text')!;
     const ask = async (filename: string) => answer(await text({ noteId: 'n-1', filename }));
 
@@ -516,6 +516,15 @@ describe('file summaries on get_note and list_notes (MAK-172)', () => {
     expect(blank).toMatchObject({ indexed: false, read: 'none' });
     expect(blank.note).not.toContain('Auto-fill');
     expect((await text({ noteId: 'n-1', filename: 'ghost.pdf' })).isError).toBe(true);
+  });
+
+  it('answers get_attachment_text with the name the file is stored under, not a loose one it was asked with', async () => {
+    // The store matched a plain space to the narrow one macOS writes (MAK-254).
+    const stored = 'Shot 10.22\u202FAM.png';
+    const text = collect({} as NotesRepo, {
+      textWithRead: async () => ({ filename: stored, read: 'pending', text: null }),
+    }).get('get_attachment_text')!;
+    expect(answer(await text({ noteId: 'n-1', filename: 'Shot 10.22 AM.png' }))).toMatchObject({ filename: stored, read: 'pending' });
   });
 
   it('refuses summaries on a compact page, which is for hundreds of ids', async () => {
@@ -535,7 +544,7 @@ describe('get_attachment_text with maxChars and offset (MAK-173)', () => {
   function read() {
     const repo = {
       textWithRead: async (_noteId: string, filename: string) =>
-        filename === 'receipt.pdf' ? { read: 'text', text: TEXT } : null,
+        filename === 'receipt.pdf' ? { filename, read: 'text', text: TEXT } : null,
     };
     return collect({} as NotesRepo, repo).get('get_attachment_text')!;
   }

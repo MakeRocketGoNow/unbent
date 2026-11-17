@@ -126,6 +126,12 @@ export interface AssistantWrite {
   ok: boolean;
   /** Why not, when `ok` is false; null when it was written. One shape rather than a union, which the RPC stub's types do not carry. */
   reason: 'missing' | 'unread' | 'layer' | 'vision' | null;
+  /**
+   * The file's stored name when it was written, which the tool answers with: the name it
+   * was asked with may be a loose match's (`looseFilename`), and an assistant writes what
+   * it is answered into a link. Null when it was not written.
+   */
+  filename: string | null;
 }
 
 /** The row's `read_by` as the three values it may hold; anything else reads as a text layer. */
@@ -573,12 +579,14 @@ export class AttachmentsStore {
           name,
         ),
       );
-      if (!row) return { ok: false, reason: 'missing' };
-      if (row.content_type === 'application/pdf' && row.text === null) return { ok: false, reason: 'unread' };
-      if (row.text && row.read_by !== 'assistant') return { ok: false, reason: row.read_by === 'vision' ? 'vision' : 'layer' };
+      if (!row) return { ok: false, reason: 'missing', filename: null };
+      if (row.content_type === 'application/pdf' && row.text === null) return { ok: false, reason: 'unread', filename: null };
+      if (row.text && row.read_by !== 'assistant') {
+        return { ok: false, reason: row.read_by === 'vision' ? 'vision' : 'layer', filename: null };
+      }
       // The stored name, not the one asked with: the text row names its file.
       this.recordText({ attachmentId: row.id, noteId, filename: row.filename, text, readBy: 'assistant' });
-      return { ok: true, reason: null };
+      return { ok: true, reason: null, filename: row.filename };
     });
   }
 
@@ -702,13 +710,14 @@ export class AttachmentsStore {
    * `get_attachment_text`: an empty answer alone left the tool saying a file "may still be
    * being processed, or may have no text layer", which is the guess `read` exists to
    * settle. Null when there is no such file. `text` is null unless `read` is `vision` or
-   * `text`.
+   * `text`. `filename` is the stored name, which a loose match may not have been asked
+   * with; the tool answers with it, as `get_attachment` does.
    */
-  textWithRead(noteId: string, filename: string, vision = true): { read: FileRead; text: string | null } | null {
+  textWithRead(noteId: string, filename: string, vision = true): { filename: string; read: FileRead; text: string | null } | null {
     // Matched loosely, as get_attachment is: the name came from an assistant.
     const row = this.byLooseName(noteId, filename, (name) =>
-      this.sql.first<{ content_type: string; text: string | null; read_by: string | null }>(
-        `SELECT a.content_type, t.text, t.read_by
+      this.sql.first<{ filename: string; content_type: string; text: string | null; read_by: string | null }>(
+        `SELECT a.filename, a.content_type, t.text, t.read_by
            FROM attachments a
            LEFT JOIN attachment_text t ON t.attachment_id = a.id
           WHERE a.note_id = ?1 AND a.filename = ?2`,
@@ -722,7 +731,7 @@ export class AttachmentsStore {
     // taken for an empty one.
     const head = row.text === null ? null : row.text.trim().slice(0, SUMMARY_SOURCE_CHARS);
     const { read } = summarize(row.content_type, head, row.read_by, vision);
-    return { read, text: read === 'vision' || read === 'text' || read === 'assistant' ? row.text : null };
+    return { filename: row.filename, read, text: read === 'vision' || read === 'text' || read === 'assistant' ? row.text : null };
   }
 
   /**

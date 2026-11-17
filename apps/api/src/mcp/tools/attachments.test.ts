@@ -97,10 +97,10 @@ function pictured() {
     repo: {
       resolve: async (id: string, filename: string) => (id === noteId ? (rows[filename] ?? null) : null),
       writeAssistantText: async (id: string, filename: string, text: string) => {
-        if (id !== noteId || !rows[filename]) return { ok: false, reason: 'missing' };
-        if (refuse[filename]) return { ok: false, reason: refuse[filename] };
+        if (id !== noteId || !rows[filename]) return { ok: false, reason: 'missing', filename: null };
+        if (refuse[filename]) return { ok: false, reason: refuse[filename], filename: null };
         written.push({ filename, text });
-        return { ok: true, reason: null };
+        return { ok: true, reason: null, filename };
       },
     },
     blobs: {
@@ -319,6 +319,15 @@ describe('set_attachment_text', () => {
     expect((await set({ noteId, filename: 'ghost.png', text: 'x' })).isError).toBe(true);
     expect((await set({ noteId, filename: 'card.png', text: '   ' })).isError).toBe(true);
     expect(written).toEqual([]);
+  });
+
+  it('answers with the name the file is stored under, not a loose one it was asked with', async () => {
+    // The store matched a plain space to the narrow one macOS writes (MAK-254); the answer
+    // is what an assistant copies into a link, so it must be the name that resolves.
+    const stored = 'Shot 10.22\u202FAM.png';
+    const repo = { writeAssistantText: async () => ({ ok: true, reason: null, filename: stored }) };
+    const result = await collect({}, repo).get('set_attachment_text')!({ noteId, filename: 'Shot 10.22 AM.png', text: 'A screen' });
+    expect(parse(result)).toMatchObject({ filename: stored, read: 'assistant' });
   });
 });
 

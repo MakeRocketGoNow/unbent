@@ -353,7 +353,8 @@ export function registerAttachmentTools(
         }
       }
       return jsonResult({
-        filename,
+        // The stored name, which a loose match may not have been asked with.
+        filename: result.filename,
         read: 'assistant',
         chars: trimmed.length,
         note: vision
