@@ -334,12 +334,26 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    * is thousands of notes over a network, so a request fired mid-word is usually thrown
    * away before it lands, and the wait is short enough that a settled query still feels
    * immediate.
+   *
+   * A search that has been cleared ends at once rather than after the wait: a place
+   * picked from the rail, a pick from the matches, the field closed or emptied. The wait
+   * is for typing to settle, and read through it the new place drew the last place's
+   * matches, dimmed, and asked for them again under its own filter, for the length of
+   * the wait. Derived in render, so the first render after the navigation already reads
+   * the empty term and never makes the stale query; and the settled term is emptied at
+   * once too, or a letter typed inside the wait would bring the old term back until the
+   * new one settled.
    */
-  const [debounced, setDebounced] = useState(q);
+  const [settled, setSettled] = useState(q);
   useEffect(() => {
-    const timer = setTimeout(() => setDebounced(q), 300);
+    if (q === '') {
+      setSettled('');
+      return;
+    }
+    const timer = setTimeout(() => setSettled(q), 300);
     return () => clearTimeout(timer);
   }, [q]);
+  const debounced = q === '' ? '' : settled;
 
   /*
    * One sidebar at every width, with the breakpoint deciding a handful of props rather
