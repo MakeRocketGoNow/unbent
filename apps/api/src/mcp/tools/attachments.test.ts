@@ -81,6 +81,7 @@ function pictured() {
     'card.png': { id: 'a1', filename: 'card.png', content_type: 'image/png', size: png.length, r2_key: 'k/card' },
     'poster.jpg': { id: 'a2', filename: 'poster.jpg', content_type: 'image/jpeg', size: 9 * 1024 * 1024, r2_key: 'k/poster' },
     'shot.png': { id: 'a6', filename: 'shot.png', content_type: 'image/png', size: 2 * 1024 * 1024, r2_key: 'k/shot' },
+    'snapshot.jpg': { id: 'a8', filename: 'snapshot.jpg', content_type: 'image/jpeg', size: 24, r2_key: 'k/shot' },
     'wide.png': { id: 'a7', filename: 'wide.png', content_type: 'image/png', size: 2 * 1024 * 1024, r2_key: 'k/wide' },
     'mural.png': { id: 'a5', filename: 'mural.png', content_type: 'image/png', size: 24 * 1024 * 1024, r2_key: 'k/mural' },
     'scan.pdf': { id: 'a3', filename: 'scan.pdf', content_type: 'application/pdf', size: 10, r2_key: 'k/scan' },
@@ -204,6 +205,20 @@ describe('get_attachment where the instance binds Images', () => {
     expect(result.content[0]).toMatchObject({ type: 'image', mimeType: 'image/png' });
     expect(JSON.parse(result.content[1]!.text)).toMatchObject({
       sent: { contentType: 'image/png', width: 1200, height: 800, downscaled: false },
+    });
+    expect(images.asked).toEqual([]);
+  });
+
+  it('sends an original as the type its bytes are, not the type it was stored under', async () => {
+    const { repo, blobs } = pictured();
+    const images = fakeImages();
+    const get = collect({ BLOBS: blobs, IMAGES: images.binding }, repo).get('get_attachment')!;
+    // A PNG stored as `image/jpeg`, as an imported snapshot can be.
+    const result = await get({ noteId, filename: 'snapshot.jpg' });
+    expect(result.content[0]).toMatchObject({ type: 'image', mimeType: 'image/png' });
+    expect(JSON.parse(result.content[1]!.text)).toMatchObject({
+      contentType: 'image/jpeg',
+      sent: { contentType: 'image/png', downscaled: false },
     });
     expect(images.asked).toEqual([]);
   });

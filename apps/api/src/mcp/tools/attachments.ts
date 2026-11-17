@@ -18,7 +18,7 @@ import {
   MAX_DOWNSCALE_INPUT_BYTES,
   SMALLEST_MAX_EDGE,
 } from '../../lib/downscale.js';
-import { canUseLlm, LLM_IMAGE_TYPES, readableByLlm, toBase64 } from '../../lib/llm.js';
+import { canUseLlm, LLM_IMAGE_TYPES, readableByLlm, sniffMediaType, toBase64 } from '../../lib/llm.js';
 import type { NotesRepo } from '../../lib/notes-repo.js';
 import { storeAttachment } from '../../lib/store-attachment.js';
 import { UPLOAD_GRANT_TTL_MS, type UploadGrantsRepo } from '../../lib/upload-grants.js';
@@ -179,11 +179,17 @@ export function registerAttachmentTools(
       const edge = maxEdge ?? DEFAULT_MAX_EDGE;
       const original = (bytes: ArrayBuffer) => {
         const size = pictureSize(bytes);
+        // Sent as what the bytes are, not as what the upload called them; see
+        // `sniffMediaType`. A PNG stored as `image/jpeg` (Evernote's snapshots are) is
+        // refused by the model's API under the wrong type, and the refusal can stay in the
+        // assistant's conversation. A shrunk copy never had this problem: it is a JPEG.
+        const sniffed = sniffMediaType(bytes);
+        const mimeType = sniffed && LLM_IMAGE_TYPES.has(sniffed) ? sniffed : row.content_type;
         return answer(
           toBase64(bytes),
-          row.content_type,
+          mimeType,
           {
-            contentType: row.content_type,
+            contentType: mimeType,
             width: size?.width ?? null,
             height: size?.height ?? null,
             bytes: row.size,
