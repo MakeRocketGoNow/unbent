@@ -20,6 +20,7 @@ import {
 } from '../../lib/downscale.js';
 import { canUseLlm, LLM_IMAGE_TYPES, readableByLlm, sniffMediaType, toBase64 } from '../../lib/llm.js';
 import type { NotesRepo } from '../../lib/notes-repo.js';
+import { openPdf, PdfError, type PdfPages } from '../../lib/pdf-pages.js';
 import { storeAttachment } from '../../lib/store-attachment.js';
 import { UPLOAD_GRANT_TTL_MS, type UploadGrantsRepo } from '../../lib/upload-grants.js';
 import type { Env } from '../../types.js';
@@ -38,6 +39,26 @@ import { jsonResult, notFound, toolError } from './result.js';
 const MAX_MCP_IMAGE_BYTES = Math.floor((5 * 1024 * 1024 * 3) / 4) - 64 * 1024;
 
 /**
+ * The most of a scan's pages one `get_attachment` call hands over, and the most bytes of
+ * picture between them. Five pages at the default edge come to about a megabyte as JPEGs and
+ * a few thousand tokens each in the assistant's context; a document longer than that is read
+ * a few pages a call, with `pages`, rather than in one answer some client refuses. The bytes
+ * are held to what a single picture may be, since no client is known to take more in one
+ * answer, which only matters where nothing shrinks the pages: an instance without the Images
+ * binding sends a scan's pages as the scanner stored them. The first page always goes.
+ */
+const PAGES_PER_CALL = 5;
+const MAX_PDF_ANSWER_BYTES = MAX_MCP_IMAGE_BYTES;
+
+/**
+ * The largest PDF whose pages `get_attachment` takes out. The whole file is held in the
+ * isolate while its pictures are found (lib/pdf-pages.ts), beside a page's pixels when one
+ * has to be turned into a PNG, and the isolate has 128 MB. A scan of a few dozen pages is a
+ * few megabytes; past this it is a book, which Auto-fill does not read whole either.
+ */
+const MAX_PDF_READ_BYTES = 32 * 1024 * 1024;
+
+/**
  * The most text `set_attachment_text` takes. A transcription of a stack of pages is tens
  * of thousands of characters; anything past this is not a reading of one file. Well under
  * the route's own cap on a stored text.
@@ -54,6 +75,9 @@ const MAX_ASSISTANT_TEXT_CHARS = 100_000;
  * `set_attachment_text` records what it read, marked as the assistant's, so search and
  * the summaries have it until a press has the model read the file, where the instance
  * has one (see `writeAssistantText` in the store for what yields to it and what does not).
+ * A scanned PDF with no text layer goes out the same way, as the pictures its pages are
+ * (MAK-255, lib/pdf-pages.ts says how they are found without a renderer), since that is
+ * the other kind of file nothing but a press would otherwise ever read.
  * The descriptions say which it is, since on an instance with no key the assistant's words
  * are the text the file will have and should be written as such.
  *
@@ -105,10 +129,178 @@ export function registerAttachmentTools(
   // Whether `get_attachment` can shrink a picture before handing it over.
   const shrinks = Boolean(env.IMAGES);
 
+  /**
+   * A scanned PDF's pages, as `get_attachment` hands them over: the pictures lib/pdf-pages.ts
+   * finds in the file, each made small enough to send the way a picture is, a few pages a
+   * call. Each page's images follow a line naming the page, so a page in several strips
+   * reads as one page, and the answer's last block says which pages went, which did not and
+   * why, and what to ask for next.
+   *
+   * A PDF whose layer was read and has text is refused before its bytes are fetched: the
+   * text is free, exact and already here, where pictures of it would cost the assistant
+   * thousands of tokens a page to read less well. Everything else is opened, the unread
+   * included, since a scan's pages are worth reading whatever the layer will turn out to
+   * hold; set_attachment_text says so if the layer has still to be read when it is called.
+   */
+  const scanPages = async (
+    noteId: string,
+    row: { filename: string; content_type: string; size: number; r2_key: string },
+    edge: number,
+    asked: string | undefined,
+  ) => {
+    const held = await repos.attachments.textWithRead(noteId, row.filename, vision);
+    if (held?.read === 'text') {
+      return toolError("This PDF has a text layer, and get_attachment_text has its text; its pages are not sent as pictures.");
+    }
+    const mb = (n: number) => `${(n / (1024 * 1024)).toFixed(1)} MB`;
+    const autofill = vision ? ' An Auto-fill press on the note reads it on the instance.' : '';
+    if (row.size > MAX_PDF_READ_BYTES) {
+      return toolError(`This PDF is ${mb(row.size)}, over the ${mb(MAX_PDF_READ_BYTES)} this tool opens.${autofill}`);
+    }
+    const object = await env.BLOBS.get(row.r2_key);
+    if (!object) return toolError('The bytes of this file could not be found; try again later.');
+    let pdf: PdfPages;
+    try {
+      pdf = await openPdf(new Uint8Array(await object.arrayBuffer()));
+    } catch (err) {
+      if (!(err instanceof PdfError)) throw err;
+      return toolError(`This file could not be read as a PDF.${autofill}`);
+    }
+    if (pdf.encrypted) {
+      return toolError(`This PDF is encrypted, so the pictures in it cannot be taken out here.${autofill}`);
+    }
+    const total = pdf.pages.length;
+    if (!total) return toolError(`No pages could be found in this PDF.${autofill}`);
+
+    const [first, last] = (asked ?? `1-${PAGES_PER_CALL}`).split('-').map((n) => Number(n.trim()));
+    const from = first!;
+    if (from < 1 || from > total) return toolError(`This PDF has ${total} page${total === 1 ? '' : 's'}; ask for pages from 1 to ${total}.`);
+    if (last !== undefined && last < from) return toolError('The range is backwards: ask for the lower page first, like "2-4".');
+    const to = Math.min(last ?? from, total, from + PAGES_PER_CALL - 1);
+
+    const content: Array<{ type: 'image'; data: string; mimeType: string } | { type: 'text'; text: string }> = [];
+    const sent: Array<Record<string, unknown>> = [];
+    const notSent: Array<{ page: number; reason: string }> = [];
+    let bytes = 0;
+    let through = from - 1;
+    for (let page = from; page <= to; page++) {
+      const { images, hasText, rotate } = pdf.pages[page - 1]!;
+      if (!images.length) {
+        notSent.push({
+          page,
+          reason: hasText
+            ? 'it is text, not a picture; get_attachment_text has the text layer'
+            : 'it has no picture on it to send: it is drawn as shapes, which this tool cannot turn into one',
+        });
+        through = page;
+        continue;
+      }
+      // A page goes whole or not at all, so the next call starts on a page boundary.
+      const ready: Array<{ data: Uint8Array; mimeType: string; sent: Record<string, unknown> }> = [];
+      const failed: string[] = [];
+      for (const image of images) {
+        const pic = await pdf.picture(image);
+        if (!pic.ok) {
+          failed.push(pic.reason);
+          continue;
+        }
+        const out = await pagePicture(pic, edge);
+        if ('reason' in out) failed.push(out.reason);
+        else ready.push(out);
+      }
+      const size = ready.reduce((n, r) => n + r.data.byteLength, 0);
+      if (sent.length && bytes + size > MAX_PDF_ANSWER_BYTES) break;
+      through = page;
+      bytes += size;
+      if (failed.length) {
+        notSent.push({
+          page,
+          reason:
+            (images.length > 1 ? `${failed.length} of its ${images.length} pictures could not be sent: ` : 'its picture could not be sent: ') +
+            [...new Set(failed)].join('; '),
+        });
+      }
+      if (!ready.length) continue;
+      content.push({ type: 'text', text: `Page ${page} of ${total}` + (rotate ? ` (shown turned ${rotate}° clockwise)` : '') });
+      for (const r of ready) {
+        // A copy of just the picture's bytes: a JPEG page is a view into the whole PDF.
+        content.push({ type: 'image', data: toBase64(r.data.slice().buffer), mimeType: r.mimeType });
+        sent.push({ page, ...(rotate ? { turned: rotate } : {}), ...r.sent });
+      }
+    }
+
+    if (!sent.length) {
+      return toolError(
+        `Nothing on page${from === through ? ` ${from}` : `s ${from} to ${through}`} could be sent: ` +
+          notSent.map((n) => `page ${n.page}: ${n.reason}`).join('. ') +
+          '.' +
+          (through < total ? ` Pages ${through + 1} to ${total} may still be readable.` : '') +
+          autofill,
+      );
+    }
+    const record = 'Record what you read with set_attachment_text under this filename, so it is searchable and the next session has it.';
+    const next =
+      (through < total
+        ? `Pages ${through + 1} to ${total} were not sent; ask for pages "${through + 1}-${Math.min(through + PAGES_PER_CALL, total)}" next, and ` +
+          'read them all before recording, since set_attachment_text takes the text of the whole file. '
+        : `That was the last page. ${record} `) +
+      (sent.some((s) => s.turned)
+        ? 'A page marked "turned" is shown rotated in the PDF; its picture is sent as scanned, so its text may run sideways. '
+        : '') +
+      (sent.some((s) => s.downscaled) && edge < LARGEST_MAX_EDGE
+        ? `If small print is not legible, ask again with maxEdge ${LARGEST_MAX_EDGE}.`
+        : '');
+    content.push({
+      type: 'text',
+      text: JSON.stringify(
+        { filename: row.filename, contentType: row.content_type, size: row.size, pages: total, sent, notSent, next: next.trim() },
+        null,
+        2,
+      ),
+    });
+    return { content };
+  };
+
+  /**
+   * One picture taken out of a PDF, made ready to send as `get_attachment` sends a picture:
+   * shrunk to the edge where the instance can and it is larger, otherwise as it is when it is
+   * small enough. Its size is known from the PDF, so nothing is read from its header.
+   */
+  const pagePicture = async (
+    pic: { bytes: Uint8Array; contentType: 'image/jpeg' | 'image/png'; width: number; height: number },
+    edge: number,
+  ): Promise<{ data: Uint8Array; mimeType: string; sent: Record<string, unknown> } | { reason: string }> => {
+    const size = pic.bytes.byteLength;
+    const within = pic.width <= edge && pic.height <= edge;
+    if (env.IMAGES && (!within || size > MAX_MCP_IMAGE_BYTES) && size <= MAX_DOWNSCALE_INPUT_BYTES) {
+      try {
+        const small = await downscale(env.IMAGES, new Response(pic.bytes).body!, edge);
+        if (small.bytes.byteLength <= MAX_MCP_IMAGE_BYTES) {
+          return {
+            data: new Uint8Array(small.bytes),
+            mimeType: small.contentType,
+            sent: { contentType: small.contentType, width: small.width, height: small.height, bytes: small.bytes.byteLength, maxEdge: edge, downscaled: true },
+          };
+        }
+      } catch (err) {
+        console.warn(`[mcp] get_attachment could not shrink a PDF page of ${size} bytes`, err);
+      }
+    }
+    if (size <= MAX_MCP_IMAGE_BYTES) {
+      return {
+        data: pic.bytes,
+        mimeType: pic.contentType,
+        sent: { contentType: pic.contentType, width: pic.width, height: pic.height, bytes: size, downscaled: false },
+      };
+    }
+    const mb = (n: number) => `${(n / (1024 * 1024)).toFixed(1)} MB`;
+    return { reason: `it is ${mb(size)}, over the ${mb(MAX_MCP_IMAGE_BYTES)} this tool sends, and could not be shrunk here` };
+  };
+
   server.registerTool(
     'get_attachment',
     {
-      title: 'See a picture',
+      title: 'See a picture or a scan',
       description:
         'The picture itself, returned as an image for you to read: a JPEG, PNG, GIF or WebP ' +
         (shrinks
@@ -122,9 +314,12 @@ export function registerAttachmentTools(
           : '; this instance has no vision model, so you are the only reader it has. ') +
         'Read it, then record what you read with set_attachment_text under the same filename, so search, the ' +
         'summaries and the next session have it without looking again. The bytes come to ' +
-        "you and to no model the instance runs. PDFs are not returned: a PDF's text layer is " +
-        'read for free on upload and get_attachment_text has it' +
-        (vision ? ', and a scan with no layer waits for an Auto-fill press.' : '.'),
+        'you and to no model the instance runs. A scanned PDF with no text layer comes as ' +
+        `its pages, one image each, up to ${PAGES_PER_CALL} a call (ask for more with pages): the ` +
+        'pictures the scanner stored, taken out of the file, so a page the PDF shows turned is ' +
+        'sent as scanned and the answer says how it is turned. Read every page before you ' +
+        'record, since set_attachment_text takes the whole file. A PDF with a text layer is not ' +
+        'returned: get_attachment_text has its text.',
       inputSchema: z.object({
         noteId: z.string().uuid(),
         filename: z.string().min(1).describe('As listed by get_note.'),
@@ -138,6 +333,14 @@ export function registerAttachmentTools(
             `The longest side to send, in pixels; ${DEFAULT_MAX_EDGE} when not given. Ask for ${LARGEST_MAX_EDGE} ` +
               'when small print was not legible at the default. Ignored where the instance cannot shrink a picture.',
           ),
+        pages: z
+          .string()
+          .regex(/^\s*\d+\s*(-\s*\d+\s*)?$/, 'a page or a range, like "3" or "6-10"')
+          .optional()
+          .describe(
+            `For a scanned PDF: the page or range of pages to send, like "3" or "6-10", counting from 1. ` +
+              `The first ${PAGES_PER_CALL} when not given, and at most ${PAGES_PER_CALL} a call; the answer says what to ask for next.`,
+          ),
       }),
       annotations: {
         readOnlyHint: true,
@@ -146,17 +349,15 @@ export function registerAttachmentTools(
         openWorldHint: false,
       },
     },
-    async ({ noteId, filename, maxEdge }) => {
+    async ({ noteId, filename, maxEdge, pages }) => {
       // Scoped to the caller's store, so another person's note reads as missing; and
       // never from the trash, like every other read of a file that is not a page load.
       const row = await repos.attachments.resolve(noteId, filename, { loose: true });
       if (!row) return notFound('attachment', `${filename} on note ${noteId}`);
+      if (row.content_type === 'application/pdf') return scanPages(noteId, row, maxEdge ?? DEFAULT_MAX_EDGE, pages);
       if (!LLM_IMAGE_TYPES.has(row.content_type)) {
         return toolError(
-          `Only a picture is returned (JPEG, PNG, GIF or WebP); this file is ${row.content_type}. ` +
-            (row.content_type === 'application/pdf'
-              ? "A PDF's text layer is in get_attachment_text; a scan with no layer waits for an Auto-fill press."
-              : 'Nothing on this instance reads it.'),
+          `Only a picture or a scanned PDF is returned; this file is ${row.content_type}. Nothing on this instance reads it.`,
         );
       }
       const missing = () => toolError('The bytes of this file could not be found; try again later.');
@@ -295,12 +496,13 @@ export function registerAttachmentTools(
     {
       title: 'Record what you read off a file',
       description:
-        'Record the text of a file you have read yourself, usually a picture from ' +
-        'get_attachment, so search, the summaries on get_note and list_notes, and ' +
+        "Record the text of a file you have read yourself, usually a picture or a scan's pages " +
+        'from get_attachment, so search, the summaries on get_note and list_notes, and ' +
         'get_attachment_text have it. Write what the file says, not what you make of it: ' +
         'a short first line naming it, a line saying what it is and shows (who it is from, ' +
         'the amounts, the dates), a blank line, then every legible word transcribed in ' +
-        'reading order. Allowed where the file has no text, an empty row, or text you ' +
+        'reading order; for a scan of several pages, every page in order, in one call. Allowed ' +
+        'where the file has no text, an empty row (a scanned PDF whose layer was read and was empty), or text you ' +
         "recorded before, which you may revise; refused over a PDF's own text layer or what " +
         "the instance's vision model read, since neither is yours to replace. What you " +
         'record is marked as yours (read "assistant")' +

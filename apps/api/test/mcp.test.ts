@@ -20,6 +20,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AddressInfo } from 'node:net';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { grey, page, pageTree, pdfOf } from '../src/lib/test-pdf.js';
 
 const BASE = process.env['API_URL'] ?? 'http://localhost:8787';
 const ORIGIN = process.env['APP_URL'] ?? 'http://localhost:5173';
@@ -1693,5 +1694,68 @@ describe('get_attachment', () => {
     });
     expect(body.result?.isError).toBeFalsy();
     expect(JSON.parse(toolText(body))).toMatchObject({ filename: 'Form photo.png', read: 'assistant' });
+  });
+});
+
+describe('get_attachment on a scanned PDF', () => {
+  let grace: Actor;
+  let noteId: string;
+
+  beforeAll(async () => {
+    const stamp = Date.now();
+    const cookie = await signUp(`mcp-scan-${stamp}@example.test`, 'grace-password-12', 'Grace');
+    grace = { cookie, userId: '', token: await tokenFor(cookie, await registerClient('Scan Reader'), RESOURCE) };
+    const created = await mcp(grace.token, 'tools/call', { name: 'create_note', arguments: { title: 'Grace scan', body: '' } });
+    noteId = JSON.parse(toolText(created.body)).id;
+    const link = await mcp(grace.token, 'tools/call', {
+      name: 'prepare_attachment_upload',
+      arguments: { noteId, filename: 'Scan.pdf', link: false },
+    });
+    // Two invented pages of Flate pixels: a full page larger than the edge, which the Worker
+    // turns into a PNG and the Images binding shrinks, and a small one already in PNG's row
+    // filters, which goes as it is.
+    const rows = Buffer.alloc(301 * 200);
+    for (let y = 0; y < 200; y++) rows.set(grey(300, 1), y * 301 + 1);
+    const scan = pdfOf([
+      ...pageTree([3, 4]),
+      page(3, [10]),
+      page(4, [11], { rotate: 90 }),
+      {
+        num: 10,
+        body: '<< /Subtype /Image /Width 2000 /Height 2600 /ColorSpace /DeviceGray /BitsPerComponent 8 /Filter /FlateDecode >>',
+        stream: new Uint8Array(deflateSync(Buffer.from(grey(2000, 2600)))),
+      },
+      {
+        num: 11,
+        body: '<< /Subtype /Image /Width 300 /Height 200 /ColorSpace /DeviceGray /BitsPerComponent 8 /Filter /FlateDecode /DecodeParms << /Predictor 15 /Columns 300 >> >>',
+        stream: new Uint8Array(deflateSync(rows)),
+      },
+    ]);
+    const res = await fetch(JSON.parse(toolText(link.body)).uploadUrl, { method: 'PUT', body: scan });
+    expect(res.status).toBe(201);
+  }, 60_000);
+
+  it('hands over each page as a picture, shrunk where it is larger than the edge', async () => {
+    const { body } = await mcp(grace.token, 'tools/call', { name: 'get_attachment', arguments: { noteId, filename: 'Scan.pdf' } });
+    expect(body.result?.isError).toBeFalsy();
+    const content = body.result!.content as Array<{ type: string; data?: string; mimeType?: string; text?: string }>;
+    expect(content.map((c) => (c.type === 'image' ? c.mimeType : c.text!.split('\n')[0]))).toEqual([
+      'Page 1 of 2',
+      'image/jpeg',
+      'Page 2 of 2 (shown turned 90° clockwise)',
+      'image/png',
+      '{',
+    ]);
+    const answer = JSON.parse(content[4]!.text!);
+    expect(answer).toMatchObject({
+      filename: 'Scan.pdf',
+      pages: 2,
+      sent: [
+        { page: 1, contentType: 'image/jpeg', width: 1206, height: 1568, downscaled: true },
+        { page: 2, turned: 90, contentType: 'image/png', width: 300, height: 200, downscaled: false },
+      ],
+      notSent: [],
+    });
+    expect(answer.next).toMatch(/That was the last page/);
   });
 });
