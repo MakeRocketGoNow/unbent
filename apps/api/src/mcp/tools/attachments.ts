@@ -29,10 +29,11 @@ import { jsonResult, notFound, toolError } from './result.js';
  * The most of a picture `get_attachment` hands over, as bytes. The model's platforms cap
  * an image by the length of its base64 (10 MiB on the Claude API, 5 MiB on Bedrock and
  * Vertex) and which one the assistant's client talks to is unknown here, so the lower
- * bound rules: three quarters of 5 MiB, less a little for the JSON around it. Where the
- * instance binds Images the picture is shrunk first (lib/downscale.ts) and comes nowhere
- * near it; this is the ceiling for an instance without the binding, which sends the
- * original, and the refusal names the size so the person can attach a smaller copy.
+ * bound rules: three quarters of 5 MiB, less a little for the JSON around it. A copy
+ * shrunk by the Images binding (lib/downscale.ts) comes nowhere near it; this is the
+ * ceiling for every original sent as it is: on an instance without the binding, one already
+ * within the edge, or one the binding could not shrink. The refusal names the size so the
+ * person can attach a smaller copy.
  */
 const MAX_MCP_IMAGE_BYTES = Math.floor((5 * 1024 * 1024 * 3) / 4) - 64 * 1024;
 
