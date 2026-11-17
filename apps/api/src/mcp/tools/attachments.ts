@@ -143,15 +143,21 @@ export function registerAttachmentTools(
    * A PDF whose words are already here is refused before its bytes are fetched: a text
    * layer, or the instance's model's reading of the scan. Either is in get_attachment_text,
    * free and whole, where pictures of the pages would cost the assistant thousands of tokens
-   * a page to read again, and set_attachment_text would refuse what it read. Everything else
+   * a page to read again, and set_attachment_text would refuse what it read. The one
+   * exception is a text layer with pages asked for by number: a typed cover sheet in front
+   * of scanned pages gives the whole file a layer, and the refusal says to ask for the
+   * pages it leaves out; those are sent, with nothing to record. Everything else
    * is opened, a PDF nothing has read yet included, since its pages are worth reading
    * whatever its layer turns out to hold; the answer says that what is read cannot be
    * recorded until the layer has been (`unread`), rather than send the assistant to a
    * refusal at the end of the document.
    */
   const scanPages = async (row: AttachmentRow & { read: FileRead; unread: boolean }, edge: number, asked: string | undefined) => {
-    if (row.read === 'text') {
-      return toolError("This PDF has a text layer, and get_attachment_text has its text; its pages are not sent as pictures.");
+    if (row.read === 'text' && asked === undefined) {
+      return toolError(
+        'This PDF has a text layer, and get_attachment_text has its text; its pages are not sent as pictures. ' +
+          'If some pages are scans the layer leaves out, ask for those with pages.',
+      );
     }
     if (row.read === 'vision') {
       return toolError(
@@ -251,16 +257,21 @@ export function registerAttachmentTools(
             autofill,
         );
       }
-      const record = row.unread
-        ? 'Its text layer has not been read yet, and set_attachment_text takes nothing for it until it has been; ' +
-          'get_attachment_text says when, and if the layer comes back empty, record what you read then.'
-        : 'Record what you read with set_attachment_text under this filename, so it is searchable and the next session has it.';
+      // What becomes of what the assistant reads: recorded, or not, and why not.
+      const recordable = row.read !== 'text' && !row.unread;
+      const record =
+        row.read === 'text'
+          ? 'Its text layer is in get_attachment_text, and set_attachment_text does not replace it: what you read of these pages is for you to use.'
+          : row.unread
+            ? 'Its text layer has not been read yet, and set_attachment_text takes nothing for it until it has been; ' +
+              'get_attachment_text says when, and if the layer comes back empty, record what you read then.'
+            : 'Record what you read with set_attachment_text under this filename, so it is searchable and the next session has it.';
       const next =
         (through < total
           ? `Pages ${through + 1} to ${total} were not sent; ask for pages "${through + 1}-${Math.min(through + PAGES_PER_CALL, total)}" next` +
-            (row.unread ? '. ' : ', and read them all before recording, since set_attachment_text takes the text of the whole file. ')
-          : `That was the last page. `) +
-        (through < total && !row.unread ? '' : `${record} `) +
+            (recordable ? ', and read them all before recording, since set_attachment_text takes the text of the whole file. ' : '. ')
+          : 'That was the last page. ') +
+        (through < total && recordable ? '' : `${record} `) +
         (sent.some((s) => s.turned)
           ? 'A page marked "turned" is shown rotated in the PDF; its picture is sent as scanned, so its text may run sideways. '
           : '') +
@@ -336,8 +347,9 @@ export function registerAttachmentTools(
         `its pages, one image each, up to ${PAGES_PER_CALL} a call (ask for more with pages): the ` +
         'pictures the scanner stored, taken out of the file, so a page the PDF shows turned is ' +
         'sent as scanned and the answer says how it is turned. Read every page before you ' +
-        'record, since set_attachment_text takes the whole file. A PDF with a text layer is not ' +
-        'returned: get_attachment_text has its text.',
+        'record, since set_attachment_text takes the whole file. A PDF with a text layer, or one ' +
+        "the instance's model has read, is not returned: get_attachment_text has its text. Ask " +
+        'for pages by number only for scanned pages a layer leaves out, like those behind a typed cover sheet.',
       inputSchema: z.object({
         noteId: z.string().uuid(),
         filename: z.string().min(1).describe('As listed by get_note.'),

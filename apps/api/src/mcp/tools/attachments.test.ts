@@ -128,11 +128,13 @@ function pictured() {
     'bigfax.pdf': { id: 'b6', filename: 'bigfax.pdf', content_type: 'application/pdf', size: 9 * 1024 * 1024, r2_key: 'k/fax' },
   };
   /** How each file's text came to be; anything unnamed is pending, and read by the layer. */
-  const reads: Record<string, string> = { 'scan.pdf': 'text', 'seen.pdf': 'vision' };
+  const reads: Record<string, string> = { 'scan.pdf': 'text', 'seen.pdf': 'vision', 'layered.pdf': 'text' };
   /** The PDFs nothing has read yet. */
   const unread = new Set(['fresh.pdf']);
   rows['seen.pdf'] = { ...rows['pages.pdf']!, id: 'b7', filename: 'seen.pdf' };
   rows['fresh.pdf'] = { ...rows['pages.pdf']!, id: 'a4', filename: 'fresh.pdf' };
+  // A typed cover sheet's layer in front of scanned pages.
+  rows['layered.pdf'] = { ...rows['pages.pdf']!, id: 'b8', filename: 'layered.pdf' };
   const written: Array<{ filename: string; text: string }> = [];
   /** The arguments each lookup was made with. */
   const resolved: unknown[] = [];
@@ -310,6 +312,16 @@ describe('get_attachment on a scanned PDF', () => {
     expect(fresh.isError).toBeFalsy();
     expect(answer(fresh).next).toMatch(/^Pages 6 to 7 were not sent; ask for pages "6-7" next\. Its text layer has not been read yet, and set_attachment_text takes nothing/);
     expect(answer(fresh).next).not.toMatch(/read them all before recording/);
+  });
+
+  it('sends the pages asked for from a PDF with a text layer, with nothing to record', async () => {
+    const { repo, blobs } = pictured();
+    const get = collect({ BLOBS: blobs }, repo).get('get_attachment')!;
+    // Asked for whole, it points at the text and at asking for the pages the layer leaves out.
+    expect((await get({ noteId, filename: 'layered.pdf' })).content[0]!.text).toMatch(/ask for those with pages/);
+    const asked = await get({ noteId, filename: 'layered.pdf', pages: '6-7' });
+    expect(asked.isError).toBeFalsy();
+    expect(answer(asked).next).toMatch(/^That was the last page\. Its text layer is in get_attachment_text, and set_attachment_text does not replace it/);
   });
 
   it('waits its turn at the read gate before fetching the file', async () => {
