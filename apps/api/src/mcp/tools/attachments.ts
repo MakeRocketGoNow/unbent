@@ -179,11 +179,14 @@ export function registerAttachmentTools(
       // it to this edge anyway, so the rest is bytes in transit and in the assistant's
       // context for nothing. A failure (not a picture after all, the free plan's month used
       // up) falls through to the original, which is still sent when it is small enough.
-      let shrinkFailed = false;
+      // Why it was not shrunk, for the refusal: the binding refused it (a file that is not
+      // a picture after all, the free plan's month used up), or the JPEG it made was still
+      // over the cap, which a smaller edge would cure where waiting would not.
+      let shrinkFailed: 'refused' | 'too large' | null = null;
+      const edge = maxEdge ?? DEFAULT_MAX_EDGE;
       if (env.IMAGES && row.size <= MAX_DOWNSCALE_INPUT_BYTES) {
         const object = await env.BLOBS.get(row.r2_key);
         if (!object) return missing();
-        const edge = maxEdge ?? DEFAULT_MAX_EDGE;
         try {
           const small = await downscale(env.IMAGES, object.body, edge);
           // Never past the cap the original is held to, though at these edges a JPEG
@@ -207,10 +210,10 @@ export function registerAttachmentTools(
                   : ''),
             );
           }
-          shrinkFailed = true;
+          shrinkFailed = 'too large';
         } catch (err) {
           console.warn(`[mcp] get_attachment could not shrink ${row.content_type} of ${row.size} bytes`, err);
-          shrinkFailed = true;
+          shrinkFailed = 'refused';
         }
       }
 
@@ -219,9 +222,11 @@ export function registerAttachmentTools(
         // Says what would get it read, which depends on why it could not be shrunk.
         const why = !env.IMAGES
           ? 'This instance has no Images binding to shrink it with.'
-          : shrinkFailed
-            ? 'Shrinking it failed; try again later.'
-            : `It is also over the ${mb(MAX_DOWNSCALE_INPUT_BYTES)} this instance can shrink.`;
+          : shrinkFailed === 'too large'
+            ? `Shrunk to ${edge} px it was still larger than that; ask again with a smaller maxEdge.`
+            : shrinkFailed === 'refused'
+              ? 'Shrinking it failed on this instance.'
+              : `It is also over the ${mb(MAX_DOWNSCALE_INPUT_BYTES)} this instance can shrink.`;
         return toolError(
           `This picture is ${mb(row.size)}, over the ${mb(MAX_MCP_IMAGE_BYTES)} this tool returns as it is. ${why} ` +
             (vision && readableByLlm(row.content_type, row.size)

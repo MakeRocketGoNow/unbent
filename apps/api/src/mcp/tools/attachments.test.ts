@@ -96,7 +96,7 @@ const shrunk = new Uint8Array([
 ]);
 
 /** Stands in for the Images binding: records the edge it was asked for, or fails as told. */
-function fakeImages(fail = false) {
+function fakeImages(fail: false | 'throw' | 'huge' = false) {
   const asked: unknown[] = [];
   return {
     asked,
@@ -108,8 +108,10 @@ function fakeImages(fail = false) {
             return transformer;
           },
           async output() {
-            if (fail) throw new Error('9422: free plan used up');
-            return { image: () => new Response(shrunk).body! };
+            if (fail === 'throw') throw new Error('9422: free plan used up');
+            // A JPEG over the cap, which no real picture at these edges comes near.
+            const out = fail === 'huge' ? new Uint8Array(4 * 1024 * 1024) : shrunk;
+            return { image: () => new Response(out).body! };
           },
         };
         return transformer;
@@ -186,14 +188,24 @@ describe('get_attachment where the instance binds Images', () => {
 
   it('sends a small original when shrinking fails, and says so when a big one cannot be sent', async () => {
     const { repo, blobs } = pictured();
-    const get = collect({ BLOBS: blobs, IMAGES: fakeImages(true).binding }, repo).get('get_attachment')!;
+    const get = collect({ BLOBS: blobs, IMAGES: fakeImages('throw').binding }, repo).get('get_attachment')!;
     const small = await get({ noteId, filename: 'card.png' });
     expect(small.isError).toBeFalsy();
     expect(small.content[0]).toMatchObject({ type: 'image', mimeType: 'image/png' });
     expect(JSON.parse(small.content[1]!.text)).toMatchObject({ sent: { downscaled: false } });
     const big = await get({ noteId, filename: 'poster.jpg' });
     expect(big.isError).toBe(true);
-    expect(big.content[0]!.text).toMatch(/Shrinking it failed/);
+    // No "try again later": a refusal from the binding is as likely to last the month.
+    expect(big.content[0]!.text).toMatch(/Shrinking it failed on this instance\. /);
+    expect(big.content[0]!.text).not.toMatch(/later/);
+  });
+
+  it('asks for a smaller edge when the JPEG it made is still over the cap', async () => {
+    const { repo, blobs } = pictured();
+    const get = collect({ BLOBS: blobs, IMAGES: fakeImages('huge').binding }, repo).get('get_attachment')!;
+    const big = await get({ noteId, filename: 'poster.jpg', maxEdge: 2576 });
+    expect(big.isError).toBe(true);
+    expect(big.content[0]!.text).toMatch(/Shrunk to 2576 px it was still larger than that; ask again with a smaller maxEdge/);
   });
 
   it('refuses a picture past what the binding takes, without asking it', async () => {
