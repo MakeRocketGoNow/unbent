@@ -268,7 +268,8 @@ export function registerAttachmentTools(
       const why = !env.IMAGES
         ? 'This instance has no Images binding to shrink it with.'
         : shrinkFailed === 'too large'
-          ? `Shrunk to ${edge} px it was still larger than that; ask again with a smaller maxEdge.`
+          ? `Shrunk to ${edge} px it was still larger than that` +
+            (edge > SMALLEST_MAX_EDGE ? '; ask again with a smaller maxEdge.' : '.')
           : shrinkFailed === 'refused'
             ? 'Shrinking it failed on this instance.'
             : `It is also over the ${mb(MAX_DOWNSCALE_INPUT_BYTES)} this instance can shrink.`;
