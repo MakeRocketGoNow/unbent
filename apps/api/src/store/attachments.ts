@@ -322,7 +322,7 @@ export class AttachmentsStore {
     const want = looseFilename(filename);
     const near = this.sql
       .exec<{ filename: string }>(`SELECT filename FROM attachments WHERE note_id = ?1`, noteId)
-      .filter((r) => r.filename !== filename && looseFilename(r.filename) === want);
+      .filter((r) => looseFilename(r.filename) === want);
     return near.length === 1 ? lookup(near[0]!.filename) : null;
   }
 
