@@ -423,10 +423,18 @@ function parmsOf(pdf: Pdf, dict: PdfDict, index: number): PdfDict | null {
   return index === 0 ? pdf.dict(p) : null;
 }
 
-/** Unpacks every object stream, keeping a number already defined in the file as it is. */
+/**
+ * Unpacks every object stream, holding to the rule that the last definition of a number in
+ * the file wins: the streams are unpacked in the order they stand in the file, and a packed
+ * object takes the stream's place there, so it replaces a definition from before it (an
+ * update written as an object stream) and yields to one after it.
+ */
 async function unpackObjectStreams(pdf: Pdf): Promise<void> {
-  for (const entry of [...pdf.entries.values()]) {
-    if (!(entry.value instanceof Map) || nameOf(entry.value.get('Type') ?? null) !== 'ObjStm' || !entry.stream) continue;
+  const streams = [...pdf.entries.values()]
+    .filter((e) => e.value instanceof Map && nameOf(e.value.get('Type') ?? null) === 'ObjStm' && e.stream)
+    .sort((a, b) => a.offset - b.offset);
+  for (const entry of streams) {
+    if (!(entry.value instanceof Map)) continue;
     let data: Uint8Array;
     try {
       data = await pdf.decoded(entry);
@@ -450,7 +458,7 @@ async function unpackObjectStreams(pdf: Pdf): Promise<void> {
       // A header cut short keeps the pairs it gave.
     }
     for (const [num, off] of pairs) {
-      if (pdf.entries.has(num)) continue;
+      if ((pdf.entries.get(num)?.offset ?? -1) > entry.offset) continue;
       try {
         pdf.entries.set(num, { value: parseValue(data, first + off).value, offset: entry.offset });
       } catch {

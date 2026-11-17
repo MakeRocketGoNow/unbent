@@ -95,6 +95,24 @@ describe('openPdf', () => {
     expect(pic.ok && pic.bytes).toEqual(jpeg);
   });
 
+  it('takes an object packed in a later object stream over an earlier plain one, and not over a later one', async () => {
+    const jpeg = fakeJpeg(100, 100);
+    // Page 3 as first written, with no picture; then an update that packs a new page 3 and a
+    // new page 4 into an object stream; then a plain page 4 written after that.
+    const packed = '3 0 4 120 ';
+    const objects = '<< /Type /Page /Parent 2 0 R /Resources << /XObject << /Im0 10 0 R >> >> >>'.padEnd(120) + '<< /Type /Page /Parent 2 0 R >>';
+    const file = pdfOf([
+      ...pageTree([3, 4]),
+      page(3, []),
+      page(4, []),
+      { num: 10, body: '<< /Subtype /Image /Width 100 /Height 100 /Filter /DCTDecode >>', stream: jpeg },
+      { num: 20, body: `<< /Type /ObjStm /N 2 /First ${packed.length} /Filter /FlateDecode >>`, stream: await zlib(enc(packed + objects)) },
+      page(4, [10]),
+    ]);
+    const pdf = await openPdf(file);
+    expect(pdf.pages.map((p) => p.images.length)).toEqual([1, 1]);
+  });
+
   it('turns Flate pixels into a PNG with the same pixels', async () => {
     const pixels = grey(64, 50);
     const file = pdfOf([
