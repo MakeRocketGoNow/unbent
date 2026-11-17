@@ -580,6 +580,9 @@ function pageContents(pdf: Pdf, resources: PdfDict | null, depth: number, seen: 
   return { images, hasText };
 }
 
+/** A `/Rotate` as 0, 90, 180 or 270: the spec allows only multiples of 90, and a file may say -90 or 450. */
+const quarterTurn = (degrees: number) => (((Math.round(degrees / 90) * 90) % 360) + 360) % 360;
+
 /** The pages in order, from the page tree, each with what it inherits. */
 function pagesOf(pdf: Pdf, trailer: PdfDict | null): PdfPage[] {
   const pages: PdfPage[] = [];
@@ -601,7 +604,7 @@ function pagesOf(pdf: Pdf, trailer: PdfDict | null): PdfPage[] {
       return;
     }
     const { images, hasText } = pageContents(pdf, own ?? resources, 0, new Set());
-    pages.push({ rotate: (((Math.round(r / 90) * 90) % 360) + 360) % 360, images, hasText });
+    pages.push({ rotate: quarterTurn(r), images, hasText });
   };
   const catalog = catalogOf(pdf, trailer);
   if (catalog) walk(catalog.get('Pages') ?? null, null, 0, 0);
@@ -614,7 +617,7 @@ function pagesOf(pdf: Pdf, trailer: PdfDict | null): PdfPage[] {
     const dict = e.value as PdfDict;
     const turn = pdf.resolve(dict.get('Rotate'));
     const { images, hasText } = pageContents(pdf, pdf.dict(dict.get('Resources')), 0, new Set());
-    pages.push({ rotate: typeof turn === 'number' ? ((turn % 360) + 360) % 360 : 0, images, hasText });
+    pages.push({ rotate: typeof turn === 'number' ? quarterTurn(turn) : 0, images, hasText });
   }
   return pages;
 }
