@@ -84,6 +84,15 @@ const MAX_PDF_READ_BYTES = 16 * 1024 * 1024;
  */
 const MAX_ASSISTANT_TEXT_CHARS = 100_000;
 
+/** A size as `get_attachment` prints every one, in binary megabytes, so two sizes in one sentence share a unit. */
+const mb = (n: number) => `${(n / (1024 * 1024)).toFixed(1)} MB`;
+
+/** What a picture or a scan's answer says when the bytes are missing from the bucket. */
+const MISSING_BYTES = 'The bytes of this file could not be found; try again later.';
+
+/** What to do with what was read, where it can be recorded: the same words for a picture and a scan. */
+const RECORD = 'Record what you read with set_attachment_text under this filename, so it is searchable and the next session has it.';
+
 /**
  * The tools that give a note a file, and the two that let an assistant read one.
  *
@@ -179,7 +188,6 @@ export function registerAttachmentTools(
         "The instance's vision model has read this PDF, and get_attachment_text has its reading; its pages are not sent as pictures.",
       );
     }
-    const mb = (n: number) => `${(n / (1024 * 1024)).toFixed(1)} MB`;
     // Only where a press would: the model takes a PDF up to `MAX_LLM_PDF_BYTES`, and a
     // larger one is skipped by every press, so naming the button would send the person to it
     // for nothing.
@@ -193,7 +201,7 @@ export function registerAttachmentTools(
     // would otherwise stack in its 128 MB.
     return withReaderSlot(async () => {
       const object = await env.BLOBS.get(row.r2_key);
-      if (!object) return toolError('The bytes of this file could not be found; try again later.');
+      if (!object) return toolError(MISSING_BYTES);
       let pdf: PdfPages;
       try {
         pdf = await openPdf(new Uint8Array(await object.arrayBuffer()));
@@ -286,7 +294,7 @@ export function registerAttachmentTools(
           : row.unread
             ? 'Its text layer has not been read yet, and set_attachment_text takes nothing for it until it has been; ' +
               'get_attachment_text says when, and if the layer comes back empty, record what you read then.'
-            : 'Record what you read with set_attachment_text under this filename, so it is searchable and the next session has it.';
+            : RECORD;
       const next =
         (through < total
           ? `Pages ${through + 1} to ${total} were not sent; ask for pages "${through + 1}-${Math.min(through + PAGES_PER_CALL, total)}" next` +
@@ -343,7 +351,6 @@ export function registerAttachmentTools(
         sent: { contentType: pic.contentType, width: pic.width, height: pic.height, bytes: size, downscaled: false },
       };
     }
-    const mb = (n: number) => `${(n / (1024 * 1024)).toFixed(1)} MB`;
     return { reason: `it is ${mb(size)}, over the ${mb(MAX_MCP_IMAGE_BYTES)} this tool sends, and could not be shrunk here` };
   };
 
@@ -412,7 +419,7 @@ export function registerAttachmentTools(
           `Only a picture or a scanned PDF is returned; this file is ${row.content_type}. Nothing on this instance reads it.`,
         );
       }
-      const missing = () => toolError('The bytes of this file could not be found; try again later.');
+      const missing = () => toolError(MISSING_BYTES);
       const answer = (data: string, mimeType: string, sent: Record<string, unknown>, next: string) => ({
         content: [
           { type: 'image' as const, data, mimeType },
@@ -426,9 +433,7 @@ export function registerAttachmentTools(
           },
         ],
       });
-      const record =
-        'Record what you read with set_attachment_text under this filename, so it is searchable and the ' +
-        'next session has it.';
+      const record = RECORD;
 
       const edge = maxEdge ?? DEFAULT_MAX_EDGE;
       const original = (bytes: ArrayBuffer) => {
@@ -524,8 +529,7 @@ export function registerAttachmentTools(
 
       if (bytes) return original(bytes);
 
-      const mb = (n: number) => `${(n / (1024 * 1024)).toFixed(1)} MB`;
-      // Says what would get it read, which depends on why it could not be shrunk.
+        // Says what would get it read, which depends on why it could not be shrunk.
       const why = !env.IMAGES
         ? 'This instance has no Images binding to shrink it with.'
         : shrinkFailed === 'too large'
