@@ -159,6 +159,28 @@ describe('NotebookNav', () => {
   });
 
   /*
+   * Picking a place is going somewhere, and a search typed about the last place, carried
+   * in, made the new one look nearly empty. Every place leaves it behind: a notebook, the
+   * Inbox and All notes alike.
+   */
+  it.each([
+    ['a notebook', 'Coupons'],
+    ['the Inbox', 'Inbox'],
+    ['All notes', 'All notes'],
+  ])('leaves the search behind on the way to %s', async (_, name) => {
+    localStorage.clear();
+    const { findByRole, history } = harness({ notebook: 'Podcast Bookmarks' });
+    await history.push('/notes?notebook=Podcast%20Bookmarks&q=milk&from=2024-01-01');
+    fireEvent.click(await findByRole('link', { name: new RegExp(`^${name}`) }));
+    await waitFor(() => {
+      const href = history.location.href;
+      expect(href).not.toContain('Podcast');
+      expect(href).not.toContain('milk');
+      expect(href).toContain('from=2024-01-01');
+    });
+  });
+
+  /*
    * A date range a saved view put there is the view's, not how the person is looking:
    * the notebook's row under an open view is the way back to the whole notebook.
    */
@@ -292,6 +314,19 @@ describe('NotebookNav', () => {
         expect(href).toContain('sort=title');
         expect(href).not.toContain('Coupons');
         expect(href).not.toContain('field');
+      });
+    });
+
+    it('leaves the search behind, as a notebook does', async () => {
+      localStorage.setItem('unbent.navTagsOpen', 'true');
+      const { findByRole, history } = harness({ tags: TAGS });
+      await history.push('/notes?q=milk&from=2024-01-01');
+      fireEvent.click(await findByRole('link', { name: /^Receipt/ }));
+      await waitFor(() => {
+        const href = history.location.href;
+        expect(href).toContain('Receipt');
+        expect(href).not.toContain('milk');
+        expect(href).toContain('from=2024-01-01');
       });
     });
 

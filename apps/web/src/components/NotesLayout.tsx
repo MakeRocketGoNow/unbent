@@ -334,12 +334,36 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    * is thousands of notes over a network, so a request fired mid-word is usually thrown
    * away before it lands, and the wait is short enough that a settled query still feels
    * immediate.
+   *
+   * A search that has been cleared ends at once rather than after the wait: a place
+   * picked from the rail, a pick from the matches, the field closed or emptied. The wait
+   * is for typing to settle, and read through it the new place drew the last place's
+   * matches, dimmed, and asked for them again under its own filter, for the length of
+   * the wait. Derived in render, so the first render after the navigation already reads
+   * the empty term and never makes the stale query; and the settled term is emptied at
+   * once too, or a letter typed inside the wait would bring the old term back until the
+   * new one settled.
+   *
+   * A move to another place carrying a term of its own (Back or Forward between two
+   * searched notebooks) takes that term at once for the same reason, so the settled term
+   * remembers the place it was settled in. The place is the notebook and the tags, not
+   * the whole filter: a date or a field chip changed mid-word is still the same place,
+   * and the word still waits to be finished.
    */
-  const [debounced, setDebounced] = useState(q);
+  const searchPlace = JSON.stringify([notebook ?? null, selectedTags]);
+  const [settled, setSettled] = useState({ q, place: searchPlace });
+  const settledPlace = useRef(searchPlace);
   useEffect(() => {
-    const timer = setTimeout(() => setDebounced(q), 300);
+    const moved = settledPlace.current !== searchPlace;
+    settledPlace.current = searchPlace;
+    if (q === '' || moved) {
+      setSettled({ q, place: searchPlace });
+      return;
+    }
+    const timer = setTimeout(() => setSettled({ q, place: searchPlace }), 300);
     return () => clearTimeout(timer);
-  }, [q]);
+  }, [q, searchPlace]);
+  const debounced = q === '' ? '' : settled.place === searchPlace ? settled.q : q;
 
   /*
    * One sidebar at every width, with the breakpoint deciding a handful of props rather
