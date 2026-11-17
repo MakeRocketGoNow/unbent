@@ -22,8 +22,12 @@ Four are worth knowing about:
   text-less scan when someone pressed Auto-fill on its note; or what an assistant recorded
   itself. A picture nothing has read yet is reported as waiting, and no tool makes the
   instance's model read it: that runs only inside a press (MAK-179). Instead
-  **`get_attachment`** hands the assistant the picture itself, as an image under about 3.7 MB, to
-  read with its own model on its own bill, and **`set_attachment_text`** records what it
+  **`get_attachment`** hands the assistant the picture itself, as an image, to read with its
+  own model on its own bill. Where the instance binds Cloudflare Images (unbent.app does) the
+  picture goes as a JPEG shrunk to the long edge the model reads at, 1568 px unless the
+  assistant asks for up to 2576, so a phone photo of a form at 15 MB is a few hundred
+  kilobytes on the way; without the binding the original goes, and only under about 3.7 MB.
+  The file itself is never changed, and **`set_attachment_text`** records what it
   read, marked `assistant`, so search and the summaries have it. It may fill a file that
   has no text, an empty row or its own earlier words, and never a text layer or the model's
   reading; the next Auto-fill press on the note has the model read the file itself and

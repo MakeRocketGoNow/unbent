@@ -63,6 +63,7 @@ function pictured() {
   const rows: Record<string, { id: string; filename: string; content_type: string; size: number; r2_key: string }> = {
     'card.png': { id: 'a1', filename: 'card.png', content_type: 'image/png', size: png.length, r2_key: 'k/card' },
     'poster.jpg': { id: 'a2', filename: 'poster.jpg', content_type: 'image/jpeg', size: 9 * 1024 * 1024, r2_key: 'k/poster' },
+    'mural.png': { id: 'a5', filename: 'mural.png', content_type: 'image/png', size: 24 * 1024 * 1024, r2_key: 'k/mural' },
     'scan.pdf': { id: 'a3', filename: 'scan.pdf', content_type: 'application/pdf', size: 10, r2_key: 'k/scan' },
     'fresh.pdf': { id: 'a4', filename: 'fresh.pdf', content_type: 'application/pdf', size: 10, r2_key: 'k/fresh' },
   };
@@ -79,7 +80,41 @@ function pictured() {
         return { ok: true, reason: null };
       },
     },
-    blobs: { get: async (key: string) => (key === 'k/card' ? { arrayBuffer: async () => png.buffer as ArrayBuffer } : null) },
+    blobs: {
+      get: async (key: string) =>
+        key === 'k/card' || key === 'k/poster'
+          ? { body: new Response(png).body!, arrayBuffer: async () => png.buffer as ArrayBuffer }
+          : null,
+    },
+  };
+}
+
+/** The head of a JPEG 1176 by 1568: SOI, then a baseline frame header naming its size. */
+const shrunk = new Uint8Array([
+  0xff, 0xd8, 0xff, 0xc0, 0x00, 0x11, 0x08, 0x06, 0x20, 0x04, 0x98, 0x03,
+  0x01, 0x22, 0x00, 0x02, 0x11, 0x01, 0x03, 0x11, 0x01,
+]);
+
+/** Stands in for the Images binding: records the edge it was asked for, or fails as told. */
+function fakeImages(fail = false) {
+  const asked: unknown[] = [];
+  return {
+    asked,
+    binding: {
+      input() {
+        const transformer = {
+          transform(t: unknown) {
+            asked.push(t);
+            return transformer;
+          },
+          async output() {
+            if (fail) throw new Error('9422: free plan used up');
+            return { image: () => new Response(shrunk).body! };
+          },
+        };
+        return transformer;
+      },
+    },
   };
 }
 
@@ -103,11 +138,72 @@ describe('get_attachment', () => {
     const pdf = await get({ noteId, filename: 'scan.pdf' });
     expect(pdf.isError).toBe(true);
     expect(pdf.content[0]!.text).toMatch(/text layer/);
+    // Without the Images binding a big picture cannot be shrunk, and the refusal says why
+    // and what would get it read: a 9 MB one is past Auto-fill's reach too.
     const big = await get({ noteId, filename: 'poster.jpg' });
     expect(big.isError).toBe(true);
     expect(big.content[0]!.text).toMatch(/9\.0 MB, over the 3\.7 MB/);
+    expect(big.content[0]!.text).toMatch(/no Images binding/);
+    expect(big.content[0]!.text).toMatch(/smaller copy/);
     expect((await get({ noteId, filename: 'ghost.png' })).isError).toBe(true);
     expect((await get({ noteId: otherNote, filename: 'card.png' })).isError).toBe(true);
+  });
+});
+
+describe('get_attachment where the instance binds Images', () => {
+  it('hands over a picture too large to send as it is, shrunk to the default edge, with the size it was sent at', async () => {
+    const { repo, blobs } = pictured();
+    const images = fakeImages();
+    const get = collect({ BLOBS: blobs, IMAGES: images.binding }, repo).get('get_attachment')!;
+    const result = await get({ noteId, filename: 'poster.jpg' });
+    expect(result.isError).toBeFalsy();
+    const [image, text] = result.content as Array<{ type: string; data?: string; mimeType?: string; text?: string }>;
+    expect(image).toEqual({ type: 'image', data: btoa(String.fromCharCode(...shrunk)), mimeType: 'image/jpeg' });
+    const answer = JSON.parse(text!.text!) as Record<string, unknown>;
+    // The original's name, type and size, so set_attachment_text is called on the file itself.
+    expect(answer).toMatchObject({ filename: 'poster.jpg', contentType: 'image/jpeg', size: 9 * 1024 * 1024 });
+    expect(answer.sent).toEqual({
+      contentType: 'image/jpeg',
+      width: 1176,
+      height: 1568,
+      bytes: shrunk.length,
+      maxEdge: 1568,
+      downscaled: true,
+    });
+    expect(answer.next).toMatch(/JPEG copy no larger than 1568 px/);
+    expect(answer.next).toMatch(/maxEdge 2576/);
+    expect(images.asked).toEqual([{ width: 1568, height: 1568, fit: 'scale-down' }]);
+  });
+
+  it('shrinks to the edge the assistant asks for', async () => {
+    const { repo, blobs } = pictured();
+    const images = fakeImages();
+    const get = collect({ BLOBS: blobs, IMAGES: images.binding }, repo).get('get_attachment')!;
+    const result = await get({ noteId, filename: 'card.png', maxEdge: 2576 });
+    expect((JSON.parse(result.content[1]!.text) as { next: string }).next).not.toMatch(/maxEdge/);
+    expect(images.asked).toEqual([{ width: 2576, height: 2576, fit: 'scale-down' }]);
+  });
+
+  it('sends a small original when shrinking fails, and says so when a big one cannot be sent', async () => {
+    const { repo, blobs } = pictured();
+    const get = collect({ BLOBS: blobs, IMAGES: fakeImages(true).binding }, repo).get('get_attachment')!;
+    const small = await get({ noteId, filename: 'card.png' });
+    expect(small.isError).toBeFalsy();
+    expect(small.content[0]).toMatchObject({ type: 'image', mimeType: 'image/png' });
+    expect(JSON.parse(small.content[1]!.text)).toMatchObject({ sent: { downscaled: false } });
+    const big = await get({ noteId, filename: 'poster.jpg' });
+    expect(big.isError).toBe(true);
+    expect(big.content[0]!.text).toMatch(/Shrinking it failed/);
+  });
+
+  it('refuses a picture past what the binding takes, without asking it', async () => {
+    const { repo, blobs } = pictured();
+    const images = fakeImages();
+    const get = collect({ BLOBS: blobs, IMAGES: images.binding }, repo).get('get_attachment')!;
+    const huge = await get({ noteId, filename: 'mural.png' });
+    expect(huge.isError).toBe(true);
+    expect(huge.content[0]!.text).toMatch(/24\.0 MB.*over the 20 MB this instance can shrink/);
+    expect(images.asked).toEqual([]);
   });
 });
 

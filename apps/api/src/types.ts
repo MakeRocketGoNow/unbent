@@ -76,6 +76,12 @@ export interface Env {
    */
   AI?: Ai;
   /**
+   * Cloudflare's Images binding, for shrinking a picture before MCP's `get_attachment`
+   * hands it to an assistant (lib/downscale.ts). Optional because it is the operator's to
+   * bind; without it the tool hands over the original, and only when it is small enough.
+   */
+  IMAGES?: ImagesBinding;
+  /**
    * The origin the app is served on: what Better Auth, the passkey relying party, secure
    * cookies, the MCP audience and the legal documents' host all derive from.
    *
