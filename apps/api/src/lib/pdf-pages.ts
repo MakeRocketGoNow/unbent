@@ -32,6 +32,18 @@
  * where some writers put them. A page drawn in several strips gives several pictures. A
  * picture drawn inline in the content stream (`BI … EI`) is not found: scanners do not
  * write them for a page.
+ *
+ * What it costs, measured on those same 172 files (2026-11-17, Node's V8, which is
+ * workerd's): opening a file, the search and the page tree, a median of 0.2 ms and at most
+ * 7; a JPEG page nothing, since its bytes are a view into the file. A Flate page is a median
+ * of 14 ms (35 at the 90th percentile, 130 at the most), nearly all of it the native zlib
+ * inflating the pixels and compressing them again for the PNG, with the CRC over the
+ * compressed result in JavaScript a small part. So a JPEG scan fits Workers Free's 10 ms of
+ * CPU an invocation and a Flate one may not: on Free a call that reaches a Flate page can be
+ * cut short with the Worker's own error, which loses nothing but that answer. unbent.app is
+ * on Paid, where it is well inside the limit. Nothing cheaper reads Flate pixels into a
+ * file a model takes: a PNG must be compressed, and the only alternative, stored blocks,
+ * trades the compression for a CRC and a checksum in JavaScript over every pixel instead.
  */
 
 /** A reference to an object: `12 0 R`. */

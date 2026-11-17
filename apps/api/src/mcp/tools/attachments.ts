@@ -48,6 +48,12 @@ const MAX_MCP_IMAGE_BYTES = Math.floor((5 * 1024 * 1024 * 3) / 4) - 64 * 1024;
  * are held to what a single picture may be, since no client is known to take more in one
  * answer, which only matters where nothing shrinks the pages: an instance without the Images
  * binding sends a scan's pages as the scanner stored them. The first page always goes.
+ *
+ * Each call reads the whole file from R2 and parses it again for its few pages, so a long
+ * scan read through costs its size once per call: a Worker keeps nothing between calls,
+ * and a cache of parsed files would be one more thing in an isolate's 128 MB. Parsing is
+ * the cheap part (lib/pdf-pages.ts measures it), and a scan worth reading page by page is
+ * rarely more than a few calls of five.
  */
 const PAGES_PER_CALL = 5;
 const MAX_PDF_ANSWER_BYTES = MAX_MCP_IMAGE_BYTES;
