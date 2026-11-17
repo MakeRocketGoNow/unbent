@@ -1233,7 +1233,7 @@ export class UserStore extends DurableObject<StoreEnv> {
   // out of context (`record`). `ownsNote` keeps its name for the facade's sake although
   // ownership is not what it checks any more; see `AttachmentsStore.noteIsLive`.
 
-  resolveAttachment(noteId: string, filename: string, opts?: { includeTrashed?: boolean | undefined }) { this.ready(); return this.attachments.resolve(noteId, filename, opts); }
+  resolveAttachment(noteId: string, filename: string, opts?: { includeTrashed?: boolean | undefined; loose?: boolean | undefined }) { this.ready(); return this.attachments.resolve(noteId, filename, opts); }
   listAttachments(noteId: string) { this.ready(); return this.attachments.listForNote(noteId); }
   ownsNote(noteId: string) { this.ready(); return this.attachments.noteIsLive(noteId); }
   availableFilename(noteId: string, desired: string) { this.ready(); return this.attachments.availableFilename(noteId, desired); }

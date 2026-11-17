@@ -40,9 +40,10 @@ export class AttachmentsRepo extends StoreRepo {
 
   /**
    * Resolves `files/<filename>` within a live note, or a trashed one too with
-   * `includeTrashed`. Null when there is no such file.
+   * `includeTrashed`. Null when there is no such file. `loose` is for a name an assistant
+   * said back (see `AttachmentsStore.resolve`).
    */
-  resolve(noteId: string, filename: string, opts?: { includeTrashed?: boolean }): Promise<AttachmentRow | null> {
+  resolve(noteId: string, filename: string, opts?: { includeTrashed?: boolean; loose?: boolean }): Promise<AttachmentRow | null> {
     return this.call((s) => s.resolveAttachment(noteId, filename, opts));
   }
 
@@ -148,7 +149,7 @@ export class AttachmentsRepo extends StoreRepo {
   }
 
   /** A file's text and how it came to be, for MCP's `get_attachment_text`; see `AttachmentsStore.textWithRead`. */
-  textWithRead(noteId: string, filename: string, vision: boolean): Promise<{ read: FileRead; text: string | null } | null> {
+  textWithRead(noteId: string, filename: string, vision: boolean): Promise<{ filename: string; read: FileRead; text: string | null } | null> {
     return this.call((s) => s.textWithRead(noteId, filename, vision));
   }
 

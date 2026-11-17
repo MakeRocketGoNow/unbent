@@ -149,7 +149,7 @@ export function registerAttachmentTools(
     async ({ noteId, filename, maxEdge }) => {
       // Scoped to the caller's store, so another person's note reads as missing; and
       // never from the trash, like every other read of a file that is not a page load.
-      const row = await repos.attachments.resolve(noteId, filename);
+      const row = await repos.attachments.resolve(noteId, filename, { loose: true });
       if (!row) return notFound('attachment', `${filename} on note ${noteId}`);
       if (!LLM_IMAGE_TYPES.has(row.content_type)) {
         return toolError(
@@ -353,7 +353,8 @@ export function registerAttachmentTools(
         }
       }
       return jsonResult({
-        filename,
+        // The stored name, which a loose match may not have been asked with.
+        filename: result.filename,
         read: 'assistant',
         chars: trimmed.length,
         note: vision

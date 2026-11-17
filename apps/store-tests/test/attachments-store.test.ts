@@ -199,7 +199,7 @@ describe('attachments', () => {
     // An assistant's words over MCP are a hint, not the model's reading: the press is
     // offered the file again, told whose words stand, so it can have the model read it.
     await stub.recordAttachment(file('n2', { id: 'told', filename: 'told.jpg', contentType: 'image/jpeg' }));
-    expect(await stub.writeAssistantText('n2', 'told.jpg', 'A card for a plumber')).toEqual({ ok: true, reason: null });
+    expect(await stub.writeAssistantText('n2', 'told.jpg', 'A card for a plumber')).toEqual({ ok: true, reason: null, filename: 'told.jpg' });
     const offered = (await stub.autofillPrelude('n2', 10))!.forVision.map((f) => [f.id, f.writtenBy ?? null]).sort();
     expect(offered).toEqual([['pic', null], ['told', 'assistant']]);
 
@@ -228,25 +228,60 @@ describe('attachments', () => {
     await stub.recordText({ attachmentId: 'blank', noteId: 'n1', filename: 'blank.pdf', text: '' });
 
     // Nothing there, its own earlier words, or a row the model left empty: all yield.
-    expect(await stub.writeAssistantText('n1', 'card.jpg', 'Plumber card\nJane Doe, Acme Plumbing, 555-0100')).toEqual({ ok: true, reason: null });
-    expect(await stub.writeAssistantText('n1', 'card.jpg', 'Jane Doe, Acme Plumbing')).toEqual({ ok: true, reason: null });
-    expect(await stub.writeAssistantText('n1', 'declined.jpg', 'A receipt the model would not read')).toEqual({ ok: true, reason: null });
+    expect(await stub.writeAssistantText('n1', 'card.jpg', 'Plumber card\nJane Doe, Acme Plumbing, 555-0100')).toEqual({ ok: true, reason: null, filename: 'card.jpg' });
+    expect(await stub.writeAssistantText('n1', 'card.jpg', 'Jane Doe, Acme Plumbing')).toEqual({ ok: true, reason: null, filename: 'card.jpg' });
+    expect(await stub.writeAssistantText('n1', 'declined.jpg', 'A receipt the model would not read')).toEqual({ ok: true, reason: null, filename: 'declined.jpg' });
     // A PDF whose layer came back empty yields; one the free reader has not reached does
     // not, or it would never be reached and the next press would pay the model for it.
-    expect(await stub.writeAssistantText('n1', 'blank.pdf', 'A scan with no layer, read by eye')).toEqual({ ok: true, reason: null });
-    expect(await stub.writeAssistantText('n1', 'fresh.pdf', 'x')).toEqual({ ok: false, reason: 'unread' });
+    expect(await stub.writeAssistantText('n1', 'blank.pdf', 'A scan with no layer, read by eye')).toEqual({ ok: true, reason: null, filename: 'blank.pdf' });
+    expect(await stub.writeAssistantText('n1', 'fresh.pdf', 'x')).toEqual({ ok: false, reason: 'unread', filename: null });
     expect((await stub.autofillPrelude('n1', 10))!.forText.map((f) => f.id)).toEqual(['fresh']);
     // The file's own text layer and the model's reading do not.
-    expect(await stub.writeAssistantText('n1', 'bill.pdf', 'x')).toEqual({ ok: false, reason: 'layer' });
-    expect(await stub.writeAssistantText('n1', 'seen.jpg', 'x')).toEqual({ ok: false, reason: 'vision' });
-    expect(await stub.writeAssistantText('n1', 'ghost.jpg', 'x')).toEqual({ ok: false, reason: 'missing' });
+    expect(await stub.writeAssistantText('n1', 'bill.pdf', 'x')).toEqual({ ok: false, reason: 'layer', filename: null });
+    expect(await stub.writeAssistantText('n1', 'seen.jpg', 'x')).toEqual({ ok: false, reason: 'vision', filename: null });
+    expect(await stub.writeAssistantText('n1', 'ghost.jpg', 'x')).toEqual({ ok: false, reason: 'missing', filename: null });
 
     // Read back as the assistant's, summarised as a text layer is, and found by search.
-    expect(await stub.textWithRead('n1', 'card.jpg')).toEqual({ read: 'assistant', text: 'Jane Doe, Acme Plumbing' });
+    expect(await stub.textWithRead('n1', 'card.jpg')).toEqual({ filename: 'card.jpg', read: 'assistant', text: 'Jane Doe, Acme Plumbing' });
     const card = (await stub.getWithFiles('n1'))!.files.find((f) => f.filename === 'card.jpg');
     expect(card).toMatchObject({ read: 'assistant', summary: 'Jane Doe, Acme Plumbing' });
     expect((await stub.search('plumbing', 5)).map((r) => r.matchedFile)).toEqual(['card.jpg']);
     expect((await stub.textsForNote('n1')).find((f) => f.filename === 'card.jpg')!.readBy).toBe('assistant');
+  });
+
+  /**
+   * MAK-254: macOS puts a narrow no-break space (U+202F) before a screenshot's AM, and an
+   * assistant says the name back from get_note with a plain one. The three tools that take
+   * an assistant's filename find the file anyway; a route's exact resolve does not, and a
+   * name two files share once spaces are forgiven finds neither.
+   */
+  it('finds a file an assistant names with plain spaces where the stored name has others', async () => {
+    const { stub } = freshStore('att-loose');
+    await stub.create({ id: 'n1', title: 'T', body: '', tags: [] });
+    const stored = 'Screenshot 2026-04-04 at 10.22.13 AM.png';
+    const said = 'Screenshot 2026-04-04 at 10.22.13 AM.png';
+    await stub.recordAttachment(file('n1', { id: 'shot', filename: stored, contentType: 'image/png' }));
+
+    expect(await stub.resolveAttachment('n1', said, { loose: true })).toMatchObject({ id: 'shot', filename: stored });
+    expect(await stub.resolveAttachment('n1', said)).toBeNull();
+    expect(await stub.textWithRead('n1', said)).toEqual({ filename: stored, read: 'pending', text: null });
+    expect(await stub.writeAssistantText('n1', said, 'A settings screen')).toEqual({ ok: true, reason: null, filename: stored });
+    // Recorded against the file's own name, so its text reads back under either.
+    expect(await stub.textWithRead('n1', stored)).toEqual({ filename: stored, read: 'assistant', text: 'A settings screen' });
+    expect((await stub.search('settings', 5)).map((r) => r.matchedFile)).toEqual([stored]);
+
+    // A name from a Mac's file system may be decomposed where the assistant's is not.
+    await stub.recordAttachment(file('n1', { id: 'cafe', filename: 'Café receipt.jpg', contentType: 'image/jpeg' }));
+    expect(await stub.resolveAttachment('n1', 'Café receipt.jpg', { loose: true })).toMatchObject({ id: 'cafe' });
+    // Case is not forgiven: it is something a person can see.
+    expect(await stub.resolveAttachment('n1', 'screenshot 2026-04-04 at 10.22.13 AM.png', { loose: true })).toBeNull();
+
+    // Two files the loose form cannot tell apart: no guess, and an exact name still wins.
+    await stub.recordAttachment(file('n1', { id: 'nbsp', filename: 'a b.png', contentType: 'image/png' }));
+    await stub.recordAttachment(file('n1', { id: 'narrow', filename: 'a b.png', contentType: 'image/png' }));
+    expect(await stub.resolveAttachment('n1', 'a b.png', { loose: true })).toBeNull();
+    expect(await stub.writeAssistantText('n1', 'a b.png', 'x')).toEqual({ ok: false, reason: 'missing', filename: null });
+    expect(await stub.resolveAttachment('n1', 'a b.png', { loose: true })).toMatchObject({ id: 'narrow' });
   });
 
   it('says what each file is in brief, on a note and on a page of notes', async () => {
@@ -317,10 +352,10 @@ describe('attachments', () => {
 
     // One file's text with the same status, for get_attachment_text: the whole text
     // when it was read, and which kind of nothing when it was not.
-    expect(await stub.textWithRead('n1', 'bill.pdf')).toEqual({ read: 'text', text: BILL });
-    expect(await stub.textWithRead('n2', 'empty.pdf')).toEqual({ read: 'pending', text: null });
-    expect(await stub.textWithRead('n2', 'empty.pdf', false)).toEqual({ read: 'none', text: null });
-    expect(await stub.textWithRead('n2', 'seen.pdf')).toEqual({ read: 'none', text: null });
+    expect(await stub.textWithRead('n1', 'bill.pdf')).toEqual({ filename: 'bill.pdf', read: 'text', text: BILL });
+    expect(await stub.textWithRead('n2', 'empty.pdf')).toEqual({ filename: 'empty.pdf', read: 'pending', text: null });
+    expect(await stub.textWithRead('n2', 'empty.pdf', false)).toEqual({ filename: 'empty.pdf', read: 'none', text: null });
+    expect(await stub.textWithRead('n2', 'seen.pdf')).toEqual({ filename: 'seen.pdf', read: 'none', text: null });
     expect(await stub.textWithRead('n2', 'ghost.pdf')).toBeNull();
 
     // A search carries the same lines for its matches, in the one call.

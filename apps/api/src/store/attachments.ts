@@ -126,6 +126,12 @@ export interface AssistantWrite {
   ok: boolean;
   /** Why not, when `ok` is false; null when it was written. One shape rather than a union, which the RPC stub's types do not carry. */
   reason: 'missing' | 'unread' | 'layer' | 'vision' | null;
+  /**
+   * The file's stored name when it was written, which the tool answers with: the name it
+   * was asked with may be a loose match's (`looseFilename`), and an assistant writes what
+   * it is answered into a link. Null when it was not written.
+   */
+  filename: string | null;
 }
 
 /** The row's `read_by` as the three values it may hold; anything else reads as a text layer. */
@@ -217,6 +223,23 @@ export function summarize(
   return { read: readBy === 'assistant' ? 'assistant' : 'text', summary: clip(found, SUMMARY_CHARS) };
 }
 
+/**
+ * A filename as an assistant may say it back: Unicode composed (NFC), and every kind of
+ * space an ordinary one.
+ *
+ * macOS names a screenshot "Screenshot 2026-04-04 at 10.22.13 AM.png" with a narrow
+ * no-break space (U+202F) before the AM, and get_note lists it exactly so. A model reading
+ * that list says the name back with a plain space, which an exact match never finds, so
+ * every MCP tool that took a filename answered "no such attachment" for a file get_note
+ * had just named (MAK-254). A name from a Mac's file system may also arrive decomposed
+ * (an e and its accent as two code points) where a model writes it composed. Only spaces
+ * and composition are forgiven: case, and anything else a person can see, still has to
+ * match, since two files on one note may differ by exactly that.
+ */
+export function looseFilename(name: string): string {
+  return name.normalize('NFC').replace(/\s/gu, ' ');
+}
+
 /** What one answer of `textsById` carries at most; a quarter of a feed page, since it is asked for in the background. */
 export const TEXT_PAGE_BYTES = 1024 * 1024;
 
@@ -264,15 +287,43 @@ export class AttachmentsStore {
    * trash still draws its images and PDFs. Copying, renaming and re-reading a file all
    * resolve it too, and none of those may start from the trash.
    */
-  resolve(noteId: string, filename: string, opts: { includeTrashed?: boolean | undefined } = {}): AttachmentRow | null {
-    return this.sql.first<AttachmentRow>(
-      `SELECT a.id, a.filename, a.content_type, a.size, a.r2_key
-         FROM attachments a
-         JOIN notes n ON n.id = a.note_id
-        WHERE a.note_id = ?1 AND a.filename = ?2${opts.includeTrashed ? '' : ' AND n.deleted_at IS NULL'}`,
-      noteId,
-      filename,
-    );
+  resolve(
+    noteId: string,
+    filename: string,
+    opts: { includeTrashed?: boolean | undefined; loose?: boolean | undefined } = {},
+  ): AttachmentRow | null {
+    const lookup = (name: string) =>
+      this.sql.first<AttachmentRow>(
+        `SELECT a.id, a.filename, a.content_type, a.size, a.r2_key
+           FROM attachments a
+           JOIN notes n ON n.id = a.note_id
+          WHERE a.note_id = ?1 AND a.filename = ?2${opts.includeTrashed ? '' : ' AND n.deleted_at IS NULL'}`,
+        noteId,
+        name,
+      );
+    return opts.loose ? this.byLooseName(noteId, filename, lookup) : lookup(filename);
+  }
+
+  /**
+   * `lookup` by the name as given, and when that finds nothing, by the one file on the
+   * note whose name is the same once `looseFilename` has been through both. For the MCP
+   * tools that take a filename an assistant read off get_note, and nothing else: a
+   * route's name comes from a link or a list the app made, byte for byte, and a near
+   * miss there is a real miss.
+   *
+   * The exact match goes first, so a name that is right costs what it always did; only a
+   * miss reads the note's filenames, which `idx_attachments_note` bounds at the note's
+   * own files. Two files the loose form cannot tell apart match neither: the tool says
+   * there is no such file rather than guess which was meant.
+   */
+  private byLooseName<T>(noteId: string, filename: string, lookup: (name: string) => T | null): T | null {
+    const exact = lookup(filename);
+    if (exact) return exact;
+    const want = looseFilename(filename);
+    const near = this.sql
+      .exec<{ filename: string }>(`SELECT filename FROM attachments WHERE note_id = ?1`, noteId)
+      .filter((r) => looseFilename(r.filename) === want);
+    return near.length === 1 ? lookup(near[0]!.filename) : null;
   }
 
   listForNote(noteId: string): AttachmentInfo[] {
@@ -516,20 +567,26 @@ export class AttachmentsStore {
    */
   writeAssistantText(noteId: string, filename: string, text: string): AssistantWrite {
     return this.sql.tx(() => {
-      const row = this.sql.first<{ id: string; content_type: string; text: string | null; read_by: string | null }>(
-        `SELECT a.id, a.content_type, t.text, t.read_by
-           FROM attachments a
-           JOIN notes n ON n.id = a.note_id
-           LEFT JOIN attachment_text t ON t.attachment_id = a.id
-          WHERE a.note_id = ?1 AND a.filename = ?2 AND n.deleted_at IS NULL`,
-        noteId,
-        filename,
+      // Matched loosely, as get_attachment is: the name came from an assistant.
+      const row = this.byLooseName(noteId, filename, (name) =>
+        this.sql.first<{ id: string; filename: string; content_type: string; text: string | null; read_by: string | null }>(
+          `SELECT a.id, a.filename, a.content_type, t.text, t.read_by
+             FROM attachments a
+             JOIN notes n ON n.id = a.note_id
+             LEFT JOIN attachment_text t ON t.attachment_id = a.id
+            WHERE a.note_id = ?1 AND a.filename = ?2 AND n.deleted_at IS NULL`,
+          noteId,
+          name,
+        ),
       );
-      if (!row) return { ok: false, reason: 'missing' };
-      if (row.content_type === 'application/pdf' && row.text === null) return { ok: false, reason: 'unread' };
-      if (row.text && row.read_by !== 'assistant') return { ok: false, reason: row.read_by === 'vision' ? 'vision' : 'layer' };
-      this.recordText({ attachmentId: row.id, noteId, filename, text, readBy: 'assistant' });
-      return { ok: true, reason: null };
+      if (!row) return { ok: false, reason: 'missing', filename: null };
+      if (row.content_type === 'application/pdf' && row.text === null) return { ok: false, reason: 'unread', filename: null };
+      if (row.text && row.read_by !== 'assistant') {
+        return { ok: false, reason: row.read_by === 'vision' ? 'vision' : 'layer', filename: null };
+      }
+      // The stored name, not the one asked with: the text row names its file.
+      this.recordText({ attachmentId: row.id, noteId, filename: row.filename, text, readBy: 'assistant' });
+      return { ok: true, reason: null, filename: row.filename };
     });
   }
 
@@ -653,16 +710,20 @@ export class AttachmentsStore {
    * `get_attachment_text`: an empty answer alone left the tool saying a file "may still be
    * being processed, or may have no text layer", which is the guess `read` exists to
    * settle. Null when there is no such file. `text` is null unless `read` is `vision` or
-   * `text`.
+   * `text`. `filename` is the stored name, which a loose match may not have been asked
+   * with; the tool answers with it, as `get_attachment` does.
    */
-  textWithRead(noteId: string, filename: string, vision = true): { read: FileRead; text: string | null } | null {
-    const row = this.sql.first<{ content_type: string; text: string | null; read_by: string | null }>(
-      `SELECT a.content_type, t.text, t.read_by
-         FROM attachments a
-         LEFT JOIN attachment_text t ON t.attachment_id = a.id
-        WHERE a.note_id = ?1 AND a.filename = ?2`,
-      noteId,
-      filename,
+  textWithRead(noteId: string, filename: string, vision = true): { filename: string; read: FileRead; text: string | null } | null {
+    // Matched loosely, as get_attachment is: the name came from an assistant.
+    const row = this.byLooseName(noteId, filename, (name) =>
+      this.sql.first<{ filename: string; content_type: string; text: string | null; read_by: string | null }>(
+        `SELECT a.filename, a.content_type, t.text, t.read_by
+           FROM attachments a
+           LEFT JOIN attachment_text t ON t.attachment_id = a.id
+          WHERE a.note_id = ?1 AND a.filename = ?2`,
+        noteId,
+        name,
+      ),
     );
     if (!row) return null;
     // Only the head goes to `summarize`, which folds what it is given into a summary this
@@ -670,7 +731,7 @@ export class AttachmentsStore {
     // taken for an empty one.
     const head = row.text === null ? null : row.text.trim().slice(0, SUMMARY_SOURCE_CHARS);
     const { read } = summarize(row.content_type, head, row.read_by, vision);
-    return { read, text: read === 'vision' || read === 'text' || read === 'assistant' ? row.text : null };
+    return { filename: row.filename, read, text: read === 'vision' || read === 'text' || read === 'assistant' ? row.text : null };
   }
 
   /**
