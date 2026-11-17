@@ -5,6 +5,7 @@ import type { AttachmentsRepo } from '../../lib/attachments-repo.js';
 import type { NotesRepo } from '../../lib/notes-repo.js';
 import type { UploadGrantsRepo } from '../../lib/upload-grants.js';
 import { fakeJpeg, page, pageTree, pdfOf, type TestObject } from '../../lib/test-pdf.js';
+import { withReaderSlot } from '../../lib/reader-gate.js';
 
 /**
  * The upload link, minted on the instance's own address for the caller's note only, with
@@ -294,6 +295,24 @@ describe('get_attachment on a scanned PDF', () => {
     const big = await collect({ BLOBS: blobs, ANTHROPIC_API_KEY: 'k' }, repo).get('get_attachment')!({ noteId, filename: 'bigfax.pdf' });
     expect(big.content[0]!.text).toMatch(/encoded as CCITT fax/);
     expect(big.content[0]!.text).not.toMatch(/Auto-fill/);
+  });
+
+  it('waits its turn at the read gate before fetching the file', async () => {
+    const { repo, blobs } = pictured();
+    const fetched: string[] = [];
+    const watched = { get: async (key: string) => (fetched.push(key), blobs.get(key)) };
+    const get = collect({ BLOBS: watched }, repo).get('get_attachment')!;
+    // Two other reads hold the isolate's two slots, as an import's text-layer reads can.
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    const holders = [withReaderSlot(() => held), withReaderSlot(() => held)];
+    const pending = get({ noteId, filename: 'pages.pdf', pages: '1' });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(fetched).toEqual([]);
+    release();
+    await Promise.all(holders);
+    expect((await pending).isError).toBeFalsy();
+    expect(fetched).toEqual(['k/pages']);
   });
 
   it('refuses a PDF with a text layer before fetching it, and one that is encrypted or too large to open', async () => {

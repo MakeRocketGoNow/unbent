@@ -25,6 +25,11 @@
  * an import of scans crawl, for no memory benefit until a second large file actually
  * overlaps. Two files at the read caps plus a reader's own working set sit far enough under
  * 128MB to be safe, and let one read proceed while another waits on the AI service.
+ *
+ * MCP's `get_attachment` takes a slot too, for a scanned PDF's pages (MAK-255), and it is
+ * the largest holder: up to about 50 MB at its caps (the file and one page's pixels,
+ * lib/pdf-pages.ts), a few MB for a real scan. Two of those at once still fit; a third
+ * slot would not, whoever held the other two.
  */
 const MAX_CONCURRENT_READS = 2;
 

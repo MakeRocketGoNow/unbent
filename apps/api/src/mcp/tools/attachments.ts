@@ -21,6 +21,7 @@ import {
 import { canUseLlm, LLM_IMAGE_TYPES, readableByLlm, sniffMediaType, toBase64 } from '../../lib/llm.js';
 import type { NotesRepo } from '../../lib/notes-repo.js';
 import { openPdf, PdfError, type PdfPages } from '../../lib/pdf-pages.js';
+import { withReaderSlot } from '../../lib/reader-gate.js';
 import { storeAttachment } from '../../lib/store-attachment.js';
 import { UPLOAD_GRANT_TTL_MS, type UploadGrantsRepo } from '../../lib/upload-grants.js';
 import type { Env } from '../../types.js';
@@ -162,107 +163,113 @@ export function registerAttachmentTools(
     if (row.size > MAX_PDF_READ_BYTES) {
       return toolError(`This PDF is ${mb(row.size)}, over the ${mb(MAX_PDF_READ_BYTES)} this tool opens.${autofill}`);
     }
-    const object = await env.BLOBS.get(row.r2_key);
-    if (!object) return toolError('The bytes of this file could not be found; try again later.');
-    let pdf: PdfPages;
-    try {
-      pdf = await openPdf(new Uint8Array(await object.arrayBuffer()));
-    } catch (err) {
-      if (!(err instanceof PdfError)) throw err;
-      return toolError(`This file could not be read as a PDF.${autofill}`);
-    }
-    if (pdf.encrypted) {
-      return toolError(`This PDF is encrypted, so the pictures in it cannot be taken out here.${autofill}`);
-    }
-    const total = pdf.pages.length;
-    if (!total) return toolError(`No pages could be found in this PDF.${autofill}`);
-
-    const [first, last] = (asked ?? `1-${PAGES_PER_CALL}`).split('-').map((n) => Number(n.trim()));
-    const from = first!;
-    if (from < 1 || from > total) return toolError(`This PDF has ${total} page${total === 1 ? '' : 's'}; ask for pages from 1 to ${total}.`);
-    if (last !== undefined && last < from) return toolError('The range is backwards: ask for the lower page first, like "2-4".');
-    const to = Math.min(last ?? from, total, from + PAGES_PER_CALL - 1);
-
-    const content: Array<{ type: 'image'; data: string; mimeType: string } | { type: 'text'; text: string }> = [];
-    const sent: Array<Record<string, unknown>> = [];
-    const notSent: Array<{ page: number; reason: string }> = [];
-    let bytes = 0;
-    let through = from - 1;
-    for (let page = from; page <= to; page++) {
-      const { images, hasText, rotate } = pdf.pages[page - 1]!;
-      if (!images.length) {
-        notSent.push({
-          page,
-          reason: hasText
-            ? 'it is text, not a picture; get_attachment_text has the text layer'
-            : 'it has no picture on it to send: it is drawn as shapes, which this tool cannot turn into one',
-        });
-        through = page;
-        continue;
+    // The file and a page's pixels are held from here to the answer, so the work takes a
+    // turn at the read gate with every other whole-file read on this isolate: an assistant
+    // asking for several scans at once, or reading beside an import, is how a run of them
+    // would otherwise stack in its 128 MB.
+    return withReaderSlot(async () => {
+      const object = await env.BLOBS.get(row.r2_key);
+      if (!object) return toolError('The bytes of this file could not be found; try again later.');
+      let pdf: PdfPages;
+      try {
+        pdf = await openPdf(new Uint8Array(await object.arrayBuffer()));
+      } catch (err) {
+        if (!(err instanceof PdfError)) throw err;
+        return toolError(`This file could not be read as a PDF.${autofill}`);
       }
-      // A page goes whole or not at all, so the next call starts on a page boundary.
-      const ready: Array<{ data: Uint8Array; mimeType: string; sent: Record<string, unknown> }> = [];
-      const failed: string[] = [];
-      for (const image of images) {
-        const pic = await pdf.picture(image);
-        if (!pic.ok) {
-          failed.push(pic.reason);
+      if (pdf.encrypted) {
+        return toolError(`This PDF is encrypted, so the pictures in it cannot be taken out here.${autofill}`);
+      }
+      const total = pdf.pages.length;
+      if (!total) return toolError(`No pages could be found in this PDF.${autofill}`);
+
+      const [first, last] = (asked ?? `1-${PAGES_PER_CALL}`).split('-').map((n) => Number(n.trim()));
+      const from = first!;
+      if (from < 1 || from > total) return toolError(`This PDF has ${total} page${total === 1 ? '' : 's'}; ask for pages from 1 to ${total}.`);
+      if (last !== undefined && last < from) return toolError('The range is backwards: ask for the lower page first, like "2-4".');
+      const to = Math.min(last ?? from, total, from + PAGES_PER_CALL - 1);
+
+      const content: Array<{ type: 'image'; data: string; mimeType: string } | { type: 'text'; text: string }> = [];
+      const sent: Array<Record<string, unknown>> = [];
+      const notSent: Array<{ page: number; reason: string }> = [];
+      let bytes = 0;
+      let through = from - 1;
+      for (let page = from; page <= to; page++) {
+        const { images, hasText, rotate } = pdf.pages[page - 1]!;
+        if (!images.length) {
+          notSent.push({
+            page,
+            reason: hasText
+              ? 'it is text, not a picture; get_attachment_text has the text layer'
+              : 'it has no picture on it to send: it is drawn as shapes, which this tool cannot turn into one',
+          });
+          through = page;
           continue;
         }
-        const out = await pagePicture(pic, edge);
-        if ('reason' in out) failed.push(out.reason);
-        else ready.push(out);
+        // A page goes whole or not at all, so the next call starts on a page boundary.
+        const ready: Array<{ data: Uint8Array; mimeType: string; sent: Record<string, unknown> }> = [];
+        const failed: string[] = [];
+        for (const image of images) {
+          const pic = await pdf.picture(image);
+          if (!pic.ok) {
+            failed.push(pic.reason);
+            continue;
+          }
+          const out = await pagePicture(pic, edge);
+          if ('reason' in out) failed.push(out.reason);
+          else ready.push(out);
+        }
+        const size = ready.reduce((n, r) => n + r.data.byteLength, 0);
+        if (sent.length && bytes + size > MAX_PDF_ANSWER_BYTES) break;
+        through = page;
+        bytes += size;
+        if (failed.length) {
+          notSent.push({
+            page,
+            reason:
+              (images.length > 1 ? `${failed.length} of its ${images.length} pictures could not be sent: ` : 'its picture could not be sent: ') +
+              [...new Set(failed)].join('; '),
+          });
+        }
+        if (!ready.length) continue;
+        content.push({ type: 'text', text: `Page ${page} of ${total}` + (rotate ? ` (shown turned ${rotate}° clockwise)` : '') });
+        for (const r of ready) {
+          content.push({ type: 'image', data: toBase64(r.data), mimeType: r.mimeType });
+          sent.push({ page, ...(rotate ? { turned: rotate } : {}), ...r.sent });
+        }
       }
-      const size = ready.reduce((n, r) => n + r.data.byteLength, 0);
-      if (sent.length && bytes + size > MAX_PDF_ANSWER_BYTES) break;
-      through = page;
-      bytes += size;
-      if (failed.length) {
-        notSent.push({
-          page,
-          reason:
-            (images.length > 1 ? `${failed.length} of its ${images.length} pictures could not be sent: ` : 'its picture could not be sent: ') +
-            [...new Set(failed)].join('; '),
-        });
-      }
-      if (!ready.length) continue;
-      content.push({ type: 'text', text: `Page ${page} of ${total}` + (rotate ? ` (shown turned ${rotate}° clockwise)` : '') });
-      for (const r of ready) {
-        content.push({ type: 'image', data: toBase64(r.data), mimeType: r.mimeType });
-        sent.push({ page, ...(rotate ? { turned: rotate } : {}), ...r.sent });
-      }
-    }
 
-    if (!sent.length) {
-      return toolError(
-        `Nothing on page${from === through ? ` ${from}` : `s ${from} to ${through}`} could be sent: ` +
-          notSent.map((n) => `page ${n.page}: ${n.reason}`).join('. ') +
-          '.' +
-          (through < total ? ` Pages ${through + 1} to ${total} may still be readable.` : '') +
-          autofill,
-      );
-    }
-    const record = 'Record what you read with set_attachment_text under this filename, so it is searchable and the next session has it.';
-    const next =
-      (through < total
-        ? `Pages ${through + 1} to ${total} were not sent; ask for pages "${through + 1}-${Math.min(through + PAGES_PER_CALL, total)}" next, and ` +
-          'read them all before recording, since set_attachment_text takes the text of the whole file. '
-        : `That was the last page. ${record} `) +
-      (sent.some((s) => s.turned)
-        ? 'A page marked "turned" is shown rotated in the PDF; its picture is sent as scanned, so its text may run sideways. '
-        : '') +
-      (sent.some((s) => s.downscaled) && edge < LARGEST_MAX_EDGE
-        ? `If small print is not legible, ask again with maxEdge ${LARGEST_MAX_EDGE}.`
-        : '');
-    content.push({
-      type: 'text',
-      text: JSON.stringify(
-        { filename: row.filename, contentType: row.content_type, size: row.size, pages: total, sent, notSent, next: next.trim() },
-        null,
-        2,
-      ),
+      if (!sent.length) {
+        return toolError(
+          `Nothing on page${from === through ? ` ${from}` : `s ${from} to ${through}`} could be sent: ` +
+            notSent.map((n) => `page ${n.page}: ${n.reason}`).join('. ') +
+            '.' +
+            (through < total ? ` Pages ${through + 1} to ${total} may still be readable.` : '') +
+            autofill,
+        );
+      }
+      const record = 'Record what you read with set_attachment_text under this filename, so it is searchable and the next session has it.';
+      const next =
+        (through < total
+          ? `Pages ${through + 1} to ${total} were not sent; ask for pages "${through + 1}-${Math.min(through + PAGES_PER_CALL, total)}" next, and ` +
+            'read them all before recording, since set_attachment_text takes the text of the whole file. '
+          : `That was the last page. ${record} `) +
+        (sent.some((s) => s.turned)
+          ? 'A page marked "turned" is shown rotated in the PDF; its picture is sent as scanned, so its text may run sideways. '
+          : '') +
+        (sent.some((s) => s.downscaled) && edge < LARGEST_MAX_EDGE
+          ? `If small print is not legible, ask again with maxEdge ${LARGEST_MAX_EDGE}.`
+          : '');
+      content.push({
+        type: 'text',
+        text: JSON.stringify(
+          { filename: row.filename, contentType: row.content_type, size: row.size, pages: total, sent, notSent, next: next.trim() },
+          null,
+          2,
+        ),
+      });
+      return { content };
     });
-    return { content };
   };
 
   /**
