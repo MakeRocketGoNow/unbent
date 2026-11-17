@@ -14,6 +14,7 @@
  */
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync } from 'node:fs';
+import { crc32, deflateSync } from 'node:zlib';
 import { createServer, type Server } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -1587,5 +1588,110 @@ describe('create_notes (MAK-214)', () => {
     expect(again).toMatchObject({ created: 1, skipped: 1 });
     expect(again.notes[0]).toMatchObject({ id: made.notes[0].id, skipped: true });
     expect(read(await call('list_notes', { notebook })).total).toBe(3);
+  });
+});
+
+/**
+ * A picture too large to send as it is, shrunk by the Images binding before it goes
+ * (MAK-185, MAK-253). Local `wrangler dev` runs the binding through sharp, so this is the
+ * real transform and the real JPEG, not a stand-in.
+ */
+describe('get_attachment', () => {
+  let grace: Actor;
+  let noteId: string;
+
+  /**
+   * A PNG stored without compression, so a smooth picture is as large as its pixels: 2400
+   * by 1800 is about 13 MB, the size of a phone photo of a form, and a JPEG of it is small.
+   */
+  function storedPng(width: number, height: number): Uint8Array {
+    const stride = width * 3 + 1;
+    const raw = Buffer.alloc(stride * height);
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const i = y * stride + 1 + x * 3;
+        raw[i] = (x * 255) / width;
+        raw[i + 1] = (y * 255) / height;
+        raw[i + 2] = 128;
+      }
+    }
+    const chunk = (type: string, data: Buffer) => {
+      const head = Buffer.alloc(4);
+      head.writeUInt32BE(data.length);
+      const body = Buffer.concat([Buffer.from(type, 'latin1'), data]);
+      const crc = Buffer.alloc(4);
+      crc.writeUInt32BE(crc32(body));
+      return Buffer.concat([head, body, crc]);
+    };
+    const ihdr = Buffer.alloc(13);
+    ihdr.writeUInt32BE(width, 0);
+    ihdr.writeUInt32BE(height, 4);
+    ihdr.set([8, 2, 0, 0, 0], 8);
+    return new Uint8Array(
+      Buffer.concat([
+        Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+        chunk('IHDR', ihdr),
+        chunk('IDAT', deflateSync(raw, { level: 0 })),
+        chunk('IEND', Buffer.alloc(0)),
+      ]),
+    );
+  }
+
+  beforeAll(async () => {
+    const stamp = Date.now();
+    const cookie = await signUp(`mcp-grace-${stamp}@example.test`, 'grace-password-12', 'Grace');
+    grace = { cookie, userId: '', token: await tokenFor(cookie, await registerClient('Reading Assistant'), RESOURCE) };
+    const created = await mcp(grace.token, 'tools/call', {
+      name: 'create_note',
+      arguments: { title: 'Grace forms', body: '' },
+    });
+    noteId = JSON.parse(toolText(created.body)).id;
+    const link = await mcp(grace.token, 'tools/call', {
+      name: 'prepare_attachment_upload',
+      arguments: { noteId, filename: 'Form photo.png', link: false },
+    });
+    const picture = storedPng(2400, 1800);
+    expect(picture.length).toBeGreaterThan(12 * 1024 * 1024);
+    const res = await fetch(JSON.parse(toolText(link.body)).uploadUrl, { method: 'PUT', body: picture });
+    expect(res.status).toBe(201);
+  }, 60_000);
+
+  async function see(args: Record<string, unknown>) {
+    const { body } = await mcp(grace.token, 'tools/call', {
+      name: 'get_attachment',
+      arguments: { noteId, filename: 'Form photo.png', ...args },
+    });
+    const content = (body.result?.content ?? []) as Array<{ type: string; data?: string; mimeType?: string; text?: string }>;
+    return { isError: body.result?.isError === true, content };
+  }
+
+  it('hands over a 13 MB photo as a JPEG at the edge the model reads, named as the original', async () => {
+    const { isError, content } = await see({});
+    expect(isError).toBe(false);
+    const [image, text] = content;
+    expect(image).toMatchObject({ type: 'image', mimeType: 'image/jpeg' });
+    const jpeg = Uint8Array.from(atob(image!.data!), (c) => c.charCodeAt(0));
+    expect([jpeg[0], jpeg[1]]).toEqual([0xff, 0xd8]);
+    expect(jpeg.length).toBeLessThan(1024 * 1024);
+    expect(JSON.parse(text!.text!)).toMatchObject({
+      filename: 'Form photo.png',
+      contentType: 'image/png',
+      sent: { contentType: 'image/jpeg', width: 1568, height: 1176, bytes: jpeg.length, downscaled: true },
+    });
+  });
+
+  it('sends the larger edge when asked, and never enlarges past the original', async () => {
+    const larger = await see({ maxEdge: 2576 });
+    expect(JSON.parse(larger.content[1]!.text!).sent).toMatchObject({ width: 2400, height: 1800, maxEdge: 2576 });
+    expect((await see({ maxEdge: 4000 })).isError).toBe(true);
+  });
+
+  it('lets set_attachment_text record what was read under the original filename', async () => {
+    const { body } = await mcp(grace.token, 'tools/call', {
+      name: 'set_attachment_text',
+      arguments: { noteId, filename: 'Form photo.png', text: 'Sample form\nA gradient, for a test.' },
+    });
+    expect(body.result?.isError).toBeFalsy();
+    expect(JSON.parse(toolText(body))).toMatchObject({ filename: 'Form photo.png', read: 'assistant' });
   });
 });

@@ -10,7 +10,15 @@ import {
   chooseFilename,
   fetchSource,
 } from '../../lib/fetch-attachment.js';
-import { canUseLlm, LLM_IMAGE_TYPES, toBase64 } from '../../lib/llm.js';
+import {
+  DEFAULT_MAX_EDGE,
+  downscale,
+  LARGEST_MAX_EDGE,
+  pictureSize,
+  MAX_DOWNSCALE_INPUT_BYTES,
+  SMALLEST_MAX_EDGE,
+} from '../../lib/downscale.js';
+import { canUseLlm, LLM_IMAGE_TYPES, readableByLlm, sniffMediaType, toBase64 } from '../../lib/llm.js';
 import type { NotesRepo } from '../../lib/notes-repo.js';
 import { storeAttachment } from '../../lib/store-attachment.js';
 import { UPLOAD_GRANT_TTL_MS, type UploadGrantsRepo } from '../../lib/upload-grants.js';
@@ -18,12 +26,14 @@ import type { Env } from '../../types.js';
 import { jsonResult, notFound, toolError } from './result.js';
 
 /**
- * The most of a picture `get_attachment` hands over, as bytes on disk. The model's
- * platforms cap an image by the length of its base64 (10 MiB on the Claude API, 5 MiB on
- * Bedrock and Vertex) and which one the assistant's client talks to is unknown here, so
- * the lower bound rules: three quarters of 5 MiB, less a little for the JSON around it. A
- * phone photo fits; a scan at print resolution does not, and the refusal names the size so
- * the person can resize it. MAK-185 is downscaling on the server, which would retire this.
+ * The most of a picture `get_attachment` hands over, as bytes. The model's platforms cap
+ * an image by the length of its base64 (10 MiB on the Claude API, 5 MiB on Bedrock and
+ * Vertex) and which one the assistant's client talks to is unknown here, so the lower
+ * bound rules: three quarters of 5 MiB, less a little for the JSON around it. A copy
+ * shrunk by the Images binding (lib/downscale.ts) comes nowhere near it; this is the
+ * ceiling for every original sent as it is: on an instance without the binding, one already
+ * within the edge, or one the binding could not shrink. The refusal names the size so the
+ * person can attach a smaller copy.
  */
 const MAX_MCP_IMAGE_BYTES = Math.floor((5 * 1024 * 1024 * 3) / 4) - 64 * 1024;
 
@@ -67,7 +77,13 @@ export function registerAttachmentTools(
   server: Pick<McpServer, 'registerTool'>,
   env: Pick<
     Env,
-    'APP_URL' | 'BLOBS' | 'AI' | 'ALLOW_TEST_CREDENTIALS' | 'ANTHROPIC_API_KEY' | 'ATTACHMENT_FETCH_USER_AGENT'
+    | 'APP_URL'
+    | 'BLOBS'
+    | 'AI'
+    | 'IMAGES'
+    | 'ALLOW_TEST_CREDENTIALS'
+    | 'ANTHROPIC_API_KEY'
+    | 'ATTACHMENT_FETCH_USER_AGENT'
   >,
   ctx: { waitUntil(promise: Promise<unknown>): void },
   repos: { notes: NotesRepo; attachments: AttachmentsRepo; uploads: UploadGrantsRepo },
@@ -86,6 +102,8 @@ export function registerAttachmentTools(
   const allowLoopback = env.ALLOW_TEST_CREDENTIALS === '1';
   // Whether a press will ever have the model read what an assistant writes here.
   const vision = canUseLlm(env);
+  // Whether `get_attachment` can shrink a picture before handing it over.
+  const shrinks = Boolean(env.IMAGES);
 
   server.registerTool(
     'get_attachment',
@@ -93,12 +111,16 @@ export function registerAttachmentTools(
       title: 'See a picture',
       description:
         'The picture itself, returned as an image for you to read: a JPEG, PNG, GIF or WebP ' +
-        'attachment under about 3.7 MB. For a picture that get_attachment_text, get_note or a ' +
+        (shrinks
+          ? `attachment, no larger than ${DEFAULT_MAX_EDGE} px on its longest side (the size your model reads ` +
+            `at; a larger picture is sent as a JPEG copy) unless you ask for up to ${LARGEST_MAX_EDGE} with maxEdge. `
+          : 'attachment under about 3.7 MB. ') +
+        'For a picture that get_attachment_text, get_note or a ' +
         'summary reports as "pending": nothing on this instance reads a picture on its own' +
         (vision
           ? '; an Auto-fill press by the person does, and so can you. '
           : '; this instance has no vision model, so you are the only reader it has. ') +
-        'Read it, then record what you read with set_attachment_text, so search, the ' +
+        'Read it, then record what you read with set_attachment_text under the same filename, so search, the ' +
         'summaries and the next session have it without looking again. The bytes come to ' +
         "you and to no model the instance runs. PDFs are not returned: a PDF's text layer is " +
         'read for free on upload and get_attachment_text has it' +
@@ -106,6 +128,16 @@ export function registerAttachmentTools(
       inputSchema: z.object({
         noteId: z.string().uuid(),
         filename: z.string().min(1).describe('As listed by get_note.'),
+        maxEdge: z
+          .number()
+          .int()
+          .min(SMALLEST_MAX_EDGE)
+          .max(LARGEST_MAX_EDGE)
+          .optional()
+          .describe(
+            `The longest side to send, in pixels; ${DEFAULT_MAX_EDGE} when not given. Ask for ${LARGEST_MAX_EDGE} ` +
+              'when small print was not legible at the default. Ignored where the instance cannot shrink a picture.',
+          ),
       }),
       annotations: {
         readOnlyHint: true,
@@ -114,7 +146,7 @@ export function registerAttachmentTools(
         openWorldHint: false,
       },
     },
-    async ({ noteId, filename }) => {
+    async ({ noteId, filename, maxEdge }) => {
       // Scoped to the caller's store, so another person's note reads as missing; and
       // never from the trash, like every other read of a file that is not a page load.
       const row = await repos.attachments.resolve(noteId, filename);
@@ -127,34 +159,134 @@ export function registerAttachmentTools(
               : 'Nothing on this instance reads it.'),
         );
       }
-      if (row.size > MAX_MCP_IMAGE_BYTES) {
-        const mb = (n: number) => `${(n / (1024 * 1024)).toFixed(1)} MB`;
-        return toolError(
-          `This picture is ${mb(row.size)}, over the ${mb(MAX_MCP_IMAGE_BYTES)} this tool returns. ` +
-            'A smaller copy of it, attached beside it, could be read.',
-        );
-      }
-      const object = await env.BLOBS.get(row.r2_key);
-      if (!object) return toolError('The bytes of this file could not be found; try again later.');
-      const data = toBase64(await object.arrayBuffer());
-      return {
+      const missing = () => toolError('The bytes of this file could not be found; try again later.');
+      const answer = (data: string, mimeType: string, sent: Record<string, unknown>, next: string) => ({
         content: [
-          { type: 'image' as const, data, mimeType: row.content_type },
+          { type: 'image' as const, data, mimeType },
           {
             type: 'text' as const,
             text: JSON.stringify(
-              {
-                filename: row.filename,
-                contentType: row.content_type,
-                size: row.size,
-                next: 'Record what you read with set_attachment_text, so it is searchable and the next session has it.',
-              },
+              { filename: row.filename, contentType: row.content_type, size: row.size, sent, next },
               null,
               2,
             ),
           },
         ],
+      });
+      const record =
+        'Record what you read with set_attachment_text under this filename, so it is searchable and the ' +
+        'next session has it.';
+
+      const edge = maxEdge ?? DEFAULT_MAX_EDGE;
+      const original = (bytes: ArrayBuffer) => {
+        // Sent as what the bytes are, not as what the upload called them; see
+        // `sniffMediaType`. A PNG stored as `image/jpeg` (Evernote's snapshots are) is
+        // refused by the model's API under the wrong type, and the refusal can stay in the
+        // assistant's conversation. Bytes that are none of the four (a HEIC a client called
+        // a JPEG, a truncated upload) are refused here for the same reason rather than sent
+        // under a type they are not. A shrunk copy never had this problem: it is a JPEG.
+        const mimeType = sniffMediaType(bytes);
+        if (!mimeType || !LLM_IMAGE_TYPES.has(mimeType)) {
+          return toolError(
+            `This file is stored as ${row.content_type}, but its bytes are not a JPEG, PNG, GIF or WebP, ` +
+              'so it cannot be returned. The person could attach it again as one of those.',
+          );
+        }
+        const size = pictureSize(bytes);
+        return answer(
+          toBase64(bytes),
+          mimeType,
+          {
+            contentType: mimeType,
+            width: size?.width ?? null,
+            height: size?.height ?? null,
+            bytes: row.size,
+            downscaled: false,
+          },
+          record,
+        );
       };
+
+      // A picture small enough to send as it is goes as it is when its header says it is
+      // already within the edge: shrinking would only re-encode it, spending a
+      // transformation and softening its text with JPEG's ringing for nothing. A GIF's or a
+      // WebP's size is not read, so those go through the binding where there is one.
+      let bytes: ArrayBuffer | null = null;
+      if (row.size <= MAX_MCP_IMAGE_BYTES) {
+        const object = await env.BLOBS.get(row.r2_key);
+        if (!object) return missing();
+        bytes = await object.arrayBuffer();
+        const size = pictureSize(bytes);
+        if (!env.IMAGES || (size && size.width <= edge && size.height <= edge)) return original(bytes);
+      }
+
+      // Anything else is shrunk where the instance can: the model would shrink it to this
+      // edge anyway, so the rest is bytes in transit and in the assistant's context for
+      // nothing. A failure falls through to the original, which is still sent when it is
+      // small enough.
+      //
+      // Why it was not shrunk, for the refusal: the binding refused it (a file that is not
+      // a picture after all, the free plan's month used up), or the JPEG it made was still
+      // over the cap, which a smaller edge would cure where waiting would not.
+      let shrinkFailed: 'refused' | 'too large' | null = null;
+      if (env.IMAGES && row.size <= MAX_DOWNSCALE_INPUT_BYTES) {
+        // The bytes already read, or a stream straight from R2 for a picture too large to
+        // send, which the isolate then never holds whole.
+        let body: ReadableStream<Uint8Array>;
+        if (bytes) body = new Response(bytes).body!;
+        else {
+          const object = await env.BLOBS.get(row.r2_key);
+          if (!object) return missing();
+          body = object.body;
+        }
+        try {
+          const small = await downscale(env.IMAGES, body, edge);
+          // Never past the cap the original is held to, though at these edges a JPEG
+          // comes to a few hundred kilobytes and never near it.
+          if (small.bytes.byteLength <= MAX_MCP_IMAGE_BYTES) {
+            return answer(
+              toBase64(small.bytes),
+              small.contentType,
+              {
+                contentType: small.contentType,
+                width: small.width,
+                height: small.height,
+                bytes: small.bytes.byteLength,
+                maxEdge: edge,
+                downscaled: true,
+              },
+              `This is a JPEG copy no larger than ${edge} px on its longest side; the file itself is unchanged. ` +
+                record +
+                (edge < LARGEST_MAX_EDGE
+                  ? ` If small print is not legible, ask again with maxEdge ${LARGEST_MAX_EDGE}.`
+                  : ''),
+            );
+          }
+          shrinkFailed = 'too large';
+        } catch (err) {
+          console.warn(`[mcp] get_attachment could not shrink ${row.content_type} of ${row.size} bytes`, err);
+          shrinkFailed = 'refused';
+        }
+      }
+
+      if (bytes) return original(bytes);
+
+      const mb = (n: number) => `${(n / (1024 * 1024)).toFixed(1)} MB`;
+      // Says what would get it read, which depends on why it could not be shrunk.
+      const why = !env.IMAGES
+        ? 'This instance has no Images binding to shrink it with.'
+        : shrinkFailed === 'too large'
+          ? `Shrunk to ${edge} px it was still larger than that` +
+            (edge > SMALLEST_MAX_EDGE ? '; ask again with a smaller maxEdge.' : '.')
+          : shrinkFailed === 'refused'
+            ? 'Shrinking it failed on this instance.'
+            : `It is also over the ${mb(MAX_DOWNSCALE_INPUT_BYTES)} this instance can shrink.`;
+      return toolError(
+        `This picture is ${mb(row.size)}, over the ${mb(MAX_MCP_IMAGE_BYTES)} this tool returns as it is. ${why} ` +
+          (vision && readableByLlm(row.content_type, row.size)
+            ? 'An Auto-fill press on the note reads it on the instance.'
+            : 'The person could attach a smaller copy of it for you to read.'),
+      );
     },
   );
 

@@ -188,12 +188,14 @@ leaving the instance that its owner never chose to send. Cost that grows with up
 be covered by a flat price, and a press is consent where an upload is not.
 
 **An assistant can read a picture itself.** Over MCP, `get_attachment` returns a picture as
-an image for the assistant's own model, and `set_attachment_text` records what it read,
-marked `assistant` beside the layer's and the model's text. Those words are a hint for
-search and the summaries, not the document: the next Auto-fill press on the note has the
-instance's model read the file and replaces them, and an assistant may never write over a
-text layer or the model's reading. The instance calls no model for any of it, and the
-bytes go to the assistant the person connected, nowhere else.
+an image for the assistant's own model (shrunk first by the Images binding where the
+instance has one, since a phone photo is too large to send as it is), and
+`set_attachment_text` records what it read, marked `assistant` beside the layer's and the
+model's text. Those words are a hint for search and the summaries, not the document: the
+next Auto-fill press on the note has the instance's model read the file and replaces them,
+and an assistant may never write over a text layer or the model's reading. The instance
+calls no model for any of it, and the bytes go to the assistant the person connected,
+nowhere else.
 
 **Which model.** The model has three jobs inside a press: reading the files, writing the
 title, writing the text field values (see [Filing a note from what it

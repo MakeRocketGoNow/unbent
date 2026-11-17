@@ -67,6 +67,16 @@ bucket_name = "unbent-blobs"
 [ai]
 binding = "AI"
 
+# Cloudflare Images, for shrinking a picture before MCP's `get_attachment` hands it to an
+# assistant (src/lib/downscale.ts): a phone photo is too large to send as it is. Nothing to
+# provision, and every account starts on the Images Free plan, whose 5,000 unique
+# transformations a month are far more than assistants reading pictures ask for; past them
+# a new one fails rather than bills, and the tool falls back to sending the original when
+# it is small enough. Unlike `ai` it is bound locally too, since `wrangler dev` runs it on
+# the machine (through sharp) with no login.
+[images]
+binding = "IMAGES"
+
 # One SQLite-backed Durable Object per account, holding that account's notes; see
 # src/store/user-store.ts and "Where your notes live" in docs/architecture.md. Nothing to
 # provision: the class is exported from the Worker and the runtime creates each object the
@@ -199,6 +209,10 @@ bucket_name = "unbent-backups"
 name = "USER_STORE"
 class_name = "UserStore"
 
+# Run on the machine by miniflare through sharp: no login, no account, nothing metered.
+[env.local.images]
+binding = "IMAGES"
+
 [env.local.vars]
 # The SPA origin for OAuth redirects and cookie scope. `pnpm dev` overrides it with the
 # checkout's own port; this is the value a bare `wrangler dev --env local` gets.
@@ -330,6 +344,10 @@ bucket_name = "unbent-dev-blobs"
 name = "USER_STORE"
 class_name = "UserStore"
 script_name = "unbent-dev"
+
+# Shrinks a picture for an assistant, as production does; see the top-level binding.
+[env.preview.images]
+binding = "IMAGES"
 
 [env.preview.triggers]
 crons = []
@@ -485,3 +503,7 @@ enabled = true
 # of an import that differs most between the two.
 [env.dev.ai]
 binding = "AI"
+
+# Shrinks a picture for an assistant, as production does; see the top-level binding.
+[env.dev.images]
+binding = "IMAGES"

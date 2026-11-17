@@ -58,11 +58,35 @@ function fakeAttachments() {
 
 const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
+/** A PNG's signature and IHDR, as far as the size: all the tool reads of an original. */
+function pngHead(width: number, height: number): Uint8Array {
+  const head = new Uint8Array(24);
+  head.set([...png, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52]);
+  new DataView(head.buffer).setUint32(16, width);
+  new DataView(head.buffer).setUint32(20, height);
+  return head;
+}
+
+/** The bytes in the fake bucket, by key. */
+const stored: Record<string, Uint8Array> = {
+  'k/card': png,
+  'k/poster': png,
+  'k/shot': pngHead(1200, 800),
+  'k/wide': pngHead(3000, 2000),
+  // Stored as a JPEG, and none of the four types the model takes.
+  'k/odd': new Uint8Array([0, 0, 0, 0x18]),
+};
+
 /** A note with a small picture, a big one and a PDF on it, and a record of what an assistant wrote. */
 function pictured() {
   const rows: Record<string, { id: string; filename: string; content_type: string; size: number; r2_key: string }> = {
     'card.png': { id: 'a1', filename: 'card.png', content_type: 'image/png', size: png.length, r2_key: 'k/card' },
     'poster.jpg': { id: 'a2', filename: 'poster.jpg', content_type: 'image/jpeg', size: 9 * 1024 * 1024, r2_key: 'k/poster' },
+    'shot.png': { id: 'a6', filename: 'shot.png', content_type: 'image/png', size: 2 * 1024 * 1024, r2_key: 'k/shot' },
+    'snapshot.jpg': { id: 'a8', filename: 'snapshot.jpg', content_type: 'image/jpeg', size: 24, r2_key: 'k/shot' },
+    'odd.jpg': { id: 'a9', filename: 'odd.jpg', content_type: 'image/jpeg', size: 4, r2_key: 'k/odd' },
+    'wide.png': { id: 'a7', filename: 'wide.png', content_type: 'image/png', size: 2 * 1024 * 1024, r2_key: 'k/wide' },
+    'mural.png': { id: 'a5', filename: 'mural.png', content_type: 'image/png', size: 24 * 1024 * 1024, r2_key: 'k/mural' },
     'scan.pdf': { id: 'a3', filename: 'scan.pdf', content_type: 'application/pdf', size: 10, r2_key: 'k/scan' },
     'fresh.pdf': { id: 'a4', filename: 'fresh.pdf', content_type: 'application/pdf', size: 10, r2_key: 'k/fresh' },
   };
@@ -79,7 +103,43 @@ function pictured() {
         return { ok: true, reason: null };
       },
     },
-    blobs: { get: async (key: string) => (key === 'k/card' ? { arrayBuffer: async () => png.buffer as ArrayBuffer } : null) },
+    blobs: {
+      get: async (key: string) => {
+        const bytes = stored[key];
+        return bytes ? { body: new Response(bytes).body!, arrayBuffer: async () => bytes.slice().buffer as ArrayBuffer } : null;
+      },
+    },
+  };
+}
+
+/** The head of a JPEG 1176 by 1568: SOI, then a baseline frame header naming its size. */
+const shrunk = new Uint8Array([
+  0xff, 0xd8, 0xff, 0xc0, 0x00, 0x11, 0x08, 0x06, 0x20, 0x04, 0x98, 0x03,
+  0x01, 0x22, 0x00, 0x02, 0x11, 0x01, 0x03, 0x11, 0x01,
+]);
+
+/** Stands in for the Images binding: records the edge it was asked for, or fails as told. */
+function fakeImages(fail: false | 'throw' | 'huge' = false) {
+  const asked: unknown[] = [];
+  return {
+    asked,
+    binding: {
+      input() {
+        const transformer = {
+          transform(t: unknown) {
+            asked.push(t);
+            return transformer;
+          },
+          async output() {
+            if (fail === 'throw') throw new Error('9422: free plan used up');
+            // A JPEG over the cap, which no real picture at these edges comes near.
+            const out = fail === 'huge' ? new Uint8Array(4 * 1024 * 1024) : shrunk;
+            return { image: () => new Response(out).body! };
+          },
+        };
+        return transformer;
+      },
+    },
   };
 }
 
@@ -103,11 +163,128 @@ describe('get_attachment', () => {
     const pdf = await get({ noteId, filename: 'scan.pdf' });
     expect(pdf.isError).toBe(true);
     expect(pdf.content[0]!.text).toMatch(/text layer/);
+    // Without the Images binding a big picture cannot be shrunk, and the refusal says why
+    // and what would get it read: a 9 MB one is past Auto-fill's reach too.
     const big = await get({ noteId, filename: 'poster.jpg' });
     expect(big.isError).toBe(true);
     expect(big.content[0]!.text).toMatch(/9\.0 MB, over the 3\.7 MB/);
+    expect(big.content[0]!.text).toMatch(/no Images binding/);
+    expect(big.content[0]!.text).toMatch(/smaller copy/);
     expect((await get({ noteId, filename: 'ghost.png' })).isError).toBe(true);
     expect((await get({ noteId: otherNote, filename: 'card.png' })).isError).toBe(true);
+  });
+});
+
+describe('get_attachment where the instance binds Images', () => {
+  it('hands over a picture too large to send as it is, shrunk to the default edge, with the size it was sent at', async () => {
+    const { repo, blobs } = pictured();
+    const images = fakeImages();
+    const get = collect({ BLOBS: blobs, IMAGES: images.binding }, repo).get('get_attachment')!;
+    const result = await get({ noteId, filename: 'poster.jpg' });
+    expect(result.isError).toBeFalsy();
+    const [image, text] = result.content as Array<{ type: string; data?: string; mimeType?: string; text?: string }>;
+    expect(image).toEqual({ type: 'image', data: btoa(String.fromCharCode(...shrunk)), mimeType: 'image/jpeg' });
+    const answer = JSON.parse(text!.text!) as Record<string, unknown>;
+    // The original's name, type and size, so set_attachment_text is called on the file itself.
+    expect(answer).toMatchObject({ filename: 'poster.jpg', contentType: 'image/jpeg', size: 9 * 1024 * 1024 });
+    expect(answer.sent).toEqual({
+      contentType: 'image/jpeg',
+      width: 1176,
+      height: 1568,
+      bytes: shrunk.length,
+      maxEdge: 1568,
+      downscaled: true,
+    });
+    expect(answer.next).toMatch(/JPEG copy no larger than 1568 px/);
+    expect(answer.next).toMatch(/maxEdge 2576/);
+    expect(images.asked).toEqual([{ width: 1568, height: 1568, fit: 'scale-down' }]);
+  });
+
+  it('sends a picture already within the edge as it is, without asking the binding', async () => {
+    const { repo, blobs } = pictured();
+    const images = fakeImages();
+    const get = collect({ BLOBS: blobs, IMAGES: images.binding }, repo).get('get_attachment')!;
+    const result = await get({ noteId, filename: 'shot.png' });
+    expect(result.content[0]).toMatchObject({ type: 'image', mimeType: 'image/png' });
+    expect(JSON.parse(result.content[1]!.text)).toMatchObject({
+      sent: { contentType: 'image/png', width: 1200, height: 800, downscaled: false },
+    });
+    expect(images.asked).toEqual([]);
+  });
+
+  it('refuses an original whose bytes are no picture the model takes, rather than mislabel it', async () => {
+    const { repo, blobs } = pictured();
+    // Without the binding the original is the only thing to send; with one that refuses
+    // the file, the original is the fallback. Neither may go out labelled a JPEG.
+    for (const env of [{ BLOBS: blobs }, { BLOBS: blobs, IMAGES: fakeImages('throw').binding }]) {
+      const result = await collect(env, repo).get('get_attachment')!({ noteId, filename: 'odd.jpg' });
+      expect(result.isError).toBe(true);
+      expect(result.content[0]!.text).toMatch(/stored as image\/jpeg, but its bytes are not/);
+    }
+  });
+
+  it('sends an original as the type its bytes are, not the type it was stored under', async () => {
+    const { repo, blobs } = pictured();
+    const images = fakeImages();
+    const get = collect({ BLOBS: blobs, IMAGES: images.binding }, repo).get('get_attachment')!;
+    // A PNG stored as `image/jpeg`, as an imported snapshot can be.
+    const result = await get({ noteId, filename: 'snapshot.jpg' });
+    expect(result.content[0]).toMatchObject({ type: 'image', mimeType: 'image/png' });
+    expect(JSON.parse(result.content[1]!.text)).toMatchObject({
+      contentType: 'image/jpeg',
+      sent: { contentType: 'image/png', downscaled: false },
+    });
+    expect(images.asked).toEqual([]);
+  });
+
+  it('shrinks a picture small enough to send but larger than the edge', async () => {
+    const { repo, blobs } = pictured();
+    const images = fakeImages();
+    const get = collect({ BLOBS: blobs, IMAGES: images.binding }, repo).get('get_attachment')!;
+    const result = await get({ noteId, filename: 'wide.png' });
+    expect(result.content[0]).toMatchObject({ type: 'image', mimeType: 'image/jpeg' });
+    expect(images.asked).toEqual([{ width: 1568, height: 1568, fit: 'scale-down' }]);
+  });
+
+  it('shrinks to the edge the assistant asks for', async () => {
+    const { repo, blobs } = pictured();
+    const images = fakeImages();
+    const get = collect({ BLOBS: blobs, IMAGES: images.binding }, repo).get('get_attachment')!;
+    const result = await get({ noteId, filename: 'card.png', maxEdge: 2576 });
+    expect((JSON.parse(result.content[1]!.text) as { next: string }).next).not.toMatch(/maxEdge/);
+    expect(images.asked).toEqual([{ width: 2576, height: 2576, fit: 'scale-down' }]);
+  });
+
+  it('sends a small original when shrinking fails, and says so when a big one cannot be sent', async () => {
+    const { repo, blobs } = pictured();
+    const get = collect({ BLOBS: blobs, IMAGES: fakeImages('throw').binding }, repo).get('get_attachment')!;
+    const small = await get({ noteId, filename: 'card.png' });
+    expect(small.isError).toBeFalsy();
+    expect(small.content[0]).toMatchObject({ type: 'image', mimeType: 'image/png' });
+    expect(JSON.parse(small.content[1]!.text)).toMatchObject({ sent: { downscaled: false } });
+    const big = await get({ noteId, filename: 'poster.jpg' });
+    expect(big.isError).toBe(true);
+    // No "try again later": a refusal from the binding is as likely to last the month.
+    expect(big.content[0]!.text).toMatch(/Shrinking it failed on this instance\. /);
+    expect(big.content[0]!.text).not.toMatch(/later/);
+  });
+
+  it('asks for a smaller edge when the JPEG it made is still over the cap', async () => {
+    const { repo, blobs } = pictured();
+    const get = collect({ BLOBS: blobs, IMAGES: fakeImages('huge').binding }, repo).get('get_attachment')!;
+    const big = await get({ noteId, filename: 'poster.jpg', maxEdge: 2576 });
+    expect(big.isError).toBe(true);
+    expect(big.content[0]!.text).toMatch(/Shrunk to 2576 px it was still larger than that; ask again with a smaller maxEdge/);
+  });
+
+  it('refuses a picture past what the binding takes, without asking it', async () => {
+    const { repo, blobs } = pictured();
+    const images = fakeImages();
+    const get = collect({ BLOBS: blobs, IMAGES: images.binding }, repo).get('get_attachment')!;
+    const huge = await get({ noteId, filename: 'mural.png' });
+    expect(huge.isError).toBe(true);
+    expect(huge.content[0]!.text).toMatch(/24\.0 MB.*over the 19\.1 MB this instance can shrink/);
+    expect(images.asked).toEqual([]);
   });
 });
 
