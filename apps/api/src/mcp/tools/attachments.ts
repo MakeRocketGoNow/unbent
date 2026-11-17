@@ -439,7 +439,6 @@ export function registerAttachmentTools(
           },
         ],
       });
-      const record = RECORD;
 
       const edge = maxEdge ?? DEFAULT_MAX_EDGE;
       const original = (bytes: ArrayBuffer) => {
@@ -467,7 +466,7 @@ export function registerAttachmentTools(
             bytes: row.size,
             downscaled: false,
           },
-          record,
+          RECORD,
         );
       };
 
@@ -520,7 +519,7 @@ export function registerAttachmentTools(
                 downscaled: true,
               },
               `This is a JPEG copy no larger than ${edge} px on its longest side; the file itself is unchanged. ` +
-                record +
+                RECORD +
                 (edge < LARGEST_MAX_EDGE
                   ? ` If small print is not legible, ask again with maxEdge ${LARGEST_MAX_EDGE}.`
                   : ''),
@@ -535,7 +534,7 @@ export function registerAttachmentTools(
 
       if (bytes) return original(bytes);
 
-        // Says what would get it read, which depends on why it could not be shrunk.
+      // Says what would get it read, which depends on why it could not be shrunk.
       const why = !env.IMAGES
         ? 'This instance has no Images binding to shrink it with.'
         : shrinkFailed === 'too large'
