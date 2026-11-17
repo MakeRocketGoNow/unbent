@@ -52,11 +52,13 @@ const MAX_PDF_ANSWER_BYTES = MAX_MCP_IMAGE_BYTES;
 
 /**
  * The largest PDF whose pages `get_attachment` takes out. The whole file is held in the
- * isolate while its pictures are found (lib/pdf-pages.ts), beside a page's pixels when one
- * has to be turned into a PNG, and the isolate has 128 MB. A scan of a few dozen pages is a
- * few megabytes; past this it is a book.
+ * isolate while its pictures are found, beside a page's pixels when one has to be turned
+ * into a PNG; lib/pdf-pages.ts adds up what one call holds at the caps (`MAX_PIXEL_BYTES`),
+ * and the read gate keeps more than two such calls from holding it at once. A scan of a few
+ * dozen pages is a few megabytes, and the largest no-text PDF in a real archive was 8 MB;
+ * past this it is a book.
  */
-const MAX_PDF_READ_BYTES = 32 * 1024 * 1024;
+const MAX_PDF_READ_BYTES = 16 * 1024 * 1024;
 
 /**
  * The most text `set_attachment_text` takes. A transcription of a stack of pages is tens
@@ -226,8 +228,7 @@ export function registerAttachmentTools(
       if (!ready.length) continue;
       content.push({ type: 'text', text: `Page ${page} of ${total}` + (rotate ? ` (shown turned ${rotate}° clockwise)` : '') });
       for (const r of ready) {
-        // A copy of just the picture's bytes: a JPEG page is a view into the whole PDF.
-        content.push({ type: 'image', data: toBase64(r.data.slice().buffer), mimeType: r.mimeType });
+        content.push({ type: 'image', data: toBase64(r.data), mimeType: r.mimeType });
         sent.push({ page, ...(rotate ? { turned: rotate } : {}), ...r.sent });
       }
     }

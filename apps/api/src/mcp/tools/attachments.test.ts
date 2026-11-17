@@ -303,7 +303,7 @@ describe('get_attachment on a scanned PDF', () => {
     const get = collect({ BLOBS: watched }, repo).get('get_attachment')!;
     expect((await get({ noteId, filename: 'scan.pdf' })).content[0]!.text).toMatch(/get_attachment_text has its text/);
     expect((await get({ noteId, filename: 'locked.pdf' })).content[0]!.text).toMatch(/encrypted/);
-    expect((await get({ noteId, filename: 'book.pdf' })).content[0]!.text).toMatch(/40\.0 MB, over the 32\.0 MB/);
+    expect((await get({ noteId, filename: 'book.pdf' })).content[0]!.text).toMatch(/40\.0 MB, over the 16\.0 MB/);
     expect(fetched).toEqual(['k/locked']);
   });
 });

@@ -481,8 +481,9 @@ const answer = z.object({
 });
 
 /** Chunked, because `String.fromCharCode(...bytes)` overflows the call stack on a photo. Shared with MCP's `get_attachment`. */
-export function toBase64(bytes: ArrayBuffer): string {
-  const view = new Uint8Array(bytes);
+export function toBase64(bytes: ArrayBuffer | Uint8Array): string {
+  // A view is read where it is: a JPEG page is a view into the whole PDF it came from.
+  const view = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
   let binary = '';
   for (let i = 0; i < view.length; i += 0x8000) {
     binary += String.fromCharCode(...view.subarray(i, i + 0x8000));

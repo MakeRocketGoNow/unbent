@@ -83,11 +83,17 @@ const TRAILER = ascii('trailer');
 const MAX_DEPTH = 64;
 
 /**
- * The most bytes a stream may inflate to. A full-colour page at 600 dpi is about 100 MB of
- * pixels, which the isolate's 128 MB could not hold beside the file; a page at 300 dpi is a
- * quarter of that. Past this the page is refused by name rather than ending the isolate.
+ * The most pixels a Flate page may be, in bytes, and the most any other stream may inflate
+ * to. What a call holds at once is the file (up to `get_attachment`'s 16 MB), one page's
+ * rows (up to this), and that page compressed again, copied once into the PNG: about 50 MB
+ * at the caps, which the read gate (lib/reader-gate.ts) lets two calls hold beside each
+ * other in the isolate's 128 MB. Nothing real comes near them. In the no-text PDFs of a real
+ * archive the largest file was 8 MB and the largest Flate page 10.4 MB of pixels; a
+ * full-colour letter page at 300 dpi is 25 MB, and is refused by name, as a page past
+ * either is, rather than ending the isolate and every request on it.
  */
-const MAX_INFLATED_BYTES = 48 * 1024 * 1024;
+const MAX_PIXEL_BYTES = 12 * 1024 * 1024;
+const MAX_STREAM_BYTES = 16 * 1024 * 1024;
 
 function startsWith(b: Uint8Array, at: number, seq: Uint8Array): boolean {
   if (at < 0 || at + seq.length > b.length) return false;
@@ -303,35 +309,57 @@ function scanObjects(b: Uint8Array): Map<number, Entry> {
   return entries;
 }
 
+/** `bytes` as a stream, without the copy `new Blob([bytes])` would make of them first. */
+function streamOf(bytes: Uint8Array): ReadableStream<Uint8Array> {
+  return new ReadableStream({
+    start(controller) {
+      controller.enqueue(bytes);
+      controller.close();
+    },
+  });
+}
+
 /**
- * Inflates zlib data, tolerating what some writers leave after its end: an error after
- * output has come keeps the output, since everything the stream held arrived before it.
- * Refuses past `MAX_INFLATED_BYTES`.
+ * Inflates zlib data into `sink`, chunk by chunk as it comes, so a caller that knows where
+ * the bytes go never holds them twice. Tolerates what some writers leave after the data's
+ * end: an error after output has come keeps the output, since everything the stream held
+ * arrived before it. Refuses past `limit` bytes of output.
  */
-export async function inflate(bytes: Uint8Array): Promise<Uint8Array> {
-  const reader = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate')).getReader();
-  const chunks: Uint8Array[] = [];
+async function inflateTo(bytes: Uint8Array, limit: number, sink: (chunk: Uint8Array) => void): Promise<void> {
+  const reader = streamOf(bytes).pipeThrough(new DecompressionStream('deflate')).getReader();
   let total = 0;
   try {
     for (;;) {
       const { done, value } = await reader.read();
       if (done) break;
       total += value.byteLength;
-      if (total > MAX_INFLATED_BYTES) {
+      if (total > limit) {
         await reader.cancel();
         throw new PdfError('too large inflated');
       }
-      chunks.push(value);
+      sink(value);
     }
   } catch (err) {
-    if (err instanceof PdfError || !chunks.length) throw err;
+    if (err instanceof PdfError || total === 0) throw err;
   }
-  return concat(chunks, total);
 }
 
-async function deflate(bytes: Uint8Array): Promise<Uint8Array> {
-  const stream = new Blob([bytes]).stream().pipeThrough(new CompressionStream('deflate'));
-  return new Uint8Array(await new Response(stream).arrayBuffer());
+/** Inflates zlib data whole, for the small streams that are needed whole: an object stream, a palette. */
+export async function inflate(bytes: Uint8Array, limit = MAX_STREAM_BYTES): Promise<Uint8Array> {
+  const chunks: Uint8Array[] = [];
+  await inflateTo(bytes, limit, (c) => chunks.push(c));
+  return concat(chunks);
+}
+
+/** Compresses `bytes`, answering the chunks as they came rather than joining them. */
+async function deflate(bytes: Uint8Array): Promise<Uint8Array[]> {
+  const reader = streamOf(bytes).pipeThrough(new CompressionStream('deflate')).getReader();
+  const chunks: Uint8Array[] = [];
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) return chunks;
+    chunks.push(value);
+  }
 }
 
 function concat(chunks: Uint8Array[], total = chunks.reduce((n, c) => n + c.byteLength, 0)): Uint8Array {
@@ -680,6 +708,56 @@ const cmykToRgb = (c: number, m: number, y: number, k: number) => [
 ];
 
 /**
+ * A page's rows, given PNG's filter byte (0, none) in front of each and CMYK turned into
+ * RGB on the way, compressed for an `IDAT`. Written into one buffer as the inflated data
+ * arrives, a row at a time, so the page's pixels are never held twice; the CMYK sum is
+ * written out inline, since a three-number array a pixel is millions of allocations a page.
+ */
+async function pngRows(
+  data: Uint8Array,
+  flate: boolean,
+  rowBytes: number,
+  height: number,
+  cmyk: boolean,
+  width: number,
+): Promise<Uint8Array[] | null> {
+  const outRow = cmyk ? width * 3 : rowBytes;
+  const filtered = new Uint8Array((outRow + 1) * height);
+  // CMYK needs a whole row to convert; anything else goes straight to its place.
+  const row = cmyk ? new Uint8Array(rowBytes) : null;
+  let y = 0;
+  let x = 0;
+  const put = (chunk: Uint8Array) => {
+    let i = 0;
+    while (i < chunk.length && y < height) {
+      const n = Math.min(rowBytes - x, chunk.length - i);
+      if (row) row.set(chunk.subarray(i, i + n), x);
+      else filtered.set(chunk.subarray(i, i + n), y * (outRow + 1) + 1 + x);
+      x += n;
+      i += n;
+      if (x < rowBytes) continue;
+      if (row) {
+        const at = y * (outRow + 1) + 1;
+        for (let p = 0; p < width; p++) {
+          const s = p * 4;
+          const o = at + p * 3;
+          const k = 255 - row[s + 3]!;
+          filtered[o] = ((255 - row[s]!) * k) / 255;
+          filtered[o + 1] = ((255 - row[s + 1]!) * k) / 255;
+          filtered[o + 2] = ((255 - row[s + 2]!) * k) / 255;
+        }
+      }
+      y++;
+      x = 0;
+    }
+  };
+  // Output past the page's rows is ignored; the limit only stops a stream that never ends.
+  if (flate) await inflateTo(data, 2 * rowBytes * height + 1024, put);
+  else put(data);
+  return y < height ? null : deflate(filtered);
+}
+
+/**
  * Pixels as a PNG. The colour types PNG has are grey, RGB and a palette; CMYK is turned
  * into RGB, and a grey whose `/Decode` inverts it is drawn through a palette of inverted
  * greys rather than by rewriting every pixel.
@@ -710,7 +788,7 @@ async function toPng(
 
   const components = space.kind === 'indexed' ? 1 : COMPONENTS[space.kind];
   const rowBytes = Math.ceil((width * components * bpc) / 8);
-  if (rowBytes * height > MAX_INFLATED_BYTES) return { ok: false, reason: 'too large to decode here' };
+  if (rowBytes * height > MAX_PIXEL_BYTES) return { ok: false, reason: 'too large to decode here' };
 
   let colorType: 0 | 2 | 3;
   let depth = bpc;
@@ -743,7 +821,7 @@ async function toPng(
   }
 
   const predictor = parms ? pdf.resolve(parms.get('Predictor')) : null;
-  const pngRows =
+  const filteredAlready =
     flate &&
     typeof predictor === 'number' &&
     predictor >= 10 &&
@@ -751,29 +829,15 @@ async function toPng(
     (pdf.resolve(parms!.get('BitsPerComponent')) ?? 8) === bpc &&
     (pdf.resolve(parms!.get('Columns')) ?? 1) === width;
 
-  let idat: Uint8Array;
-  if (pngRows && space.kind !== 'cmyk') {
-    idat = data;
+  let idat: Uint8Array[];
+  if (filteredAlready && space.kind !== 'cmyk') {
+    idat = [data];
   } else {
     if (typeof predictor === 'number' && predictor > 1) return { ok: false, reason: `with a predictor this does not undo (${predictor})` };
-    const raw = flate ? await inflate(data) : data;
-    if (raw.length < rowBytes * height) return { ok: false, reason: 'its picture data is cut short' };
-    const outRow = space.kind === 'cmyk' ? width * 3 : rowBytes;
-    const filtered = new Uint8Array((outRow + 1) * height);
-    for (let y = 0; y < height; y++) {
-      const src = raw.subarray(y * rowBytes, (y + 1) * rowBytes);
-      const at = y * (outRow + 1) + 1;
-      if (space.kind === 'cmyk') {
-        for (let x = 0; x < width; x++) {
-          const [r, g, b] = cmykToRgb(src[x * 4]!, src[x * 4 + 1]!, src[x * 4 + 2]!, src[x * 4 + 3]!);
-          filtered[at + x * 3] = r!;
-          filtered[at + x * 3 + 1] = g!;
-          filtered[at + x * 3 + 2] = b!;
-        }
-      } else filtered.set(src, at);
-    }
+    const rows = await pngRows(data, flate, rowBytes, height, space.kind === 'cmyk', width);
+    if (!rows) return { ok: false, reason: 'its picture data is cut short' };
     if (space.kind === 'cmyk') depth = 8;
-    idat = await deflate(filtered);
+    idat = rows;
   }
   return { ok: true, bytes: png(width, height, depth, colorType, palette, idat), contentType: 'image/png', width, height };
 }
@@ -794,30 +858,30 @@ function crc32(parts: Uint8Array[]): number {
   return (c ^ 0xffffffff) >>> 0;
 }
 
-function chunk(type: string, body: Uint8Array): Uint8Array {
-  const out = new Uint8Array(12 + body.length);
-  const view = new DataView(out.buffer);
-  view.setUint32(0, body.length);
-  const name = ascii(type);
-  out.set(name, 4);
-  out.set(body, 8);
-  view.setUint32(8 + body.length, crc32([name, body]));
-  return out;
-}
-
-/** A PNG from its parts; exported for the test that reads one back. */
-export function png(width: number, height: number, depth: number, colorType: 0 | 2 | 3, palette: Uint8Array | null, idat: Uint8Array): Uint8Array {
+/**
+ * A PNG from its parts, written into one buffer. The compressed data goes in as the chunks
+ * it came in, each its own `IDAT` (PNG reads consecutive ones as one stream), so it is
+ * copied once, into the file, and never joined first.
+ */
+function png(width: number, height: number, depth: number, colorType: 0 | 2 | 3, palette: Uint8Array | null, idat: Uint8Array[]): Uint8Array {
   const ihdr = new Uint8Array(13);
-  const view = new DataView(ihdr.buffer);
-  view.setUint32(0, width);
-  view.setUint32(4, height);
+  const head = new DataView(ihdr.buffer);
+  head.setUint32(0, width);
+  head.setUint32(4, height);
   ihdr[8] = depth;
   ihdr[9] = colorType;
-  return concat([
-    Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
-    chunk('IHDR', ihdr),
-    ...(palette ? [chunk('PLTE', palette)] : []),
-    chunk('IDAT', idat),
-    chunk('IEND', new Uint8Array()),
-  ]);
+  const parts: Array<[string, Uint8Array]> = [['IHDR', ihdr], ...(palette ? [['PLTE', palette] as [string, Uint8Array]] : []), ...idat.map((c) => ['IDAT', c] as [string, Uint8Array]), ['IEND', new Uint8Array()]];
+  const out = new Uint8Array(8 + parts.reduce((n, [, body]) => n + 12 + body.length, 0));
+  const view = new DataView(out.buffer);
+  out.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  let at = 8;
+  for (const [type, body] of parts) {
+    const name = ascii(type);
+    view.setUint32(at, body.length);
+    out.set(name, at + 4);
+    out.set(body, at + 8);
+    view.setUint32(at + 8 + body.length, crc32([name, body]));
+    at += 12 + body.length;
+  }
+  return out;
 }
