@@ -241,6 +241,19 @@ describe('attachments', () => {
     expect(await stub.writeAssistantText('n1', 'seen.jpg', 'x')).toEqual({ ok: false, reason: 'vision', filename: null });
     expect(await stub.writeAssistantText('n1', 'ghost.jpg', 'x')).toEqual({ ok: false, reason: 'missing', filename: null });
 
+    // One call answers the file and how its text came to be, and whether anything has read
+    // it, for get_attachment (MAK-255): a scan never reached is `unread`, one whose layer came
+    // back empty is not, and a name is matched loosely as the other assistant tools do.
+    expect(await stub.resolveWithRead('n1', 'fresh.pdf')).toMatchObject({ id: 'fresh', filename: 'fresh.pdf', r2_key: expect.any(String), read: 'pending', unread: true });
+    await stub.recordAttachment(file('n1', { id: 'empty', filename: 'empty.pdf' }));
+    await stub.recordText({ attachmentId: 'empty', noteId: 'n1', filename: 'empty.pdf', text: '' });
+    expect(await stub.resolveWithRead('n1', 'empty.pdf')).toMatchObject({ id: 'empty', read: 'pending', unread: false });
+    expect(await stub.resolveWithRead('n1', 'empty.pdf', false)).toMatchObject({ read: 'none', unread: false });
+    expect(await stub.resolveWithRead('n1', 'blank.pdf')).toMatchObject({ read: 'assistant', unread: false });
+    expect(await stub.resolveWithRead('n1', 'bill.pdf')).toMatchObject({ read: 'text', unread: false });
+    expect(await stub.resolveWithRead('n1', 'seen.jpg')).toMatchObject({ read: 'vision', unread: false });
+    expect(await stub.resolveWithRead('n1', 'ghost.pdf')).toBeNull();
+
     // Read back as the assistant's, summarised as a text layer is, and found by search.
     expect(await stub.textWithRead('n1', 'card.jpg')).toEqual({ filename: 'card.jpg', read: 'assistant', text: 'Jane Doe, Acme Plumbing' });
     const card = (await stub.getWithFiles('n1'))!.files.find((f) => f.filename === 'card.jpg');

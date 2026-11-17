@@ -47,6 +47,11 @@ export class AttachmentsRepo extends StoreRepo {
     return this.call((s) => s.resolveAttachment(noteId, filename, opts));
   }
 
+  /** A live file by a name an assistant said, with how its text came to be; see `AttachmentsStore.resolveWithRead`. */
+  resolveWithRead(noteId: string, filename: string, vision: boolean): Promise<(AttachmentRow & { read: FileRead; unread: boolean }) | null> {
+    return this.call((s) => s.resolveWithRead(noteId, filename, vision));
+  }
+
   listForNote(noteId: string): Promise<AttachmentInfo[]> {
     return this.call((s) => s.listAttachments(noteId));
   }

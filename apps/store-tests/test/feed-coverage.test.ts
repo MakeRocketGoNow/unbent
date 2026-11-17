@@ -138,7 +138,7 @@ const READS = new Set([
   'ping', 'stats', 'usage', 'attachmentBytes', 'sweepVisit', 'readOnlySql', 'dumpBegin', 'dumpSlice', 'schemaSql', 'counters',
   'list', 'listFull', 'count', 'get', 'linkedFilenames', 'search', 'listTags', 'tagCounts', 'fieldTargets', 'notebookByName', 'sampleTitles', 'countUnfiledNotes',
   'listNotebooks', 'listFields', 'fieldById', 'listAllFields', 'previewConversion', 'countOptionUsage',
-  'resolveAttachment', 'listAttachments', 'ownsNote', 'availableFilename', 'needingText',
+  'resolveAttachment', 'resolveWithRead', 'listAttachments', 'ownsNote', 'availableFilename', 'needingText',
   'pendingTextCount', 'textFor', 'textWithRead', 'textsForNote', 'textsForNotes', 'textsById', 'attachmentIdFor',
   'keysForNote', 'allBlobKeys', 'tombstonedBlobKeys',
   'listPage', 'searchRows', 'searchWithFiles', 'exportPage', 'getWithFiles', 'filesForNote', 'notebooksOverview', 'pendingText',

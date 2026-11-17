@@ -3,6 +3,7 @@ import { MAX_ATTACHMENT_BYTES, filenameSchema, normalizeContentType } from '@unb
 import type { McpServer } from '@modelcontextprotocol/server';
 import type { AppLinks } from '../../lib/app-links.js';
 import type { AttachmentsRepo } from '../../lib/attachments-repo.js';
+import type { AttachmentRow, FileRead } from '../../store/attachments.js';
 import {
   checkReferer,
   checkSourceUrl,
@@ -139,21 +140,23 @@ export function registerAttachmentTools(
    * reads as one page, and the answer's last block says which pages went, which did not and
    * why, and what to ask for next.
    *
-   * A PDF whose layer was read and has text is refused before its bytes are fetched: the
-   * text is free, exact and already here, where pictures of it would cost the assistant
-   * thousands of tokens a page to read less well. Everything else is opened, the unread
-   * included, since a scan's pages are worth reading whatever the layer will turn out to
-   * hold; set_attachment_text says so if the layer has still to be read when it is called.
+   * A PDF whose words are already here is refused before its bytes are fetched: a text
+   * layer, or the instance's model's reading of the scan. Either is in get_attachment_text,
+   * free and whole, where pictures of the pages would cost the assistant thousands of tokens
+   * a page to read again, and set_attachment_text would refuse what it read. Everything else
+   * is opened, a PDF nothing has read yet included, since its pages are worth reading
+   * whatever its layer turns out to hold; the answer says that what is read cannot be
+   * recorded until the layer has been (`unread`), rather than send the assistant to a
+   * refusal at the end of the document.
    */
-  const scanPages = async (
-    noteId: string,
-    row: { filename: string; content_type: string; size: number; r2_key: string },
-    edge: number,
-    asked: string | undefined,
-  ) => {
-    const held = await repos.attachments.textWithRead(noteId, row.filename, vision);
-    if (held?.read === 'text') {
+  const scanPages = async (row: AttachmentRow & { read: FileRead; unread: boolean }, edge: number, asked: string | undefined) => {
+    if (row.read === 'text') {
       return toolError("This PDF has a text layer, and get_attachment_text has its text; its pages are not sent as pictures.");
+    }
+    if (row.read === 'vision') {
+      return toolError(
+        "The instance's vision model has read this PDF, and get_attachment_text has its reading; its pages are not sent as pictures.",
+      );
     }
     const mb = (n: number) => `${(n / (1024 * 1024)).toFixed(1)} MB`;
     // Only where a press would: the model takes a PDF up to `MAX_LLM_PDF_BYTES`, and a
@@ -248,12 +251,16 @@ export function registerAttachmentTools(
             autofill,
         );
       }
-      const record = 'Record what you read with set_attachment_text under this filename, so it is searchable and the next session has it.';
+      const record = row.unread
+        ? 'Its text layer has not been read yet, and set_attachment_text takes nothing for it until it has been; ' +
+          'get_attachment_text says when, and if the layer comes back empty, record what you read then.'
+        : 'Record what you read with set_attachment_text under this filename, so it is searchable and the next session has it.';
       const next =
         (through < total
-          ? `Pages ${through + 1} to ${total} were not sent; ask for pages "${through + 1}-${Math.min(through + PAGES_PER_CALL, total)}" next, and ` +
-            'read them all before recording, since set_attachment_text takes the text of the whole file. '
-          : `That was the last page. ${record} `) +
+          ? `Pages ${through + 1} to ${total} were not sent; ask for pages "${through + 1}-${Math.min(through + PAGES_PER_CALL, total)}" next` +
+            (row.unread ? '. ' : ', and read them all before recording, since set_attachment_text takes the text of the whole file. ')
+          : `That was the last page. `) +
+        (through < total && !row.unread ? '' : `${record} `) +
         (sent.some((s) => s.turned)
           ? 'A page marked "turned" is shown rotated in the PDF; its picture is sent as scanned, so its text may run sideways. '
           : '') +
@@ -363,9 +370,10 @@ export function registerAttachmentTools(
     async ({ noteId, filename, maxEdge, pages }) => {
       // Scoped to the caller's store, so another person's note reads as missing; and
       // never from the trash, like every other read of a file that is not a page load.
-      const row = await repos.attachments.resolve(noteId, filename, { loose: true });
+      // With how its text came to be, in the same call, which a scan's pages are decided by.
+      const row = await repos.attachments.resolveWithRead(noteId, filename, vision);
       if (!row) return notFound('attachment', `${filename} on note ${noteId}`);
-      if (row.content_type === 'application/pdf') return scanPages(noteId, row, maxEdge ?? DEFAULT_MAX_EDGE, pages);
+      if (row.content_type === 'application/pdf') return scanPages(row, maxEdge ?? DEFAULT_MAX_EDGE, pages);
       if (!LLM_IMAGE_TYPES.has(row.content_type)) {
         return toolError(
           `Only a picture or a scanned PDF is returned; this file is ${row.content_type}. Nothing on this instance reads it.`,
@@ -551,8 +559,8 @@ export function registerAttachmentTools(
             return notFound('attachment', `${filename} on note ${noteId}`);
           case 'unread':
             return toolError(
-              "This PDF's text layer has not been read yet. It is read for free, and get_attachment_text " +
-                'will have it; nothing of yours is needed.',
+              "This PDF's text layer has not been read yet. It is read for free; once it has been, get_attachment_text " +
+                'has it, and if the layer is empty (a scan), what you read can be recorded here then.',
             );
           case 'layer':
             return toolError(

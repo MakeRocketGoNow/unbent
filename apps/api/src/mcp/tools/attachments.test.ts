@@ -127,22 +127,25 @@ function pictured() {
     // The fax scan again, past the size the model takes a PDF at, so no press reads it.
     'bigfax.pdf': { id: 'b6', filename: 'bigfax.pdf', content_type: 'application/pdf', size: 9 * 1024 * 1024, r2_key: 'k/fax' },
   };
-  /** What `textWithRead` says of each file; anything unnamed is pending. */
-  const reads: Record<string, string> = { 'scan.pdf': 'text' };
+  /** How each file's text came to be; anything unnamed is pending, and read by the layer. */
+  const reads: Record<string, string> = { 'scan.pdf': 'text', 'seen.pdf': 'vision' };
+  /** The PDFs nothing has read yet. */
+  const unread = new Set(['fresh.pdf']);
+  rows['seen.pdf'] = { ...rows['pages.pdf']!, id: 'b7', filename: 'seen.pdf' };
+  rows['fresh.pdf'] = { ...rows['pages.pdf']!, id: 'a4', filename: 'fresh.pdf' };
   const written: Array<{ filename: string; text: string }> = [];
-  /** The options each `resolve` was asked with. */
+  /** The arguments each lookup was made with. */
   const resolved: unknown[] = [];
   const refuse: Record<string, 'unread' | 'layer' | 'vision'> = { 'scan.pdf': 'layer', 'poster.jpg': 'vision', 'fresh.pdf': 'unread' };
   return {
     written,
     resolved,
     repo: {
-      resolve: async (id: string, filename: string, opts?: unknown) => {
-        resolved.push(opts);
-        return id === noteId ? (rows[filename] ?? null) : null;
+      resolveWithRead: async (id: string, filename: string, vision: boolean) => {
+        resolved.push({ filename, vision });
+        const row = id === noteId ? rows[filename] : undefined;
+        return row ? { ...row, read: reads[filename] ?? 'pending', unread: unread.has(filename) } : null;
       },
-      textWithRead: async (id: string, filename: string) =>
-        id === noteId && rows[filename] ? { filename, read: reads[filename] ?? 'pending', text: null } : null,
       writeAssistantText: async (id: string, filename: string, text: string) => {
         if (id !== noteId || !rows[filename]) return { ok: false, reason: 'missing', filename: null };
         if (refuse[filename]) return { ok: false, reason: refuse[filename], filename: null };
@@ -202,8 +205,8 @@ describe('get_attachment', () => {
     expect(image).toEqual({ type: 'image', data: btoa(String.fromCharCode(...png)), mimeType: 'image/png' });
     expect(JSON.parse(text!.text!)).toMatchObject({ filename: 'card.png', contentType: 'image/png', size: png.length });
     expect(text!.text).toContain('set_attachment_text');
-    // The name came from an assistant, so the store may match it loosely (MAK-254).
-    expect(resolved).toEqual([{ loose: true }]);
+    // One lookup, which matches the name loosely (MAK-254) and says how the text came to be.
+    expect(resolved).toEqual([{ filename: 'card.png', vision: false }]);
   });
 
   it('refuses a PDF with a text layer, a picture past the cap, and a file that is not there', async () => {
@@ -295,6 +298,18 @@ describe('get_attachment on a scanned PDF', () => {
     const big = await collect({ BLOBS: blobs, ANTHROPIC_API_KEY: 'k' }, repo).get('get_attachment')!({ noteId, filename: 'bigfax.pdf' });
     expect(big.content[0]!.text).toMatch(/encoded as CCITT fax/);
     expect(big.content[0]!.text).not.toMatch(/Auto-fill/);
+  });
+
+  it('refuses a scan the model has read, and says a scan nothing has read cannot be recorded yet', async () => {
+    const { repo, blobs } = pictured();
+    const get = collect({ BLOBS: blobs, ANTHROPIC_API_KEY: 'k' }, repo).get('get_attachment')!;
+    const seen = await get({ noteId, filename: 'seen.pdf' });
+    expect(seen.isError).toBe(true);
+    expect(seen.content[0]!.text).toMatch(/vision model has read this PDF, and get_attachment_text has its reading/);
+    const fresh = await get({ noteId, filename: 'fresh.pdf' });
+    expect(fresh.isError).toBeFalsy();
+    expect(answer(fresh).next).toMatch(/^Pages 6 to 7 were not sent; ask for pages "6-7" next\. Its text layer has not been read yet, and set_attachment_text takes nothing/);
+    expect(answer(fresh).next).not.toMatch(/read them all before recording/);
   });
 
   it('waits its turn at the read gate before fetching the file', async () => {

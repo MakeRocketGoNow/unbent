@@ -706,6 +706,36 @@ export class AttachmentsStore {
   }
 
   /**
+   * `resolve` loosely, with how the file's text came to be (`summarize`'s `read`) and
+   * whether anything has read it at all, for MCP's `get_attachment` in one call where it
+   * would otherwise be `resolve` and then `textWithRead` (two billable requests, the second
+   * carrying a whole text across only for `read` to be worked out). A scan's pages are
+   * refused when its text layer or the model already has its words, and `unread` says
+   * whether `set_attachment_text` will take what an assistant reads (`writeAssistantText`
+   * refuses a PDF nothing has read). Only the head of the text crosses, as for a summary.
+   * Null when there is no such file on a live note.
+   */
+  resolveWithRead(noteId: string, filename: string, vision = true): (AttachmentRow & { read: FileRead; unread: boolean }) | null {
+    const row = this.byLooseName(noteId, filename, (name) =>
+      this.sql.first<AttachmentRow & { head: string | null; read_by: string | null; has_row: number }>(
+        `SELECT a.id, a.filename, a.content_type, a.size, a.r2_key,
+                substr(t.text, 1, ?3) AS head, t.read_by, t.attachment_id IS NOT NULL AS has_row
+           FROM attachments a
+           JOIN notes n ON n.id = a.note_id
+           LEFT JOIN attachment_text t ON t.attachment_id = a.id
+          WHERE a.note_id = ?1 AND a.filename = ?2 AND n.deleted_at IS NULL`,
+        noteId,
+        name,
+        SUMMARY_SOURCE_CHARS,
+      ),
+    );
+    if (!row) return null;
+    const { head, read_by, has_row, ...file } = row;
+    const { read } = summarize(row.content_type, head === null ? null : head.trim(), read_by, vision);
+    return { ...file, read, unread: has_row === 0 };
+  }
+
+  /**
    * `textFor`, with how the text came to be (`summarize`'s `read`), for MCP's
    * `get_attachment_text`: an empty answer alone left the tool saying a file "may still be
    * being processed, or may have no text layer", which is the guess `read` exists to
