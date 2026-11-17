@@ -507,6 +507,8 @@ interface ImageRef {
   entry: Entry;
   width: number;
   height: number;
+  /** Its bytes as stored, which is what a JPEG page is sent at and about what a PNG made of it comes to. */
+  stored: number;
 }
 
 /** A page as this reads it: its pictures, and whether it has any text of its own. */
@@ -545,7 +547,7 @@ function pageContents(pdf: Pdf, resources: PdfDict | null, depth: number, seen: 
       const height = pdf.resolve(entry.value.get('Height') ?? entry.value.get('H'));
       if (typeof width !== 'number' || typeof height !== 'number') continue;
       if (width < MIN_IMAGE_SIDE || height < MIN_IMAGE_SIDE) continue;
-      images.push({ entry, width, height });
+      images.push({ entry, width, height, stored: entry.stream ? entry.stream.end - entry.stream.start : 0 });
     } else if (subtype === 'Form' && depth < 2) {
       // A form's resources are its own; one that names none uses the page's.
       const inner = pageContents(pdf, pdf.dict(entry.value.get('Resources')) ?? resources, depth + 1, seen);

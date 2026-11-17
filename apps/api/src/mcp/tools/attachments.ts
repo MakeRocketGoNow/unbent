@@ -53,6 +53,15 @@ const PAGES_PER_CALL = 5;
 const MAX_PDF_ANSWER_BYTES = MAX_MCP_IMAGE_BYTES;
 
 /**
+ * The most pictures one call decodes and sends. A page drawn in strips is several pictures,
+ * each its own decode and its own transformation through the Images binding, which is
+ * metered by the month; five pages of a dozen strips would be sixty of each in one call.
+ * Checked before a page is decoded, so the page that would pass it is left whole for the
+ * next call rather than decoded and dropped. The first page always goes.
+ */
+const MAX_PICTURES_PER_CALL = 12;
+
+/**
  * The largest PDF whose pages `get_attachment` takes out. The whole file is held in the
  * isolate while its pictures are found, beside a page's pixels when one has to be turned
  * into a PNG; lib/pdf-pages.ts adds up what one call holds at the caps (`MAX_PIXEL_BYTES`),
@@ -202,6 +211,7 @@ export function registerAttachmentTools(
       const sent: Array<Record<string, unknown>> = [];
       const notSent: Array<{ page: number; reason: string }> = [];
       let bytes = 0;
+      let pictures = 0;
       let through = from - 1;
       for (let page = from; page <= to; page++) {
         const { images, hasText, rotate } = pdf.pages[page - 1]!;
@@ -215,7 +225,12 @@ export function registerAttachmentTools(
           through = page;
           continue;
         }
-        // A page goes whole or not at all, so the next call starts on a page boundary.
+        // A page goes whole or not at all, so the next call starts on a page boundary. It is
+        // left for the next call before any work when it would pass the cap on pictures, or,
+        // where nothing can shrink it, the bytes it would be sent at.
+        if (sent.length && pictures + images.length > MAX_PICTURES_PER_CALL) break;
+        if (sent.length && !env.IMAGES && bytes + images.reduce((n, i) => n + i.stored, 0) > MAX_PDF_ANSWER_BYTES) break;
+        pictures += images.length;
         const ready: Array<{ data: Uint8Array; mimeType: string; sent: Record<string, unknown> }> = [];
         const failed: string[] = [];
         for (const image of images) {

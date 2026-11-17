@@ -92,10 +92,18 @@ const faxed = pdfOf([
   { num: 10, body: '<< /Subtype /Image /Width 1700 /Height 2200 /ImageMask true /Filter /CCITTFaxDecode >>', stream: new Uint8Array(8) },
 ]);
 
+/** Three pages, each drawn in five strips, as some scanners store a page. */
+const striped = pdfOf([
+  ...pageTree([3, 4, 5]),
+  ...[3, 4, 5].map((n) => page(n, [0, 1, 2, 3, 4].map((k) => 10 * n + k))),
+  ...[3, 4, 5].flatMap((n) => [0, 1, 2, 3, 4].map((k) => jpegPage(10 * n + k, 1700, 440))),
+]);
+
 /** The bytes in the fake bucket, by key. */
 const stored: Record<string, Uint8Array> = {
   'k/pages': sevenPages,
   'k/fax': faxed,
+  'k/striped': striped,
   'k/locked': pdfOf([...pageTree([3]), page(3, [])], '<< /Root 1 0 R /Encrypt 9 0 R >>'),
   // Two pages whose pictures are 2 MB each as stored, so both do not fit one answer unshrunk.
   'k/heavy': pdfOf([...pageTree([3, 4]), page(3, [10]), page(4, [11]), jpegPage(10, 1200, 1500, 2_000_000), jpegPage(11, 1200, 1500, 2_000_000)]),
@@ -123,6 +131,7 @@ function pictured() {
     'fax.pdf': { id: 'b2', filename: 'fax.pdf', content_type: 'application/pdf', size: faxed.length, r2_key: 'k/fax' },
     'locked.pdf': { id: 'b3', filename: 'locked.pdf', content_type: 'application/pdf', size: 200, r2_key: 'k/locked' },
     'heavy.pdf': { id: 'b4', filename: 'heavy.pdf', content_type: 'application/pdf', size: 4_000_400, r2_key: 'k/heavy' },
+    'striped.pdf': { id: 'b9', filename: 'striped.pdf', content_type: 'application/pdf', size: striped.length, r2_key: 'k/striped' },
     'book.pdf': { id: 'b5', filename: 'book.pdf', content_type: 'application/pdf', size: 40 * 1024 * 1024, r2_key: 'k/book' },
     // The fax scan again, past the size the model takes a PDF at, so no press reads it.
     'bigfax.pdf': { id: 'b6', filename: 'bigfax.pdf', content_type: 'application/pdf', size: 9 * 1024 * 1024, r2_key: 'k/fax' },
@@ -283,6 +292,17 @@ describe('get_attachment on a scanned PDF', () => {
     const result = await collect({ BLOBS: blobs }, repo).get('get_attachment')!({ noteId, filename: 'heavy.pdf' });
     expect((answer(result).sent as Array<{ page: number }>).map((s) => s.page)).toEqual([1]);
     expect(answer(result).next).toMatch(/Pages 2 to 2 were not sent; ask for pages "2-2"/);
+  });
+
+  it('stops before a page whose pictures would pass the cap on pictures a call', async () => {
+    const { repo, blobs } = pictured();
+    const images = fakeImages();
+    const result = await collect({ BLOBS: blobs, IMAGES: images.binding }, repo).get('get_attachment')!({ noteId, filename: 'striped.pdf' });
+    // Two pages of five strips fit under twelve; the third is left for the next call, undecoded.
+    expect((answer(result).sent as Array<{ page: number }>).map((s) => s.page)).toEqual([1, 1, 1, 1, 1, 2, 2, 2, 2, 2]);
+    expect(blocks(result).filter((b) => b.type === 'text' && b.text!.startsWith('Page'))).toHaveLength(2);
+    expect(images.asked).toHaveLength(10);
+    expect(answer(result).next).toMatch(/ask for pages "3/);
   });
 
   it('says why a page was not sent, and refuses when nothing could be', async () => {
