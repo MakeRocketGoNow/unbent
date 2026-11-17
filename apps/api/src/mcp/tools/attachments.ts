@@ -111,8 +111,8 @@ export function registerAttachmentTools(
       description:
         'The picture itself, returned as an image for you to read: a JPEG, PNG, GIF or WebP ' +
         (shrinks
-          ? `attachment, sent as a JPEG no larger than ${DEFAULT_MAX_EDGE} px on its longest side (the size ` +
-            `your model reads at) unless you ask for up to ${LARGEST_MAX_EDGE} with maxEdge. `
+          ? `attachment, no larger than ${DEFAULT_MAX_EDGE} px on its longest side (the size your model reads ` +
+            `at; a larger picture is sent as a JPEG copy) unless you ask for up to ${LARGEST_MAX_EDGE} with maxEdge. `
           : 'attachment under about 3.7 MB. ') +
         'For a picture that get_attachment_text, get_note or a ' +
         'summary reports as "pending": nothing on this instance reads a picture on its own' +
