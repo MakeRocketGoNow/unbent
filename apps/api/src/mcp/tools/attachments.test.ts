@@ -91,11 +91,17 @@ function pictured() {
     'fresh.pdf': { id: 'a4', filename: 'fresh.pdf', content_type: 'application/pdf', size: 10, r2_key: 'k/fresh' },
   };
   const written: Array<{ filename: string; text: string }> = [];
+  /** The options each `resolve` was asked with. */
+  const resolved: unknown[] = [];
   const refuse: Record<string, 'unread' | 'layer' | 'vision'> = { 'scan.pdf': 'layer', 'poster.jpg': 'vision', 'fresh.pdf': 'unread' };
   return {
     written,
+    resolved,
     repo: {
-      resolve: async (id: string, filename: string) => (id === noteId ? (rows[filename] ?? null) : null),
+      resolve: async (id: string, filename: string, opts?: unknown) => {
+        resolved.push(opts);
+        return id === noteId ? (rows[filename] ?? null) : null;
+      },
       writeAssistantText: async (id: string, filename: string, text: string) => {
         if (id !== noteId || !rows[filename]) return { ok: false, reason: 'missing', filename: null };
         if (refuse[filename]) return { ok: false, reason: refuse[filename], filename: null };
@@ -147,7 +153,7 @@ const parse = (result: { content: Array<{ text: string }> }) => JSON.parse(resul
 
 describe('get_attachment', () => {
   it('hands a picture over as an image, with what to do next', async () => {
-    const { repo, blobs } = pictured();
+    const { repo, blobs, resolved } = pictured();
     const get = collect({ BLOBS: blobs }, repo).get('get_attachment')!;
     const result = await get({ noteId, filename: 'card.png' });
     expect(result.isError).toBeFalsy();
@@ -155,6 +161,8 @@ describe('get_attachment', () => {
     expect(image).toEqual({ type: 'image', data: btoa(String.fromCharCode(...png)), mimeType: 'image/png' });
     expect(JSON.parse(text!.text!)).toMatchObject({ filename: 'card.png', contentType: 'image/png', size: png.length });
     expect(text!.text).toContain('set_attachment_text');
+    // The name came from an assistant, so the store may match it loosely (MAK-254).
+    expect(resolved).toEqual([{ loose: true }]);
   });
 
   it('refuses a PDF, a picture past the cap, and a file that is not there', async () => {
