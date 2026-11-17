@@ -129,4 +129,34 @@ describe('leaving a search for another place', () => {
     const underRecipes = vi.mocked(api.searchNotes).mock.calls.filter(([, filter]) => filter?.notebook === 'Recipes');
     expect(underRecipes.map(([term]) => term)).toEqual(['s']);
   });
+
+  /*
+   * Back or Forward between two searched places moves the term and the place together.
+   * The new place's own term is the one to search, at once: the last place's words under
+   * the new place's filter are the same stale request by another road.
+   */
+  it("searches a place reached with a term of its own for that term, never the last place's", async () => {
+    const router = mount('/notes?notebook=Recipes&q=eggs');
+    await waitFor(() => expect(api.searchNotes).toHaveBeenCalledWith('eggs', expect.objectContaining({ notebook: 'Recipes' }), false));
+
+    await router.navigate({ to: '/notes', search: { notebook: 'Receipts', q: 'milk' } });
+    await waitFor(() => expect(api.searchNotes).toHaveBeenCalledWith('milk', expect.objectContaining({ notebook: 'Receipts' }), false), {
+      timeout: 200,
+    });
+    await new Promise((r) => setTimeout(r, 400));
+    const underReceipts = vi.mocked(api.searchNotes).mock.calls.filter(([, filter]) => filter?.notebook === 'Receipts');
+    expect(underReceipts.map(([term]) => term)).toEqual(['milk']);
+  });
+
+  /* Typing inside one place still waits for the word: only a change of place skips it. */
+  it('still waits for typing to settle within one place', async () => {
+    const router = mount('/notes?notebook=Recipes');
+    await screen.findByText('Sourdough');
+    for (const q of ['s', 'so', 'sou']) {
+      await router.navigate({ to: '/notes', search: (prev) => ({ ...prev, q }), replace: true });
+    }
+    await waitFor(() => expect(api.searchNotes).toHaveBeenCalled());
+    await new Promise((r) => setTimeout(r, 400));
+    expect(vi.mocked(api.searchNotes).mock.calls.map(([term]) => term)).toEqual(['sou']);
+  });
 });

@@ -117,6 +117,9 @@ beforeEach(() => {
   localStorage.clear();
   vi.stubGlobal('matchMedia', (query: string) => ({ matches: false, media: query, addEventListener: () => {}, removeEventListener: () => {} }));
   vi.mocked(api.getConfig).mockResolvedValue({ providers: [] } as unknown as Awaited<ReturnType<typeof api.getConfig>>);
+  // An answer of the server's shape. A search typed with a change of tags runs at once
+  // rather than after the typing wait, so the layout reads one inside these tests.
+  vi.mocked(api.searchNotes).mockResolvedValue([]);
 });
 
 afterEach(() => {
