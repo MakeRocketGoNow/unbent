@@ -331,11 +331,18 @@ function scanObjects(b: Uint8Array): Map<number, Entry> {
   return entries;
 }
 
-/** `bytes` as a stream, without the copy `new Blob([bytes])` would make of them first. */
-function streamOf(bytes: Uint8Array): ReadableStream<Uint8Array> {
+/**
+ * `bytes` as a stream, without the copy `new Blob([bytes])` would make of them first.
+ *
+ * The types are for the web app's typecheck, which reads this file under the DOM lib: there
+ * a `(De)CompressionStream` takes only `BufferSource`, which is a view on an `ArrayBuffer`
+ * and never on a shared one. Every buffer here is R2's or one the reader made, so saying so
+ * is true; the Workers lib, which the API itself is checked under, accepts either.
+ */
+function streamOf(bytes: Uint8Array): ReadableStream<BufferSource> {
   return new ReadableStream({
     start(controller) {
-      controller.enqueue(bytes);
+      controller.enqueue(bytes as Uint8Array<ArrayBuffer>);
       controller.close();
     },
   });

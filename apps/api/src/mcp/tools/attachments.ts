@@ -338,7 +338,9 @@ export function registerAttachmentTools(
     const within = pic.width <= edge && pic.height <= edge;
     if (env.IMAGES && (!within || size > MAX_MCP_IMAGE_BYTES) && size <= MAX_DOWNSCALE_INPUT_BYTES) {
       try {
-        const small = await downscale(env.IMAGES, new Response(pic.bytes).body!, edge);
+        // A page's bytes are always on an `ArrayBuffer` (R2's, or one the reader made), never a
+        // shared one; the DOM lib, which the web app's typecheck reads this file under, wants that said.
+        const small = await downscale(env.IMAGES, new Response(pic.bytes as Uint8Array<ArrayBuffer>).body!, edge);
         if (small.bytes.byteLength <= MAX_MCP_IMAGE_BYTES) {
           return {
             data: new Uint8Array(small.bytes),
