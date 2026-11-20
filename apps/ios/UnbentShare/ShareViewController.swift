@@ -47,6 +47,14 @@ final class ShareViewController: UIViewController {
         sheet.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         view.addSubview(sheet.view)
         sheet.didMove(toParent: self)
+        // The system has said the person on this phone is under the minimum age. Signed
+        // out by the block, the sheet would otherwise offer to keep the files for the next
+        // sign-in, which the app will not allow, and upload them into the account if the
+        // block were ever lifted. Nothing is copied; Cancel is the one way out.
+        if prefs.ageBlocked {
+            model.problem = CaptureModel.ageBlocked
+            return
+        }
         stage()
     }
 

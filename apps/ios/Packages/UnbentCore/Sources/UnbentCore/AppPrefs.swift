@@ -78,7 +78,8 @@ public final class AppPrefs {
     /// For the device, not per instance like the session: it is about the person holding
     /// the phone, and pointing a debug build at another address must not be a way past
     /// it. Nothing else of what the system said is kept; this flag is the whole record.
-    /// In the App Group's defaults with the rest, so the Share Extension can read it too.
+    /// In the App Group's defaults with the rest, so the Share Extension reads it too and
+    /// refuses a share.
     public var ageBlocked: Bool {
         get { defaults.bool(forKey: Self.ageBlockedKey) }
         set { defaults.set(newValue, forKey: Self.ageBlockedKey) }
