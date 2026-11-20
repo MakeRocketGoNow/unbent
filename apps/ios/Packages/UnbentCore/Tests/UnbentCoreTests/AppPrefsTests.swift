@@ -74,4 +74,19 @@ final class AppPrefsTests: XCTestCase {
         prefs.lastNotebook = nil
         XCTAssertNil(prefs.lastNotebook)
     }
+
+    /// About the person holding the phone, so moving a debug build to another address is
+    /// not a way past it.
+    func testAnAgeBlockHoldsForEveryInstance() {
+        let prefs = prefs()
+        XCTAssertFalse(prefs.ageBlocked)
+        prefs.ageBlocked = true
+
+        prefs.instance = "http://localhost:5204"
+        XCTAssertTrue(prefs.ageBlocked)
+
+        prefs.ageBlocked = false
+        prefs.resetInstance()
+        XCTAssertFalse(prefs.ageBlocked)
+    }
 }
