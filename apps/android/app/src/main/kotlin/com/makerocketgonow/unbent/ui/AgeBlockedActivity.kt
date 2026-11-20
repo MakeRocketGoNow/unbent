@@ -7,12 +7,15 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -23,8 +26,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.lifecycleScope
 import com.makerocketgonow.unbent.Prefs
 import com.makerocketgonow.unbent.R
@@ -149,7 +154,16 @@ private fun AgeBlocked(checking: Boolean, lastVerdict: AgeVerdict?, onCheck: () 
             Row(horizontalArrangement = Arrangement.spacedBy(Space.Small)) {
                 TextButton(onClick = onDelete) { Text(stringResource(R.string.age_blocked_delete)) }
                 Button(onClick = onCheck, enabled = !checking) {
-                    Text(stringResource(R.string.age_blocked_check))
+                    // Three calls to Play in a row can take a few seconds, and a faded button
+                    // alone reads as broken. The label stays, unseen, so the button keeps its
+                    // width and the quiet action beside it does not move.
+                    Box(contentAlignment = Alignment.Center) {
+                        Text(
+                            stringResource(R.string.age_blocked_check),
+                            Modifier.alpha(if (checking) 0f else 1f),
+                        )
+                        if (checking) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                    }
                 }
             }
         }
