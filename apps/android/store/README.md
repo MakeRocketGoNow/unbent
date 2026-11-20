@@ -87,7 +87,7 @@ they must agree:
 - **Target audience and content** in Play Console is set to 18 and over only, so Play never
   lists the app as for children or teenagers and the Families policy does not apply.
 - **The age gate** (`AgeGate.kt`) asks Google Play's Age Signals API for the person's age
-  range when the app opens, where Play reports that a law makes it share one: Texas now,
+  range each time the app starts (not when a running app is brought back to the screen), where Play reports that a law makes it share one: Texas now,
   California and Brazil from January 2027. California's AB 1043 counts what comes back as
   the developer knowing the person's age, so a range under 18 signs the phone out and keeps
   the app on a screen that says why, until Play reports 18 or over. Elsewhere nothing is
