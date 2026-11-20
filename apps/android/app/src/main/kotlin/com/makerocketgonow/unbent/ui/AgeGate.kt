@@ -201,5 +201,6 @@ private suspend fun <T> Task<T>.await(): T = suspendCancellableCoroutine { cont 
     }
 }
 
+/** Starts the activity as the only one in a fresh task: nothing to go Back to. */
 internal fun Intent.clearingTask(): Intent =
     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)

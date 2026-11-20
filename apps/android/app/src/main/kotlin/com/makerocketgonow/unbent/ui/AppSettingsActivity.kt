@@ -90,10 +90,7 @@ class AppSettingsActivity : ComponentActivity() {
     private fun use(prefs: Prefs, address: String) {
         WebSession.clear()
         prefs.instance = address
-        startActivity(
-            Intent(this, MainActivity::class.java)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK),
-        )
+        startActivity(Intent(this, MainActivity::class.java).clearingTask())
         finish()
     }
 
