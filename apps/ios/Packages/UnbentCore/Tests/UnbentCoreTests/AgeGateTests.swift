@@ -21,6 +21,19 @@ final class AgeGateTests: XCTestCase {
         XCTAssertEqual(.unknown, ageVerdict(lower: 16, upper: nil))
     }
 
+    func testAMinorsAnswerBlocksAPhoneThatIsNotBlocked() {
+        XCTAssertEqual(.block, ageBlockChange(after: .minor, blocked: false))
+        XCTAssertEqual(.keep, ageBlockChange(after: .adult, blocked: false))
+        XCTAssertEqual(.keep, ageBlockChange(after: .unknown, blocked: false))
+    }
+
+    /// No answer is what airplane mode gives: a block it lifted would be none.
+    func testOnlyAnAdultsAnswerLiftsABlock() {
+        XCTAssertEqual(.lift, ageBlockChange(after: .adult, blocked: true))
+        XCTAssertEqual(.keep, ageBlockChange(after: .unknown, blocked: true))
+        XCTAssertEqual(.keep, ageBlockChange(after: .minor, blocked: true))
+    }
+
     func testWhereTheSystemSharesAMinorsRangeTheCheckSaysSo() async {
         let fake = FakeAgeRanges(answer: .sharing(lower: 13, upper: 15))
         let verdict = await AgeGate(source: fake).check()

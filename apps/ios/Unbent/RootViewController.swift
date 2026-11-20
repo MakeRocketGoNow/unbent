@@ -202,7 +202,8 @@ final class RootViewController: UIViewController {
             self.ageCheck = Task { @MainActor [weak self] in
                 let verdict = await gate.check()
                 self?.ageCheck = nil
-                if verdict == .minor { self?.blockForAge() }
+                guard let self, ageBlockChange(after: verdict, blocked: self.prefs.ageBlocked) == .block else { return }
+                self.blockForAge()
             }
         }
     }
@@ -232,9 +233,8 @@ final class RootViewController: UIViewController {
             Task { @MainActor [weak self] in
                 let verdict = await gate.check()
                 model.checking = false
-                // Only a definite answer lifts it. No answer is also what airplane mode
-                // gives, and a block a lost connection lifted would be no block at all.
-                guard verdict == .adult, let self else {
+                // Only a definite answer lifts it (`ageBlockChange` says why).
+                guard let self, ageBlockChange(after: verdict, blocked: self.prefs.ageBlocked) == .lift else {
                     model.lastVerdict = verdict
                     return
                 }

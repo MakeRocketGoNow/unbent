@@ -32,6 +32,24 @@ public func ageVerdict(lower: Int?, upper: Int?) -> AgeVerdict {
     return .unknown
 }
 
+/// What a verdict does to a phone's block (`AppPrefs.ageBlocked`).
+public enum AgeBlockChange: Equatable, Sendable {
+    case block, lift, keep
+}
+
+/// The rule the gate enforces, apart from the screens that carry it out: a minor's answer
+/// blocks a phone that is not blocked, and only an adult's lifts one that is. Nothing else
+/// changes anything. `.unknown` is also what airplane mode answers, so a block a lost
+/// connection lifted would be no block at all, and a phone let in by a failure is let in
+/// only until the system next has an answer.
+public func ageBlockChange(after verdict: AgeVerdict, blocked: Bool) -> AgeBlockChange {
+    switch (verdict, blocked) {
+    case (.minor, false): .block
+    case (.adult, true): .lift
+    default: .keep
+    }
+}
+
 /// What the system answered when asked for a range: the framework's `Response`, with
 /// nothing kept but the two bounds the verdict reads.
 public enum AgeRangeAnswer: Equatable, Sendable {
