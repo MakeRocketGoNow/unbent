@@ -22,6 +22,9 @@ composeBom = "2026.09.00"
 materialIcons = "1.7.8"
 activityCompose = "1.13.0"
 webkit = "1.17.0"
+# Beta, and released as 0.0.x: read its release notes before moving it, since 0.0.4
+# renamed fields the gate reads. See AgeGate.kt.
+ageSignals = "0.0.6"
 
 [libraries]
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "coreKtx" }
@@ -51,6 +54,8 @@ compose-material-icons-core = { module = "androidx.compose.material:material-ico
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "activityCompose" }
 # WebSettingsCompat: the WebView's dark mode below API 33, and passkeys inside it.
 androidx-webkit = { module = "androidx.webkit:webkit", version.ref = "webkit" }
+# Google Play's age range for the person on the phone, where a law has Play share it.
+play-age-signals = { module = "com.google.android.play:age-signals", version.ref = "ageSignals" }
 # Response models. Lenient decoding, so a field the server adds later cannot break an installed app.
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serialization" }
 

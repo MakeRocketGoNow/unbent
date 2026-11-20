@@ -122,6 +122,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         prefs = Prefs(this)
+        if (enforceAgeGate()) return
 
         /*
          * Sign in when the app is opened, which is the one moment a person expects to be
