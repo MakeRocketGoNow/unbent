@@ -5,7 +5,7 @@ import UnbentCore
 /// Apple's Declared Age Range framework, as the two questions `AgeGate` asks.
 ///
 /// The framework is iOS 26, and its question of whether a law applies is 26.2, against a
-/// deployment target of 17: `AgeGate.system(over:)` gives an older system no source at
+/// deployment target of 17: `AgeGate.system(presenter:)` gives an older system no source at
 /// all, which the gate reads as unknown and lets the person in. Nothing earlier than 26.2
 /// is asked even though the range request is 26.0, because without the eligibility
 /// question the only way to learn whether a law applies is to ask everyone, and that is
@@ -19,12 +19,14 @@ import UnbentCore
 /// (Settings, Developer, Sandbox Testing, Age Assurance); the simulator cannot.
 @available(iOS 26.2, *)
 struct DeclaredAgeRanges: AgeRangeAsking, @unchecked Sendable {
-    /// What the system draws its sheet over, when it has one to draw. Weak, so a check
-    /// still under way does not keep a screen the app has moved on from. Read only on the
-    /// main actor, which is what makes the unchecked `Sendable` true.
-    private weak var presenter: UIViewController?
+    /// What the system draws its sheet over, when it has one to draw: asked when the
+    /// range is requested, not when the check starts, since by then a capture sheet or
+    /// App settings may have gone up, and UIKit refuses to present from a controller that
+    /// is already presenting. Called only on the main actor, which is what makes the
+    /// unchecked `Sendable` true.
+    private let presenter: @MainActor () -> UIViewController?
 
-    init(presenter: UIViewController) {
+    init(presenter: @escaping @MainActor () -> UIViewController?) {
         self.presenter = presenter
     }
 
@@ -34,7 +36,7 @@ struct DeclaredAgeRanges: AgeRangeAsking, @unchecked Sendable {
 
     @MainActor
     func requestRange(gate: Int) async throws -> AgeRangeAnswer {
-        guard let presenter, presenter.view.window != nil else { throw AgeRangeService.Error.notAvailable }
+        guard let presenter = presenter(), presenter.view.window != nil else { throw AgeRangeService.Error.notAvailable }
         switch try await AgeRangeService.shared.requestAgeRange(ageGates: gate, in: presenter) {
         case .declinedSharing:
             return .declined
@@ -47,9 +49,10 @@ struct DeclaredAgeRanges: AgeRangeAsking, @unchecked Sendable {
 }
 
 extension AgeGate {
-    /// The gate over the system's own answer, drawing any prompt over `presenter`.
+    /// The gate over the system's own answer, drawing any prompt over what `presenter`
+    /// names at the moment it is drawn.
     @MainActor
-    static func system(over presenter: UIViewController) -> AgeGate {
+    static func system(presenter: @escaping @MainActor () -> UIViewController?) -> AgeGate {
         if #available(iOS 26.2, *) {
             return AgeGate(source: DeclaredAgeRanges(presenter: presenter))
         }

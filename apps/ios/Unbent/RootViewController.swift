@@ -194,7 +194,7 @@ final class RootViewController: UIViewController {
     private func checkAge() {
         onScreen { [weak self] in
             guard let self, self.ageCheck == nil else { return }
-            let gate = AgeGate.system(over: self)
+            let gate = AgeGate.system { [weak self] in self?.topmost }
             self.ageCheck = Task { @MainActor [weak self] in
                 let verdict = await gate.check()
                 self?.ageCheck = nil
@@ -224,7 +224,7 @@ final class RootViewController: UIViewController {
         model.onCheck = { [weak self, weak model] in
             guard let self, let model, !model.checking else { return }
             model.checking = true
-            let gate = AgeGate.system(over: self)
+            let gate = AgeGate.system { [weak self] in self?.topmost }
             Task { @MainActor [weak self] in
                 let verdict = await gate.check()
                 model.checking = false
