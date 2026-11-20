@@ -284,3 +284,19 @@ It is read only while Apple is configured for the web too (see [Sign in with
 Apple](self-hosting.md#sign-in-with-apple)): the Services ID is still accepted beside it, and an instance
 without `APPLE_CLIENT_ID` offers Apple to nobody. Both App IDs need the Sign in with Apple
 capability on the portal.
+
+**Age.** The app is for people 18 and over, the same age the terms require. Where a state
+law has iOS share an age range with apps (Texas now, Utah and Louisiana, and California
+from January 2027), the app asks Apple's Declared Age Range framework for the person's
+range on each launch and each move to or from the sign-in screen (`AgeGate` in
+`UnbentCore`, `AgeRanges.swift` in the app). A range under 18 signs the phone out and
+keeps the app on a screen that says why, until the system reports 18 or over. Elsewhere
+nothing is asked, and nothing blocks when the system cannot answer: before iOS 26.2, which
+the eligibility question needs, the app opens as it always did. The range never leaves the
+phone, so the App Store privacy answers need nothing for it.
+
+Both App IDs need the Declared Age Range capability on the portal, or a device build fails
+to sign with the `com.apple.developer.declared-age-range` entitlement the app now asks
+for. The simulator cannot exercise it: a phone on iOS 26.2 or later signed in to a Sandbox
+Apple Account can, under Settings, Developer, Sandbox Testing, Age Assurance, which offers
+scenarios such as a Texas user aged 14.
