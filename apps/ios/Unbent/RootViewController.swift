@@ -496,27 +496,3 @@ enum QuickAction: String {
     /// The address that makes a note, as the list's New button does.
     static let newNotePath = "/notes?new=1"
 }
-
-/// What the blocked screen shows that changes: whether a check is under way, and what the
-/// last one heard. The screen itself (`AgeBlockedScreen`) takes plain values, like every
-/// view in `UnbentUI`.
-@MainActor
-final class AgeBlockedModel: ObservableObject {
-    @Published var checking = false
-    @Published var lastVerdict: AgeVerdict?
-    var onCheck: () -> Void = {}
-    var onDelete: () -> Void = {}
-}
-
-struct AgeBlockedHost: View {
-    @ObservedObject var model: AgeBlockedModel
-
-    var body: some View {
-        AgeBlockedScreen(
-            checking: model.checking,
-            lastVerdict: model.lastVerdict,
-            onCheck: model.onCheck,
-            onDelete: model.onDelete
-        )
-    }
-}
