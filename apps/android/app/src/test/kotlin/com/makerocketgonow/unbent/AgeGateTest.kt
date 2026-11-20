@@ -10,13 +10,22 @@ import com.google.android.play.agesignals.model.AgeSignalsErrorCode
 import com.google.android.play.agesignals.model.AgeSignalsStatus
 import com.google.android.play.agesignals.model.ApplicableAgeFeature
 import com.google.android.play.agesignals.testing.FakeAgeSignalsManager
+import com.makerocketgonow.unbent.api.SessionCookie
+import com.makerocketgonow.unbent.ui.AgeBlockedActivity
 import com.makerocketgonow.unbent.ui.AgeGate
 import com.makerocketgonow.unbent.ui.AgeVerdict
+import com.makerocketgonow.unbent.ui.enforceAgeGate
 import com.makerocketgonow.unbent.ui.verdictOf
+import org.junit.After
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric
@@ -107,5 +116,82 @@ class AgeGateTest {
             setNextApplicableAgeFeaturesException(AgeSignalsException(AgeSignalsErrorCode.APP_NOT_OWNED))
         }
         assertEquals(AgeVerdict.Unknown, check(manager))
+    }
+
+    // The half that enforces: what a verdict does to the phone, not what the verdict is.
+
+    private fun idle() = repeat(10) { shadowOf(Looper.getMainLooper()).idle() }
+
+    private fun signedIn(activity: ComponentActivity) {
+        Prefs(activity).session = SessionCookie("session", "token")
+    }
+
+    @Test
+    fun `a minor is recorded, signed out and sent to the blocked screen`() {
+        val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup().get()
+        signedIn(activity)
+        assertFalse(activity.enforceAgeGate { AgeGate(fake(result = range(13, 15))) })
+        idle()
+        val prefs = Prefs(activity)
+        assertTrue(prefs.ageBlocked)
+        assertNull(prefs.session)
+        assertEquals(AgeBlockedActivity::class.java.name, shadowOf(activity).nextStartedActivity?.component?.className)
+        assertTrue(activity.isFinishing)
+    }
+
+    @Test
+    fun `a recorded block stops the launch without asking Play`() {
+        val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup().get()
+        Prefs(activity).ageBlocked = true
+        assertTrue(activity.enforceAgeGate { fail("Play was asked"); error("unreachable") })
+        assertEquals(AgeBlockedActivity::class.java.name, shadowOf(activity).nextStartedActivity?.component?.className)
+        assertTrue(activity.isFinishing)
+    }
+
+    @Test
+    fun `no answer from Play leaves the person signed in and the app open`() {
+        val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup().get()
+        signedIn(activity)
+        assertFalse(activity.enforceAgeGate { AgeGate(fake(mandatory = false)) })
+        idle()
+        assertFalse(Prefs(activity).ageBlocked)
+        assertNotNull(Prefs(activity).session)
+        assertFalse(activity.isFinishing)
+    }
+
+    @After
+    fun restoreGate() {
+        AgeBlockedActivity.gateFor = { AgeGate.forApp(it) }
+    }
+
+    private fun checkAgainWith(manager: FakeAgeSignalsManager): AgeBlockedActivity {
+        AgeBlockedActivity.gateFor = { AgeGate(manager) }
+        val activity = Robolectric.buildActivity(AgeBlockedActivity::class.java).setup().get()
+        Prefs(activity).ageBlocked = true
+        activity.checkAgain()
+        idle()
+        return activity
+    }
+
+    @Test
+    fun `check again lifts the block only when Play says adult`() {
+        val activity = checkAgainWith(fake(result = range(18, null)))
+        assertFalse(Prefs(activity).ageBlocked)
+        assertTrue(activity.isFinishing)
+    }
+
+    @Test
+    fun `check again with no answer from Play keeps the block`() {
+        // Airplane mode answers Unknown too; a block a lost connection lifted would be none.
+        val activity = checkAgainWith(fake(mandatory = false))
+        assertTrue(Prefs(activity).ageBlocked)
+        assertFalse(activity.isFinishing)
+    }
+
+    @Test
+    fun `check again with a minor's answer keeps the block`() {
+        val activity = checkAgainWith(fake(result = range(16, 17)))
+        assertTrue(Prefs(activity).ageBlocked)
+        assertFalse(activity.isFinishing)
     }
 }

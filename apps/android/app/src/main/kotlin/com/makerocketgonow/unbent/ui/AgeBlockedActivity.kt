@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.annotation.VisibleForTesting
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Arrangement
@@ -85,12 +86,13 @@ class AgeBlockedActivity : ComponentActivity() {
         openOutside(this, Destination.Browser(Prefs(this).instance + DELETION_PATH))
     }
 
-    private fun checkAgain() {
+    @VisibleForTesting
+    internal fun checkAgain() {
         if (checking) return
         checking = true
         lifecycleScope.launch {
             val verdict = try {
-                AgeGate.forApp(this@AgeBlockedActivity).check(this@AgeBlockedActivity)
+                gateFor(this@AgeBlockedActivity).check(this@AgeBlockedActivity)
             } finally {
                 checking = false
             }
@@ -107,6 +109,10 @@ class AgeBlockedActivity : ComponentActivity() {
     companion object {
         /** The web app's `HOW_TO_DELETE`, the address Play Console's deletion URL names too. */
         private const val DELETION_PATH = "/delete-my-account"
+
+        /** Where Check again gets its gate; replaced by tests with one over a fake. */
+        @VisibleForTesting
+        internal var gateFor: (Context) -> AgeGate = { AgeGate.forApp(it) }
 
         fun intent(context: Context): Intent =
             Intent(context, AgeBlockedActivity::class.java).clearingTask()
