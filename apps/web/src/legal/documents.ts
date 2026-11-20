@@ -203,8 +203,7 @@ const COUNT = ['', '', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven'] as const;
  * past them is read-only until it subscribes or deletes down to them; the policy's
  * retention sentence says it is that account, not every lapsed one, that is kept
  * read-only. The version did not move: the change only adds a way to keep writing, which
- * nobody needs asking about, and takes nothing an account had agreed to away. If this
- * ships on a later day, the two dates move to that day.
+ * nobody needs asking about, and takes nothing an account had agreed to away.
  *
  * Both moved on 20 November 2026, when the minimum age went from 13 to 18 and the
  * policy's "Children" section began saying what the Android app does with the age range
