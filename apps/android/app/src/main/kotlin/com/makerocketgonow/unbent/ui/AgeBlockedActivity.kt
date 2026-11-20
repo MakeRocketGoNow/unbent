@@ -43,7 +43,7 @@ import kotlinx.coroutines.launch
  *
  * No way in from here: no sign-in, no App settings, nothing that reaches an account. Two
  * actions. "Check again" asks Play again, for the adult whose Play account had the wrong
- * age (or a parent's phone) and has since corrected it there. "Delete my account" opens
+ * age (or a parent's phone) and has since corrected it there. "How to delete my account" opens
  * the instance's own deletion page in a browser, which is the existing flow (an emailed
  * link, or a message to the operator for someone who cannot sign in) rather than a second
  * one: the block already took the app's session, and an account is deleted by its owner
