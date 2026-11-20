@@ -177,6 +177,15 @@
             android:windowSoftInputMode="adjustResize" />
 
         <!--
+            Shown in place of the app once Google Play has said the person is under the
+            minimum age. Reached only from the app's own activities (AgeGate.kt).
+        -->
+        <activity
+            android:name=".ui.AgeBlockedActivity"
+            android:exported="false"
+            android:label="@string/app_name" />
+
+        <!--
             Exported, because the browser hands the token back by opening this deep link.
             The scheme carries the build's application id, so a debug install beside a
             release one cannot intercept the other's connection.

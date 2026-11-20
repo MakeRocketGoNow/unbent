@@ -79,10 +79,30 @@ rsvg-convert -w 512 -h 512 icon.svg -o icon-512.png
 rsvg-convert -w 1024 -h 500 feature.svg -o feature-graphic-1024x500.png
 ```
 
+## Age
+
+The app is for people 18 and over, the same age the terms require. Two things hold that, and
+they must agree:
+
+- **Target audience and content** in Play Console is set to 18 and over only, so Play never
+  lists the app as for children or teenagers and the Families policy does not apply.
+- **The age gate** (`AgeGate.kt`) asks Google Play's Age Signals API for the person's age
+  range each time the app starts (not when a running app is brought back to the screen),
+  where Play reports that a law makes it share one: Texas now, California and Brazil from
+  January 2027. California's AB 1043 counts what comes back as the developer knowing the
+  person's age, so a range under 18 signs the phone out and keeps the app on a screen that
+  says why, until Play reports 18 or over. Elsewhere nothing is asked, and nothing blocks
+  when Play cannot be reached.
+
+The Data safety form needs nothing for it: the library collects nothing, and the range never
+leaves the phone. Test it with a build from an internal testing track; a sideloaded or debug
+build is not owned through Play, so the API answers `APP_NOT_OWNED` and the gate lets it in.
+
 ## Still needed in Play Console
 
 - A support contact email
 - Data safety form (the app collects note content and an email address for the account)
 - Content rating questionnaire
+- Target audience: 18 and over only (see Age, above)
 - Privacy policy URL: `https://unbent.app/privacy`
 - Account deletion URL: `https://unbent.app/delete-my-account`

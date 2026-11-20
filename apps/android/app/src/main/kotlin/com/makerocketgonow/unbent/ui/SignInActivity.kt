@@ -66,6 +66,8 @@ class SignInActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        // Before anything is asked of the person: the sign-in is where an account starts.
+        if (enforceAgeGate()) return
         instance = prefs.instance
         loadConfig()
 

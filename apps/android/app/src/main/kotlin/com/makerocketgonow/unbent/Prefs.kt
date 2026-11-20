@@ -83,6 +83,16 @@ class Prefs(context: Context) {
             if (value == null) remove(key) else putString(key, value)
         }
 
+    /**
+     * Google Play said the person on this phone is under the app's minimum age, and the app
+     * keeps them out until Play says otherwise (`AgeGate`). For the phone, not per instance
+     * like everything else here: an age belongs to the person, not to an account, and
+     * pointing the app at another address must not be a way round it.
+     */
+    var ageBlocked: Boolean
+        get() = prefs.getBoolean(KEY_AGE_BLOCKED, false)
+        set(value) = prefs.edit { putBoolean(KEY_AGE_BLOCKED, value) }
+
     fun clearSession() {
         session = null
     }
@@ -92,6 +102,7 @@ class Prefs(context: Context) {
     companion object {
         private const val NAME = "unbent"
         private const val KEY_INSTANCE = "instance"
+        private const val KEY_AGE_BLOCKED = "ageBlocked"
 
         /**
          * Trims a typed address to a bare origin.

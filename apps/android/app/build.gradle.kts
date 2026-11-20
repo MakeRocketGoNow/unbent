@@ -231,6 +231,7 @@ dependencies {
     implementation(libs.androidx.credentials)
     implementation(libs.androidx.credentials.play.services)
     implementation(libs.googleid)
+    implementation(libs.play.age.signals)
 
     testImplementation(libs.junit)
     testImplementation(libs.okhttp.mockwebserver)

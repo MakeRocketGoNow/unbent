@@ -122,6 +122,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         prefs = Prefs(this)
+        if (stopIfAgeBlocked()) return
 
         /*
          * Sign in when the app is opened, which is the one moment a person expects to be
@@ -139,6 +140,9 @@ class MainActivity : ComponentActivity() {
             return
         }
         origin = prefs.instance
+        // Only now: a signed-out launch has just handed over to the sign-in screen, which
+        // asks Play itself (see `enforceAgeGate`).
+        checkAgeInBackground()
 
         AttachCache.sweep(this)
         chooser = AttachChooser(this, lifecycleScope)
