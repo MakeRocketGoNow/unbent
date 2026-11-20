@@ -69,6 +69,7 @@
     <string name="age_blocked_body">Google Play says the person using this phone is under %1$d. You need to be %1$d or older to use Unbent.</string>
     <string name="age_blocked_hint">If that\'s wrong, correct your age in Google Play, then check again.</string>
     <string name="age_blocked_still">Google Play still doesn\'t show you as %1$d or older.</string>
+    <string name="age_blocked_no_answer">Google Play didn\'t share an age this time. Check your connection and your age settings in Google Play, then try again.</string>
     <string name="age_blocked_check">Check again</string>
     <string name="age_blocked_delete">Delete my account</string>
     <string name="instance_use">Use this address</string>

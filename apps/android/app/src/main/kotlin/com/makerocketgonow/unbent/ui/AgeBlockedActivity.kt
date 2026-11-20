@@ -53,7 +53,12 @@ import kotlinx.coroutines.launch
 class AgeBlockedActivity : ComponentActivity() {
 
     private var checking by mutableStateOf(false)
-    private var stillBlocked by mutableStateOf(false)
+    /**
+     * What the last press of Check again heard, to say which it was: Play answering under
+     * [MINIMUM_AGE] is not Play being out of reach, and telling someone in a tunnel that
+     * Play still disagrees sends them to correct an age that may already be right.
+     */
+    private var lastVerdict by mutableStateOf<AgeVerdict?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -62,7 +67,7 @@ class AgeBlockedActivity : ComponentActivity() {
             UnbentTheme {
                 AgeBlocked(
                     checking = checking,
-                    stillBlocked = stillBlocked,
+                    lastVerdict = lastVerdict,
                     onCheck = ::checkAgain,
                     onDelete = ::openDeletion,
                 )
@@ -89,7 +94,7 @@ class AgeBlockedActivity : ComponentActivity() {
                 startActivity(Intent(this@AgeBlockedActivity, MainActivity::class.java).clearingTask())
                 finish()
             } else {
-                stillBlocked = true
+                lastVerdict = verdict
             }
         }
     }
@@ -104,7 +109,7 @@ class AgeBlockedActivity : ComponentActivity() {
 }
 
 @Composable
-private fun AgeBlocked(checking: Boolean, stillBlocked: Boolean, onCheck: () -> Unit, onDelete: () -> Unit) {
+private fun AgeBlocked(checking: Boolean, lastVerdict: AgeVerdict?, onCheck: () -> Unit, onDelete: () -> Unit) {
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
         Column(
             Modifier
@@ -128,7 +133,11 @@ private fun AgeBlocked(checking: Boolean, stillBlocked: Boolean, onCheck: () -> 
             )
             Text(
                 stringResource(
-                    if (stillBlocked) R.string.age_blocked_still else R.string.age_blocked_hint,
+                    when (lastVerdict) {
+                        AgeVerdict.Minor -> R.string.age_blocked_still
+                        AgeVerdict.Unknown -> R.string.age_blocked_no_answer
+                        else -> R.string.age_blocked_hint
+                    },
                     MINIMUM_AGE,
                 ),
                 style = MaterialTheme.typography.bodyMedium,
