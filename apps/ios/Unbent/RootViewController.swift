@@ -117,7 +117,10 @@ final class RootViewController: UIViewController {
         }
     }
 
-    private func start() {
+    /// - Parameter ageChecked: the system has just answered 18 or over, so asking it again
+    ///   at once would only be the same question twice, and where it shows a sheet, the
+    ///   person answering it twice.
+    private func start(ageChecked: Bool = false) {
         // Before anything else is decided: a phone the system has said belongs to a
         // minor shows the blocked screen and builds nothing of the site behind it.
         if prefs.ageBlocked {
@@ -125,7 +128,7 @@ final class RootViewController: UIViewController {
             show(blocked())
             return
         }
-        checkAge()
+        if !ageChecked { checkAge() }
         let origin = instance
         if sessions.session(for: origin) != nil {
             let shell = WebShellController(origin: origin, sessions: sessions, startPath: pendingPath)
@@ -188,7 +191,8 @@ final class RootViewController: UIViewController {
     ///
     /// From `start`, so on every launch and every move between the site and the sign-in
     /// screen, the Android app's two activities; not when the app is brought back to the
-    /// screen. Once at a time: a second `start` while a check is out waits on the first.
+    /// screen. Once at a time: a second `start` while a check is out does not start
+    /// another, and the one out answers for both.
     /// Run once the controller is on screen, since the system's sheet, where it has one,
     /// is drawn over it.
     private func checkAge() {
@@ -235,7 +239,7 @@ final class RootViewController: UIViewController {
                     return
                 }
                 self.prefs.ageBlocked = false
-                self.start()
+                self.start(ageChecked: true)
             }
         }
         model.onDelete = { [weak self] in
