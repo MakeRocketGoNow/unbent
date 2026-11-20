@@ -127,8 +127,8 @@ public struct AgeGate: Sendable {
 ///
 /// Not a task group: a group waits for every child before it returns, so a call that
 /// never returns and ignores cancellation (the case this exists for) would hold it as
-/// surely as no timeout at all. Whichever finishes first resumes the caller, and the
-/// work that lost is cancelled and left to end when it ends.
+/// surely as no timeout at all. Whichever finishes first resumes the caller and cancels
+/// the other, and the work that lost is left to end when it ends.
 func within<T: Sendable>(_ limit: Duration, _ work: @escaping @Sendable () async throws -> T) async throws -> T? {
     let once = Once<T?>()
     return try await withCheckedThrowingContinuation { continuation in
@@ -136,25 +136,43 @@ func within<T: Sendable>(_ limit: Duration, _ work: @escaping @Sendable () async
         let worker = Task {
             do { once.resume(.success(try await work())) } catch { once.resume(.failure(error)) }
         }
-        Task {
-            try? await Task.sleep(for: limit)
+        // A sleep cancelled because the work answered first ends here, rather than the
+        // timer waking a whole `limit` later to resume nothing.
+        once.timer = Task {
+            guard (try? await Task.sleep(for: limit)) != nil else { return }
             once.resume(.success(nil))
             worker.cancel()
         }
     }
 }
 
-/// A continuation resumed by the first of several callers, and ignored by the rest.
+/// A continuation resumed by the first of several callers, and ignored by the rest. The
+/// first also cancels the timer, which is the one loser that can be told to stop.
 private final class Once<T>: @unchecked Sendable {
     private let lock = NSLock()
     private var resumed = false
+    private var pendingTimer: Task<Void, Never>?
     var continuation: CheckedContinuation<T, Error>?
+
+    /// Set once the timer is made, which can be after the work has already answered.
+    var timer: Task<Void, Never>? {
+        get { lock.withLock { pendingTimer } }
+        set {
+            lock.lock()
+            if resumed { lock.unlock(); newValue?.cancel(); return }
+            pendingTimer = newValue
+            lock.unlock()
+        }
+    }
 
     func resume(_ result: Result<T, Error>) {
         lock.lock()
         guard !resumed, let continuation else { lock.unlock(); return }
         resumed = true
+        let timer = pendingTimer
+        pendingTimer = nil
         lock.unlock()
+        timer?.cancel()
         continuation.resume(with: result)
     }
 }
