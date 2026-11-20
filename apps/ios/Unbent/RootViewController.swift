@@ -155,10 +155,9 @@ final class RootViewController: UIViewController {
             // A block recorded while this sign-in was in flight (a code being checked, a
             // passkey or Apple sheet up) wins: the session it brought is not kept, or the
             // account would stay reachable from the Keychain behind the blocked screen.
-            if self.prefs.ageBlocked {
-                self.start()
-                return true
-            }
+            // `blockForAge` has already put that screen up, or will once the cookies are
+            // gone, so there is nothing to start here.
+            if self.prefs.ageBlocked { return true }
             // Every way in ends here: the cookie the response set, kept for this instance.
             // If it cannot be kept the sign-in screen stays and says so; starting over
             // would find no session and show the same screen again, emptied, as though
