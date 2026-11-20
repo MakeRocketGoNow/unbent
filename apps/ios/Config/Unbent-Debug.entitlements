@@ -24,6 +24,14 @@
 	  Development turned on in Settings, Developer. localhost cannot be claimed at all,
 	  so a passkey is not tried against a dev server on this Mac.
 	-->
+	<!--
+	  Apple's Declared Age Range, where a state law has the system share an age range
+	  with apps (`AgeRanges.swift`). Without it the framework answers nothing, and the
+	  app opens as it would anywhere no law applies. The App ID needs the capability
+	  turned on in the developer account for a device build to be signed with it.
+	-->
+	<key>com.apple.developer.declared-age-range</key>
+	<true/>
 	<key>com.apple.developer.associated-domains</key>
 	<array>
 		<string>applinks:$(UNBENT_INSTANCE_HOST)?mode=developer</string>

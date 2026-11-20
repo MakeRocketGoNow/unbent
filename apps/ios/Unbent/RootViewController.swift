@@ -35,6 +35,9 @@ final class RootViewController: UIViewController {
     private var waitingForScreen: [() -> Void] = []
     private var appeared = false
 
+    /// The age check under way, if one is. See `checkAge`.
+    private var ageCheck: Task<Void, Never>?
+
     /// Where to go once there is a site to go anywhere on: a note whose notification was
     /// tapped before the view loaded, or while signed out.
     private var pendingPath: String?
@@ -115,6 +118,14 @@ final class RootViewController: UIViewController {
     }
 
     private func start() {
+        // Before anything else is decided: a phone the system has said belongs to a
+        // minor shows the blocked screen and builds nothing of the site behind it.
+        if prefs.ageBlocked {
+            shell = nil
+            show(blocked())
+            return
+        }
+        checkAge()
         let origin = instance
         if sessions.session(for: origin) != nil {
             let shell = WebShellController(origin: origin, sessions: sessions, startPath: pendingPath)
@@ -161,6 +172,76 @@ final class RootViewController: UIViewController {
         return UIHostingController(rootView: screen)
     }
 
+    // MARK: - Age
+
+    /// Asks the system whether the person is under `minimumAge`, beside whatever is
+    /// showing, so an adult opening their notes waits on nothing. `AgeGate` says when it
+    /// asks (only where a law has the system share an age) and why every failure lets the
+    /// person in.
+    ///
+    /// From `start`, so on every launch and every move between the site and the sign-in
+    /// screen, the Android app's two activities; not when the app is brought back to the
+    /// screen. Once at a time: a second `start` while a check is out waits on the first.
+    /// Run once the controller is on screen, since the system's sheet, where it has one,
+    /// is drawn over it.
+    private func checkAge() {
+        onScreen { [weak self] in
+            guard let self, self.ageCheck == nil else { return }
+            let gate = AgeGate.system(over: self)
+            self.ageCheck = Task { @MainActor [weak self] in
+                let verdict = await gate.check()
+                self?.ageCheck = nil
+                if verdict == .minor { self?.blockForAge() }
+            }
+        }
+    }
+
+    /// Records the block, signs out, and shows the blocked screen in place of everything.
+    ///
+    /// The session goes, and the web view's cookies with it, so neither the page nor the
+    /// Share Extension can keep acting as the account behind the block; what the system
+    /// holds for this instance's captures is forgotten first, as on a sign-out. Whatever
+    /// is presented goes too, a capture sheet included: a Save there would only queue the
+    /// file for a sign-in that cannot happen, and the sweep removes what it had copied.
+    private func blockForAge() {
+        guard !prefs.ageBlocked else { return }
+        prefs.ageBlocked = true
+        AppCaptures.queue?.forget(origin: instance)
+        sessions.clear(for: instance)
+        if presentedViewController != nil { dismiss(animated: false) }
+        clearCookies { [weak self] in self?.start() }
+    }
+
+    private func blocked() -> UIViewController {
+        let model = AgeBlockedModel()
+        model.onCheck = { [weak self, weak model] in
+            guard let self, let model, !model.checking else { return }
+            model.checking = true
+            let gate = AgeGate.system(over: self)
+            Task { @MainActor [weak self] in
+                let verdict = await gate.check()
+                model.checking = false
+                // Only a definite answer lifts it. No answer is also what airplane mode
+                // gives, and a block a lost connection lifted would be no block at all.
+                guard verdict == .adult, let self else {
+                    model.lastVerdict = verdict
+                    return
+                }
+                self.prefs.ageBlocked = false
+                self.start()
+            }
+        }
+        model.onDelete = { [weak self] in
+            // The instance's own page, in Safari: the existing deletion flow (an emailed
+            // link, or how to write to the operator for someone who cannot sign in) and
+            // not a second one. The web app's `HOW_TO_DELETE`, the same address Android's
+            // blocked screen opens.
+            guard let self, let url = URL(string: self.instance + "/delete-my-account") else { return }
+            UIApplication.shared.open(url)
+        }
+        return UIHostingController(rootView: AgeBlockedHost(model: model))
+    }
+
     private func show(_ next: UIViewController) {
         let previous = current
         current = next
@@ -194,7 +275,9 @@ final class RootViewController: UIViewController {
     /// file, and it does not outlive this process.
     func capture(_ urls: [URL]) {
         let files = urls.filter(\.isFileURL)
-        guard !files.isEmpty else { return }
+        // Nothing reaches an account from the blocked screen, a file opened in the app
+        // included: it would only wait for a sign-in that cannot happen.
+        guard !files.isEmpty, !prefs.ageBlocked else { return }
         // A file that launched the app arrives while the scene is still connecting,
         // before this controller is on screen, and UIKit refuses a sheet presented from
         // a view that is not in a window: nothing showed, and the directory made below
@@ -313,6 +396,9 @@ final class RootViewController: UIViewController {
     /// capture sheet, which is someone partway through filing a file (see
     /// `dismissForSignOut`). A Safari sheet or a preview goes, so settings is what shows.
     private func showSettings() {
+        // App settings is a way to another instance, or to a reset, from the blocked
+        // screen, which has none on purpose.
+        if prefs.ageBlocked { return }
         if captureSheet?.presentingViewController != nil { return }
         if presentedViewController is UIHostingController<AppSettingsScreen> { return }
         if presentedViewController == nil {
@@ -398,4 +484,28 @@ enum QuickAction: String {
 
     /// The address that makes a note, as the list's New button does.
     static let newNotePath = "/notes?new=1"
+}
+
+/// What the blocked screen shows that changes: whether a check is under way, and what the
+/// last one heard. The screen itself (`AgeBlockedScreen`) takes plain values, like every
+/// view in `UnbentUI`.
+@MainActor
+final class AgeBlockedModel: ObservableObject {
+    @Published var checking = false
+    @Published var lastVerdict: AgeVerdict?
+    var onCheck: () -> Void = {}
+    var onDelete: () -> Void = {}
+}
+
+struct AgeBlockedHost: View {
+    @ObservedObject var model: AgeBlockedModel
+
+    var body: some View {
+        AgeBlockedScreen(
+            checking: model.checking,
+            lastVerdict: model.lastVerdict,
+            onCheck: model.onCheck,
+            onDelete: model.onDelete
+        )
+    }
 }
