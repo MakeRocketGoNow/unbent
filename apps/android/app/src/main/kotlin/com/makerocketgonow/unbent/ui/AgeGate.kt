@@ -168,13 +168,20 @@ private fun Activity.blockForAge() {
     finish()
 }
 
-/** A Play Services [Task] as a suspend call, without a dependency for one function. */
+/**
+ * A Play Services [Task] as a suspend call, without a dependency for one function.
+ *
+ * A task Play cancelled is a failure, not a cancellation of the coroutine waiting on it.
+ * Cancelling the continuation instead would throw a `CancellationException`, which
+ * [AgeGate.check] rethrows on purpose, and the caller's coroutine would end in silence:
+ * the blocked screen's button stayed disabled for good that way.
+ */
 private suspend fun <T> Task<T>.await(): T = suspendCancellableCoroutine { cont ->
     addOnCompleteListener { task ->
         val error = task.exception
         when {
             error != null -> cont.resumeWithException(error)
-            task.isCanceled -> cont.cancel()
+            task.isCanceled -> cont.resumeWithException(IllegalStateException("Play cancelled the age signals task"))
             else -> cont.resume(task.result)
         }
     }

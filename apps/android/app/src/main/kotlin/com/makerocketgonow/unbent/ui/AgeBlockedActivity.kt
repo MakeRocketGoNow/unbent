@@ -79,8 +79,11 @@ class AgeBlockedActivity : ComponentActivity() {
         if (checking) return
         checking = true
         lifecycleScope.launch {
-            val verdict = AgeGate.forApp(this@AgeBlockedActivity).check(this@AgeBlockedActivity)
-            checking = false
+            val verdict = try {
+                AgeGate.forApp(this@AgeBlockedActivity).check(this@AgeBlockedActivity)
+            } finally {
+                checking = false
+            }
             if (verdict == AgeVerdict.Adult) {
                 Prefs(this@AgeBlockedActivity).ageBlocked = false
                 startActivity(Intent(this@AgeBlockedActivity, MainActivity::class.java).clearingTask())
