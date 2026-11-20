@@ -273,6 +273,10 @@ final class WebShellController: UIViewController {
         let store = webView.configuration.websiteDataStore.httpCookieStore
         store.getAllCookies { [weak self, origin] cookies in
             guard let self else { return }
+            // Signed out, or blocked by the age gate, while the store was being read: the
+            // Keychain no longer holds what was read above, and saving the page's cookie
+            // now would put a session back behind the sign-in or blocked screen.
+            guard self.sessions.session(for: origin) == stored else { return then() }
             let live = cookies.first {
                 $0.name == stored.name && !$0.value.isEmpty && $0.domain.caseInsensitiveCompare(host ?? "") == .orderedSame
             }

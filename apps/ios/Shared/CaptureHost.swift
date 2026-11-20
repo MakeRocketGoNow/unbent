@@ -28,6 +28,9 @@ final class CaptureModel {
     }
 
     static let noRoom = "Unbent could not keep what you shared on this phone."
+
+    /// The app's own blocked screen says why; this only says where to look.
+    static let ageBlocked = "Unbent isn’t available on this iPhone. Open the app to see why."
 }
 
 /// `CaptureSheet`, fed from the model and from whoever is signed in. The same in the
