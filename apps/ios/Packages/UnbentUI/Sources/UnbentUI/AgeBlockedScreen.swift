@@ -30,45 +30,71 @@ public struct AgeBlockedScreen: View {
     }
 
     public var body: some View {
-        VStack(spacing: 0) {
-            Text("Unbent is for adults")
-                .font(.title3.weight(.semibold))
-            Text("Your Apple Account says the person using this iPhone is under \(minimumAge). You need to be \(minimumAge) or older to use Unbent.")
-                .font(.body)
-                .foregroundStyle(.secondary)
-                .padding(.top, Space.small)
-            Text(hint)
-                .font(.body)
-                .foregroundStyle(.secondary)
-                .padding(.top, Space.small)
-                .padding(.bottom, Space.screen)
-            // The same pair as the unreachable panel: the way out quiet, the retry filled.
-            HStack(spacing: Space.small) {
-                Button("How to delete my account", action: onDelete)
-                    .buttonStyle(.unbent(.quiet, compact: true))
-                Button(action: onCheck) {
-                    // A few calls to the system in a row can take seconds, and a faded
-                    // button alone reads as broken. The label stays, unseen, so the button
-                    // keeps its width and the quiet action beside it does not move.
-                    ZStack {
-                        Text("Check again").opacity(checking ? 0 : 1)
-                        if checking {
-                            ProgressView()
-                                .tint(.unbentOnAccent)
-                                .accessibilityLabel("Checking")
+        GeometryReader { proxy in
+            ScrollView {
+                VStack(spacing: 0) {
+                    Text("Unbent is for adults")
+                        .font(.title3.weight(.semibold))
+                    Text("Your Apple Account says the person using this iPhone is under \(minimumAge). You need to be \(minimumAge) or older to use Unbent.")
+                        .font(.body)
+                        .foregroundStyle(.secondary)
+                        .padding(.top, Space.small)
+                    Text(hint)
+                        .font(.body)
+                        .foregroundStyle(.secondary)
+                        .padding(.top, Space.small)
+                        .padding(.bottom, Space.screen)
+                    // The same pair as the unreachable panel, the way out quiet and the
+                    // retry filled, side by side while they fit. At the larger text sizes
+                    // "How to delete my account" does not fit beside its neighbour, and a
+                    // label cut short is the one thing on this screen it cannot afford, so
+                    // they stack, the retry first.
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: Space.small) {
+                            delete
+                            check
+                        }
+                        VStack(spacing: Space.small) {
+                            check
+                            delete
                         }
                     }
                 }
-                .buttonStyle(.unbent(.primary, compact: true))
-                .disabled(checking)
+                .multilineTextAlignment(.center)
+                .padding(Space.screen)
+                .frame(maxWidth: Metrics.column)
+                // Centred in whatever height there is, and scrolling once there is not
+                // enough of it: the larger text sizes on a small phone, where the two
+                // buttons are what would otherwise be pushed off the bottom.
+                .frame(maxWidth: .infinity, minHeight: proxy.size.height)
             }
+            .scrollBounceBehavior(.basedOnSize)
         }
-        .multilineTextAlignment(.center)
-        .padding(Space.screen)
-        .frame(maxWidth: Metrics.column)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.unbentGround)
         .tint(.unbentAccent)
+    }
+
+    private var delete: some View {
+        Button("How to delete my account", action: onDelete)
+            .buttonStyle(.unbent(.quiet, compact: true))
+    }
+
+    private var check: some View {
+        Button(action: onCheck) {
+            // A few calls to the system in a row can take seconds, and a faded button alone
+            // reads as broken. The label stays, unseen, so the button keeps its width and
+            // the quiet action beside it does not move.
+            ZStack {
+                Text("Check again").opacity(checking ? 0 : 1)
+                if checking {
+                    ProgressView()
+                        .tint(.unbentOnAccent)
+                        .accessibilityLabel("Checking")
+                }
+            }
+        }
+        .buttonStyle(.unbent(.primary, compact: true))
+        .disabled(checking)
     }
 
     private var hint: String {
