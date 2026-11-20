@@ -8,6 +8,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBarsPadding
@@ -15,6 +16,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -34,9 +36,13 @@ import kotlinx.coroutines.launch
  * What someone Google Play has said is under [MINIMUM_AGE] sees instead of the app, every
  * time they open it, until Play says otherwise.
  *
- * No way in from here: no sign-in, no App settings, nothing that reaches an account. The
- * one action asks Play again, for the adult whose Play account had the wrong age (or a
- * parent's phone) and has since corrected it there. Only a definite [AgeVerdict.Adult]
+ * No way in from here: no sign-in, no App settings, nothing that reaches an account. Two
+ * actions. "Check again" asks Play again, for the adult whose Play account had the wrong
+ * age (or a parent's phone) and has since corrected it there. "Delete my account" opens
+ * the instance's own deletion page in a browser, which is the existing flow (an emailed
+ * link, or a message to the operator for someone who cannot sign in) rather than a second
+ * one: the block already took the app's session, and an account is deleted by its owner
+ * confirming it, never because Play's answer said so. Only a definite [AgeVerdict.Adult]
  * lifts the block: [AgeVerdict.Unknown] is also what airplane mode answers, and a block
  * that a lost connection lifted would be no block at all.
  *
@@ -54,9 +60,19 @@ class AgeBlockedActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             UnbentTheme {
-                AgeBlocked(checking = checking, stillBlocked = stillBlocked, onCheck = ::checkAgain)
+                AgeBlocked(
+                    checking = checking,
+                    stillBlocked = stillBlocked,
+                    onCheck = ::checkAgain,
+                    onDelete = ::openDeletion,
+                )
             }
         }
+    }
+
+    /** The page that says how to delete an account, on the instance the app points at. */
+    private fun openDeletion() {
+        openOutside(this, Destination.Browser(Prefs(this).instance + DELETION_PATH))
     }
 
     private fun checkAgain() {
@@ -76,13 +92,16 @@ class AgeBlockedActivity : ComponentActivity() {
     }
 
     companion object {
+        /** The web app's `HOW_TO_DELETE`, the address Play Console's deletion URL names too. */
+        private const val DELETION_PATH = "/delete-my-account"
+
         fun intent(context: Context): Intent =
             Intent(context, AgeBlockedActivity::class.java).clearingTask()
     }
 }
 
 @Composable
-private fun AgeBlocked(checking: Boolean, stillBlocked: Boolean, onCheck: () -> Unit) {
+private fun AgeBlocked(checking: Boolean, stillBlocked: Boolean, onCheck: () -> Unit, onDelete: () -> Unit) {
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
         Column(
             Modifier
@@ -114,8 +133,12 @@ private fun AgeBlocked(checking: Boolean, stillBlocked: Boolean, onCheck: () -> 
                 textAlign = TextAlign.Center,
                 modifier = Modifier.padding(top = Space.Small, bottom = Space.Screen),
             )
-            Button(onClick = onCheck, enabled = !checking) {
-                Text(stringResource(R.string.age_blocked_check))
+            // The same pair as the unreachable panel: the way out quiet, the retry filled.
+            Row(horizontalArrangement = Arrangement.spacedBy(Space.Small)) {
+                TextButton(onClick = onDelete) { Text(stringResource(R.string.age_blocked_delete)) }
+                Button(onClick = onCheck, enabled = !checking) {
+                    Text(stringResource(R.string.age_blocked_check))
+                }
             }
         }
     }
