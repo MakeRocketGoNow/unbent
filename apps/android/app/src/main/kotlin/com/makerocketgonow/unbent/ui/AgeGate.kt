@@ -132,25 +132,39 @@ class AgeGate(private val manager: AgeSignalsManager) {
  * person can open it by: the launcher's [MainActivity] and the deep-linked
  * [SignInActivity]. The share sheet needs a session, which a block clears.
  *
- * Returns true when the activity has already been replaced by the blocked screen, so its
- * `onCreate` should stop. Otherwise the check runs beside whatever the activity draws, so
- * an adult opening their notes waits on nothing; a minor sees the app only for as long as
- * Play takes to answer, once, before the block is recorded and every later launch stops
- * here.
+ * Two halves, because [MainActivity] needs them apart. [stopIfAgeBlocked] is synchronous and
+ * comes first in `onCreate`, before anything else is decided. [checkAgeInBackground] asks
+ * Play, and goes only where the activity is staying: a signed-out `MainActivity` hands
+ * straight over to the sign-in screen and finishes, and a check started there would ask
+ * Play to draw its prompt over an activity on its way out, only for the sign-in screen to
+ * ask again. [enforceAgeGate] is both, for an activity with no such hand-over.
  *
- * `gate` is a parameter so tests can hand in a fake.
+ * The check runs beside whatever the activity draws, so an adult opening their notes waits
+ * on nothing; a minor sees the app only for as long as Play takes to answer, once, before
+ * the block is recorded and every later launch stops here.
  */
 fun ComponentActivity.enforceAgeGate(gate: () -> AgeGate = { AgeGate.forApp(this) }): Boolean {
-    val prefs = Prefs(this)
-    if (prefs.ageBlocked) {
-        startActivity(AgeBlockedActivity.intent(this))
-        finish()
-        return true
-    }
-    lifecycleScope.launch {
-        if (gate().check(this@enforceAgeGate) == AgeVerdict.Minor) blockForAge()
-    }
+    if (stopIfAgeBlocked()) return true
+    checkAgeInBackground(gate)
     return false
+}
+
+/**
+ * Replaces the activity with the blocked screen when a block is already recorded. Returns
+ * true when it did, so `onCreate` should stop.
+ */
+fun ComponentActivity.stopIfAgeBlocked(): Boolean {
+    if (!Prefs(this).ageBlocked) return false
+    startActivity(AgeBlockedActivity.intent(this))
+    finish()
+    return true
+}
+
+/** Asks Play, and blocks on a [AgeVerdict.Minor]. `gate` is a parameter so tests can hand in a fake. */
+fun ComponentActivity.checkAgeInBackground(gate: () -> AgeGate = { AgeGate.forApp(this) }) {
+    lifecycleScope.launch {
+        if (gate().check(this@checkAgeInBackground) == AgeVerdict.Minor) blockForAge()
+    }
 }
 
 /**
