@@ -140,7 +140,7 @@ const READ_AT_A_PRESS =
   ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'][OWN_FILES_TO_READ] ??
   String(OWN_FILES_TO_READ);
 
-const EFFECTIVE = '2026-10-25';
+const EFFECTIVE = '2026-11-20';
 
 /**
  * How many "other kinds of service" the policy lists, as the word the sentence needs. Two
@@ -205,8 +205,16 @@ const COUNT = ['', '', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven'] as const;
  * read-only. The version did not move: the change only adds a way to keep writing, which
  * nobody needs asking about, and takes nothing an account had agreed to away. If this
  * ships on a later day, the two dates move to that day.
+ *
+ * Both moved on 20 November 2026, when the minimum age went from 13 to 18 and the
+ * policy's "Children" section began saying what the Android app does with the age range
+ * Google Play shares where a law has it share one (`AgeGate.kt` in apps/android). The
+ * version did not move. The age range never leaves the phone, so nothing about how we
+ * handle information changed; and the agreement step cannot check anyone's age, so
+ * asking every adult to agree again would keep out nobody it is about. If this ships on
+ * a later day, the two dates move to that day.
  */
-const PRIVACY_EFFECTIVE = '2026-10-25';
+const PRIVACY_EFFECTIVE = '2026-11-20';
 
 export interface LegalDocuments {
   privacy: LegalDocument;
@@ -497,9 +505,13 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
       {
         heading: 'Children',
         body: [
-          'Unbent is not intended for children under 13, and we do not knowingly collect their ' +
-            'information. If you believe a child has created an account, write to us and we will ' +
-            'remove it.',
+          'Unbent is for adults. It is not intended for anyone under 18, and we do not knowingly ' +
+            'collect information from children under 13. If you believe someone under 18 has ' +
+            'created an account, write to us and we will remove it.',
+          'Where a law requires Google Play to share a person’s age range with apps, the Android ' +
+            'app asks Play for it when it opens and uses it only to keep people under 18 out of ' +
+            'Unbent. The age range stays on the phone: it is not sent to us, stored with your ' +
+            'account, or used for anything else.',
         ],
       },
       {
@@ -559,7 +571,7 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
       {
         heading: 'Your account',
         body: [
-          'You must be old enough to enter a binding contract where you live, and at least 13. You ' +
+          'You must be at least 18, and old enough to enter a binding contract where you live. You ' +
             'are responsible for what happens under your account and for keeping your sign-in ' +
             'method secure. Tell us promptly if you believe someone else has access to it.',
           'Accounts are for people. Do not share one, and do not create an account on someone ' +
