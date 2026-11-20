@@ -11,12 +11,6 @@
 		<string>Default</string>
 	</array>
 	<!--
-	  The host whose links open in this app (applinks) and whose passkeys the system may
-	  offer it (webcredentials). A claim, and only half of one: the instance has to list
-	  the app in its apple-app-site-association before either happens, and it is that
-	  document, not this file, that says which paths are the app's.
-	-->
-	<!--
 	  Apple's Declared Age Range, where a state law has the system share an age range
 	  with apps (`AgeRanges.swift`). Without it the framework answers nothing, and the
 	  app opens as it would anywhere no law applies. The App ID needs the capability
@@ -24,6 +18,12 @@
 	-->
 	<key>com.apple.developer.declared-age-range</key>
 	<true/>
+	<!--
+	  The host whose links open in this app (applinks) and whose passkeys the system may
+	  offer it (webcredentials). A claim, and only half of one: the instance has to list
+	  the app in its apple-app-site-association before either happens, and it is that
+	  document, not this file, that says which paths are the app's.
+	-->
 	<key>com.apple.developer.associated-domains</key>
 	<array>
 		<string>applinks:$(UNBENT_INSTANCE_HOST)</string>
