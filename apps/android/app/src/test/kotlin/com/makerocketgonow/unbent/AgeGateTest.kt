@@ -16,10 +16,10 @@ import com.makerocketgonow.unbent.ui.AgeGate
 import com.makerocketgonow.unbent.ui.AgeVerdict
 import com.makerocketgonow.unbent.ui.enforceAgeGate
 import com.makerocketgonow.unbent.ui.verdictOf
-import org.junit.After
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
