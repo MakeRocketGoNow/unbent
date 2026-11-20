@@ -97,12 +97,3 @@ they must agree:
 The Data safety form needs nothing for it: the library collects nothing, and the range never
 leaves the phone. Test it with a build from an internal testing track; a sideloaded or debug
 build is not owned through Play, so the API answers `APP_NOT_OWNED` and the gate lets it in.
-
-## Still needed in Play Console
-
-- A support contact email
-- Data safety form (the app collects note content and an email address for the account)
-- Content rating questionnaire
-- Target audience: 18 and over only (see Age, above)
-- Privacy policy URL: `https://unbent.app/privacy`
-- Account deletion URL: `https://unbent.app/delete-my-account`
