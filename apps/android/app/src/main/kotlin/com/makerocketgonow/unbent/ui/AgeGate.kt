@@ -15,6 +15,7 @@ import com.google.android.play.agesignals.ApplicableAgeFeaturesRequest
 import com.google.android.play.agesignals.model.AgeSignalsStatus
 import com.google.android.play.agesignals.model.ApplicableAgeFeature
 import com.makerocketgonow.unbent.Prefs
+import com.makerocketgonow.unbent.api.SessionCookie
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -130,7 +131,9 @@ class AgeGate(private val manager: AgeSignalsManager) {
 /**
  * Keeps someone Play has said is under [MINIMUM_AGE] out of the app, from the activities a
  * person can open it by: the launcher's [MainActivity] and the deep-linked
- * [SignInActivity]. The share sheet needs a session, which a block clears.
+ * [SignInActivity]. The share sheet needs a session, which a block clears, and also
+ * stops on a recorded block itself so a share cannot wait for a sign-in the app will
+ * not allow.
  *
  * Two halves, because [MainActivity] needs them apart. [stopIfAgeBlocked] is synchronous and
  * comes first in `onCreate`, before anything else is decided. [checkAgeInBackground] asks
@@ -171,15 +174,35 @@ fun ComponentActivity.checkAgeInBackground(gate: () -> AgeGate = { AgeGate.forAp
  * Records the block, signs out, and replaces everything on the back stack with the blocked
  * screen. The session goes so the share sheet, and a capture waiting in WorkManager, cannot
  * keep sending as the account behind the block.
+ *
+ * The activity being already on its way out is not a reason to skip this. Sign-in calls
+ * `finish()` the moment it has a cookie (`finishSignIn`); a Minor answer that lands in
+ * the same beat used to return here and leave that cookie in place. The blocked screen
+ * is started with `CLEAR_TASK` either way, so it still replaces whatever sign-in just
+ * opened. `finish()` itself is skipped only when it has already been called, which is
+ * a no-op that would otherwise look like a second close.
  */
 private fun Activity.blockForAge() {
-    if (isFinishing) return
     val prefs = Prefs(this)
     prefs.ageBlocked = true
     prefs.clearSession()
     WebSession.clear()
     startActivity(AgeBlockedActivity.intent(this))
-    finish()
+    if (!isFinishing) finish()
+}
+
+/**
+ * Stores a session a sign-in just brought, unless a block has already been recorded.
+ *
+ * Play's answer can land while a Google sheet or a code check is still in flight. The
+ * block then signs the phone out and puts [AgeBlockedActivity] up; writing the cookie
+ * afterwards would leave the account reachable from the share sheet behind that screen.
+ * The iOS app refuses the same way in `RootViewController`'s sign-in callback.
+ */
+fun Prefs.keepSignIn(session: SessionCookie): Boolean {
+    if (ageBlocked) return false
+    this.session = session
+    return true
 }
 
 /**

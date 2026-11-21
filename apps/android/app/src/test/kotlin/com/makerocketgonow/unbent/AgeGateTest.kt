@@ -1,5 +1,6 @@
 package com.makerocketgonow.unbent
 
+import android.content.Intent
 import android.os.Looper
 import androidx.activity.ComponentActivity
 import com.google.android.play.agesignals.AgeSignalsAccessResult
@@ -11,10 +12,12 @@ import com.google.android.play.agesignals.model.AgeSignalsStatus
 import com.google.android.play.agesignals.model.ApplicableAgeFeature
 import com.google.android.play.agesignals.testing.FakeAgeSignalsManager
 import com.makerocketgonow.unbent.api.SessionCookie
+import com.makerocketgonow.unbent.share.ShareActivity
 import com.makerocketgonow.unbent.ui.AgeBlockedActivity
 import com.makerocketgonow.unbent.ui.AgeGate
 import com.makerocketgonow.unbent.ui.AgeVerdict
 import com.makerocketgonow.unbent.ui.enforceAgeGate
+import com.makerocketgonow.unbent.ui.keepSignIn
 import com.makerocketgonow.unbent.ui.verdictOf
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -157,6 +160,53 @@ class AgeGateTest {
         assertFalse(Prefs(activity).ageBlocked)
         assertNotNull(Prefs(activity).session)
         assertFalse(activity.isFinishing)
+    }
+
+    @Test
+    fun `a minor arriving after sign-in has finished is still recorded and signed out`() {
+        // finishSignIn writes the cookie and calls finish() on the same beat Play may
+        // still be answering. Returning from blockForAge because the activity is
+        // finishing would leave that cookie in place for the share sheet.
+        val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup().get()
+        assertFalse(activity.enforceAgeGate { AgeGate(fake(result = range(13, 15))) })
+        signedIn(activity)
+        activity.finish()
+        idle()
+        val prefs = Prefs(activity)
+        assertTrue(prefs.ageBlocked)
+        assertNull(prefs.session)
+        assertEquals(AgeBlockedActivity::class.java.name, shadowOf(activity).nextStartedActivity?.component?.className)
+    }
+
+    @Test
+    fun `a sign-in that finishes after a block does not put the session back`() {
+        val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup().get()
+        signedIn(activity)
+        assertFalse(activity.enforceAgeGate { AgeGate(fake(result = range(13, 15))) })
+        idle()
+        val prefs = Prefs(activity)
+        assertTrue(prefs.ageBlocked)
+        assertNull(prefs.session)
+        assertFalse(prefs.keepSignIn(SessionCookie("session", "token")))
+        assertNull(prefs.session)
+    }
+
+    @Test
+    fun `a sign-in is kept when the phone is not blocked`() {
+        val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup().get()
+        val prefs = Prefs(activity)
+        assertTrue(prefs.keepSignIn(SessionCookie("session", "token")))
+        assertNotNull(prefs.session)
+    }
+
+    @Test
+    fun `a recorded block stops a share without copying the files`() {
+        val seed = Robolectric.buildActivity(ComponentActivity::class.java).setup().get()
+        Prefs(seed).ageBlocked = true
+        val intent = Intent(Intent.ACTION_SEND).putExtra(Intent.EXTRA_TEXT, "https://example.com")
+        val share = Robolectric.buildActivity(ShareActivity::class.java, intent).setup().get()
+        assertTrue(share.isFinishing)
+        assertEquals(AgeBlockedActivity::class.java.name, shadowOf(share).nextStartedActivity?.component?.className)
     }
 
     @After

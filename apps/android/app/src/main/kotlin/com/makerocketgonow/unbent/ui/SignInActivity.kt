@@ -354,6 +354,10 @@ class SignInActivity : ComponentActivity() {
      */
     override fun onResume() {
         super.onResume()
+        // A block recorded while this screen was covered (the Google sheet, a Custom Tab)
+        // wins the same way [finishSignIn] does: do not walk into the app as the account
+        // behind it.
+        if (stopIfAgeBlocked()) return
         if (!busy && prefs.isSignedIn) {
             continueToApp()
             finish()
@@ -391,7 +395,18 @@ class SignInActivity : ComponentActivity() {
     }
 
     private fun finishSignIn(session: SessionCookie) {
-        prefs.session = session
+        if (!prefs.keepSignIn(session)) {
+            // Play said Minor while this sign-in was in flight. The cookie is not kept,
+            // or the account would stay reachable from the share sheet behind the blocked
+            // screen. `blockForAge` has already put that screen up, or will once the
+            // in-flight check lands; starting it here covers a block recorded before this
+            // activity had a chance to finish.
+            if (!isFinishing) {
+                startActivity(AgeBlockedActivity.intent(this))
+                finish()
+            }
+            return
+        }
         status = getString(R.string.sign_in_done)
         setResult(RESULT_OK)
         continueToApp()

@@ -69,6 +69,18 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
         if (!refusedBefore) CaptureNotifications.saving(context, jobId, title)
 
         val prefs = Prefs(context)
+        if (prefs.ageBlocked) {
+            // A Minor verdict can land while this job is waiting on sign-in, or after a
+            // sign-in that finished in the same beat wrote a cookie the block then
+            // dropped. Do not send as that account, and do not wait for a later sign-in
+            // the app will not allow. A capture already kept for the plan stays on disk,
+            // the same as a sign-out, so an adult who later lifts the block can still
+            // send it; a share made a moment ago is given up on.
+            if (refusedBefore) return@withContext Result.failure()
+            CaptureNotifications.failed(context, jobId, title)
+            Staging.clear(context, jobId)
+            return@withContext Result.failure()
+        }
         if (!prefs.isSignedIn && refusedBefore) {
             // Signed out since this resend was enqueued. Nobody is at a sign-in screen
             // on its account, so there is nothing to wait five minutes for, and the
@@ -381,6 +393,7 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
         val deadline = System.currentTimeMillis() + CONNECT_WAIT_MS
         while (System.currentTimeMillis() < deadline) {
             delay(1_000)
+            if (prefs.ageBlocked) return false
             if (prefs.isSignedIn) return true
         }
         return false
