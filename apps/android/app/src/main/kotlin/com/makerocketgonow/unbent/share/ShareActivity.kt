@@ -18,6 +18,7 @@ import com.makerocketgonow.unbent.R
 import com.makerocketgonow.unbent.api.UnbentApi
 import com.makerocketgonow.unbent.ui.CaptureSheet
 import com.makerocketgonow.unbent.ui.SignInActivity
+import com.makerocketgonow.unbent.ui.stopIfAgeBlocked
 import com.makerocketgonow.unbent.ui.theme.UnbentTheme
 import java.util.UUID
 import kotlin.concurrent.thread
@@ -57,6 +58,11 @@ class ShareActivity : ComponentActivity() {
             finish()
             return
         }
+        // The iOS share extension refuses here too. A block already cleared the session,
+        // so the sheet would otherwise offer to keep the files for a sign-in the app will
+        // not allow, and Save would enqueue an upload the worker might still send if a
+        // late sign-in wrote a cookie behind the blocked screen.
+        if (stopIfAgeBlocked()) return
 
         /*
          * Which app this came from, for the title. `referrer` is the sending package when
@@ -110,10 +116,12 @@ class ShareActivity : ComponentActivity() {
     /** Back from sign-in, or from anywhere: the sheet shows the form if there is a session now. */
     override fun onResume() {
         super.onResume()
+        if (stopIfAgeBlocked()) return
         signedIn = Prefs(this).isSignedIn
     }
 
     private fun save(typed: String, notebook: String?, tags: List<String>) {
+        if (stopIfAgeBlocked()) return
         val files = staged ?: return
         // A title cleared by hand gets the derived one back, as the iOS sheet does: otherwise
         // an empty title counts as typed, and it beats the page's own on a clip.
