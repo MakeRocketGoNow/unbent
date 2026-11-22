@@ -3719,7 +3719,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
    The last row of the list, in the list's own columns.
 
    A subgrid row, so its cells fall into the glyph, name, value and side columns like any
-   other row's: a plus where a glyph goes, "Add field" where a name goes, the empties
+   other row's: a plus where a glyph goes, "Add field" where a name goes, the limit's
    toggle where a value goes, and "Manage fields" in the side slot where a value's own
    action (Open, Call) goes. It used to be a flex line holding a dashed chip and a green
    link: two more costumes in a block that already wore too many, on a line that was in
@@ -3758,17 +3758,17 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 .note-field-add-hint:hover { color: var(--fg); }
 
 /*
-   The resting foot's right-hand cell, across the value and side columns: the empties
+   The resting foot's right-hand cell, across the value and side columns: the limit's
    toggle at the value column's edge, "Manage fields" hard right. One spanning cell rather
    than a value cell and a side cell, because a grid column is as wide as its widest cell
    in any row, and a link in the side column widened that column under every row: on a
    phone by enough to stack the tags one per line. A span that crosses the value column's
    flexible track adds nothing to the side track's intrinsic width.
 
-   It wraps. With the limit's toggle beside the empties' there can be three phrases here,
-   and in a narrow note (a phone, a desktop with the list wide) they do not fit one line:
-   unwrapped they were drawn over each other. "Manage fields" is the one that drops, and
-   keeps the right edge on its own line (the auto margin), which is where it always is.
+   It wraps, for the note too narrow to hold both phrases on a line: unwrapped they were
+   drawn over each other. "Manage fields" is the one that drops, and keeps the right edge
+   on its own line (the auto margin), which is where it always is. A phone has room for
+   both; it did not while a toggle for hiding empty rows sat between them.
 */
 .note-fields-foot-rest {
   grid-column: 3 / -1;
@@ -3776,16 +3776,6 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   flex-wrap: wrap;
   align-items: center;
   gap: 0 0.5rem;
-  min-width: 0;
-}
-
-/* The list's toggles (show the rest, hide the empties), or nothing. Apart by more than
-   their own padding, so two muted phrases side by side read as two controls. */
-.note-fields-foot-mid {
-  display: inline-flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0 0.75rem;
   min-width: 0;
 }
 
@@ -3853,9 +3843,16 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 
 .note-fields-foot > .note-field-error { grid-column: 2 / -1; }
 
-/* Show the rest of a limited list, hide or show the empties: preferences, drawn as
-   quietly as "Add field" beside them. */
-.note-fields-toggle {
+/*
+   Show the rest of a limited list, or fewer again: a preference, drawn as quietly as
+   "Add field" beside it. Its chevron points at where the rest will appear, and back up
+   once they have.
+*/
+.note-fields-more {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  min-height: var(--field-row);
   padding: 0.25rem 0.5rem;
   margin-left: -0.5rem;
   font: inherit;
@@ -3866,18 +3863,9 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   border-radius: 0.3rem;
   cursor: pointer;
   white-space: nowrap;
-  min-height: var(--field-row);
 }
 
-.note-fields-toggle:hover { color: var(--fg); }
-
-/* The limit's toggle: its chevron points at where the rest will appear, and back up
-   once they have. */
-.note-fields-more {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.2rem;
-}
+.note-fields-more:hover { color: var(--fg); }
 
 .note-fields-more[aria-expanded='true'] svg { transform: rotate(180deg); }
 
@@ -10704,7 +10692,7 @@ button.settings-nav-item {
   .tag-entry { min-height: 2rem; }
   .note-field-add-hint,
   .note-fields-manage,
-  .note-fields-toggle { font-size: 0.95rem; }
+  .note-fields-more { font-size: 0.95rem; }
 
   /* A select is a chip's box in both its states, at every width; its padding is its own.
      Qualified by the list so it outranks the base rules for either state, which name the

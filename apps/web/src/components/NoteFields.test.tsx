@@ -32,7 +32,7 @@ const defs = [
   def('f-sel', 'Category', 'select', ['Food', 'Travel']),
 ];
 
-/** Kept out of `defs`: the empties threshold and the row count below are pinned to eight. */
+/** Kept out of `defs`: the row count below is pinned to eight. */
 const multi = def('f-multi', 'Platforms', 'multiselect', ['PC', 'PS5', 'Switch']);
 const price: FieldDef = { ...def('f-price', 'Price', 'number'), currency: 'USD' };
 
@@ -320,9 +320,9 @@ describe('NoteFields', () => {
 });
 
 /*
- * The property list's own two behaviours: an empty value says so, and once a notebook has
- * enough fields, the empty ones can be put away. Both are Notion's, and both are what
- * makes thirty rows readable.
+ * The property list's own two behaviours: an empty value says so, and a long list is
+ * limited to a share of the note with the rest a press away. Both are Notion's, and both
+ * are what makes thirty rows readable.
  */
 describe('NoteFields as a property list', () => {
   afterEach(() => {
@@ -338,26 +338,6 @@ describe('NoteFields as a property list', () => {
     cleanup();
     mount();
     expect(screen.getByLabelText('Category').getAttribute('data-filled')).toBeNull();
-  });
-
-  it('offers to hide the empties only once the list is long, and remembers the choice', () => {
-    // Eight definitions is the threshold; one value leaves seven empty.
-    const { getByText, queryByLabelText } = mount({ values: { 'f-text': 'Acme' } });
-    fireEvent.click(getByText('Hide 7 empty'));
-    expect(queryByLabelText('Amount')).toBeNull();
-    expect(input('Merchant').value).toBe('Acme');
-    expect(getByText('Show 7 empty')).toBeTruthy();
-
-    // A short list is read whole: no toggle.
-    cleanup();
-    const { queryByText } = mount({ definitions: defs.slice(0, 3) });
-    expect(queryByText(/empty$/)).toBeNull();
-
-    // And the preference sticks for the next note.
-    cleanup();
-    const again = mount({ values: { 'f-text': 'Acme' } });
-    expect(again.queryByLabelText('Amount')).toBeNull();
-    expect(again.getByText('Show 7 empty')).toBeTruthy();
   });
 
   describe('limited to a share of the column', () => {

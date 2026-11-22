@@ -75,9 +75,11 @@ export interface NoteFieldsProps {
  * over the thing being edited. The same rule the label editor follows.
  *
  * A value that is missing says "Empty" rather than showing a blank patch of screen, so
- * filled and unfilled are told apart at a glance; and once a notebook has enough fields
- * for the empties to be noise, they can be hidden: a preference that sticks, since the
- * notebooks that need it need it every time.
+ * filled and unfilled are told apart at a glance. Empty rows could once be hidden, by a
+ * toggle offered from eight fields up; it went when the limit below arrived. The two hid
+ * rows by different rules, so "3 more" no longer said what was out of sight; that one was
+ * a single switch for every notebook where this is remembered per notebook; and its
+ * phrase was what pushed "Manage fields" to a second line on a phone.
  *
  * A long list is limited to a share of the note's column, in whole rows, with the rest
  * one press away in the last row ("3 more"): see `fields-clamp.ts` for why it is
@@ -96,9 +98,6 @@ export interface NoteFieldsProps {
  * field is the moment they are looking at the note that needs it. The form opens as one
  * more row of the list, in the list's own columns (see `AddFieldRow`).
  */
-/** From this many fields, hiding the empty ones is offered. */
-const HIDE_EMPTY_FROM = 8;
-
 export function NoteFields({
   definitions,
   values,
@@ -112,13 +111,6 @@ export function NoteFields({
   filled,
 }: NoteFieldsProps) {
   const defs = notebookId ? definitions : [];
-  // Sticks across notes and sessions: the notebooks whose empties are noise are noise
-  // every time, and a toggle that reset on each note would be flipped on every visit.
-  const [hideEmpty, setHideEmpty] = usePersistentState<boolean>(
-    'noteFieldsHideEmpty',
-    false,
-    (raw) => (typeof raw === 'boolean' ? raw : undefined),
-  );
   // The notebooks whose list is shown whole, by id; the Inbox is the empty string. A
   // list rather than one switch, for the reason given above: the answer is the
   // notebook's, not the person's. A deleted notebook's id is never taken out: this
@@ -146,22 +138,12 @@ export function NoteFields({
 
   // Worked out before the early returns below, over an empty list while the definitions
   // load, because the measuring hook has to be called on every render.
-  const list = defs ?? [];
-  const known = new Set(list.map((d) => d.id));
+  const fields = defs ?? [];
+  const known = new Set(fields.map((d) => d.id));
   const foreign = carried.filter(
     (v) => !known.has(v.fieldId) && values[v.fieldId] !== null && values[v.fieldId] !== undefined,
   );
-  const isEmpty = (def: FieldDef) => {
-    const v = values[def.id];
-    return v === null || v === undefined || v === '' || (Array.isArray(v) && v.length === 0);
-  };
-  const empties = list.filter(isEmpty).length;
-  // The toggle is offered once the empties are worth hiding: a short list is read whole,
-  // and hiding two rows of six only makes the list look like it lost something.
-  const offerHide = list.length >= HIDE_EMPTY_FROM && empties > 0;
-  const shown = hideEmpty && offerHide ? list.filter((d) => !isEmpty(d)) : list;
-
-  const own = shown.length + foreign.length;
+  const own = fields.length + foreign.length;
   const [gridRef, fit] = useRowsThatFit(defs ? own : null, values);
 
   /*
@@ -183,7 +165,7 @@ export function NoteFields({
   const revealedFor = useRef<ReadonlySet<string> | null>(null);
   useEffect(() => {
     if (!filledIds || fit === null || revealedFor.current === filledIds) return;
-    if (shown.slice(fit).some((def) => filledIds.has(def.id))) {
+    if (fields.slice(fit).some((def) => filledIds.has(def.id))) {
       revealedFor.current = filledIds;
       setRevealed(notebookId ?? '');
     }
@@ -218,7 +200,7 @@ export function NoteFields({
   return (
     <div className="note-fields" ref={gridRef}>
       {lead}
-      {shown.map((def, i) => (
+      {fields.map((def, i) => (
         <FieldRow
           key={def.id}
           def={def}
@@ -234,7 +216,7 @@ export function NoteFields({
           key={v.fieldId}
           className="note-field note-field-foreign"
           data-type={v.type}
-          hidden={shown.length + i >= drawn}
+          hidden={fields.length + i >= drawn}
         >
           <span className="note-field-glyph" aria-hidden="true">
             <FieldTypeIcon type={v.type} />
@@ -257,13 +239,13 @@ export function NoteFields({
           The last row of the list, in the list's own columns.
 
           At rest: a plus where a row's glyph goes, "Add field" where its name goes, the
-          list's two toggles where its value goes, and "Manage fields" in the side slot where a
+          limit's toggle where its value goes, and "Manage fields" in the side slot where a
           value's own action (Open, Call) goes, the way Notion ends a page's properties
           with "Add a property" in the property column. It used to be a dashed chip and a
           green link on a line of their own, two more costumes in a block that already had
           too many. While a field is being added the same four cells hold the form.
       */}
-      {(canAdd || offerHide || fit !== null) && (
+      {(canAdd || fit !== null) && (
         <div className="note-fields-foot">
           {canAdd && adding ? (
             <AddFieldRow
@@ -298,49 +280,34 @@ export function NoteFields({
                   link still sits hard right, where a value's own action would.
               */}
               <span className="note-fields-foot-rest">
-                <span className="note-fields-foot-mid">
-                  {/*
-                      Both toggles are raw buttons, not `Button`, on purpose and not as
-                      a pattern. This row is drawn in the list's own words: "Add field"
-                      as a name, these as values, each pulled left by its padding so its
-                      letters sit on the column's edge like the value above. `.btn` has
-                      its own box, size and hover border, and one or two of the row's
-                      three in it would be the two costumes this foot was rewritten to
-                      lose. A control elsewhere should be a `Button`.
+                {/*
+                    A raw button, not `Button`, on purpose and not as a pattern. This
+                    row is drawn in the list's own words: "Add field" as a name, this as
+                    a value, pulled left by its padding so its letters sit on the
+                    column's edge like the value above. `.btn` has its own box, size and
+                    hover border, and one of the row's controls in it would be the two
+                    costumes this foot was rewritten to lose. A control elsewhere should
+                    be a `Button`.
 
-                      The limit's toggle first: it is about the rows that end just above
-                      it. It counts what it would show rather than naming the total
-                      ("3 more", not "Show all 13"), so the label says how much of the
-                      record is out of sight, which is the thing a limit must not leave
-                      anyone guessing. A number, a word and a chevron, with the sentence
-                      in the name a screen reader gets: this cell also holds the empties
-                      toggle and shares its line with "Manage fields", and "Show 3 more"
-                      was the few characters that sent that link to a line of its own,
-                      which gave back a row of what the limit had just saved.
-                  */}
-                  {fit !== null && (
-                    <button
-                      type="button"
-                      className="note-fields-toggle note-fields-more"
-                      aria-expanded={whole}
-                      aria-label={whole ? 'Show fewer fields' : `Show ${own - fit} more fields`}
-                      onClick={toggleWhole}
-                    >
-                      {whole ? 'Fewer' : `${own - fit} more`}
-                      <CountChevronIcon />
-                    </button>
-                  )}
-                  {offerHide && (
-                    <button
-                      type="button"
-                      className="note-fields-toggle"
-                      aria-pressed={hideEmpty}
-                      onClick={() => setHideEmpty(!hideEmpty)}
-                    >
-                      {hideEmpty ? `Show ${empties} empty` : `Hide ${empties} empty`}
-                    </button>
-                  )}
-                </span>
+                    It counts what it would show rather than naming the total ("3 more",
+                    not "Show all 13"), so the label says how much of the record is out
+                    of sight, which is the thing a limit must not leave anyone guessing.
+                    A number, a word and a chevron, with the sentence in the name a
+                    screen reader gets: it shares its line with "Manage fields", and on
+                    a phone there is room for about this much before that link wraps.
+                */}
+                {fit !== null && (
+                  <button
+                    type="button"
+                    className="note-fields-more"
+                    aria-expanded={whole}
+                    aria-label={whole ? 'Show fewer fields' : `Show ${own - fit} more fields`}
+                    onClick={toggleWhole}
+                  >
+                    {whole ? 'Fewer' : `${own - fit} more`}
+                    <CountChevronIcon />
+                  </button>
+                )}
                 {canAdd && manage}
               </span>
             </>
