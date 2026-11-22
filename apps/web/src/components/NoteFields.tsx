@@ -388,10 +388,9 @@ export function NoteFields({
  * has settled (`CLAMP_SETTLE_MS`), where it moves it down at once. Focus leaving is
  * usually the keyboard starting to close, with the column still at its shortest.
  *
- * On the next frame rather than
- * in the observer's own callback: a reading there changes the size being observed, and
- * the browser reports that as a ResizeObserver loop error, which this app's error
- * reporting would then send home.
+ * On the next frame rather than in the observer's own callback: a reading there
+ * changes the size being observed, and the browser reports that as a ResizeObserver
+ * loop error, which this app's error reporting would then send home.
  */
 function useRowsThatFit(
   own: number | null,
