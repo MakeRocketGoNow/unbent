@@ -324,7 +324,8 @@ export function NoteFields({
  * never appears whole and then shortens.
  *
  * After that the list is read again when it or the column changes size, which covers a
- * window resized, a value that wrapped and a tag added. On the next frame rather than
+ * window resized, a value that wrapped and a tag added, and when focus leaves a row,
+ * since a cut held back for the row being edited can settle then. On the next frame rather than
  * in the observer's own callback: a reading there changes the size being observed, and
  * the browser reports that as a ResizeObserver loop error, which this app's error
  * reporting would then send home.
@@ -344,7 +345,8 @@ function useRowsThatFit(own: number | null): [RefObject<HTMLDivElement | null>, 
     const room = grid.closest('.workspace-main')?.clientHeight ?? window.innerHeight;
     grid.classList.add('measuring');
     const top = grid.getBoundingClientRect().top;
-    const bottoms = Array.from(grid.querySelectorAll(':scope > .note-field'), (row) => {
+    const rows = Array.from(grid.querySelectorAll(':scope > .note-field'));
+    const bottoms = rows.map((row) => {
       // A row has no box of its own (`display: contents`): it ends where its tallest
       // cell does.
       let bottom = 0;
@@ -352,9 +354,11 @@ function useRowsThatFit(own: number | null): [RefObject<HTMLDivElement | null>, 
       return bottom;
     });
     grid.classList.remove('measuring');
-    const rows = rowsThatFit(bottoms, room * CLAMP_SHARE);
+    // The row being edited is never cut: see `floor` on `rowsThatFit`.
+    const focused = rows.findIndex((row) => row.contains(document.activeElement));
+    const kept = rowsThatFit(bottoms, room * CLAMP_SHARE, focused + 1);
     // The rows before this component's own are the lead's, and are always drawn.
-    setFit(rows === null ? null : Math.max(0, rows - (bottoms.length - count)));
+    setFit(kept === null ? null : Math.max(0, kept - (bottoms.length - count)));
   }, []);
 
   useLayoutEffect(measure, [measure, own]);
@@ -363,16 +367,19 @@ function useRowsThatFit(own: number | null): [RefObject<HTMLDivElement | null>, 
     const grid = ref.current;
     if (!grid || typeof ResizeObserver === 'undefined') return;
     let frame = 0;
-    const observer = new ResizeObserver(() => {
+    const soon = () => {
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(measure);
-    });
+    };
+    const observer = new ResizeObserver(soon);
     observer.observe(grid);
     const column = grid.closest('.workspace-main');
     if (column) observer.observe(column);
+    grid.addEventListener('focusout', soon);
     return () => {
       cancelAnimationFrame(frame);
       observer.disconnect();
+      grid.removeEventListener('focusout', soon);
     };
     // `own === null` is the list not being mounted yet: observe once it is.
   }, [measure, own === null]);

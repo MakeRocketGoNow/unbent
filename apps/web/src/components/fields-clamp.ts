@@ -38,12 +38,21 @@ export const CLAMP_MIN_HIDDEN = 3;
  * `bottoms` is each row's bottom edge measured from the top of the list, in order, with
  * every row laid out. `budget` is the height the list may take. A budget of nothing is
  * "not measured" (a test's DOM, a column not yet laid out) and limits nothing.
+ *
+ * `floor` is a number of rows the cut may not go above: the place of the row that holds
+ * focus. The list is measured again whenever it or its column changes size, and both
+ * change under someone's hands. The Android app's keyboard shrinks the page, so opening
+ * it on a field near the cut moved the cut above that field; a multi-select that wraps as
+ * options are added pushes its own bottom past the budget. Either way the row being
+ * edited was hidden, which took its focus, which closed the keyboard, which brought the
+ * row back. A row is never hidden from under the person typing in it; the cut settles
+ * once focus leaves.
  */
-export function rowsThatFit(bottoms: readonly number[], budget: number): number | null {
+export function rowsThatFit(bottoms: readonly number[], budget: number, floor = 0): number | null {
   if (!(budget > 0)) return null;
   let fit = 0;
   while (fit < bottoms.length && bottoms[fit]! <= budget) fit++;
-  const rows = Math.max(fit, CLAMP_MIN_ROWS);
+  const rows = Math.max(fit, CLAMP_MIN_ROWS, floor);
   if (bottoms.length - rows < CLAMP_MIN_HIDDEN) return null;
   return rows;
 }

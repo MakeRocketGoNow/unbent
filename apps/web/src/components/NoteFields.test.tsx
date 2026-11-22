@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
+import { act, render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
 import type { FieldDef, FieldType, NoteFieldValue } from '@unbent/shared';
 import { NoteFields } from './NoteFields.js';
 
@@ -383,6 +383,7 @@ describe('NoteFields as a property list', () => {
 
     afterEach(() => {
       vi.restoreAllMocks();
+      vi.unstubAllGlobals();
       localStorage.clear();
     });
 
@@ -429,6 +430,54 @@ describe('NoteFields as a property list', () => {
       expect(row('Field 5').hidden).toBe(false);
       expect(row('Field 6').hidden).toBe(true);
       expect(screen.getByText('7 more')).toBeTruthy();
+    });
+
+    /** The observers the component made, so a test can say "the column changed size". */
+    function resizes() {
+      const made: Array<() => void> = [];
+      vi.stubGlobal(
+        'ResizeObserver',
+        class {
+          constructor(cb: () => void) {
+            made.push(cb);
+          }
+          observe() {}
+          disconnect() {}
+        },
+      );
+      vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => (cb(0), 1));
+      vi.stubGlobal('cancelAnimationFrame', () => {});
+      return () => act(() => made.forEach((cb) => cb()));
+    }
+
+    it('cuts again when the column changes size', () => {
+      layOut();
+      const resized = resizes();
+      mount({ definitions: twelve });
+      vi.stubGlobal('innerHeight', 500);
+      resized();
+      // 40% of 500 is five rows.
+      expect(row('Field 5').hidden).toBe(false);
+      expect(row('Field 6').hidden).toBe(true);
+      expect(screen.getByText('7 more')).toBeTruthy();
+    });
+
+    it('does not hide the row being typed in when the room shrinks under it', () => {
+      // The Android app's keyboard: it opens because the field took focus, and it
+      // shrinks the page the cut is measured against.
+      layOut();
+      const resized = resizes();
+      mount({ definitions: twelve });
+      input('Field 7').focus();
+      vi.stubGlobal('innerHeight', 400);
+      resized();
+      expect(row('Field 7').hidden).toBe(false);
+      expect(row('Field 8').hidden).toBe(true);
+
+      // Once focus leaves, the cut settles where the room puts it.
+      act(() => input('Field 7').blur());
+      expect(row('Field 4').hidden).toBe(false);
+      expect(row('Field 5').hidden).toBe(true);
     });
 
     it('leaves a list alone when only a row or two would go', () => {

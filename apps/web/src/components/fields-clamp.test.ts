@@ -30,6 +30,15 @@ describe('rowsThatFit', () => {
     expect(rowsThatFit(even(13), 300)).toBe(10);
   });
 
+  it('never cuts above the row that holds focus', () => {
+    // Seven rows fit; the keyboard opens and only four do, with the sixth being typed in.
+    expect(rowsThatFit(even(14), 130)).toBe(4);
+    expect(rowsThatFit(even(14), 130, 6)).toBe(6);
+    // A floor under the cut changes nothing, and one near the end leaves the list whole.
+    expect(rowsThatFit(even(14), 310, 6)).toBe(10);
+    expect(rowsThatFit(even(14), 130, 12)).toBeNull();
+  });
+
   it('limits nothing when the column has not been measured', () => {
     expect(rowsThatFit(even(30), 0)).toBeNull();
     expect(rowsThatFit(even(30), Number.NaN)).toBeNull();
