@@ -162,6 +162,20 @@ export function NoteFields({
   const own = shown.length + foreign.length;
   const [gridRef, fit] = useRowsThatFit(defs ? own : null, values);
 
+  /*
+   * An Auto-fill press that wrote past the cut shows the whole list, as an added field
+   * does and for as long. The marks on what a press wrote are there so the eye goes to
+   * them and Undo has something visible to undo; a mark on a row that is not drawn does
+   * neither, and the person was left to open the list to learn what had been written.
+   * Through `revealed` rather than by reading `filled` at render: the marks clear after
+   * a moment, and a list that closed again with them would jump twice for one press.
+   * Keyed on the press alone, so the list is opened once per press and "Fewer" holds.
+   */
+  useEffect(() => {
+    if (!filled || fit === null) return;
+    if (shown.slice(fit).some((def) => filled.ids.has(def.id))) setRevealed(notebookId ?? '');
+  }, [filled]);
+
   // Not yet known which fields the notebook has: showing every value as foreign for a
   // frame and then re-sorting it under a label would be exactly the jump to avoid.
   if (!defs) return null;

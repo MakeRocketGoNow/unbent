@@ -513,6 +513,21 @@ describe('NoteFields as a property list', () => {
       expect(localStorage.getItem('unbent.noteFieldsWhole')).toBeNull();
     });
 
+    it('shows the whole list when Auto-fill wrote to a row past the cut', () => {
+      layOut();
+      const props = { definitions: twelve, values: {}, carried: [], notebookId: 'nb1', onChange: vi.fn(), onAddField: vi.fn() };
+      const { rerender } = render(<NoteFields {...props} />);
+      // A press that wrote only what is already drawn leaves the limit alone.
+      rerender(<NoteFields {...props} filled={{ ids: new Set(['f1']), start: 0 }} />);
+      expect(row('Field 8').hidden).toBe(true);
+      rerender(<NoteFields {...props} filled={{ ids: new Set(['f1', 'f9']), start: 0 }} />);
+      expect(row('Field 10').hidden).toBe(false);
+      expect(row('Field 12').hidden).toBe(false);
+      // And it stays open when the marks clear, rather than closing under the eye.
+      rerender(<NoteFields {...props} />);
+      expect(row('Field 12').hidden).toBe(false);
+    });
+
     it('limits the list again once the notebook has been left and come back to', async () => {
       layOut();
       const props = { definitions: twelve, values: {}, carried: [], onChange: vi.fn(), onAddField: vi.fn(async () => {}) };
