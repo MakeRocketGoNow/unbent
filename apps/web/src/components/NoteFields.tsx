@@ -171,12 +171,23 @@ export function NoteFields({
    * neither, and the person was left to open the list to learn what had been written.
    * Through `revealed` rather than by reading `filled` at render: the marks clear after
    * a moment, and a list that closed again with them would jump twice for one press.
-   * Keyed on the press alone, so the list is opened once per press and "Fewer" holds.
+   *
+   * Once per press, so "Fewer" pressed while the marks are still showing holds. The
+   * press is known by its set of ids, which the workspace keeps the same for as long as
+   * the marks last; `filled` itself is a new object on every render there, and keyed on
+   * that the list reopened on the next render after it was closed. `fit` is a
+   * dependency because the cut for what the press wrote (taller rows, another notebook)
+   * is measured after the render that brought the press.
    */
+  const filledIds = filled?.ids;
+  const revealedFor = useRef<ReadonlySet<string> | null>(null);
   useEffect(() => {
-    if (!filled || fit === null) return;
-    if (shown.slice(fit).some((def) => filled.ids.has(def.id))) setRevealed(notebookId ?? '');
-  }, [filled]);
+    if (!filledIds || fit === null || revealedFor.current === filledIds) return;
+    if (shown.slice(fit).some((def) => filledIds.has(def.id))) {
+      revealedFor.current = filledIds;
+      setRevealed(notebookId ?? '');
+    }
+  }, [filledIds, fit]);
 
   // Not yet known which fields the notebook has: showing every value as foreign for a
   // frame and then re-sorting it under a label would be exactly the jump to avoid.

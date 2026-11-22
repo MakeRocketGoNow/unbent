@@ -538,6 +538,19 @@ describe('NoteFields as a property list', () => {
       expect(row('Field 12').hidden).toBe(false);
     });
 
+    it('lets Fewer hold while the marks of an Auto-fill press are still showing', () => {
+      // The workspace hands over a new `filled` object on every render, around the same
+      // set of ids for as long as the marks last.
+      layOut();
+      const props = { definitions: twelve, values: {}, carried: [], notebookId: 'nb1', onChange: vi.fn(), onAddField: vi.fn() };
+      const ids = new Set(['f9']);
+      const { rerender } = render(<NoteFields {...props} filled={{ ids, start: 0 }} />);
+      expect(row('Field 12').hidden).toBe(false);
+      fireEvent.click(screen.getByText('Fewer'));
+      rerender(<NoteFields {...props} filled={{ ids, start: 0 }} />);
+      expect(row('Field 12').hidden).toBe(true);
+    });
+
     it('limits the list again once the notebook has been left and come back to', async () => {
       layOut();
       const props = { definitions: twelve, values: {}, carried: [], onChange: vi.fn(), onAddField: vi.fn(async () => {}) };
