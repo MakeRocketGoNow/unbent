@@ -2035,7 +2035,8 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
           so the list is the top of the note, open at every width, and takes the height it
           needs up to a share of the column: past that it ends after a whole row and says
           how many more there are (`fields-clamp.ts`), at every width alike, by the
-          person's choice per notebook. It was briefly folded closed between the phone and the full desktop, a
+          person's choice per notebook. It was briefly folded closed between the phone
+          and the full desktop, a
           habit left over from when the fields had a column of their own that a 960px
           screen could not spare; above the body the list costs only height, which the
           phone spends without complaint, and a fold at one width alone read as a glitch.

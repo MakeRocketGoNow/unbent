@@ -121,7 +121,9 @@ export function NoteFields({
   );
   // The notebooks whose list is shown whole, by id; the Inbox is the empty string. A
   // list rather than one switch, for the reason given above: the answer is the
-  // notebook's, not the person's.
+  // notebook's, not the person's. A deleted notebook's id is never taken out: this
+  // component is not told which notebooks exist, and the cost is a few dozen bytes for
+  // each notebook someone both opened up and later deleted.
   const [wholeIn, setWholeIn] = usePersistentState<string[]>(
     'noteFieldsWhole',
     [],
@@ -287,6 +289,14 @@ export function NoteFields({
               <span className="note-fields-foot-rest">
                 <span className="note-fields-foot-mid">
                   {/*
+                      Both toggles are raw buttons, not `Button`, on purpose and not as
+                      a pattern. This row is drawn in the list's own words: "Add field"
+                      as a name, these as values, each pulled left by its padding so its
+                      letters sit on the column's edge like the value above. `.btn` has
+                      its own box, size and hover border, and one or two of the row's
+                      three in it would be the two costumes this foot was rewritten to
+                      lose. A control elsewhere should be a `Button`.
+
                       The limit's toggle first: it is about the rows that end just above
                       it. It counts what it would show rather than naming the total
                       ("3 more", not "Show all 13"), so the label says how much of the
