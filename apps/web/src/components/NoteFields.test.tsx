@@ -365,7 +365,7 @@ describe('NoteFields as a property list', () => {
      * limited. Here each row is given a height, by its place in the list: forty pixels
      * a row, in a window of 768, leaves room for seven (40% is 307).
      */
-    const ROW = 40;
+    let ROW = 40;
     const twelve = Array.from({ length: 12 }, (_, i) => def(`f${i}`, `Field ${i + 1}`, 'text'));
     const row = (label: string) => screen.getByLabelText(label).closest('.note-field') as HTMLElement;
 
@@ -382,6 +382,7 @@ describe('NoteFields as a property list', () => {
     }
 
     afterEach(() => {
+      ROW = 40;
       vi.restoreAllMocks();
       vi.unstubAllGlobals();
       localStorage.clear();
@@ -430,6 +431,19 @@ describe('NoteFields as a property list', () => {
       expect(row('Field 5').hidden).toBe(false);
       expect(row('Field 6').hidden).toBe(true);
       expect(screen.getByText('7 more')).toBeTruthy();
+    });
+
+    it('cuts for the note it is showing, not the one it showed before', () => {
+      // The workspace keeps the list mounted from note to note. Same notebook, same
+      // rows, but the next note's are taller (its tags wrap, say).
+      layOut();
+      const props = { definitions: twelve, carried: [], notebookId: 'nb1', onChange: vi.fn(), onAddField: vi.fn() };
+      const { rerender } = render(<NoteFields {...props} values={{ f0: 'one' }} />);
+      expect(row('Field 7').hidden).toBe(false);
+      ROW = 60;
+      rerender(<NoteFields {...props} values={{ f0: 'another' }} />);
+      expect(row('Field 5').hidden).toBe(false);
+      expect(row('Field 6').hidden).toBe(true);
     });
 
     /** The observers the component made, so a test can say "the column changed size". */

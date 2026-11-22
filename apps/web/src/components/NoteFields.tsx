@@ -160,7 +160,7 @@ export function NoteFields({
   const shown = hideEmpty && offerHide ? list.filter((d) => !isEmpty(d)) : list;
 
   const own = shown.length + foreign.length;
-  const [gridRef, fit] = useRowsThatFit(defs ? own : null);
+  const [gridRef, fit] = useRowsThatFit(defs ? own : null, values);
 
   // Not yet known which fields the notebook has: showing every value as foreign for a
   // frame and then re-sorting it under a label would be exactly the jump to avoid.
@@ -314,7 +314,11 @@ export function NoteFields({
 /**
  * How many of the list's own rows (the fields, not the rows passed as `lead`) fit the
  * limit, or null when the list is drawn whole. `own` is how many it has, null while
- * there is no list to measure.
+ * there is no list to measure. `values` is what the rows hold, read only for its
+ * identity: the workspace keeps this component mounted from one note to the next, and
+ * two notes of one notebook have the same rows at different heights (tags that wrap, a
+ * longer multi-select). Without it the next note was painted with the last one's cut
+ * and corrected a frame later, by a row. Typing in the body leaves the object alone.
  *
  * Measured, not counted: a row is as tall as what it holds (tags wrap, so does a
  * multi-select) and the rows above the fields are someone else's to draw. Every row is
@@ -330,7 +334,10 @@ export function NoteFields({
  * the browser reports that as a ResizeObserver loop error, which this app's error
  * reporting would then send home.
  */
-function useRowsThatFit(own: number | null): [RefObject<HTMLDivElement | null>, number | null] {
+function useRowsThatFit(
+  own: number | null,
+  values: unknown,
+): [RefObject<HTMLDivElement | null>, number | null] {
   const ref = useRef<HTMLDivElement | null>(null);
   const [fit, setFit] = useState<number | null>(null);
   const ownRef = useRef(own);
@@ -361,7 +368,7 @@ function useRowsThatFit(own: number | null): [RefObject<HTMLDivElement | null>, 
     setFit(kept === null ? null : Math.max(0, kept - (bottoms.length - count)));
   }, []);
 
-  useLayoutEffect(measure, [measure, own]);
+  useLayoutEffect(measure, [measure, own, values]);
 
   useEffect(() => {
     const grid = ref.current;
