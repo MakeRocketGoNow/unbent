@@ -509,8 +509,22 @@ describe('NoteFields as a property list', () => {
       fireEvent.click(screen.getByText('Add'));
       await waitFor(() => expect(onAddField).toHaveBeenCalled());
       await waitFor(() => expect(row('Field 12').hidden).toBe(false));
-      // Not a standing preference: the notebook's next note is limited again.
+      // Not a standing preference: nothing is written for the notebook's later visits.
       expect(localStorage.getItem('unbent.noteFieldsWhole')).toBeNull();
+    });
+
+    it('limits the list again once the notebook has been left and come back to', async () => {
+      layOut();
+      const props = { definitions: twelve, values: {}, carried: [], onChange: vi.fn(), onAddField: vi.fn(async () => {}) };
+      const { rerender } = render(<NoteFields {...props} notebookId="nb1" />);
+      fireEvent.click(screen.getByText('Add field'));
+      fireEvent.change(screen.getByLabelText('Field name'), { target: { value: 'Colour' } });
+      fireEvent.click(screen.getByText('Add'));
+      await waitFor(() => expect(row('Field 12').hidden).toBe(false));
+
+      rerender(<NoteFields {...props} notebookId="nb2" />);
+      rerender(<NoteFields {...props} notebookId="nb1" />);
+      expect(row('Field 12').hidden).toBe(true);
     });
   });
 });

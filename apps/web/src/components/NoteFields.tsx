@@ -170,6 +170,11 @@ export function NoteFields({
   if (defs.length === 0 && foreign.length === 0 && !canAdd && !lead) return null;
 
   const wholeKey = notebookId ?? '';
+  // "Until the person leaves it" has to be made true here: the workspace keeps this
+  // component mounted from note to note, so the state outlived the visit, and a notebook
+  // left and come back to was still shown whole. Reset during render, which is how React
+  // has state follow a prop without a frame drawn from the stale value.
+  if (revealed !== null && revealed !== wholeKey) setRevealed(null);
   const whole = wholeIn.includes(wholeKey) || revealed === wholeKey;
   // `fit` is how many of this component's own rows the limit leaves room for, or null
   // when the list fits or is too short to be worth limiting; the toggle is offered
