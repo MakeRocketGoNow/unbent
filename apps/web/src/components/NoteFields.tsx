@@ -412,7 +412,8 @@ function useRowsThatFit(
     if (!grid || count === null) return;
     // The note's column is what scrolls, so its height is the room there is. Anywhere
     // else the list might be drawn, the window is.
-    const room = grid.closest('.workspace-main')?.clientHeight ?? window.innerHeight;
+    const column = grid.closest('.workspace-main');
+    const room = column?.clientHeight ?? window.innerHeight;
     grid.classList.add('measuring');
     const top = grid.getBoundingClientRect().top;
     const rows = Array.from(grid.querySelectorAll(':scope > .note-field'));
@@ -427,8 +428,13 @@ function useRowsThatFit(
     // The row being edited is never cut: see `floor` on `rowsThatFit`.
     const active = document.activeElement;
     const focused = rows.findIndex((row) => row.contains(active));
+    // Typed in, and in this note: the sidebar's search box is neither the note nor
+    // near it, and nobody types into a checkbox. Without the scope a desktop window
+    // dragged shorter kept its long list for as long as the search box had focus.
     const typing =
-      active instanceof HTMLElement && (active.isContentEditable || active.matches('input, textarea, select'));
+      active instanceof HTMLElement &&
+      (column ?? grid).contains(active) &&
+      (active.isContentEditable || active.matches('textarea, select, input:not([type=checkbox], [type=radio])'));
     const floor = Math.max(focused + 1, reading !== 'fresh' && typing ? keptRef.current : 0);
     const kept = rowsThatFit(bottoms, room * CLAMP_SHARE, floor);
     if (reading === 'settling' && (kept ?? bottoms.length) < keptRef.current) {

@@ -521,6 +521,24 @@ describe('NoteFields as a property list', () => {
       expect(carriedRow.hidden).toBe(false);
     });
 
+    it('does not hold the cut for something focused outside the note', () => {
+      layOut();
+      const resized = resizes();
+      const props = { definitions: twelve, values: {}, carried: [], notebookId: 'nb1', onChange: vi.fn(), onAddField: vi.fn() };
+      render(
+        <>
+          <input aria-label="Search notes" />
+          <NoteFields {...props} />
+        </>,
+      );
+      screen.getByLabelText('Search notes').focus();
+      vi.stubGlobal('innerHeight', 400);
+      resized();
+      settle();
+      expect(row('Field 4').hidden).toBe(false);
+      expect(row('Field 5').hidden).toBe(true);
+    });
+
     it('holds the cut through a keystroke in a field while the room is short', () => {
       // The keyboard is up for Field 2 and the first character lands: the values are a
       // new object, and reading the short room fresh would take Fields 3 to 7.
