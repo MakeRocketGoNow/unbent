@@ -369,7 +369,18 @@ export function NoteFields({
  *
  * After that the list is read again when it or the column changes size, which covers a
  * window resized, a value that wrapped and a tag added, and when focus leaves a row,
- * since a cut held back for the row being edited can settle then. On the next frame rather than
+ * since a cut held back for the row being edited can settle then.
+ *
+ * A change of size never moves the cut up while something is being typed in, wherever
+ * in the note that is (`hold`). The Android app's keyboard shrinks the column, and it
+ * opens for the body as it does for a field: with the room read fresh, tapping into the
+ * body of a note with a long list took several rows off the list and moved the line
+ * just tapped up the screen, and closing the keyboard moved it back. The cut waits for
+ * the typing to end, as it does for a field's own row, and is read again when focus
+ * leaves. A reading for a new note or a changed list is not held: that cut is the first
+ * of its kind, not one moving under a caret.
+ *
+ * On the next frame rather than
  * in the observer's own callback: a reading there changes the size being observed, and
  * the browser reports that as a ResizeObserver loop error, which this app's error
  * reporting would then send home.
@@ -382,8 +393,10 @@ function useRowsThatFit(
   const [fit, setFit] = useState<number | null>(null);
   const ownRef = useRef(own);
   ownRef.current = own;
+  // How many rows, the lead's included, the last reading left drawn.
+  const keptRef = useRef(0);
 
-  const measure = useCallback(() => {
+  const measure = useCallback((hold = false) => {
     const grid = ref.current;
     const count = ownRef.current;
     if (!grid || count === null) return;
@@ -402,31 +415,41 @@ function useRowsThatFit(
     });
     grid.classList.remove('measuring');
     // The row being edited is never cut: see `floor` on `rowsThatFit`.
-    const focused = rows.findIndex((row) => row.contains(document.activeElement));
-    const kept = rowsThatFit(bottoms, room * CLAMP_SHARE, focused + 1);
+    const active = document.activeElement;
+    const focused = rows.findIndex((row) => row.contains(active));
+    const typing =
+      active instanceof HTMLElement && (active.isContentEditable || active.matches('input, textarea, select'));
+    const floor = Math.max(focused + 1, hold && typing ? keptRef.current : 0);
+    const kept = rowsThatFit(bottoms, room * CLAMP_SHARE, floor);
+    keptRef.current = kept ?? bottoms.length;
     // The rows before this component's own are the lead's, and are always drawn.
     setFit(kept === null ? null : Math.max(0, kept - (bottoms.length - count)));
   }, []);
 
-  useLayoutEffect(measure, [measure, own, values]);
+  useLayoutEffect(() => measure(), [measure, own, values]);
 
   useEffect(() => {
     const grid = ref.current;
     if (!grid || typeof ResizeObserver === 'undefined') return;
     let frame = 0;
-    const soon = () => {
+    const soon = (hold: boolean) => {
       cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(measure);
+      frame = requestAnimationFrame(() => measure(hold));
     };
-    const observer = new ResizeObserver(soon);
+    const resized = () => soon(true);
+    const left = () => soon(false);
+    const observer = new ResizeObserver(resized);
     observer.observe(grid);
     const column = grid.closest('.workspace-main');
     if (column) observer.observe(column);
-    grid.addEventListener('focusout', soon);
+    // On the column where there is one: the body's focus is what a held cut waits on
+    // as often as a field's.
+    const within = column ?? grid;
+    within.addEventListener('focusout', left);
     return () => {
       cancelAnimationFrame(frame);
       observer.disconnect();
-      grid.removeEventListener('focusout', soon);
+      within.removeEventListener('focusout', left);
     };
     // `own === null` is the list not being mounted yet: observe once it is.
   }, [measure, own === null]);

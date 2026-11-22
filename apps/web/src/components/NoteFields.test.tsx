@@ -504,6 +504,35 @@ describe('NoteFields as a property list', () => {
       expect(carriedRow.hidden).toBe(false);
     });
 
+    it('holds the cut while the body is being typed in and the room shrinks', () => {
+      // The keyboard again, opened for the body this time: the list must not lose rows
+      // and pull the line being typed up the screen.
+      layOut();
+      const resized = resizes();
+      let room = 768;
+      const props = { definitions: twelve, values: {}, carried: [], notebookId: 'nb1', onChange: vi.fn(), onAddField: vi.fn() };
+      render(
+        <div className="workspace-main" ref={(el) => { if (el) Object.defineProperty(el, 'clientHeight', { get: () => room }); }}>
+          <NoteFields {...props} />
+          <textarea aria-label="Body" />
+        </div>,
+      );
+      // The column was not measurable until the ref ran; this is the first real reading.
+      resized();
+      expect(row('Field 7').hidden).toBe(false);
+      expect(row('Field 8').hidden).toBe(true);
+
+      screen.getByLabelText('Body').focus();
+      room = 400;
+      resized();
+      expect(row('Field 7').hidden).toBe(false);
+
+      // The typing ends (and on a phone the keyboard goes): the cut is read fresh.
+      act(() => screen.getByLabelText('Body').blur());
+      expect(row('Field 4').hidden).toBe(false);
+      expect(row('Field 5').hidden).toBe(true);
+    });
+
     it('leaves a list alone when only a row or two would go', () => {
       layOut();
       mount({ definitions: twelve.slice(0, 9) });
