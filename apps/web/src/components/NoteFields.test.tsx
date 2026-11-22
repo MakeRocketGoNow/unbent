@@ -494,6 +494,16 @@ describe('NoteFields as a property list', () => {
       expect(row('Field 5').hidden).toBe(true);
     });
 
+    it('cuts a value carried from another notebook like any other row', () => {
+      // Carried values are drawn after the notebook's own fields, so they go first.
+      layOut();
+      mount({ definitions: twelve.slice(0, 9), values: { old: 'Old' }, carried: [leftover] });
+      const carriedRow = screen.getByText('Old').closest('.note-field') as HTMLElement;
+      expect(carriedRow.hidden).toBe(true);
+      fireEvent.click(screen.getByText('3 more'));
+      expect(carriedRow.hidden).toBe(false);
+    });
+
     it('leaves a list alone when only a row or two would go', () => {
       layOut();
       mount({ definitions: twelve.slice(0, 9) });
