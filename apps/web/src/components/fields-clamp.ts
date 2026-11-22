@@ -15,8 +15,17 @@
  * decides which rows are kept.
  */
 
-/** The share of the note's column the list may take while limited. */
-export const CLAMP_SHARE = 0.4;
+/**
+ * The share of the note's column the list may take while limited.
+ *
+ * It was 0.4, the middle of "a third to a half", and on a desktop that was still nine
+ * rows of filing above the body: a lot, for a list whose rest is one press away. 0.3
+ * took one row off that, which nobody would notice. At a quarter a desktop window draws
+ * about six rows and a phone the floor of four (`CLAMP_MIN_ROWS`), which is the notebook,
+ * the tags and the first few fields: enough to say what the note is, with most of the
+ * screen left for what it says.
+ */
+export const CLAMP_SHARE = 0.25;
 
 /**
  * Never fewer rows than this, however short the window: the notebook and the tags are
