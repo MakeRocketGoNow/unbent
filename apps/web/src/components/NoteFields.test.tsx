@@ -358,4 +358,96 @@ describe('NoteFields as a property list', () => {
     expect(again.queryByLabelText('Amount')).toBeNull();
     expect(again.getByText('Show 7 empty')).toBeTruthy();
   });
+
+  describe('limited to a share of the column', () => {
+    /*
+     * jsdom lays nothing out, so every rect is zeros and the list above is never
+     * limited. Here each row is given a height, by its place in the list: forty pixels
+     * a row, in a window of 768, leaves room for seven (40% is 307).
+     */
+    const ROW = 40;
+    const twelve = Array.from({ length: 12 }, (_, i) => def(`f${i}`, `Field ${i + 1}`, 'text'));
+    const row = (label: string) => screen.getByLabelText(label).closest('.note-field') as HTMLElement;
+
+    function layOut() {
+      vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+        const parent = this.parentElement;
+        let bottom = 0;
+        if (parent?.classList.contains('note-field')) {
+          const rows = Array.from(parent.parentElement!.querySelectorAll(':scope > .note-field'));
+          bottom = (rows.indexOf(parent) + 1) * ROW;
+        }
+        return { top: 0, bottom, left: 0, right: 0, width: 0, height: bottom, x: 0, y: 0, toJSON: () => ({}) };
+      });
+    }
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+      localStorage.clear();
+    });
+
+    it('draws the rows that fit and says how many more there are', () => {
+      layOut();
+      mount({ definitions: twelve });
+      expect(row('Field 7').hidden).toBe(false);
+      expect(row('Field 8').hidden).toBe(true);
+      const toggle = screen.getByText('5 more');
+      expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    });
+
+    it('shows the whole list on a press, and remembers that for the notebook alone', () => {
+      layOut();
+      mount({ definitions: twelve });
+      fireEvent.click(screen.getByText('5 more'));
+      expect(row('Field 12').hidden).toBe(false);
+      expect(screen.getByText('Fewer').getAttribute('aria-expanded')).toBe('true');
+
+      // The next note in the same notebook opens whole; another notebook's does not.
+      cleanup();
+      mount({ definitions: twelve });
+      expect(row('Field 12').hidden).toBe(false);
+      cleanup();
+      mount({ definitions: twelve, notebookId: 'nb2' });
+      expect(row('Field 12').hidden).toBe(true);
+
+      // And asking for fewer puts the limit back.
+      cleanup();
+      mount({ definitions: twelve });
+      fireEvent.click(screen.getByText('Fewer'));
+      expect(row('Field 8').hidden).toBe(true);
+    });
+
+    it('counts the rows drawn above the fields against the same room', () => {
+      layOut();
+      const lead = (
+        <>
+          <div className="note-field"><span>Notebook</span></div>
+          <div className="note-field"><span>Tags</span></div>
+        </>
+      );
+      mount({ definitions: twelve, lead });
+      expect(row('Field 5').hidden).toBe(false);
+      expect(row('Field 6').hidden).toBe(true);
+      expect(screen.getByText('7 more')).toBeTruthy();
+    });
+
+    it('leaves a list alone when only a row or two would go', () => {
+      layOut();
+      mount({ definitions: twelve.slice(0, 9) });
+      expect(row('Field 9').hidden).toBe(false);
+      expect(screen.queryByText(/^\d+ more$/)).toBeNull();
+    });
+
+    it('shows a field just added, which the limit would have hidden', async () => {
+      layOut();
+      const { onAddField } = mount({ definitions: twelve });
+      fireEvent.click(screen.getByText('Add field'));
+      fireEvent.change(screen.getByLabelText('Field name'), { target: { value: 'Colour' } });
+      fireEvent.click(screen.getByText('Add'));
+      await waitFor(() => expect(onAddField).toHaveBeenCalled());
+      await waitFor(() => expect(row('Field 12').hidden).toBe(false));
+      // Not a standing preference: the notebook's next note is limited again.
+      expect(localStorage.getItem('unbent.noteFieldsWhole')).toBeNull();
+    });
+  });
 });

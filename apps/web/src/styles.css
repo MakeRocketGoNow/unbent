@@ -3336,6 +3336,15 @@ a.sidebar-status:hover {
 
 .note-field { display: contents; }
 
+/*
+   A row past the limit's cut (see `fields-clamp.ts`): mounted and not drawn. Said here
+   because `display: contents` above outranks the browser's own rule for `hidden`. While
+   the list is being measured every row is laid out again, so the cut is worked out from
+   where each row would end, not from the rows that happen to be showing.
+*/
+.note-field[hidden] { display: none; }
+.note-fields.measuring > .note-field[hidden] { display: contents; }
+
 /* The type, as a picture: muted like the name it sits beside, since both describe the
    value rather than being it. */
 .note-field-glyph {
@@ -3704,9 +3713,14 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   grid-column: 1 / -1;
   display: grid;
   grid-template-columns: subgrid;
-  align-items: center;
+  /* To the top, not the middle: in a narrow note the right-hand cell wraps to a second
+     line (see `.note-fields-foot-rest`) and "Add field" belongs beside the first. Every
+     cell is a row tall, so on one line this is the centring it replaced. */
+  align-items: start;
   column-gap: 0.5rem;
 }
+
+.note-fields-foot > .note-field-glyph { min-height: 2.1rem; }
 
 /* "Add field": a name-column word in the muted weight, lit on hover like a value. */
 .note-field-add-hint {
@@ -3734,25 +3748,37 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
    in any row, and a link in the side column widened that column under every row: on a
    phone by enough to stack the tags one per line. A span that crosses the value column's
    flexible track adds nothing to the side track's intrinsic width.
+
+   It wraps. With the limit's toggle beside the empties' there can be three phrases here,
+   and in a narrow note (a phone, a desktop with the list wide) they do not fit one line:
+   unwrapped they were drawn over each other. "Manage fields" is the one that drops, and
+   keeps the right edge on its own line (the auto margin), which is where it always is.
 */
 .note-fields-foot-rest {
   grid-column: 3 / -1;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
+  gap: 0 0.5rem;
   min-width: 0;
 }
 
-/* The empties toggle, or nothing. */
+/* The list's toggles (show the rest, hide the empties), or nothing. Apart by more than
+   their own padding, so two muted phrases side by side read as two controls. */
 .note-fields-foot-mid {
   display: inline-flex;
+  flex-wrap: wrap;
   align-items: center;
+  gap: 0 0.75rem;
   min-width: 0;
 }
 
 /* Manage fields: the side slot's link, as Open and Call are drawn on a value's row. */
 .note-fields-manage {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.1rem;
+  margin-left: auto;
   font-size: 0.9rem;
   color: var(--muted);
   white-space: nowrap;
@@ -3811,7 +3837,8 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 
 .note-fields-foot > .note-field-error { grid-column: 2 / -1; }
 
-/* Hide or show the empties: a preference, drawn as quietly as "Add field" beside it. */
+/* Show the rest of a limited list, hide or show the empties: preferences, drawn as
+   quietly as "Add field" beside them. */
 .note-fields-toggle {
   padding: 0.25rem 0.5rem;
   margin-left: -0.5rem;
@@ -3822,9 +3849,21 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   border: none;
   border-radius: 0.3rem;
   cursor: pointer;
+  white-space: nowrap;
+  min-height: 2.1rem;
 }
 
 .note-fields-toggle:hover { color: var(--fg); }
+
+/* The limit's toggle: its chevron points at where the rest will appear, and back up
+   once they have. */
+.note-fields-more {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+}
+
+.note-fields-more[aria-expanded='true'] svg { transform: rotate(180deg); }
 
 /* The bar docked above the keyboard: one scrolling row rather than two wrapped ones. */
 .editor-toolbar.docked {
