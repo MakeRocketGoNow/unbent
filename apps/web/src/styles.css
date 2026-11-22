@@ -2112,7 +2112,9 @@ th[aria-sort] .note-th-sort { color: var(--fg); }
    flex box it used to be (chrome sized to fit, the pane row taking what is left and each
    pane scrolling inside it) and the property list is capped at half the screen and
    scrolls within itself, since here a long notebook really would push the panes off the
-   bottom. `:has()` rather than a class from the component: the view is already on the
+   bottom. The list's own limit (`fields-clamp.ts`) applies here as everywhere and is
+   usually the shorter of the two, so this cap is what holds when that limit stands
+   down: a list shown whole by choice, or one too short of hidden rows to be cut. `:has()` rather than a class from the component: the view is already on the
    pane row, and this is a fact about layout.
 */
 .workspace-main:has(> .panes.split) {
@@ -2135,7 +2137,9 @@ th[aria-sort] .note-th-sort { color: var(--fg); }
    One placement at every width now: the site's phone and desktop layouts both draw this
    block, which is why it is not in the phone block. The column
    it sits in scrolls as one document (see `.workspace-main`), so the list is simply the
-   top of the note and takes the height it needs.
+   top of the note. It takes the height it needs up to a share of that column; past it
+   the component draws fewer rows and a toggle for the rest (`fields-clamp.ts`), so there
+   is still no height or overflow set here.
 
    No rule of its own. Whatever follows draws the seam (the attachments row and the
    desktop's formatting bar each carry one) and a rule here as well stacked three lines
@@ -2143,8 +2147,8 @@ th[aria-sort] .note-th-sort { color: var(--fg); }
    is a docked bar, fixed to the screen's foot rather than to the list's, so there the
    list keeps a rule between its last row and the body.
 
-   The one place it is capped is the split view, where the column is a flex box again:
-   see the split rules under `.workspace-main`.
+   The one place the stylesheet caps it is the split view, where the column is a flex box
+   again: see the split rules under `.workspace-main`.
 */
 .fields-inline {
   padding: 0.75rem 0 0.5rem;
