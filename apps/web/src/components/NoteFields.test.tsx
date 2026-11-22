@@ -521,6 +521,22 @@ describe('NoteFields as a property list', () => {
       expect(carriedRow.hidden).toBe(false);
     });
 
+    it('holds the cut through a keystroke in a field while the room is short', () => {
+      // The keyboard is up for Field 2 and the first character lands: the values are a
+      // new object, and reading the short room fresh would take Fields 3 to 7.
+      layOut();
+      const resized = resizes();
+      const props = { definitions: twelve, carried: [], notebookId: 'nb1', onChange: vi.fn(), onAddField: vi.fn() };
+      const { rerender } = render(<NoteFields {...props} values={{}} />);
+      input('Field 2').focus();
+      vi.stubGlobal('innerHeight', 400);
+      resized();
+      rerender(<NoteFields {...props} values={{ f1: 'a' }} />);
+      settle();
+      expect(row('Field 7').hidden).toBe(false);
+      expect(row('Field 8').hidden).toBe(true);
+    });
+
     it('holds the cut while the body is being typed in and the room shrinks', () => {
       // The keyboard again, opened for the body this time: the list must not lose rows
       // and pull the line being typed up the screen.

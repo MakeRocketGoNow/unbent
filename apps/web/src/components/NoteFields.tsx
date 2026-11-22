@@ -377,8 +377,12 @@ export function NoteFields({
  * body of a note with a long list took several rows off the list and moved the line
  * just tapped up the screen, and closing the keyboard moved it back. The cut waits for
  * the typing to end, as it does for a field's own row, and is read again when focus
- * leaves. A reading for a new note or a changed list is not held (`fresh`): that cut is
- * the first of its kind, not one moving under a caret.
+ * leaves. A reading for a changed list is not held (`fresh`): that cut is the first of
+ * its kind, not one moving under a caret. A reading for changed values is (`edit`),
+ * because a keystroke in a field changes them: read fresh, the first character typed
+ * with the keyboard up took the rows the resize had just been stopped from taking. A
+ * new note changes the values too, and is read at once all the same, since nothing is
+ * being typed in as it arrives.
  *
  * And with nothing being typed, a change of size moves the cut up only once the size
  * has settled (`CLAMP_SETTLE_MS`), where it moves it down at once. Focus leaving is
@@ -401,7 +405,7 @@ function useRowsThatFit(
   const keptRef = useRef(0);
   const settleRef = useRef(0);
 
-  const measure = useCallback((reading: 'fresh' | 'settling' | 'settled' = 'fresh') => {
+  const measure = useCallback((reading: 'fresh' | 'edit' | 'settling' | 'settled' = 'fresh') => {
     window.clearTimeout(settleRef.current);
     const grid = ref.current;
     const count = ownRef.current;
@@ -436,7 +440,8 @@ function useRowsThatFit(
     setFit(kept === null ? null : Math.max(0, kept - (bottoms.length - count)));
   }, []);
 
-  useLayoutEffect(() => measure(), [measure, own, values]);
+  useLayoutEffect(() => measure(), [measure, own]);
+  useLayoutEffect(() => measure('edit'), [measure, values]);
 
   useEffect(() => {
     const grid = ref.current;
