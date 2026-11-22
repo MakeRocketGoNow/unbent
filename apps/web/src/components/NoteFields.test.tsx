@@ -2,6 +2,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { act, render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
 import type { FieldDef, FieldType, NoteFieldValue } from '@unbent/shared';
 import { NoteFields } from './NoteFields.js';
+import { CLAMP_SETTLE_MS } from './fields-clamp.js';
 
 /**
  * The field block is a form drawn from data: each type has to become the right control,
@@ -383,6 +384,7 @@ describe('NoteFields as a property list', () => {
 
     afterEach(() => {
       ROW = 40;
+      vi.useRealTimers();
       vi.restoreAllMocks();
       vi.unstubAllGlobals();
       localStorage.clear();
@@ -446,8 +448,12 @@ describe('NoteFields as a property list', () => {
       expect(row('Field 6').hidden).toBe(true);
     });
 
+    /** Lets a cut that is waiting for the size to stop changing be made. */
+    const settle = () => act(() => void vi.advanceTimersByTime(CLAMP_SETTLE_MS));
+
     /** The observers the component made, so a test can say "the column changed size". */
     function resizes() {
+      vi.useFakeTimers();
       const made: Array<() => void> = [];
       vi.stubGlobal(
         'ResizeObserver',
@@ -470,10 +476,19 @@ describe('NoteFields as a property list', () => {
       mount({ definitions: twelve });
       vi.stubGlobal('innerHeight', 500);
       resized();
+      // Fewer rows fit, and the cut waits for the size to stop changing: a keyboard on
+      // its way out, a window being dragged.
+      expect(row('Field 7').hidden).toBe(false);
+      settle();
       // 40% of 500 is five rows.
       expect(row('Field 5').hidden).toBe(false);
       expect(row('Field 6').hidden).toBe(true);
       expect(screen.getByText('7 more')).toBeTruthy();
+
+      // More room shows its rows at once.
+      vi.stubGlobal('innerHeight', 768);
+      resized();
+      expect(row('Field 7').hidden).toBe(false);
     });
 
     it('does not hide the row being typed in when the room shrinks under it', () => {
@@ -488,8 +503,10 @@ describe('NoteFields as a property list', () => {
       expect(row('Field 7').hidden).toBe(false);
       expect(row('Field 8').hidden).toBe(true);
 
-      // Once focus leaves, the cut settles where the room puts it.
+      // Once focus leaves and the size has stopped changing, the cut settles where the
+      // room puts it.
       act(() => input('Field 7').blur());
+      settle();
       expect(row('Field 4').hidden).toBe(false);
       expect(row('Field 5').hidden).toBe(true);
     });
@@ -519,6 +536,7 @@ describe('NoteFields as a property list', () => {
       );
       // The column was not measurable until the ref ran; this is the first real reading.
       resized();
+      settle();
       expect(row('Field 7').hidden).toBe(false);
       expect(row('Field 8').hidden).toBe(true);
 
@@ -528,7 +546,10 @@ describe('NoteFields as a property list', () => {
       expect(row('Field 7').hidden).toBe(false);
 
       // The typing ends (and on a phone the keyboard goes): the cut is read fresh.
+      // The keyboard has not finished leaving, so the room is still short: the cut waits.
       act(() => screen.getByLabelText('Body').blur());
+      expect(row('Field 7').hidden).toBe(false);
+      settle();
       expect(row('Field 4').hidden).toBe(false);
       expect(row('Field 5').hidden).toBe(true);
     });

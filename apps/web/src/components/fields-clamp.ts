@@ -33,6 +33,23 @@ export const CLAMP_MIN_ROWS = 4;
 export const CLAMP_MIN_HIDDEN = 3;
 
 /**
+ * How long the room must have stopped changing before the cut moves up for it.
+ *
+ * A change of size that leaves room for more rows shows them at once; one that leaves
+ * room for fewer waits this long and is read again. The Android app's keyboard closes
+ * over a quarter of a second, and the column grows back as it goes: read at once, the
+ * moment focus left a field the list was cut for the keyboard's height, then given its
+ * rows back a beat later as the keyboard finished leaving. A window being dragged
+ * shorter did a slower version of the same thing, a row at a time under the pointer.
+ *
+ * Twice the keyboard's quarter second. At 300ms a slow emulator's WebView still showed
+ * the cut and its undoing once in two tries, the height coming back just after the wait
+ * ran out; the cost of the margin is a list that takes half a second to shorten after a
+ * resize, which nobody is waiting on.
+ */
+export const CLAMP_SETTLE_MS = 500;
+
+/**
  * The number of rows to draw, or null when the list is drawn whole.
  *
  * `bottoms` is each row's bottom edge measured from the top of the list, in order, with

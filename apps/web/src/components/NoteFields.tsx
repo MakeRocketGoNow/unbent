@@ -18,7 +18,7 @@ import { FieldCellInput } from './FieldCellInput.js';
 import { amountText, currencySymbol, formatFieldValue } from './format-field.js';
 import { usePersistentState } from '../usePersistentState.js';
 import { filledStyle } from './filled.js';
-import { CLAMP_SHARE, rowsThatFit } from './fields-clamp.js';
+import { CLAMP_SETTLE_MS, CLAMP_SHARE, rowsThatFit } from './fields-clamp.js';
 
 export interface NoteFieldsProps {
   /** The note's notebook's definitions, in order. Undefined while they load. */
@@ -372,13 +372,17 @@ export function NoteFields({
  * since a cut held back for the row being edited can settle then.
  *
  * A change of size never moves the cut up while something is being typed in, wherever
- * in the note that is (`hold`). The Android app's keyboard shrinks the column, and it
+ * in the note that is. The Android app's keyboard shrinks the column, and it
  * opens for the body as it does for a field: with the room read fresh, tapping into the
  * body of a note with a long list took several rows off the list and moved the line
  * just tapped up the screen, and closing the keyboard moved it back. The cut waits for
  * the typing to end, as it does for a field's own row, and is read again when focus
- * leaves. A reading for a new note or a changed list is not held: that cut is the first
- * of its kind, not one moving under a caret.
+ * leaves. A reading for a new note or a changed list is not held (`fresh`): that cut is
+ * the first of its kind, not one moving under a caret.
+ *
+ * And with nothing being typed, a change of size moves the cut up only once the size
+ * has settled (`CLAMP_SETTLE_MS`), where it moves it down at once. Focus leaving is
+ * usually the keyboard starting to close, with the column still at its shortest.
  *
  * On the next frame rather than
  * in the observer's own callback: a reading there changes the size being observed, and
@@ -395,8 +399,10 @@ function useRowsThatFit(
   ownRef.current = own;
   // How many rows, the lead's included, the last reading left drawn.
   const keptRef = useRef(0);
+  const settleRef = useRef(0);
 
-  const measure = useCallback((hold = false) => {
+  const measure = useCallback((reading: 'fresh' | 'settling' | 'settled' = 'fresh') => {
+    window.clearTimeout(settleRef.current);
     const grid = ref.current;
     const count = ownRef.current;
     if (!grid || count === null) return;
@@ -419,8 +425,12 @@ function useRowsThatFit(
     const focused = rows.findIndex((row) => row.contains(active));
     const typing =
       active instanceof HTMLElement && (active.isContentEditable || active.matches('input, textarea, select'));
-    const floor = Math.max(focused + 1, hold && typing ? keptRef.current : 0);
+    const floor = Math.max(focused + 1, reading !== 'fresh' && typing ? keptRef.current : 0);
     const kept = rowsThatFit(bottoms, room * CLAMP_SHARE, floor);
+    if (reading === 'settling' && (kept ?? bottoms.length) < keptRef.current) {
+      settleRef.current = window.setTimeout(() => measure('settled'), CLAMP_SETTLE_MS);
+      return;
+    }
     keptRef.current = kept ?? bottoms.length;
     // The rows before this component's own are the lead's, and are always drawn.
     setFit(kept === null ? null : Math.max(0, kept - (bottoms.length - count)));
@@ -432,24 +442,23 @@ function useRowsThatFit(
     const grid = ref.current;
     if (!grid || typeof ResizeObserver === 'undefined') return;
     let frame = 0;
-    const soon = (hold: boolean) => {
+    const soon = () => {
       cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => measure(hold));
+      frame = requestAnimationFrame(() => measure('settling'));
     };
-    const resized = () => soon(true);
-    const left = () => soon(false);
-    const observer = new ResizeObserver(resized);
+    const observer = new ResizeObserver(soon);
     observer.observe(grid);
     const column = grid.closest('.workspace-main');
     if (column) observer.observe(column);
     // On the column where there is one: the body's focus is what a held cut waits on
     // as often as a field's.
     const within = column ?? grid;
-    within.addEventListener('focusout', left);
+    within.addEventListener('focusout', soon);
     return () => {
       cancelAnimationFrame(frame);
+      window.clearTimeout(settleRef.current);
       observer.disconnect();
-      within.removeEventListener('focusout', left);
+      within.removeEventListener('focusout', soon);
     };
     // `own === null` is the list not being mounted yet: observe once it is.
   }, [measure, own === null]);
