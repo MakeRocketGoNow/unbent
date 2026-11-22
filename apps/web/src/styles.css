@@ -2114,8 +2114,9 @@ th[aria-sort] .note-th-sort { color: var(--fg); }
    scrolls within itself, since here a long notebook really would push the panes off the
    bottom. The list's own limit (`fields-clamp.ts`) applies here as everywhere and is
    usually the shorter of the two, so this cap is what holds when that limit stands
-   down: a list shown whole by choice, or one too short of hidden rows to be cut. `:has()` rather than a class from the component: the view is already on the
-   pane row, and this is a fact about layout.
+   down: a list shown whole by choice, or one too short of hidden rows to be cut.
+   `:has()` rather than a class from the component: the view is already on the pane row,
+   and this is a fact about layout.
 */
 .workspace-main:has(> .panes.split) {
   display: flex;
