@@ -1009,9 +1009,10 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
    * is the whole of how the note is filed, the way Notion's page states its properties
    * before its text. They used to take a column of their own beside the note on a desktop,
    * so a long list never pushed the body down; the column scrolls as one document now, so
-   * the list is simply the top of the note, and a desktop too narrow to spare the height
-   * starts it folded. A deliberate trade, chosen over the sheet the fields used to share
-   * with the notebook picker: what the sheet hid was the note's own data.
+   * the list is simply the top of the note. A long one is limited to a share of the
+   * column, in whole rows, with the rest a press away (`fields-clamp.ts`). A deliberate
+   * trade, chosen over the sheet the fields used to share with the notebook picker: what
+   * the sheet hid was the note's own data.
    */
   const fieldsBlock = (lead?: React.ReactNode) =>
     !note ? null : (
@@ -2031,11 +2032,14 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
           the fields after them) because it is one record, and a desktop that drew the
           first two as a row of pickers and the rest in a column beside the note was the
           same record in two hands. The column scrolls as a document (see `.workspace-main`),
-          so the list is the top of the note and takes the height it needs, open at every
-          width. It was briefly folded closed between the phone and the full desktop, a
-          habit left over from when the fields had a column of their own that a 960px
-          screen could not spare; above the body the list costs only height, which the
-          phone spends without complaint, and a fold at one width alone read as a glitch.
+          so the list is the top of the note, open at every width, and takes the height it
+          needs up to a share of the column: past that it ends after a whole row and says
+          how many more there are (`fields-clamp.ts`), at every width alike, by the
+          person's choice per notebook. It was briefly folded closed between the phone
+          and the full desktop, a habit left over from when the fields had a column of
+          their own that a 960px screen could not spare; above the body the list costs
+          only height, which the phone spends without complaint, and a fold at one width
+          alone read as a glitch.
 
           There used to be a sheet here on a phone, opened from a row that stated the
           filing. It earned its place holding six controls; once the fields moved onto the

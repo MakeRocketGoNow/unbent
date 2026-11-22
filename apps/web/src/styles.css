@@ -2112,8 +2112,11 @@ th[aria-sort] .note-th-sort { color: var(--fg); }
    flex box it used to be (chrome sized to fit, the pane row taking what is left and each
    pane scrolling inside it) and the property list is capped at half the screen and
    scrolls within itself, since here a long notebook really would push the panes off the
-   bottom. `:has()` rather than a class from the component: the view is already on the
-   pane row, and this is a fact about layout.
+   bottom. The list's own limit (`fields-clamp.ts`) applies here as everywhere and is
+   usually the shorter of the two, so this cap is what holds when that limit stands
+   down: a list shown whole by choice, or one too short of hidden rows to be cut.
+   `:has()` rather than a class from the component: the view is already on the pane row,
+   and this is a fact about layout.
 */
 .workspace-main:has(> .panes.split) {
   display: flex;
@@ -2135,7 +2138,9 @@ th[aria-sort] .note-th-sort { color: var(--fg); }
    One placement at every width now: the site's phone and desktop layouts both draw this
    block, which is why it is not in the phone block. The column
    it sits in scrolls as one document (see `.workspace-main`), so the list is simply the
-   top of the note and takes the height it needs.
+   top of the note. It takes the height it needs up to a share of that column; past it
+   the component draws fewer rows and a toggle for the rest (`fields-clamp.ts`), so there
+   is still no height or overflow set here.
 
    No rule of its own. Whatever follows draws the seam (the attachments row and the
    desktop's formatting bar each carry one) and a rule here as well stacked three lines
@@ -2143,8 +2148,8 @@ th[aria-sort] .note-th-sort { color: var(--fg); }
    is a docked bar, fixed to the screen's foot rather than to the list's, so there the
    list keeps a rule between its last row and the body.
 
-   The one place it is capped is the split view, where the column is a flex box again:
-   see the split rules under `.workspace-main`.
+   The one place the stylesheet caps it is the split view, where the column is a flex box
+   again: see the split rules under `.workspace-main`.
 */
 .fields-inline {
   padding: 0.75rem 0 0.5rem;
@@ -3328,13 +3333,33 @@ a.sidebar-status:hover {
   /* A full rem between a name and its value, and a breath between rows: the list is set
      at the body's size now, and at that size the old half-rem read as crammed. */
   column-gap: 1rem;
-  row-gap: 0.2rem;
+  row-gap: 0.15rem;
+  /*
+     A row's height, for the grid and for every control that fills a row. 32px a row
+     with the gap, where it was 37: a dozen fields are a dozen rows between the title and
+     the body, and the five pixels were air above and below a chip that is 26 tall
+     either way. Not much tighter than this: a text value's box is its line and its
+     padding, 1.7rem, and a row no taller than the box leaves the focus ring of one row
+     on the next. The phone block sets its own, for a thumb. A value's control drawn
+     outside the list (a table's cell) has no such variable and falls back to the old
+     2.1rem, which is the height those cells were tuned at.
+  */
+  --field-row: 1.85rem;
   /* One rhythm whatever a row holds: a chip is shorter than a text value's box, and
      without a floor the rows with chips sat visibly tighter than the rows with words. */
-  grid-auto-rows: minmax(2.1rem, auto);
+  grid-auto-rows: minmax(var(--field-row), auto);
 }
 
 .note-field { display: contents; }
+
+/*
+   A row past the limit's cut (see `fields-clamp.ts`): mounted and not drawn. Said here
+   because `display: contents` above outranks the browser's own rule for `hidden`. While
+   the list is being measured every row is laid out again, so the cut is worked out from
+   where each row would end, not from the rows that happen to be showing.
+*/
+.note-field[hidden] { display: none; }
+.note-fields.measuring > .note-field[hidden] { display: contents; }
 
 /* The type, as a picture: muted like the name it sits beside, since both describe the
    value rather than being it. */
@@ -3384,7 +3409,7 @@ a.sidebar-status:hover {
   min-width: 0;
   /* The body's size, near enough, in a row a little over two lines tall: a property is
      part of the note, not small print above it. */
-  min-height: 2.1rem;
+  min-height: var(--field-row, 2.1rem);
   padding: 0.25rem 0.5rem;
   margin-left: -0.5rem;
   font: inherit;
@@ -3573,7 +3598,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
-  min-height: 2.1rem;
+  min-height: var(--field-row, 2.1rem);
 }
 
 /*
@@ -3694,7 +3719,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
    The last row of the list, in the list's own columns.
 
    A subgrid row, so its cells fall into the glyph, name, value and side columns like any
-   other row's: a plus where a glyph goes, "Add field" where a name goes, the empties
+   other row's: a plus where a glyph goes, "Add field" where a name goes, the limit's
    toggle where a value goes, and "Manage fields" in the side slot where a value's own
    action (Open, Call) goes. It used to be a flex line holding a dashed chip and a green
    link: two more costumes in a block that already wore too many, on a line that was in
@@ -3704,14 +3729,19 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   grid-column: 1 / -1;
   display: grid;
   grid-template-columns: subgrid;
-  align-items: center;
+  /* To the top, not the middle: in a narrow note the right-hand cell wraps to a second
+     line (see `.note-fields-foot-rest`) and "Add field" belongs beside the first. Every
+     cell is a row tall, so on one line this is the centring it replaced. */
+  align-items: start;
   column-gap: 0.5rem;
 }
+
+.note-fields-foot > .note-field-glyph { min-height: var(--field-row); }
 
 /* "Add field": a name-column word in the muted weight, lit on hover like a value. */
 .note-field-add-hint {
   justify-self: start;
-  min-height: 2.1rem;
+  min-height: var(--field-row);
   padding: 0.25rem 0.5rem;
   margin-left: -0.5rem;
   font: inherit;
@@ -3728,31 +3758,33 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 .note-field-add-hint:hover { color: var(--fg); }
 
 /*
-   The resting foot's right-hand cell, across the value and side columns: the empties
+   The resting foot's right-hand cell, across the value and side columns: the limit's
    toggle at the value column's edge, "Manage fields" hard right. One spanning cell rather
    than a value cell and a side cell, because a grid column is as wide as its widest cell
    in any row, and a link in the side column widened that column under every row: on a
    phone by enough to stack the tags one per line. A span that crosses the value column's
    flexible track adds nothing to the side track's intrinsic width.
+
+   It wraps, for the note too narrow to hold both phrases on a line: unwrapped they were
+   drawn over each other. "Manage fields" is the one that drops, and keeps the right edge
+   on its own line (the auto margin), which is where it always is. A phone has room for
+   both; it did not while a toggle for hiding empty rows sat between them.
 */
 .note-fields-foot-rest {
   grid-column: 3 / -1;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  min-width: 0;
-}
-
-/* The empties toggle, or nothing. */
-.note-fields-foot-mid {
-  display: inline-flex;
-  align-items: center;
+  gap: 0 0.5rem;
   min-width: 0;
 }
 
 /* Manage fields: the side slot's link, as Open and Call are drawn on a value's row. */
 .note-fields-manage {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--field-row);
+  margin-left: auto;
   font-size: 0.9rem;
   color: var(--muted);
   white-space: nowrap;
@@ -3801,7 +3833,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 }
 
 .note-fields-foot .note-notebook {
-  min-height: 2.1rem;
+  min-height: var(--field-row);
   padding: 0.25rem 1.75rem 0.25rem 0.5rem;
   font-size: 0.9rem;
   border-radius: 0.3rem;
@@ -3811,8 +3843,16 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 
 .note-fields-foot > .note-field-error { grid-column: 2 / -1; }
 
-/* Hide or show the empties: a preference, drawn as quietly as "Add field" beside it. */
-.note-fields-toggle {
+/*
+   Show the rest of a limited list, or fewer again: a preference, drawn as quietly as
+   "Add field" beside it. Its chevron points at where the rest will appear, and back up
+   once they have.
+*/
+.note-fields-more {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  min-height: var(--field-row);
   padding: 0.25rem 0.5rem;
   margin-left: -0.5rem;
   font: inherit;
@@ -3822,9 +3862,12 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   border: none;
   border-radius: 0.3rem;
   cursor: pointer;
+  white-space: nowrap;
 }
 
-.note-fields-toggle:hover { color: var(--fg); }
+.note-fields-more:hover { color: var(--fg); }
+
+.note-fields-more[aria-expanded='true'] svg { transform: rotate(180deg); }
 
 /* The bar docked above the keyboard: one scrolling row rather than two wrapped ones. */
 .editor-toolbar.docked {
@@ -10638,6 +10681,10 @@ button.settings-nav-item {
     grid-template-columns: auto 7.5rem minmax(0, 1fr) auto;
     column-gap: 0.5rem;
     grid-auto-rows: minmax(2.75rem, auto);
+    /* The value rows are sized by the rules around this one, at a thumb's 2.75rem.
+       This is what is left reading the variable: the last row's words, which keep the
+       height they had before the desktop's rows were tightened. */
+    --field-row: 2.1rem;
   }
   .note-field-label { font-size: 0.95rem; }
   .tag-chip,
@@ -10645,7 +10692,7 @@ button.settings-nav-item {
   .tag-entry { min-height: 2rem; }
   .note-field-add-hint,
   .note-fields-manage,
-  .note-fields-toggle { font-size: 0.95rem; }
+  .note-fields-more { font-size: 0.95rem; }
 
   /* A select is a chip's box in both its states, at every width; its padding is its own.
      Qualified by the list so it outranks the base rules for either state, which name the

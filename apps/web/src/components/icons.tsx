@@ -613,7 +613,9 @@ export function RowChevronIcon() {
 }
 
 /**
- * The chevron after the list's count when the count opens a menu (see `NoteListHead`).
+ * The chevron after a count that opens something: the note list's count, which opens a
+ * menu (see `NoteListHead`), and a limited field list's "3 more", which opens the rest
+ * of its rows and turns the chevron over while they are open (`.note-fields-more`).
  * Text-sized, since it is a suffix of the count rather than a control of its own.
  */
 export function CountChevronIcon() {

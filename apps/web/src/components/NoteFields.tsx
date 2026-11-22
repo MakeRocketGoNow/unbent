@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import {
   FIELD_TYPES,
   FIELD_TYPE_LABELS,
@@ -13,11 +13,12 @@ import {
   type NoteFieldValue,
 } from '@unbent/shared';
 import { Button } from './Button';
-import { FieldTypeIcon, PlusRowIcon } from './icons.js';
+import { CountChevronIcon, FieldTypeIcon, PlusRowIcon } from './icons.js';
 import { FieldCellInput } from './FieldCellInput.js';
 import { amountText, currencySymbol, formatFieldValue } from './format-field.js';
 import { usePersistentState } from '../usePersistentState.js';
 import { filledStyle } from './filled.js';
+import { CLAMP_SETTLE_MS, CLAMP_SHARE, rowsThatFit } from './fields-clamp.js';
 
 export interface NoteFieldsProps {
   /** The note's notebook's definitions, in order. Undefined while they load. */
@@ -74,9 +75,19 @@ export interface NoteFieldsProps {
  * over the thing being edited. The same rule the label editor follows.
  *
  * A value that is missing says "Empty" rather than showing a blank patch of screen, so
- * filled and unfilled are told apart at a glance; and once a notebook has enough fields
- * for the empties to be noise, they can be hidden: a preference that sticks, since the
- * notebooks that need it need it every time.
+ * filled and unfilled are told apart at a glance. Empty rows could once be hidden, by a
+ * toggle offered from eight fields up; it went when the limit below arrived. The two hid
+ * rows by different rules, so "3 more" no longer said what was out of sight; that one was
+ * a single switch for every notebook where this is remembered per notebook; and its
+ * phrase was what pushed "Manage fields" to a second line on a phone.
+ *
+ * A long list is limited to a share of the note's column, in whole rows, with the rest
+ * one press away in the last row ("3 more"): see `fields-clamp.ts` for why it is
+ * rows and not a box that scrolls. Limited is the default, and showing the whole list is
+ * remembered per notebook, on the device: a wish list with a dozen fields wants the
+ * limit on most visits, a notebook whose fields are the point of it wants them all, and
+ * neither answer is the other's. A row past the cut stays mounted and is not drawn, so
+ * a value half typed there is not lost to a window being resized.
  *
  * A value the note carries from a notebook it has since left is shown, not hidden (it is
  * the note's data), but as text with a Clear rather than as a control. Editing it would
@@ -87,9 +98,6 @@ export interface NoteFieldsProps {
  * field is the moment they are looking at the note that needs it. The form opens as one
  * more row of the list, in the list's own columns (see `AddFieldRow`).
  */
-/** From this many fields, hiding the empty ones is offered. */
-const HIDE_EMPTY_FROM = 8;
-
 export function NoteFields({
   definitions,
   values,
@@ -103,57 +111,113 @@ export function NoteFields({
   filled,
 }: NoteFieldsProps) {
   const defs = notebookId ? definitions : [];
-  // Sticks across notes and sessions: the notebooks whose empties are noise are noise
-  // every time, and a toggle that reset on each note would be flipped on every visit.
-  const [hideEmpty, setHideEmpty] = usePersistentState<boolean>(
-    'noteFieldsHideEmpty',
-    false,
-    (raw) => (typeof raw === 'boolean' ? raw : undefined),
+  // The notebooks whose list is shown whole, by id; the Inbox is the empty string. A
+  // list rather than one switch, for the reason given above: the answer is the
+  // notebook's, not the person's. A deleted notebook's id is never taken out: this
+  // component is not told which notebooks exist, and the cost is a few dozen bytes for
+  // each notebook someone both opened up and later deleted.
+  const [wholeIn, setWholeIn] = usePersistentState<string[]>(
+    'noteFieldsWhole',
+    [],
+    (raw) => (Array.isArray(raw) && raw.every((id) => typeof id === 'string') ? raw : undefined),
   );
+  /*
+   * The notebook a field was just added to here, whose list is shown whole until the
+   * person leaves it or asks for fewer. A new field is the last row, which is the first
+   * the limit hides: without this, adding one to a limited list would make nothing
+   * appear. Not written to the preference, since adding a field is not asking for the
+   * whole list on every later visit.
+   */
+  const [revealed, setRevealed] = useState<string | null>(null);
   /*
    * Whether the add-field row is open. Held here rather than in the row, because the
    * foot draws different cells in each state (the "+ Add field" row at rest, the form's
    * cells while open) and the cells are the foot's to arrange.
    */
   const [adding, setAdding] = useState(false);
+
+  // Worked out before the early returns below, over an empty list while the definitions
+  // load, because the measuring hook has to be called on every render.
+  const fields = defs ?? [];
+  const known = new Set(fields.map((d) => d.id));
+  const foreign = carried.filter(
+    (v) => !known.has(v.fieldId) && values[v.fieldId] !== null && values[v.fieldId] !== undefined,
+  );
+  const own = fields.length + foreign.length;
+  const [gridRef, fit] = useRowsThatFit(defs ? own : null, values);
+
+  /*
+   * An Auto-fill press that wrote past the cut shows the whole list, as an added field
+   * does and for as long. The marks on what a press wrote are there so the eye goes to
+   * them and Undo has something visible to undo; a mark on a row that is not drawn does
+   * neither, and the person was left to open the list to learn what had been written.
+   * Through `revealed` rather than by reading `filled` at render: the marks clear after
+   * a moment, and a list that closed again with them would jump twice for one press.
+   *
+   * Once per press, so "Fewer" pressed while the marks are still showing holds. The
+   * press is known by its set of ids, which the workspace keeps the same for as long as
+   * the marks last; `filled` itself is a new object on every render there, and keyed on
+   * that the list reopened on the next render after it was closed. `fit` is a
+   * dependency because the cut for what the press wrote (taller rows, another notebook)
+   * is measured after the render that brought the press.
+   */
+  const filledIds = filled?.ids;
+  const revealedFor = useRef<ReadonlySet<string> | null>(null);
+  useEffect(() => {
+    if (!filledIds || fit === null || revealedFor.current === filledIds) return;
+    if (fields.slice(fit).some((def) => filledIds.has(def.id))) {
+      revealedFor.current = filledIds;
+      setRevealed(notebookId ?? '');
+    }
+  }, [filledIds, fit]);
+
   // Not yet known which fields the notebook has: showing every value as foreign for a
   // frame and then re-sorting it under a label would be exactly the jump to avoid.
   if (!defs) return null;
 
-  const known = new Set(defs.map((d) => d.id));
-  const foreign = carried.filter(
-    (v) => !known.has(v.fieldId) && values[v.fieldId] !== null && values[v.fieldId] !== undefined,
-  );
-
   const canAdd = !readOnly && notebookId !== null;
   if (defs.length === 0 && foreign.length === 0 && !canAdd && !lead) return null;
 
-  const isEmpty = (def: FieldDef) => {
-    const v = values[def.id];
-    return v === null || v === undefined || v === '' || (Array.isArray(v) && v.length === 0);
+  const wholeKey = notebookId ?? '';
+  // "Until the person leaves it" has to be made true here: the workspace keeps this
+  // component mounted from note to note, so the state outlived the visit, and a notebook
+  // left and come back to was still shown whole. Reset during render, which is how React
+  // has state follow a prop without a frame drawn from the stale value.
+  if (revealed !== null && revealed !== wholeKey) setRevealed(null);
+  const whole = wholeIn.includes(wholeKey) || revealed === wholeKey;
+  // `fit` is how many of this component's own rows the limit leaves room for, or null
+  // when the list fits or is too short to be worth limiting; the toggle is offered
+  // whenever it is a number, so a list shown whole can be limited again.
+  const drawn = fit === null || whole ? own : fit;
+  const toggleWhole = () => {
+    setRevealed(null);
+    setWholeIn((ids) =>
+      whole ? ids.filter((id) => id !== wholeKey) : [...ids.filter((id) => id !== wholeKey), wholeKey],
+    );
   };
-  const empties = defs.filter(isEmpty).length;
-  // The toggle is offered once the empties are worth hiding: a short list is read whole,
-  // and hiding two rows of six only makes the list look like it lost something.
-  const offerHide = defs.length >= HIDE_EMPTY_FROM && empties > 0;
-  const shown = hideEmpty && offerHide ? defs.filter((d) => !isEmpty(d)) : defs;
 
   let nextFilled = filled?.start ?? 0;
   return (
-    <div className="note-fields">
+    <div className="note-fields" ref={gridRef}>
       {lead}
-      {shown.map((def) => (
+      {fields.map((def, i) => (
         <FieldRow
           key={def.id}
           def={def}
           value={values[def.id] ?? null}
           readOnly={readOnly}
+          hidden={i >= drawn}
           filledAt={filled?.ids.has(def.id) ? nextFilled++ : undefined}
           onChange={(v) => onChange(def.id, v)}
         />
       ))}
-      {foreign.map((v) => (
-        <div key={v.fieldId} className="note-field note-field-foreign" data-type={v.type}>
+      {foreign.map((v, i) => (
+        <div
+          key={v.fieldId}
+          className="note-field note-field-foreign"
+          data-type={v.type}
+          hidden={fields.length + i >= drawn}
+        >
           <span className="note-field-glyph" aria-hidden="true">
             <FieldTypeIcon type={v.type} />
           </span>
@@ -175,16 +239,22 @@ export function NoteFields({
           The last row of the list, in the list's own columns.
 
           At rest: a plus where a row's glyph goes, "Add field" where its name goes, the
-          empties toggle where its value goes, and "Manage fields" in the side slot where a
+          limit's toggle where its value goes, and "Manage fields" in the side slot where a
           value's own action (Open, Call) goes, the way Notion ends a page's properties
           with "Add a property" in the property column. It used to be a dashed chip and a
           green link on a line of their own, two more costumes in a block that already had
           too many. While a field is being added the same four cells hold the form.
       */}
-      {(canAdd || offerHide) && (
+      {(canAdd || fit !== null) && (
         <div className="note-fields-foot">
           {canAdd && adding ? (
-            <AddFieldRow onAdd={onAddField} onDone={() => setAdding(false)} />
+            <AddFieldRow
+              onAdd={async (input) => {
+                await onAddField(input);
+                setRevealed(wholeKey);
+              }}
+              onDone={() => setAdding(false)}
+            />
           ) : (
             <>
               <span className="note-field-glyph" aria-hidden="true">
@@ -210,18 +280,34 @@ export function NoteFields({
                   link still sits hard right, where a value's own action would.
               */}
               <span className="note-fields-foot-rest">
-                <span className="note-fields-foot-mid">
-                  {offerHide && (
-                    <button
-                      type="button"
-                      className="note-fields-toggle"
-                      aria-pressed={hideEmpty}
-                      onClick={() => setHideEmpty(!hideEmpty)}
-                    >
-                      {hideEmpty ? `Show ${empties} empty` : `Hide ${empties} empty`}
-                    </button>
-                  )}
-                </span>
+                {/*
+                    A raw button, not `Button`, on purpose and not as a pattern. This
+                    row is drawn in the list's own words: "Add field" as a name, this as
+                    a value, pulled left by its padding so its letters sit on the
+                    column's edge like the value above. `.btn` has its own box, size and
+                    hover border, and one of the row's controls in it would be the two
+                    costumes this foot was rewritten to lose. A control elsewhere should
+                    be a `Button`.
+
+                    It counts what it would show rather than naming the total ("3 more",
+                    not "Show all 13"), so the label says how much of the record is out
+                    of sight, which is the thing a limit must not leave anyone guessing.
+                    A number, a word and a chevron, with the sentence in the name a
+                    screen reader gets: it shares its line with "Manage fields", and on
+                    a phone there is room for about this much before that link wraps.
+                */}
+                {fit !== null && (
+                  <button
+                    type="button"
+                    className="note-fields-more"
+                    aria-expanded={whole}
+                    aria-label={whole ? 'Show fewer fields' : `Show ${own - fit} more fields`}
+                    onClick={toggleWhole}
+                  >
+                    {whole ? 'Fewer' : `${own - fit} more`}
+                    <CountChevronIcon />
+                  </button>
+                )}
                 {canAdd && manage}
               </span>
             </>
@@ -232,16 +318,143 @@ export function NoteFields({
   );
 }
 
+/**
+ * How many of the list's own rows (the fields, not the rows passed as `lead`) fit the
+ * limit, or null when the list is drawn whole. `own` is how many it has, null while
+ * there is no list to measure. `values` is what the rows hold, read only for its
+ * identity: the workspace keeps this component mounted from one note to the next, and
+ * two notes of one notebook have the same rows at different heights (tags that wrap, a
+ * longer multi-select). Without it the next note was painted with the last one's cut
+ * and corrected a frame later, by a row. Typing in the body leaves the object alone.
+ *
+ * Measured, not counted: a row is as tall as what it holds (tags wrap, so does a
+ * multi-select) and the rows above the fields are someone else's to draw. Every row is
+ * laid out for the reading, the hidden ones included, by a class the stylesheet answers
+ * (`.measuring`), put on and taken off inside one synchronous pass so nothing is painted
+ * in between. The first reading is in a layout effect for the same reason: the list
+ * never appears whole and then shortens.
+ *
+ * After that the list is read again when it or the column changes size, which covers a
+ * window resized, a value that wrapped and a tag added, and when focus leaves a row,
+ * since a cut held back for the row being edited can settle then.
+ *
+ * A change of size never moves the cut up while something is being typed in, wherever
+ * in the note that is. The Android app's keyboard shrinks the column, and it
+ * opens for the body as it does for a field: with the room read fresh, tapping into the
+ * body of a note with a long list took several rows off the list and moved the line
+ * just tapped up the screen, and closing the keyboard moved it back. The cut waits for
+ * the typing to end, as it does for a field's own row, and is read again when focus
+ * leaves. A reading for a changed list is not held (`fresh`): that cut is the first of
+ * its kind, not one moving under a caret. A reading for changed values is (`edit`),
+ * because a keystroke in a field changes them: read fresh, the first character typed
+ * with the keyboard up took the rows the resize had just been stopped from taking. A
+ * new note changes the values too, and is read at once all the same, since nothing is
+ * being typed in as it arrives.
+ *
+ * And with nothing being typed, a change of size moves the cut up only once the size
+ * has settled (`CLAMP_SETTLE_MS`), where it moves it down at once. Focus leaving is
+ * usually the keyboard starting to close, with the column still at its shortest.
+ *
+ * On the next frame rather than in the observer's own callback: a reading there
+ * changes the size being observed, and the browser reports that as a ResizeObserver
+ * loop error, which this app's error reporting would then send home.
+ */
+function useRowsThatFit(
+  own: number | null,
+  values: unknown,
+): [RefObject<HTMLDivElement | null>, number | null] {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [fit, setFit] = useState<number | null>(null);
+  const ownRef = useRef(own);
+  ownRef.current = own;
+  // How many rows, the lead's included, the last reading left drawn.
+  const keptRef = useRef(0);
+  const settleRef = useRef(0);
+
+  const measure = useCallback((reading: 'fresh' | 'edit' | 'settling' | 'settled' = 'fresh') => {
+    window.clearTimeout(settleRef.current);
+    const grid = ref.current;
+    const count = ownRef.current;
+    if (!grid || count === null) return;
+    // The note's column is what scrolls, so its height is the room there is. Anywhere
+    // else the list might be drawn, the window is.
+    const column = grid.closest('.workspace-main');
+    const room = column?.clientHeight ?? window.innerHeight;
+    grid.classList.add('measuring');
+    const top = grid.getBoundingClientRect().top;
+    const rows = Array.from(grid.querySelectorAll(':scope > .note-field'));
+    const bottoms = rows.map((row) => {
+      // A row has no box of its own (`display: contents`): it ends where its tallest
+      // cell does.
+      let bottom = 0;
+      for (const cell of row.children) bottom = Math.max(bottom, cell.getBoundingClientRect().bottom - top);
+      return bottom;
+    });
+    grid.classList.remove('measuring');
+    // The row being edited is never cut: see `floor` on `rowsThatFit`.
+    const active = document.activeElement;
+    const focused = rows.findIndex((row) => row.contains(active));
+    // Typed in, and in this note: the sidebar's search box is neither the note nor
+    // near it, and nobody types into a checkbox. Without the scope a desktop window
+    // dragged shorter kept its long list for as long as the search box had focus.
+    const typing =
+      active instanceof HTMLElement &&
+      (column ?? grid).contains(active) &&
+      (active.isContentEditable || active.matches('textarea, select, input:not([type=checkbox], [type=radio])'));
+    const floor = Math.max(focused + 1, reading !== 'fresh' && typing ? keptRef.current : 0);
+    const kept = rowsThatFit(bottoms, room * CLAMP_SHARE, floor);
+    if (reading === 'settling' && (kept ?? bottoms.length) < keptRef.current) {
+      settleRef.current = window.setTimeout(() => measure('settled'), CLAMP_SETTLE_MS);
+      return;
+    }
+    keptRef.current = kept ?? bottoms.length;
+    // The rows before this component's own are the lead's, and are always drawn.
+    setFit(kept === null ? null : Math.max(0, kept - (bottoms.length - count)));
+  }, []);
+
+  useLayoutEffect(() => measure(), [measure, own]);
+  useLayoutEffect(() => measure('edit'), [measure, values]);
+
+  useEffect(() => {
+    const grid = ref.current;
+    if (!grid || typeof ResizeObserver === 'undefined') return;
+    let frame = 0;
+    const soon = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => measure('settling'));
+    };
+    const observer = new ResizeObserver(soon);
+    observer.observe(grid);
+    const column = grid.closest('.workspace-main');
+    if (column) observer.observe(column);
+    // On the column where there is one: the body's focus is what a held cut waits on
+    // as often as a field's.
+    const within = column ?? grid;
+    within.addEventListener('focusout', soon);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.clearTimeout(settleRef.current);
+      observer.disconnect();
+      within.removeEventListener('focusout', soon);
+    };
+    // `own === null` is the list not being mounted yet: observe once it is.
+  }, [measure, own === null]);
+
+  return [ref, fit];
+}
+
 interface FieldRowProps {
   def: FieldDef;
   value: FieldValue | null;
   readOnly: boolean;
   /** This row's place among what an Auto-fill press just wrote, if it wrote this. */
   filledAt?: number | undefined;
+  /** Past the limit's cut: mounted, so what it holds is kept, and not drawn. */
+  hidden?: boolean;
   onChange: (value: FieldValue | null) => void;
 }
 
-function FieldRow({ def, value, readOnly, filledAt, onChange }: FieldRowProps) {
+function FieldRow({ def, value, readOnly, filledAt, hidden = false, onChange }: FieldRowProps) {
   // An amount's text while its input has focus; see the `number` case below.
   const [typing, setTyping] = useState<string | null>(null);
   const id = `field-${def.id}`;
@@ -400,6 +613,7 @@ function FieldRow({ def, value, readOnly, filledAt, onChange }: FieldRowProps) {
       className={filledAt === undefined ? 'note-field' : 'note-field filled'}
       data-type={def.type}
       style={filledStyle(filledAt)}
+      hidden={hidden}
     >
       <span className="note-field-glyph" aria-hidden="true">
         <FieldTypeIcon type={def.type} rating={isRatingField(def)} currency={isCurrencyField(def)} year={isYearField(def)} />

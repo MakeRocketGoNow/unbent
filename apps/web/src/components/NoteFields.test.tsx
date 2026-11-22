@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
+import { act, render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
 import type { FieldDef, FieldType, NoteFieldValue } from '@unbent/shared';
 import { NoteFields } from './NoteFields.js';
+import { CLAMP_SETTLE_MS } from './fields-clamp.js';
 
 /**
  * The field block is a form drawn from data: each type has to become the right control,
@@ -31,7 +32,7 @@ const defs = [
   def('f-sel', 'Category', 'select', ['Food', 'Travel']),
 ];
 
-/** Kept out of `defs`: the empties threshold and the row count below are pinned to eight. */
+/** Kept out of `defs`: the row count below is pinned to eight. */
 const multi = def('f-multi', 'Platforms', 'multiselect', ['PC', 'PS5', 'Switch']);
 const price: FieldDef = { ...def('f-price', 'Price', 'number'), currency: 'USD' };
 
@@ -319,9 +320,9 @@ describe('NoteFields', () => {
 });
 
 /*
- * The property list's own two behaviours: an empty value says so, and once a notebook has
- * enough fields, the empty ones can be put away. Both are Notion's, and both are what
- * makes thirty rows readable.
+ * The property list's own two behaviours: an empty value says so, and a long list is
+ * limited to a share of the note with the rest a press away. Both are Notion's, and both
+ * are what makes thirty rows readable.
  */
 describe('NoteFields as a property list', () => {
   afterEach(() => {
@@ -339,23 +340,293 @@ describe('NoteFields as a property list', () => {
     expect(screen.getByLabelText('Category').getAttribute('data-filled')).toBeNull();
   });
 
-  it('offers to hide the empties only once the list is long, and remembers the choice', () => {
-    // Eight definitions is the threshold; one value leaves seven empty.
-    const { getByText, queryByLabelText } = mount({ values: { 'f-text': 'Acme' } });
-    fireEvent.click(getByText('Hide 7 empty'));
-    expect(queryByLabelText('Amount')).toBeNull();
-    expect(input('Merchant').value).toBe('Acme');
-    expect(getByText('Show 7 empty')).toBeTruthy();
+  describe('limited to a share of the column', () => {
+    /*
+     * jsdom lays nothing out, so every rect is zeros and the list above is never
+     * limited. Here each row is given a height, by its place in the list: forty pixels
+     * a row, in a window of 768, leaves room for seven (40% is 307).
+     */
+    let ROW = 40;
+    const twelve = Array.from({ length: 12 }, (_, i) => def(`f${i}`, `Field ${i + 1}`, 'text'));
+    const row = (label: string) => screen.getByLabelText(label).closest('.note-field') as HTMLElement;
 
-    // A short list is read whole: no toggle.
-    cleanup();
-    const { queryByText } = mount({ definitions: defs.slice(0, 3) });
-    expect(queryByText(/empty$/)).toBeNull();
+    function layOut() {
+      vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+        const parent = this.parentElement;
+        let bottom = 0;
+        if (parent?.classList.contains('note-field')) {
+          const rows = Array.from(parent.parentElement!.querySelectorAll(':scope > .note-field'));
+          bottom = (rows.indexOf(parent) + 1) * ROW;
+        }
+        return { top: 0, bottom, left: 0, right: 0, width: 0, height: bottom, x: 0, y: 0, toJSON: () => ({}) };
+      });
+    }
 
-    // And the preference sticks for the next note.
-    cleanup();
-    const again = mount({ values: { 'f-text': 'Acme' } });
-    expect(again.queryByLabelText('Amount')).toBeNull();
-    expect(again.getByText('Show 7 empty')).toBeTruthy();
+    afterEach(() => {
+      ROW = 40;
+      vi.useRealTimers();
+      vi.restoreAllMocks();
+      vi.unstubAllGlobals();
+      localStorage.clear();
+    });
+
+    it('draws the rows that fit and says how many more there are', () => {
+      layOut();
+      mount({ definitions: twelve });
+      expect(row('Field 7').hidden).toBe(false);
+      expect(row('Field 8').hidden).toBe(true);
+      const toggle = screen.getByText('5 more');
+      expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    });
+
+    it('shows the whole list on a press, and remembers that for the notebook alone', () => {
+      layOut();
+      mount({ definitions: twelve });
+      fireEvent.click(screen.getByText('5 more'));
+      expect(row('Field 12').hidden).toBe(false);
+      expect(screen.getByText('Fewer').getAttribute('aria-expanded')).toBe('true');
+
+      // The next note in the same notebook opens whole; another notebook's does not.
+      cleanup();
+      mount({ definitions: twelve });
+      expect(row('Field 12').hidden).toBe(false);
+      cleanup();
+      mount({ definitions: twelve, notebookId: 'nb2' });
+      expect(row('Field 12').hidden).toBe(true);
+
+      // And asking for fewer puts the limit back.
+      cleanup();
+      mount({ definitions: twelve });
+      fireEvent.click(screen.getByText('Fewer'));
+      expect(row('Field 8').hidden).toBe(true);
+    });
+
+    it('counts the rows drawn above the fields against the same room', () => {
+      layOut();
+      const lead = (
+        <>
+          <div className="note-field"><span>Notebook</span></div>
+          <div className="note-field"><span>Tags</span></div>
+        </>
+      );
+      mount({ definitions: twelve, lead });
+      expect(row('Field 5').hidden).toBe(false);
+      expect(row('Field 6').hidden).toBe(true);
+      expect(screen.getByText('7 more')).toBeTruthy();
+    });
+
+    it('cuts for the note it is showing, not the one it showed before', () => {
+      // The workspace keeps the list mounted from note to note. Same notebook, same
+      // rows, but the next note's are taller (its tags wrap, say).
+      layOut();
+      const props = { definitions: twelve, carried: [], notebookId: 'nb1', onChange: vi.fn(), onAddField: vi.fn() };
+      const { rerender } = render(<NoteFields {...props} values={{ f0: 'one' }} />);
+      expect(row('Field 7').hidden).toBe(false);
+      ROW = 60;
+      rerender(<NoteFields {...props} values={{ f0: 'another' }} />);
+      expect(row('Field 5').hidden).toBe(false);
+      expect(row('Field 6').hidden).toBe(true);
+    });
+
+    /** Lets a cut that is waiting for the size to stop changing be made. */
+    const settle = () => act(() => void vi.advanceTimersByTime(CLAMP_SETTLE_MS));
+
+    /** The observers the component made, so a test can say "the column changed size". */
+    function resizes() {
+      vi.useFakeTimers();
+      const made: Array<() => void> = [];
+      vi.stubGlobal(
+        'ResizeObserver',
+        class {
+          constructor(cb: () => void) {
+            made.push(cb);
+          }
+          observe() {}
+          disconnect() {}
+        },
+      );
+      vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => (cb(0), 1));
+      vi.stubGlobal('cancelAnimationFrame', () => {});
+      return () => act(() => made.forEach((cb) => cb()));
+    }
+
+    it('cuts again when the column changes size', () => {
+      layOut();
+      const resized = resizes();
+      mount({ definitions: twelve });
+      vi.stubGlobal('innerHeight', 500);
+      resized();
+      // Fewer rows fit, and the cut waits for the size to stop changing: a keyboard on
+      // its way out, a window being dragged.
+      expect(row('Field 7').hidden).toBe(false);
+      settle();
+      // 40% of 500 is five rows.
+      expect(row('Field 5').hidden).toBe(false);
+      expect(row('Field 6').hidden).toBe(true);
+      expect(screen.getByText('7 more')).toBeTruthy();
+
+      // More room shows its rows at once.
+      vi.stubGlobal('innerHeight', 768);
+      resized();
+      expect(row('Field 7').hidden).toBe(false);
+    });
+
+    it('does not hide the row being typed in when the room shrinks under it', () => {
+      // The Android app's keyboard: it opens because the field took focus, and it
+      // shrinks the page the cut is measured against.
+      layOut();
+      const resized = resizes();
+      mount({ definitions: twelve });
+      input('Field 7').focus();
+      vi.stubGlobal('innerHeight', 400);
+      resized();
+      expect(row('Field 7').hidden).toBe(false);
+      expect(row('Field 8').hidden).toBe(true);
+
+      // Once focus leaves and the size has stopped changing, the cut settles where the
+      // room puts it.
+      act(() => input('Field 7').blur());
+      settle();
+      expect(row('Field 4').hidden).toBe(false);
+      expect(row('Field 5').hidden).toBe(true);
+    });
+
+    it('cuts a value carried from another notebook like any other row', () => {
+      // Carried values are drawn after the notebook's own fields, so they go first.
+      layOut();
+      mount({ definitions: twelve.slice(0, 9), values: { old: 'Old' }, carried: [leftover] });
+      const carriedRow = screen.getByText('Old').closest('.note-field') as HTMLElement;
+      expect(carriedRow.hidden).toBe(true);
+      fireEvent.click(screen.getByText('3 more'));
+      expect(carriedRow.hidden).toBe(false);
+    });
+
+    it('does not hold the cut for something focused outside the note', () => {
+      layOut();
+      const resized = resizes();
+      const props = { definitions: twelve, values: {}, carried: [], notebookId: 'nb1', onChange: vi.fn(), onAddField: vi.fn() };
+      render(
+        <>
+          <input aria-label="Search notes" />
+          <NoteFields {...props} />
+        </>,
+      );
+      screen.getByLabelText('Search notes').focus();
+      vi.stubGlobal('innerHeight', 400);
+      resized();
+      settle();
+      expect(row('Field 4').hidden).toBe(false);
+      expect(row('Field 5').hidden).toBe(true);
+    });
+
+    it('holds the cut through a keystroke in a field while the room is short', () => {
+      // The keyboard is up for Field 2 and the first character lands: the values are a
+      // new object, and reading the short room fresh would take Fields 3 to 7.
+      layOut();
+      const resized = resizes();
+      const props = { definitions: twelve, carried: [], notebookId: 'nb1', onChange: vi.fn(), onAddField: vi.fn() };
+      const { rerender } = render(<NoteFields {...props} values={{}} />);
+      input('Field 2').focus();
+      vi.stubGlobal('innerHeight', 400);
+      resized();
+      rerender(<NoteFields {...props} values={{ f1: 'a' }} />);
+      settle();
+      expect(row('Field 7').hidden).toBe(false);
+      expect(row('Field 8').hidden).toBe(true);
+    });
+
+    it('holds the cut while the body is being typed in and the room shrinks', () => {
+      // The keyboard again, opened for the body this time: the list must not lose rows
+      // and pull the line being typed up the screen.
+      layOut();
+      const resized = resizes();
+      let room = 768;
+      const props = { definitions: twelve, values: {}, carried: [], notebookId: 'nb1', onChange: vi.fn(), onAddField: vi.fn() };
+      render(
+        <div className="workspace-main" ref={(el) => { if (el) Object.defineProperty(el, 'clientHeight', { get: () => room }); }}>
+          <NoteFields {...props} />
+          <textarea aria-label="Body" />
+        </div>,
+      );
+      // The column was not measurable until the ref ran; this is the first real reading.
+      resized();
+      settle();
+      expect(row('Field 7').hidden).toBe(false);
+      expect(row('Field 8').hidden).toBe(true);
+
+      screen.getByLabelText('Body').focus();
+      room = 400;
+      resized();
+      expect(row('Field 7').hidden).toBe(false);
+
+      // The typing ends (and on a phone the keyboard goes): the cut is read fresh.
+      // The keyboard has not finished leaving, so the room is still short: the cut waits.
+      act(() => screen.getByLabelText('Body').blur());
+      expect(row('Field 7').hidden).toBe(false);
+      settle();
+      expect(row('Field 4').hidden).toBe(false);
+      expect(row('Field 5').hidden).toBe(true);
+    });
+
+    it('leaves a list alone when only a row or two would go', () => {
+      layOut();
+      mount({ definitions: twelve.slice(0, 9) });
+      expect(row('Field 9').hidden).toBe(false);
+      expect(screen.queryByText(/^\d+ more$/)).toBeNull();
+    });
+
+    it('shows a field just added, which the limit would have hidden', async () => {
+      layOut();
+      const { onAddField } = mount({ definitions: twelve });
+      fireEvent.click(screen.getByText('Add field'));
+      fireEvent.change(screen.getByLabelText('Field name'), { target: { value: 'Colour' } });
+      fireEvent.click(screen.getByText('Add'));
+      await waitFor(() => expect(onAddField).toHaveBeenCalled());
+      await waitFor(() => expect(row('Field 12').hidden).toBe(false));
+      // Not a standing preference: nothing is written for the notebook's later visits.
+      expect(localStorage.getItem('unbent.noteFieldsWhole')).toBeNull();
+    });
+
+    it('shows the whole list when Auto-fill wrote to a row past the cut', () => {
+      layOut();
+      const props = { definitions: twelve, values: {}, carried: [], notebookId: 'nb1', onChange: vi.fn(), onAddField: vi.fn() };
+      const { rerender } = render(<NoteFields {...props} />);
+      // A press that wrote only what is already drawn leaves the limit alone.
+      rerender(<NoteFields {...props} filled={{ ids: new Set(['f1']), start: 0 }} />);
+      expect(row('Field 8').hidden).toBe(true);
+      rerender(<NoteFields {...props} filled={{ ids: new Set(['f1', 'f9']), start: 0 }} />);
+      expect(row('Field 10').hidden).toBe(false);
+      expect(row('Field 12').hidden).toBe(false);
+      // And it stays open when the marks clear, rather than closing under the eye.
+      rerender(<NoteFields {...props} />);
+      expect(row('Field 12').hidden).toBe(false);
+    });
+
+    it('lets Fewer hold while the marks of an Auto-fill press are still showing', () => {
+      // The workspace hands over a new `filled` object on every render, around the same
+      // set of ids for as long as the marks last.
+      layOut();
+      const props = { definitions: twelve, values: {}, carried: [], notebookId: 'nb1', onChange: vi.fn(), onAddField: vi.fn() };
+      const ids = new Set(['f9']);
+      const { rerender } = render(<NoteFields {...props} filled={{ ids, start: 0 }} />);
+      expect(row('Field 12').hidden).toBe(false);
+      fireEvent.click(screen.getByText('Fewer'));
+      rerender(<NoteFields {...props} filled={{ ids, start: 0 }} />);
+      expect(row('Field 12').hidden).toBe(true);
+    });
+
+    it('limits the list again once the notebook has been left and come back to', async () => {
+      layOut();
+      const props = { definitions: twelve, values: {}, carried: [], onChange: vi.fn(), onAddField: vi.fn(async () => {}) };
+      const { rerender } = render(<NoteFields {...props} notebookId="nb1" />);
+      fireEvent.click(screen.getByText('Add field'));
+      fireEvent.change(screen.getByLabelText('Field name'), { target: { value: 'Colour' } });
+      fireEvent.click(screen.getByText('Add'));
+      await waitFor(() => expect(row('Field 12').hidden).toBe(false));
+
+      rerender(<NoteFields {...props} notebookId="nb2" />);
+      rerender(<NoteFields {...props} notebookId="nb1" />);
+      expect(row('Field 12').hidden).toBe(true);
+    });
   });
 });
