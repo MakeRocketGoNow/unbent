@@ -125,7 +125,10 @@ final class RootViewController: UIViewController {
         // minor shows the blocked screen and builds nothing of the site behind it.
         if prefs.ageBlocked {
             shell = nil
-            show(blocked())
+            // No fade: the notes must not stay on screen, or able to talk to the server,
+            // after a minor verdict. `show`'s usual crossfade keeps the previous child
+            // (the web view) alive until it finishes.
+            show(blocked(), animated: false)
             return
         }
         if !ageChecked { checkAge() }
@@ -155,8 +158,8 @@ final class RootViewController: UIViewController {
             // A block recorded while this sign-in was in flight (a code being checked, a
             // passkey or Apple sheet up) wins: the session it brought is not kept, or the
             // account would stay reachable from the Keychain behind the blocked screen.
-            // `blockForAge` has already put that screen up, or will once the cookies are
-            // gone, so there is nothing to start here.
+            // `blockForAge` has already put that screen up, so there is nothing to start
+            // here.
             if self.prefs.ageBlocked { return true }
             // Every way in ends here: the cookie the response set, kept for this instance.
             // If it cannot be kept the sign-in screen stays and says so; starting over
@@ -214,13 +217,21 @@ final class RootViewController: UIViewController {
     /// holds for this instance's captures is forgotten first, as on a sign-out. Whatever
     /// is presented goes too, a capture sheet included: a Save there would only queue the
     /// file for a sign-in that cannot happen, and the sweep removes what it had copied.
+    ///
+    /// The blocked screen is put up now, not after the cookies finish leaving. Waiting
+    /// on `WKWebsiteDataStore.removeData` left the notes on screen and the web view still
+    /// able to talk to the server as the account, for as long as that call took, which
+    /// is the window the gate exists to close. Cookies still go, so a later load cannot
+    /// pick the session back up; `start` does not wait for them. The Android app swaps
+    /// the same way, as soon as the block is recorded.
     private func blockForAge() {
         guard !prefs.ageBlocked else { return }
         prefs.ageBlocked = true
         AppCaptures.queue?.forget(origin: instance)
         sessions.clear(for: instance)
         if presentedViewController != nil { dismiss(animated: false) }
-        clearCookies { [weak self] in self?.start() }
+        clearCookies {}
+        start()
     }
 
     private func blocked() -> UIViewController {
@@ -252,7 +263,7 @@ final class RootViewController: UIViewController {
         return UIHostingController(rootView: AgeBlockedHost(model: model))
     }
 
-    private func show(_ next: UIViewController) {
+    private func show(_ next: UIViewController, animated: Bool = true) {
         let previous = current
         current = next
         addChild(next)
@@ -264,8 +275,13 @@ final class RootViewController: UIViewController {
 
         guard let previous else { return }
         previous.willMove(toParent: nil)
+        if !animated {
+            previous.view.removeFromSuperview()
+            previous.removeFromParent()
+            return
+        }
         // A short fade: the two screens share nothing, and a cut between them reads as
-        // the app restarting.
+        // the app restarting. The age-blocked screen is the one exception: see `start`.
         next.view.alpha = 0
         UIView.animate(withDuration: 0.2) {
             next.view.alpha = 1
