@@ -2,7 +2,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { act, render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
 import type { FieldDef, FieldType, NoteFieldValue } from '@unbent/shared';
 import { NoteFields } from './NoteFields.js';
-import { CLAMP_SETTLE_MS } from './fields-clamp.js';
+import { CLAMP_SETTLE_MS, CLAMP_SHARE, CLAMP_SHARE_PHONE, THUMB_ROWS_QUERY } from './fields-clamp.js';
 
 /**
  * The field block is a form drawn from data: each type has to become the right control,
@@ -344,13 +344,18 @@ describe('NoteFields as a property list', () => {
     /*
      * jsdom lays nothing out, so every rect is zeros and the list above is never
      * limited. Here each row is given a height, by its place in the list: forty pixels
-     * a row, in a window of 768, leaves room for seven (40% is 307).
+     * a row, in a window tall enough for seven of them. The heights are worked out from
+     * the share the list is allowed (`roomFor`), so retuning that share does not mean
+     * redoing the arithmetic in every case below.
      */
     let ROW = 40;
+    /** A column height whose share for the list fits exactly this many 40px rows. */
+    const roomFor = (rows: number) => (rows * 40 + 20) / CLAMP_SHARE;
     const twelve = Array.from({ length: 12 }, (_, i) => def(`f${i}`, `Field ${i + 1}`, 'text'));
     const row = (label: string) => screen.getByLabelText(label).closest('.note-field') as HTMLElement;
 
     function layOut() {
+      vi.stubGlobal('innerHeight', roomFor(7));
       vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
         const parent = this.parentElement;
         let bottom = 0;
@@ -377,6 +382,24 @@ describe('NoteFields as a property list', () => {
       expect(row('Field 8').hidden).toBe(true);
       const toggle = screen.getByText('5 more');
       expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    });
+
+    it('gives the list a larger share where its rows are thumb-sized', () => {
+      layOut();
+      // A column where a phone's share fits six rows and a desktop's would fit three.
+      vi.stubGlobal('innerHeight', (6 * 40 + 20) / CLAMP_SHARE_PHONE);
+      vi.stubGlobal('matchMedia', (query: string) => ({ matches: query === THUMB_ROWS_QUERY }));
+      mount({ definitions: twelve });
+      expect(row('Field 6').hidden).toBe(false);
+      expect(row('Field 7').hidden).toBe(true);
+      expect(screen.getByText('6 more')).toBeTruthy();
+
+      // The same column under a mouse: the floor of four.
+      cleanup();
+      vi.stubGlobal('matchMedia', () => ({ matches: false }));
+      mount({ definitions: twelve });
+      expect(row('Field 4').hidden).toBe(false);
+      expect(row('Field 5').hidden).toBe(true);
     });
 
     it('shows the whole list on a press, and remembers that for the notebook alone', () => {
@@ -454,19 +477,18 @@ describe('NoteFields as a property list', () => {
       layOut();
       const resized = resizes();
       mount({ definitions: twelve });
-      vi.stubGlobal('innerHeight', 500);
+      vi.stubGlobal('innerHeight', roomFor(5));
       resized();
       // Fewer rows fit, and the cut waits for the size to stop changing: a keyboard on
       // its way out, a window being dragged.
       expect(row('Field 7').hidden).toBe(false);
       settle();
-      // 40% of 500 is five rows.
       expect(row('Field 5').hidden).toBe(false);
       expect(row('Field 6').hidden).toBe(true);
       expect(screen.getByText('7 more')).toBeTruthy();
 
       // More room shows its rows at once.
-      vi.stubGlobal('innerHeight', 768);
+      vi.stubGlobal('innerHeight', roomFor(7));
       resized();
       expect(row('Field 7').hidden).toBe(false);
     });
@@ -478,7 +500,7 @@ describe('NoteFields as a property list', () => {
       const resized = resizes();
       mount({ definitions: twelve });
       input('Field 7').focus();
-      vi.stubGlobal('innerHeight', 400);
+      vi.stubGlobal('innerHeight', roomFor(4));
       resized();
       expect(row('Field 7').hidden).toBe(false);
       expect(row('Field 8').hidden).toBe(true);
@@ -512,7 +534,7 @@ describe('NoteFields as a property list', () => {
         </>,
       );
       screen.getByLabelText('Search notes').focus();
-      vi.stubGlobal('innerHeight', 400);
+      vi.stubGlobal('innerHeight', roomFor(4));
       resized();
       settle();
       expect(row('Field 4').hidden).toBe(false);
@@ -527,7 +549,7 @@ describe('NoteFields as a property list', () => {
       const props = { definitions: twelve, carried: [], notebookId: 'nb1', onChange: vi.fn(), onAddField: vi.fn() };
       const { rerender } = render(<NoteFields {...props} values={{}} />);
       input('Field 2').focus();
-      vi.stubGlobal('innerHeight', 400);
+      vi.stubGlobal('innerHeight', roomFor(4));
       resized();
       rerender(<NoteFields {...props} values={{ f1: 'a' }} />);
       settle();
@@ -540,7 +562,7 @@ describe('NoteFields as a property list', () => {
       // and pull the line being typed up the screen.
       layOut();
       const resized = resizes();
-      let room = 768;
+      let room = roomFor(7);
       const props = { definitions: twelve, values: {}, carried: [], notebookId: 'nb1', onChange: vi.fn(), onAddField: vi.fn() };
       render(
         <div className="workspace-main" ref={(el) => { if (el) Object.defineProperty(el, 'clientHeight', { get: () => room }); }}>
@@ -555,7 +577,7 @@ describe('NoteFields as a property list', () => {
       expect(row('Field 8').hidden).toBe(true);
 
       screen.getByLabelText('Body').focus();
-      room = 400;
+      room = roomFor(4);
       resized();
       expect(row('Field 7').hidden).toBe(false);
 

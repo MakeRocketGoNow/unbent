@@ -10664,10 +10664,12 @@ button.settings-nav-item {
 
   /*
      Taller, for a thumb. The quiet-at-rest drawing (no border or fill until the value is
-     touched) is the base rule at every width now; only the size is the phone's.
+     touched) is the base rule at every width now; only the size is the phone's. How
+     tall is `--field-touch`, set on the list below; a value's control drawn outside the
+     list (a table's cell) keeps the thumb's height whatever the pointer.
   */
   .note-field-input {
-    min-height: 2.75rem;
+    min-height: var(--field-touch, 2.75rem);
     font-size: 1rem;
     padding-inline: 0.5rem;
     margin-left: -0.5rem;
@@ -10680,11 +10682,24 @@ button.settings-nav-item {
     /* A narrower fixed name column: a third of a phone, no more. Names truncate past it. */
     grid-template-columns: auto 7.5rem minmax(0, 1fr) auto;
     column-gap: 0.5rem;
-    grid-auto-rows: minmax(2.75rem, auto);
-    /* The value rows are sized by the rules around this one, at a thumb's 2.75rem.
-       This is what is left reading the variable: the last row's words, which keep the
-       height they had before the desktop's rows were tightened. */
+    grid-auto-rows: minmax(var(--field-touch), auto);
+    /*
+       A value row's height at this width, and it depends on what is pointing. This
+       layout is a phone's, but it is also what a desktop draws in a narrow window or
+       beside a wide list, and there the 44px rows were a thumb's target under a mouse:
+       four rows took the room the wide layout gives six. With a mouse a row is 2.1rem,
+       the chip's 2rem and a hair, which is as tight as this block's larger type goes.
+       A finger gets its 2.75rem back in the query below.
+    */
+    --field-touch: 2.1rem;
+    /* The last row's words, which keep the height they had before the desktop's rows
+       were tightened. */
     --field-row: 2.1rem;
+  }
+  /* `THUMB_ROWS_QUERY` in fields-clamp.ts is this block's width and this query, and
+     gives the list a larger share of the note where they hold: change them together. */
+  @media (pointer: coarse) {
+    .note-fields { --field-touch: 2.75rem; }
   }
   .note-field-label { font-size: 0.95rem; }
   .tag-chip,
