@@ -16,16 +16,36 @@
  */
 
 /**
- * The share of the note's column the list may take while limited.
+ * The share of the note's column the list may take while limited, where rows are a
+ * mouse's size.
  *
  * It was 0.4, the middle of "a third to a half", and on a desktop that was still nine
  * rows of filing above the body: a lot, for a list whose rest is one press away. 0.3
  * took one row off that, which nobody would notice. At a quarter a desktop window draws
- * about six rows and a phone the floor of four (`CLAMP_MIN_ROWS`), which is the notebook,
- * the tags and the first few fields: enough to say what the note is, with most of the
- * screen left for what it says.
+ * about six rows, which is the notebook, the tags and the first few fields: enough to
+ * say what the note is, with most of the screen left for what it says.
  */
 export const CLAMP_SHARE = 0.25;
+
+/**
+ * The share on a phone: the narrow layout under a finger (`THUMB_ROWS_QUERY`).
+ *
+ * A share buys rows, and a phone's cost half as much again: 46px apart against a
+ * desktop's 32, in a column a little shorter. A quarter of a phone is the floor of four
+ * rows (`CLAMP_MIN_ROWS`) on every phone there is, which made the share a constant with
+ * extra steps; 0.4 is five or six rows, the same list a desktop's quarter draws, and
+ * was the share that already read right on a phone when it was the share everywhere.
+ */
+export const CLAMP_SHARE_PHONE = 0.4;
+
+/**
+ * Where the list's rows are thumb-sized. The stylesheet makes them so under this same
+ * pair of conditions (`--field-touch` in the phone block), and the two must move
+ * together: this share is only right for those rows. A desktop window dragged narrow
+ * has the narrow layout and a mouse's rows, and a desktop's height to take 40% of, so
+ * it keeps the quarter.
+ */
+export const THUMB_ROWS_QUERY = '(max-width: 860px) and (pointer: coarse)';
 
 /**
  * Never fewer rows than this, however short the window: the notebook and the tags are

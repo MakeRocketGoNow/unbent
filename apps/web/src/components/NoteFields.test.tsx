@@ -2,7 +2,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { act, render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
 import type { FieldDef, FieldType, NoteFieldValue } from '@unbent/shared';
 import { NoteFields } from './NoteFields.js';
-import { CLAMP_SETTLE_MS, CLAMP_SHARE } from './fields-clamp.js';
+import { CLAMP_SETTLE_MS, CLAMP_SHARE, CLAMP_SHARE_PHONE, THUMB_ROWS_QUERY } from './fields-clamp.js';
 
 /**
  * The field block is a form drawn from data: each type has to become the right control,
@@ -382,6 +382,24 @@ describe('NoteFields as a property list', () => {
       expect(row('Field 8').hidden).toBe(true);
       const toggle = screen.getByText('5 more');
       expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    });
+
+    it('gives the list a larger share where its rows are thumb-sized', () => {
+      layOut();
+      // A column where a phone's share fits six rows and a desktop's would fit three.
+      vi.stubGlobal('innerHeight', (6 * 40 + 20) / CLAMP_SHARE_PHONE);
+      vi.stubGlobal('matchMedia', (query: string) => ({ matches: query === THUMB_ROWS_QUERY }));
+      mount({ definitions: twelve });
+      expect(row('Field 6').hidden).toBe(false);
+      expect(row('Field 7').hidden).toBe(true);
+      expect(screen.getByText('6 more')).toBeTruthy();
+
+      // The same column under a mouse: the floor of four.
+      cleanup();
+      vi.stubGlobal('matchMedia', () => ({ matches: false }));
+      mount({ definitions: twelve });
+      expect(row('Field 4').hidden).toBe(false);
+      expect(row('Field 5').hidden).toBe(true);
     });
 
     it('shows the whole list on a press, and remembers that for the notebook alone', () => {

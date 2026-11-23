@@ -18,7 +18,7 @@ import { FieldCellInput } from './FieldCellInput.js';
 import { amountText, currencySymbol, formatFieldValue } from './format-field.js';
 import { usePersistentState } from '../usePersistentState.js';
 import { filledStyle } from './filled.js';
-import { CLAMP_SETTLE_MS, CLAMP_SHARE, rowsThatFit } from './fields-clamp.js';
+import { CLAMP_SETTLE_MS, CLAMP_SHARE, CLAMP_SHARE_PHONE, THUMB_ROWS_QUERY, rowsThatFit } from './fields-clamp.js';
 
 export interface NoteFieldsProps {
   /** The note's notebook's definitions, in order. Undefined while they load. */
@@ -402,7 +402,10 @@ function useRowsThatFit(
       (column ?? grid).contains(active) &&
       (active.isContentEditable || active.matches('textarea, select, input:not([type=checkbox], [type=radio])'));
     const floor = Math.max(focused + 1, reading !== 'fresh' && typing ? keptRef.current : 0);
-    const kept = rowsThatFit(bottoms, room * CLAMP_SHARE, floor);
+    // Asked at each reading, not followed: every reading already comes from a change of
+    // size, which is the only way the answer changes short of plugging in a mouse.
+    const thumbs = window.matchMedia?.(THUMB_ROWS_QUERY).matches === true;
+    const kept = rowsThatFit(bottoms, room * (thumbs ? CLAMP_SHARE_PHONE : CLAMP_SHARE), floor);
     if (reading === 'settling' && (kept ?? bottoms.length) < keptRef.current) {
       settleRef.current = window.setTimeout(() => measure('settled'), CLAMP_SETTLE_MS);
       return;

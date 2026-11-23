@@ -10696,6 +10696,8 @@ button.settings-nav-item {
        were tightened. */
     --field-row: 2.1rem;
   }
+  /* `THUMB_ROWS_QUERY` in fields-clamp.ts is this block's width and this query, and
+     gives the list a larger share of the note where they hold: change them together. */
   @media (pointer: coarse) {
     .note-fields { --field-touch: 2.75rem; }
   }
