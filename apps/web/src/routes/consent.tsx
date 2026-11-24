@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { FULL_GRANT, type AssistantGrant } from '@unbent/shared';
 import { AssistantAccess } from '../components/AssistantAccess.js';
 import { Button } from '../components/Button.js';
-import { answerConsent, grantIsEmpty, grantSentence } from '../assistant-access.js';
+import { answerConsent, grantIsEmpty, grantSentence, PICK_SOME_MESSAGE } from '../assistant-access.js';
 import { oauth2 } from '../auth-client.js';
 import { listAssistantGrants, saveAssistantGrant } from '../notes-api.js';
 import { notebooksQuery } from '../queries.js';
@@ -116,7 +116,7 @@ function ConsentPage() {
   }, [clientId]);
 
   async function answer(accept: boolean) {
-    if (accept && grantIsEmpty(grant)) {
+    if (accept && grantIsEmpty(grant, notebooks.data?.notebooks)) {
       // Said on the press rather than by a faded button: a disabled Allow gives no
       // reason, and cannot be reached to hear one.
       setPickSome(true);
@@ -170,13 +170,14 @@ function ConsentPage() {
           setPickSome(false);
         }}
         notebooks={notebooks.data}
+        failed={notebooks.isError}
         disabled={busy}
-        error={pickSome ? 'Pick at least one notebook, or choose All notebooks.' : null}
+        error={pickSome ? PICK_SOME_MESSAGE : null}
       />
 
       {/* What Allow means for the choices above, in full. Not a live region: it changes
           with every tick, and the picker says its own count as it goes. */}
-      <p>{grantSentence(who, grant, notebooks.data?.notebooks ?? [])}</p>
+      <p>{grantSentence(clientName, grant, notebooks.data?.notebooks)}</p>
 
       <p className="muted">
         It acts on its own after this, without asking again. You can change what it gets, or
@@ -188,7 +189,14 @@ function ConsentPage() {
       {error && <p className="bad">{error}</p>}
 
       <div className="device-actions">
-        <Button variant="primary" disabled={busy || !ready} onClick={() => void answer(true)}>
+        {/* Faded for the moment it takes to read what this app had before, and says so:
+            a disabled button with no reason is the thing this screen avoids elsewhere. */}
+        <Button
+          variant="primary"
+          disabled={busy || !ready}
+          tip={ready ? undefined : 'Checking what this app was given before…'}
+          onClick={() => void answer(true)}
+        >
           {busy ? 'One moment…' : 'Allow access'}
         </Button>
         <Button variant="secondary" disabled={busy} onClick={() => void answer(false)}>

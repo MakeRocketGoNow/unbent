@@ -1,6 +1,6 @@
 import { useQueries, useQuery } from '@tanstack/react-query';
 import { Link, createFileRoute } from '@tanstack/react-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { FULL_GRANT, type AssistantGrant } from '@unbent/shared';
 import { AssistantAccess } from '../components/AssistantAccess.js';
 import { Button } from '../components/Button.js';
@@ -13,7 +13,7 @@ import { chatgptInstructions } from '../chatgpt-instructions.js';
 import { claudeInstructions } from '../claude-instructions.js';
 import { claudeProjectInstructions } from '../claude-project-instructions.js';
 import { mcpSetupPrompt } from '../mcp-setup-prompt.js';
-import { grantIsEmpty, grantSummary } from '../assistant-access.js';
+import { grantIsEmpty, grantSummary, PICK_SOME_MESSAGE } from '../assistant-access.js';
 import { listAssistantGrants, request, saveAssistantGrant } from '../notes-api.js';
 import { notebookFieldsQuery, notebooksQuery } from '../queries.js';
 import type { InstructionNotebook } from '../standing-instructions.js';
@@ -245,6 +245,24 @@ function ConnectedAppsPage() {
   const [saved, setSaved] = useState('');
   const notebooks = useQuery(notebooksQuery());
 
+  /*
+   * Focus follows the editor. "Change access" is not drawn on a row whose editor is
+   * open, and Save and Cancel go with the editor when it closes, so both ways the
+   * button that was pressed is removed from under the focus, which then falls to the
+   * top of the page: a keyboard or a screen reader starts the whole settings page
+   * again to get back to the row it was on. So opening moves focus to the first
+   * question's chosen answer, and closing puts it back on that row's "Change access".
+   */
+  const editor = useRef<HTMLDivElement>(null);
+  const changeButtons = useRef(new Map<string, HTMLButtonElement>());
+  const wasEditing = useRef<string | null>(null);
+  const editingId = editing?.clientId ?? null;
+  useEffect(() => {
+    if (editingId) editor.current?.querySelector<HTMLInputElement>('input[type="radio"]:checked')?.focus();
+    else if (wasEditing.current) changeButtons.current.get(wasEditing.current)?.focus();
+    wasEditing.current = editingId;
+  }, [editingId]);
+
   async function refresh() {
     try {
       const [result, given] = await Promise.all([
@@ -316,7 +334,7 @@ function ConnectedAppsPage() {
 
   async function saveAccess() {
     if (!editing) return;
-    if (grantIsEmpty(editing.draft)) {
+    if (grantIsEmpty(editing.draft, notebooks.data?.notebooks)) {
       setEditing({ ...editing, pickSome: true });
       return;
     }
@@ -325,7 +343,7 @@ function ConnectedAppsPage() {
     try {
       await saveAssistantGrant(editing.clientId, editing.draft);
       const name = grants?.find((g) => g.clientId === editing.clientId)?.name ?? 'This assistant';
-      setSaved(`${name}: ${grantSummary(editing.draft, notebooks.data?.notebooks ?? [])}.`);
+      setSaved(`${name}: ${grantSummary(editing.draft, notebooks.data?.notebooks)}.`);
       setEditing(null);
       await refresh();
     } catch (err) {
@@ -384,6 +402,13 @@ function ConnectedAppsPage() {
       <section className="settings-section">
         <h3>Connected</h3>
         {error && <p className="bad small">{error}</p>}
+        {/* The rows below then say nothing of access and offer no way to change it,
+            which without this line looked like the feature not being there. */}
+        {grants !== null && grants.length > 0 && access === null && (
+          <p className="muted small">
+            What each assistant can see and do could not be loaded just now. Reload the page to see it and change it.
+          </p>
+        )}
 
         {grants === null ? (
           <p className="muted small">Loading…</p>
@@ -401,7 +426,7 @@ function ConnectedAppsPage() {
                     <div className="connected-app-what">
                       <span>{name}</span>
                       <span className="muted small">
-                        {given && grantSummary(given, notebooks.data?.notebooks ?? [])}
+                        {given && grantSummary(given, notebooks.data?.notebooks)}
                         {given && grant.grantedAt && ' · '}
                         {grant.grantedAt && `connected ${new Date(grant.grantedAt).toLocaleDateString()}`}
                       </span>
@@ -411,7 +436,14 @@ function ConnectedAppsPage() {
                         <Button
                           variant="quiet"
                           size="small"
-                          disabled={busy}
+                          // One row at a time: opening a second would throw away what
+                          // was being chosen in the first without a word.
+                          disabled={busy || editing !== null}
+                          tip={editing ? 'Save or cancel the one you are changing first.' : undefined}
+                          ref={(el) => {
+                            if (el) changeButtons.current.set(grant.clientId, el);
+                            else changeButtons.current.delete(grant.clientId);
+                          }}
                           aria-label={`Change access for ${name}`}
                           onClick={() => {
                             setSaved('');
@@ -434,13 +466,14 @@ function ConnectedAppsPage() {
                     </div>
                   </div>
                   {open && (
-                    <div className="connected-app-edit">
+                    <div className="connected-app-edit" ref={editor}>
                       <AssistantAccess
                         value={open.draft}
                         onChange={(draft) => setEditing({ clientId: grant.clientId, draft, pickSome: false })}
                         notebooks={notebooks.data}
+                        failed={notebooks.isError}
                         disabled={busy}
-                        error={open.pickSome ? 'Pick at least one notebook, or choose All notebooks.' : null}
+                        error={open.pickSome ? PICK_SOME_MESSAGE : null}
                       />
                       <div className="device-actions">
                         <Button disabled={busy} onClick={() => void saveAccess()}>

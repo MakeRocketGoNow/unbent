@@ -4997,12 +4997,11 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   gap: 0.1rem;
   overflow-wrap: anywhere;
 }
-.connected-app-actions { display: flex; gap: 0.25rem; flex: none; margin-left: auto; }
 /* The quiet buttons have padding and no border, so at the row's edge their label sat
-   in from where the rule under the row ends; pulled out by that padding, the last
-   label ends where the row does. On a phone the pair wraps under the name and stays
-   at the right, where a row's actions are at every width. */
-.connected-app-actions { margin-right: -0.5rem; }
+   in from where the rule under the row ends; pulled out by that padding
+   (`margin-right`), the last label ends where the row does. On a phone the pair wraps
+   under the name and stays at the right, where a row's actions are at every width. */
+.connected-app-actions { display: flex; gap: 0.25rem; flex: none; margin-left: auto; margin-right: -0.5rem; }
 .connected-app-edit {
   display: flex;
   flex-direction: column;

@@ -1,4 +1,4 @@
-import { grantIsRestricted, type AssistantGrant, type NotebookSummary } from '@unbent/shared';
+import type { AssistantGrant, NotebookSummary } from '@unbent/shared';
 
 /**
  * What a connected assistant was given (MAK-264), in the words the consent screen and
@@ -7,6 +7,14 @@ import { grantIsRestricted, type AssistantGrant, type NotebookSummary } from '@u
  *
  * The Inbox is the app's name for the notes filed in no notebook, here as in the rail.
  */
+
+/**
+ * The account's notebooks as a caller knows them: the list, or `undefined` while it is
+ * loading or when it could not be read. Unknown is not none, and nothing here says
+ * "No notebooks" of a grant because the list had not arrived: until it has, a grant of
+ * some notebooks is described as that and no more.
+ */
+type Known = readonly NotebookSummary[] | undefined;
 
 /** The notebooks of `grant` that still exist. A deleted notebook's id stays in a grant and counts for nothing. */
 export function grantedNotebooks(grant: AssistantGrant, notebooks: readonly NotebookSummary[]): NotebookSummary[] {
@@ -25,36 +33,57 @@ function reach(count: number, inbox: boolean): string {
 /**
  * One line for a row in Connected apps: "All notebooks, can edit", "2 notebooks, read
  * only". Counted against the notebooks the account has now, so a grant that named a
- * notebook since deleted says what it reaches today.
+ * notebook since deleted says what it reaches today; "Some notebooks" while they are
+ * not known, which is true of every list and wrong about none.
  */
-export function grantSummary(grant: AssistantGrant, notebooks: readonly NotebookSummary[]): string {
-  const seen = grant.notebooks === null ? 'All notebooks' : reach(grantedNotebooks(grant, notebooks).length, grant.unfiled);
+export function grantSummary(grant: AssistantGrant, notebooks: Known): string {
+  const seen =
+    grant.notebooks === null
+      ? 'All notebooks'
+      : notebooks
+        ? reach(grantedNotebooks(grant, notebooks).length, grant.unfiled)
+        : grant.unfiled
+          ? 'Some notebooks and the Inbox'
+          : 'Some notebooks';
   return `${seen}, ${grant.readOnly ? 'read only' : 'can edit'}`;
 }
 
 /**
+ * Whether a grant gives an assistant nothing to read: "only some notebooks" with none
+ * that exists picked, and no Inbox. Neither screen will save one. Counted against the
+ * notebooks there are, as the sentence and the summary are, so a grant left holding
+ * only the id of a deleted notebook is empty here too; where the notebooks are not
+ * known, by what the grant itself lists.
+ */
+export function grantIsEmpty(grant: AssistantGrant, notebooks: Known): boolean {
+  if (grant.notebooks === null || grant.unfiled) return false;
+  return (notebooks ? grantedNotebooks(grant, notebooks).length : grant.notebooks.length) === 0;
+}
+
+/** What Allow or Save says when "Only some notebooks" has nothing picked: once, for both screens. */
+export const PICK_SOME_MESSAGE = 'Pick at least one notebook, or choose All notebooks.';
+
+/**
  * What allowing this grant means, as the sentence the consent screen puts above its
- * buttons. `who` is the app's name, or "An application".
+ * buttons. `name` is the app's, or null for one that gave none, which is "it".
  *
  * Said in full each time, since it is the thing being agreed to: what it can read,
  * then what it can do with it. The whole library is said as "every note you have",
  * which is what the screen has always said and still the plainest way to say it.
  */
-export function grantSentence(who: string, grant: AssistantGrant, notebooks: readonly NotebookSummary[]): string {
-  const it = who === 'An application' ? 'it' : who;
+export function grantSentence(name: string | null, grant: AssistantGrant, notebooks: Known): string {
+  const it = name ?? 'it';
   // Nothing picked yet is not a grant to describe: what it could do with no notes is
   // beside the point, and the screen will not allow it as it stands.
-  if (grant.notebooks !== null && grantedNotebooks(grant, notebooks).length === 0 && !grant.unfiled) {
-    return `No notebook is picked yet, so ${it} would not be able to read any of your notes.`;
-  }
+  if (grantIsEmpty(grant, notebooks)) return `No notebook is picked yet, so ${it} would not be able to read any of your notes.`;
   let reads: string;
   if (grant.notebooks === null) {
     reads = 'every note you have';
   } else {
-    const count = grantedNotebooks(grant, notebooks).length;
+    const count = notebooks ? grantedNotebooks(grant, notebooks).length : null;
     if (count === 0) reads = 'the notes in your Inbox';
     else {
-      const where = count === 1 ? 'the 1 notebook you picked' : `the ${count.toLocaleString()} notebooks you picked`;
+      const where = count === null ? 'the notebooks picked for it' : count === 1 ? 'the 1 notebook you picked' : `the ${count.toLocaleString()} notebooks you picked`;
       reads = grant.unfiled ? `the notes in ${where} and in your Inbox` : `the notes in ${where}`;
     }
   }
@@ -65,11 +94,6 @@ export function grantSentence(who: string, grant: AssistantGrant, notebooks: rea
       ? 'It will also be able to create notes, change them, and move them to the trash (the same things you can do).'
       : 'There, it will also be able to create notes, change them, and move them to the trash.';
   return `If you allow it, ${it} will be able to read ${reads}${rest}. ${does}`;
-}
-
-/** Whether a grant can be allowed as it stands: "only some notebooks" with nothing picked gives an assistant nothing to do. */
-export function grantIsEmpty(grant: AssistantGrant): boolean {
-  return grant.notebooks !== null && grant.notebooks.length === 0 && !grant.unfiled;
 }
 
 /**
@@ -125,4 +149,3 @@ export async function answerConsent(
   }
 }
 
-export { grantIsRestricted };
