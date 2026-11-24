@@ -71,7 +71,8 @@ function ConsentPage() {
   const [grant, setGrant] = useState<AssistantGrant>(FULL_GRANT);
   // Whether what this app was given before has been read; Allow waits for it.
   const [ready, setReady] = useState(false);
-  // What it was given before, if it was restricted: put back should Allow fail part way.
+  // What it was given before, put back should Allow fail part way. Unknown, and so
+  // nothing to put back, only when what it had could not be read.
   const [before, setBefore] = useState<AssistantGrant | undefined>(undefined);
   // Set by a press of Allow with nothing picked, and cleared by the next change.
   const [pickSome, setPickSome] = useState(false);
@@ -93,10 +94,12 @@ function ConsentPage() {
       .then((grants) => {
         if (cancelled) return;
         const had = grants[clientId];
-        if (had) {
-          setGrant(had);
-          setBefore(had);
-        }
+        if (had) setGrant(had);
+        // Everything is the absence of a row, and saving it is how that is put back:
+        // an app with the whole library, narrowed here and then failed by the provider,
+        // would otherwise stay narrowed under "That did not work". Harmless for an app
+        // connecting for the first time, which has nothing either way.
+        setBefore(had ?? FULL_GRANT);
         setReady(true);
       })
       .catch(() => {
