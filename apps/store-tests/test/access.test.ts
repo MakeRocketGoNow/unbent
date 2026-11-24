@@ -223,6 +223,127 @@ describe('a restricted connection reads only what it was given', () => {
   });
 });
 
+describe('a restricted connection writes only where it was given', () => {
+  const refused = (reason: string) => ({ code: 'ACCESS_REFUSED', reason });
+  const input = (over: Record<string, unknown> = {}) => ({ id: crypto.randomUUID(), title: 'New', body: '', tags: [], ...over });
+
+  it('files a new note in a notebook of its grant, and nowhere else', async () => {
+    const s = await library('access-create');
+    const made = await as<Note>(s.stub, s.grant, 'create', input({ notebook: 'letters' }));
+    // Matched without case, like any filing; the note is in the notebook as it is named.
+    expect(await s.stub.get(made.id)).toMatchObject({ title: 'New', notebook: 'Letters' });
+
+    await expect(as(s.stub, s.grant, 'create', input({ notebook: 'Ledger' }))).rejects.toMatchObject(refused('notebook'));
+    // A name nobody has used would make a notebook, which is how they are made: refused
+    // the same way, so the refusal does not say which names exist.
+    await expect(as(s.stub, s.grant, 'create', input({ notebook: 'Brand new' }))).rejects.toMatchObject(refused('notebook'));
+    await expect(as(s.stub, s.grant, 'create', input())).rejects.toMatchObject(refused('unfiled'));
+    await expect(as(s.stub, s.grant, 'createOrFind', input({ notebook: 'Ledger' }))).rejects.toMatchObject(refused('notebook'));
+    // All or none: one note bound for outside the grant stops the batch.
+    await expect(as(s.stub, s.grant, 'createMany', [input({ notebook: 'Recipes' }), input({ notebook: 'Ledger' })])).rejects.toMatchObject(refused('notebook'));
+
+    expect((await s.stub.listNotebooks()).map((n) => n.name).sort()).toEqual(['Ledger', 'Letters', 'Recipes']);
+    expect(await s.stub.count()).toBe(5);
+
+    // With the unfiled in the grant, a note may be left in no notebook.
+    const loose = await as<Note>(s.stub, { ...s.grant, unfiled: true }, 'create', input());
+    expect(loose.notebook).toBeNull();
+  });
+
+  it('will not answer a create with a note it cannot see', async () => {
+    const s = await library('access-replay');
+    // The replay-safe create answers with the holder of a taken id.
+    await expect(as(s.stub, s.grant, 'createOrFind', input({ id: s.entry.id, notebook: 'Letters' }))).rejects.toMatchObject(refused('method'));
+    await expect(as(s.stub, s.grant, 'createMany', [input({ id: s.entry.id, notebook: 'Letters' })], { skipExisting: true })).rejects.toMatchObject(refused('method'));
+    // Its own note's id is a replay like anyone's.
+    const again = await as<{ note: Note; existing: boolean }>(s.stub, s.grant, 'createOrFind', input({ id: s.letter.id, notebook: 'Letters' }));
+    expect(again).toMatchObject({ existing: true, note: { title: 'A letter' } });
+  });
+
+  it('changes, trashes and restores only notes it can see', async () => {
+    const s = await library('access-update');
+    expect(await as<Note>(s.stub, s.grant, 'update', s.letter.id, { title: 'A letter, edited' })).toMatchObject({ title: 'A letter, edited' });
+    expect(await as(s.stub, s.grant, 'update', s.entry.id, { title: 'Reached' })).toBeNull();
+    expect(await as(s.stub, s.grant, 'appendToBody', s.entry.id, 'more')).toBe(false);
+    expect(await as(s.stub, s.grant, 'remove', s.entry.id)).toBe(false);
+    expect(await as(s.stub, s.grant, 'restore', s.binnedOutside.id)).toBe(false);
+    expect(await s.stub.get(s.entry.id)).toMatchObject({ title: 'A ledger entry', body: 'the harbour dues' });
+    expect(await s.stub.get(s.binnedOutside.id)).toBeNull();
+
+    expect(await as(s.stub, s.grant, 'remove', s.recipe.id)).toBe(true);
+    expect(await as(s.stub, s.grant, 'restore', s.recipe.id)).toBe(true);
+    expect(await as(s.stub, s.grant, 'restore', s.binned.id)).toBe(true);
+  });
+
+  it('moves a note between its notebooks, and not out of them', async () => {
+    const s = await library('access-move');
+    expect(await as<Note>(s.stub, s.grant, 'update', s.letter.id, { notebook: 'Recipes' })).toMatchObject({ notebook: 'Recipes' });
+    await expect(as(s.stub, s.grant, 'update', s.letter.id, { notebook: 'Ledger' })).rejects.toMatchObject(refused('notebook'));
+    await expect(as(s.stub, s.grant, 'update', s.letter.id, { notebook: null })).rejects.toMatchObject(refused('unfiled'));
+    await expect(as(s.stub, s.grant, 'updateMany', [s.letter.id, s.recipe.id], { notebook: 'Ledger' })).rejects.toMatchObject(refused('notebook'));
+    expect((await s.stub.get(s.letter.id))!.notebook).toBe('Recipes');
+    expect((await s.stub.get(s.recipe.id))!.notebook).toBe('Recipes');
+  });
+
+  it('leaves the notes it cannot see out of a bulk write', async () => {
+    const s = await library('access-bulk');
+    const all = [s.letter.id, s.entry.id, s.loose.id];
+    const tagged = await as<{ matched: string[]; changed: string[] }>(s.stub, s.grant, 'updateMany', all, { addTags: ['swept'] });
+    expect(tagged).toEqual({ matched: [s.letter.id], changed: [s.letter.id] });
+    expect((await s.stub.get(s.entry.id))!.tags).not.toContain('swept');
+
+    expect(await as(s.stub, s.grant, 'removeMany', all)).toEqual([s.letter.id]);
+    expect(await s.stub.get(s.entry.id)).not.toBeNull();
+    expect(await s.stub.get(s.loose.id)).not.toBeNull();
+    expect(await as(s.stub, s.grant, 'restoreMany', [s.letter.id, s.binnedOutside.id])).toEqual([s.letter.id]);
+  });
+
+  it('manages a notebook of its grant, and finds no other', async () => {
+    const s = await library('access-manage');
+    expect(await as(s.stub, s.grant, 'updateNotebook', s.letters.id, { purpose: 'Post, in and out' })).toBe('ok');
+    expect(await as(s.stub, s.grant, 'updateNotebook', s.ledger.id, { purpose: 'Reached' })).toBe('missing');
+    expect(await as(s.stub, s.grant, 'createField', s.letters.id, { name: 'Postmark', type: 'text', options: [] })).toMatchObject({ name: 'Postmark' });
+    expect(await as(s.stub, s.grant, 'createField', s.ledger.id, { name: 'Reached', type: 'text', options: [] })).toBe('missing');
+    expect(await as(s.stub, s.grant, 'updateField', s.ledger.id, s.amount.id, { name: 'Reached' })).toBe('missing');
+    expect(await as(s.stub, s.grant, 'editFieldOptions', s.ledger.id, s.amount.id, { add: ['x'] })).toBe('missing');
+    expect((await s.stub.listFields(s.ledger.id))!.map((f) => f.name)).toEqual(['Amount']);
+    expect((await s.stub.listNotebooks()).find((n) => n.id === s.ledger.id)!.purpose ?? null).toBeNull();
+  });
+
+  it('refuses what reaches past any one notebook', async () => {
+    const s = await library('access-past');
+    const shared = (await s.stub.listTags()).find((t) => t.name === 'shared')!;
+    await expect(as(s.stub, s.grant, 'createNotebook', 'Another')).rejects.toMatchObject(refused('manage'));
+    // Its own notebook too: deleting it unfiles or trashes notes, and its views go with it.
+    await expect(as(s.stub, s.grant, 'deleteNotebook', s.letters.id)).rejects.toMatchObject(refused('manage'));
+    await expect(as(s.stub, s.grant, 'renameTag', shared.id, 'renamed')).rejects.toMatchObject(refused('manage'));
+    await expect(as(s.stub, s.grant, 'deleteTag', shared.id)).rejects.toMatchObject(refused('manage'));
+    expect((await s.stub.listNotebooks()).map((n) => n.name).sort()).toEqual(['Ledger', 'Letters', 'Recipes']);
+    expect((await s.stub.listTags()).map((t) => t.name)).toContain('shared');
+  });
+
+  it('adds a file, and writes what a picture says, only on a note it can see', async () => {
+    const s = await library('access-file-writes');
+    const file = (id: string, noteId: string) => ({ id, noteId, filename: 'card.jpg', contentType: 'image/jpeg', size: 3, r2Key: `k/${id}` });
+    expect(await as(s.stub, s.grant, 'availableFilename', s.letter.id, 'scan.pdf')).toBe('scan-2.pdf');
+    expect(await as(s.stub, s.grant, 'recordAttachment', file('f-new', s.letter.id))).toMatchObject({ filename: 'card.jpg' });
+    expect(await as(s.stub, s.grant, 'writeAssistantText', s.letter.id, 'card.jpg', 'a business card')).toMatchObject({ ok: true });
+
+    await expect(as(s.stub, s.grant, 'availableFilename', s.entry.id, 'scan.pdf')).rejects.toMatchObject(refused('method'));
+    await expect(as(s.stub, s.grant, 'recordAttachment', file('f-reach', s.entry.id))).rejects.toMatchObject(refused('method'));
+    expect(await as(s.stub, s.grant, 'writeAssistantText', s.entry.id, 'scan.pdf', 'reached')).toMatchObject({ ok: false, reason: 'missing' });
+    expect((await s.stub.listAttachments(s.entry.id)).map((f) => f.filename)).toEqual(['scan.pdf']);
+  });
+
+  it('records a write in the feed as the same write by anyone does', async () => {
+    const s = await library('access-feed');
+    const before = (await s.stub.changesSince(0, 500) as { seq: number }).seq;
+    await as(s.stub, s.grant, 'update', s.letter.id, { title: 'Recorded' });
+    const page = await s.stub.changesSince(before, 500) as { notes: Array<{ id: string }> };
+    expect(page.notes.map((n) => n.id)).toEqual([s.letter.id]);
+  });
+});
+
 describe('a restricted connection reaches the store only through the list', () => {
   it('refuses a method nobody has decided about, by name', async () => {
     const s = await library('access-unlisted');
@@ -265,7 +386,7 @@ describe('a restricted connection reaches the store only through the list', () =
   });
 });
 
-/** Every method a restricted connection may call. Each is exercised above. */
+/** Every method a restricted connection may call, or is refused by name for asking. Each is exercised above. */
 const HELD = [
   'get', 'getWithFiles', 'linkedFilenames', 'fieldTargets',
   'listPage', 'search', 'searchWithFiles',
@@ -273,4 +394,9 @@ const HELD = [
   'listTags', 'tagCounts',
   'resolveAttachment', 'resolveWithRead', 'textWithRead', 'listAttachments', 'ownsNote',
   'attachmentBytes', 'usage',
+  'create', 'createOrFind', 'createMany',
+  'update', 'appendToBody', 'remove', 'restore', 'updateMany', 'removeMany', 'restoreMany',
+  'updateNotebook', 'createField', 'updateField', 'editFieldOptions',
+  'createNotebook', 'deleteNotebook', 'renameTag', 'deleteTag',
+  'availableFilename', 'recordAttachment', 'writeAssistantText',
 ];

@@ -45,7 +45,7 @@ import {
   foldNoCase,
   leastUsedColor,
 } from '@unbent/shared';
-import { accessCondition, GRANT_DRIVEN_MAX, type AccessScope, type StoreAccess } from './access.js';
+import { accessCondition, AccessRefusal, GRANT_DRIVEN_MAX, type AccessScope, type StoreAccess } from './access.js';
 import type { DeletedBlobs } from './deleted-blobs.js';
 import type { Change, Feed } from './feed.js';
 import { Revisions } from './revisions.js';
@@ -313,6 +313,21 @@ export class NotesStore {
   private grantLeads(access: StoreAccess): boolean {
     if (access.notebooks.length === 1 && !access.unfiled) return true;
     return this.grantSize(access) <= GRANT_DRIVEN_MAX;
+  }
+
+  /**
+   * Which of `ids` already name a note the running call may not see. A restricted
+   * connection's create that names one is refused before it runs: the replay-safe
+   * creates answer with the holder of a taken id, and that holder would be a note
+   * outside the grant.
+   */
+  takenUnseen(ids: string[]): string[] {
+    if (!this.access.current || ids.length === 0) return [];
+    const taken = this.sql
+      .exec<{ id: string }>(`SELECT id FROM notes WHERE id IN (SELECT value FROM json_each(?1))`, JSON.stringify([...new Set(ids)]))
+      .map((r) => r.id);
+    const visible = this.visible(taken);
+    return taken.filter((id) => !visible.has(id));
   }
 
   /**
@@ -3010,6 +3025,23 @@ export class NotesStore {
    */
   private resolveNotebook(name: string | null | undefined): string | null {
     const trimmed = name?.trim();
+    // A restricted connection files only where its grant reaches (MAK-264): a notebook
+    // the grant names, or no notebook if it covers the unfiled. It never makes one by
+    // naming it, which is the ordinary way a notebook comes into being and so the one
+    // way a grant of two notebooks could become a library of three. A name outside the
+    // grant and a name nobody has used are refused alike, so the refusal does not say
+    // which names are taken. Here, since every write that files a note resolves its
+    // destination here: a create, a save, a bulk move.
+    const access = this.access.current;
+    if (access) {
+      if (!trimmed) {
+        if (!access.unfiled) throw new AccessRefusal('unfiled');
+        return null;
+      }
+      const held = this.sql.first<{ id: string }>(`SELECT id FROM notebooks WHERE name = ?1 COLLATE NOCASE`, trimmed);
+      if (!held || !access.notebooks.includes(held.id)) throw new AccessRefusal('notebook');
+      return held.id;
+    }
     if (!trimmed) return null;
 
     const created = this.sql.exec<{ id: string }>(

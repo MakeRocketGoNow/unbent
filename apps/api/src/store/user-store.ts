@@ -19,7 +19,7 @@ import {
   PLAN_INACTIVE_CODE,
   STORAGE_FULL_CODE,
 } from '@unbent/shared';
-import { AccessRefusal, AccessScope, checkedAccess, type StoreAccess } from './access.js';
+import { AccessRefusal, AccessScope, checkedAccess, type AccessRefusalReason, type StoreAccess } from './access.js';
 import { AttachmentsStore, type FileSummary } from './attachments.js';
 import { DeletedBlobs } from './deleted-blobs.js';
 import { LlmUsageCounter, type PressLimits, type UsageEntry } from './llm-usage.js';
@@ -1141,6 +1141,16 @@ export class UserStore extends DurableObject<StoreEnv> {
     return ids.filter((id) => visible.has(id));
   }
 
+  /** Refuses a create whose id already names a note the running call may not see; see `NotesStore.takenUnseen`. */
+  private unclaimed(ids: string[]): void {
+    if (this.notes.takenUnseen(ids).length > 0) throw new AccessRefusal('method', 'an id that is taken');
+  }
+
+  /** A refusal, as an expression: an entry of `restricted` is one. */
+  private refuse(reason: AccessRefusalReason, detail?: string): never {
+    throw new AccessRefusal(reason, detail);
+  }
+
   /** Whether the running call's grant names this notebook. */
   private grants(notebookId: string): boolean {
     return this.access.current?.notebooks.includes(notebookId) ?? true;
@@ -1152,8 +1162,8 @@ export class UserStore extends DurableObject<StoreEnv> {
    * takes and answers what it answers, and a renamed method is a compile error here
    * rather than a tool that quietly stopped working.
    *
-   * The reads, in this order: notes by id, notes by filter, notebooks and their fields,
-   * tags, a note's files, and the account's own numbers.
+   * The reads first, in this order: notes by id, notes by filter, notebooks and their
+   * fields, tags, a note's files, and the account's own numbers. Then the writes.
    */
   private readonly restricted: { [K in keyof UserStore]?: UserStore[K] } = {
     get: (id, opts) => (this.sees(id) ? this.get(id, opts) : null),
@@ -1199,6 +1209,53 @@ export class UserStore extends DurableObject<StoreEnv> {
     // except as "you are out of room", which is the person's own limit either way.
     attachmentBytes: () => this.attachmentBytes(),
     usage: () => this.usage(),
+
+    // --- The writes. Where a note may be filed is `NotesStore.resolveNotebook`'s to
+    // refuse, since every write that files one resolves its notebook there; what is
+    // decided here is which notes a write may touch at all.
+
+    // A new note. An id it names that already belongs to a note outside the grant is
+    // refused first: the replay-safe creates answer with the holder of a taken id.
+    create: (input, limit) => (this.unclaimed([input.id]), this.create(input, limit)),
+    createOrFind: (input, limit) => (this.unclaimed([input.id]), this.createOrFind(input, limit)),
+    createMany: (inputs, opts, limit) => (this.unclaimed(inputs.map((i) => i.id)), this.createMany(inputs, opts, limit)),
+
+    update: (id, patch, limit) => (this.sees(id) ? this.update(id, patch, limit) : null),
+    appendToBody: (id, markdown, limit) => this.sees(id) && this.appendToBody(id, markdown, limit),
+    remove: (id) => this.sees(id) && this.remove(id),
+    restore: (id) => this.sees(id) && this.restore(id),
+    // The bulk writes answer with the notes they found, so the ones it cannot see are
+    // simply not among them, as ids that name nothing are not.
+    updateMany: (ids, patch, limit) => this.updateMany(this.seen(ids), patch, limit),
+    removeMany: (ids) => this.removeMany(this.seen(ids)),
+    restoreMany: (ids) => this.restoreMany(this.seen(ids)),
+
+    // A granted notebook's own settings and fields are the connection's to change, as
+    // its notes are. Any other notebook is `missing`, which is each method's own answer
+    // for an id that names none.
+    updateNotebook: (id, patch, limit) => (this.grants(id) ? this.updateNotebook(id, patch, limit) : 'missing'),
+    createField: (notebookId, input, limit) => (this.grants(notebookId) ? this.createField(notebookId, input, limit) : 'missing'),
+    updateField: (notebookId, fieldId, patch, limit) => (this.grants(notebookId) ? this.updateField(notebookId, fieldId, patch, limit) : 'missing'),
+    editFieldOptions: (notebookId, fieldId, edit, patch, limit) =>
+      this.grants(notebookId) ? this.editFieldOptions(notebookId, fieldId, edit, patch, limit) : 'missing',
+
+    // What reaches past any one notebook. A new notebook would be one more than the
+    // person gave; a deleted one unfiles or trashes its notes; a tag's name is on notes
+    // in every notebook, so renaming or deleting it rewrites notes the grant cannot see.
+    createNotebook: () => this.refuse('manage'),
+    deleteNotebook: () => this.refuse('manage'),
+    renameTag: () => this.refuse('manage'),
+    deleteTag: () => this.refuse('manage'),
+
+    // A file is added to a note the connection can see, and to no other. The tools ask
+    // `ownsNote` first, so a refusal here is a tool that did not.
+    availableFilename: (noteId, desired) => (this.sees(noteId) ? this.availableFilename(noteId, desired) : this.refuse('method', 'a file for a note outside the grant')),
+    recordAttachment: (input, opts, limit) =>
+      this.sees(input.noteId) ? this.recordAttachment(input, opts, limit) : this.refuse('method', 'a file for a note outside the grant'),
+    writeAssistantText: (noteId, filename, text, limit) =>
+      this.sees(noteId)
+        ? this.writeAssistantText(noteId, filename, text, limit)
+        : { ok: false, reason: 'missing', filename: null, contentType: null, size: null },
   };
 
   // --- Notes: the repository, one for one -----------------------------------------------
