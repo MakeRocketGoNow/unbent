@@ -1,6 +1,8 @@
 import { useQueries, useQuery } from '@tanstack/react-query';
 import { Link, createFileRoute } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
+import { FULL_GRANT, type AssistantGrant } from '@unbent/shared';
+import { AssistantAccess } from '../components/AssistantAccess.js';
 import { Button } from '../components/Button.js';
 import { Confirm } from '../components/Confirm.js';
 import { SOURCE_URL } from '../components/FrontPage.js';
@@ -11,7 +13,8 @@ import { chatgptInstructions } from '../chatgpt-instructions.js';
 import { claudeInstructions } from '../claude-instructions.js';
 import { claudeProjectInstructions } from '../claude-project-instructions.js';
 import { mcpSetupPrompt } from '../mcp-setup-prompt.js';
-import { request } from '../notes-api.js';
+import { grantIsEmpty, grantSummary } from '../assistant-access.js';
+import { listAssistantGrants, request, saveAssistantGrant } from '../notes-api.js';
 import { notebookFieldsQuery, notebooksQuery } from '../queries.js';
 import type { InstructionNotebook } from '../standing-instructions.js';
 
@@ -212,6 +215,14 @@ function StandingInstructions() {
  * "Claude stopped working" is a confusing thing to discover later if the button was hit by
  * accident.
  *
+ * Each row also says what its assistant was given (MAK-264), in the words the consent
+ * screen used, and "Change access" opens the consent screen's own two questions under
+ * that row, where the row is, rather than on a page of their own: what is being changed
+ * is one assistant's, and it stays in view with its name above it. One row is open at a
+ * time. Save is what applies it, since a tick that took effect as it was made would let
+ * a slip of the thumb hand an assistant a notebook for as long as it took to notice;
+ * the assistant is held to what is saved from its next call.
+ *
  * Called "AI assistants" in the settings tabs, though the route is still `connected-apps`
  * so older links keep working. "Connected apps" read as account sign-ins or integrations,
  * and nothing about it said this was where Claude goes. "MCP" was considered and rejected:
@@ -225,10 +236,24 @@ function ConnectedAppsPage() {
   const [confirming, setConfirming] = useState<Grant | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // What each restricted assistant was given, by client id; null until read, and when
+  // it could not be. A client not in it is unrestricted.
+  const [access, setAccess] = useState<Record<string, AssistantGrant> | null>(null);
+  // The row whose access is open for changing, and the choice being made in it.
+  const [editing, setEditing] = useState<{ clientId: string; draft: AssistantGrant; pickSome: boolean } | null>(null);
+  // Said once after a save, for a screen reader: the row's own line changing is silent.
+  const [saved, setSaved] = useState('');
+  const notebooks = useQuery(notebooksQuery());
 
   async function refresh() {
     try {
-      const result = await oauth2.getConsents();
+      const [result, given] = await Promise.all([
+        oauth2.getConsents(),
+        // Read beside the connections. If it fails the rows still list and can still be
+        // disconnected; they say nothing about access rather than guess at it.
+        listAssistantGrants().catch(() => null),
+      ]);
+      setAccess(given);
       const rows = result.data ?? [];
       /**
        * The consent rows carry a client id and nothing readable, so each name is a second
@@ -289,15 +314,36 @@ function ConnectedAppsPage() {
     }
   }
 
+  async function saveAccess() {
+    if (!editing) return;
+    if (grantIsEmpty(editing.draft)) {
+      setEditing({ ...editing, pickSome: true });
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await saveAssistantGrant(editing.clientId, editing.draft);
+      const name = grants?.find((g) => g.clientId === editing.clientId)?.name ?? 'This assistant';
+      setSaved(`${name}: ${grantSummary(editing.draft, notebooks.data?.notebooks ?? [])}.`);
+      setEditing(null);
+      await refresh();
+    } catch (err) {
+      setError((err as Error).message || 'Could not save that.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <section className="panel">
       <div className="panel-head">
         <h2>AI assistants</h2>
       </div>
       <p className="muted small">
-        Assistants and other apps you have allowed to use your notes on your behalf. Each
-        can read, create and change notes, and move them to the trash, until you disconnect
-        it here.
+        Assistants and other apps you have allowed to use your notes on your behalf. What
+        each can see and do is beside its name under Connected, where you can change it or
+        disconnect it.
       </p>
 
       <section className="settings-section">
@@ -345,27 +391,75 @@ function ConnectedAppsPage() {
           <p className="muted small">Nothing is connected.</p>
         ) : (
           <ul className="owned-list">
-            {grants.map((grant) => (
-              <li key={grant.id}>
-                <span>{grant.name ?? 'Unnamed assistant'}</span>
-                {grant.grantedAt && (
-                  <span className="muted small">
-                    connected {new Date(grant.grantedAt).toLocaleDateString()}
-                  </span>
-                )}
-                <Button
-                  variant="quiet"
-                  tone="danger"
-                  size="small"
-                  disabled={busy}
-                  onClick={() => setConfirming(grant)}
-                >
-                  Disconnect
-                </Button>
-              </li>
-            ))}
+            {grants.map((grant) => {
+              const given = access ? (access[grant.clientId] ?? FULL_GRANT) : null;
+              const open = editing?.clientId === grant.clientId ? editing : null;
+              const name = grant.name ?? 'Unnamed assistant';
+              return (
+                <li key={grant.id} className="connected-app">
+                  <div className="connected-app-row">
+                    <div className="connected-app-what">
+                      <span>{name}</span>
+                      <span className="muted small">
+                        {given && grantSummary(given, notebooks.data?.notebooks ?? [])}
+                        {given && grant.grantedAt && ' · '}
+                        {grant.grantedAt && `connected ${new Date(grant.grantedAt).toLocaleDateString()}`}
+                      </span>
+                    </div>
+                    <div className="connected-app-actions">
+                      {given && !open && (
+                        <Button
+                          variant="quiet"
+                          size="small"
+                          disabled={busy}
+                          aria-label={`Change access for ${name}`}
+                          onClick={() => {
+                            setSaved('');
+                            setEditing({ clientId: grant.clientId, draft: given, pickSome: false });
+                          }}
+                        >
+                          Change access
+                        </Button>
+                      )}
+                      <Button
+                        variant="quiet"
+                        tone="danger"
+                        size="small"
+                        disabled={busy}
+                        aria-label={`Disconnect ${name}`}
+                        onClick={() => setConfirming(grant)}
+                      >
+                        Disconnect
+                      </Button>
+                    </div>
+                  </div>
+                  {open && (
+                    <div className="connected-app-edit">
+                      <AssistantAccess
+                        value={open.draft}
+                        onChange={(draft) => setEditing({ clientId: grant.clientId, draft, pickSome: false })}
+                        notebooks={notebooks.data}
+                        disabled={busy}
+                        error={open.pickSome ? 'Pick at least one notebook, or choose All notebooks.' : null}
+                      />
+                      <div className="device-actions">
+                        <Button disabled={busy} onClick={() => void saveAccess()}>
+                          {busy ? 'Saving…' : 'Save'}
+                        </Button>
+                        <Button variant="quiet" disabled={busy} onClick={() => setEditing(null)}>
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         )}
+        <span className="visually-hidden" role="status">
+          {saved}
+        </span>
       </section>
 
       {confirming && (

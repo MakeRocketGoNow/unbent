@@ -4953,18 +4953,63 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
    the text above it uses: narrow enough to read as an afterthought rather than the
    point of the page. */
 .owned-list { list-style: none; width: 100%; margin: 0.75rem 0 0; padding: 0; max-width: 46rem; }
-.owned-list li {
+/* Its own items only (`>`): a connected app's row can open a list of notebooks inside
+   itself, whose items are not rows of this one and were ruled and pushed right as if
+   they were. */
+.owned-list > li {
   display: flex;
   align-items: center;
   gap: 0.5rem;
   padding: 0.6rem 0;
   border-top: 1px solid var(--border);
 }
-.owned-list li:last-child { border-bottom: 1px solid var(--border); }
+.owned-list > li:last-child { border-bottom: 1px solid var(--border); }
 /* The name takes the slack so the action stays at the right edge; min-width lets a long
    app name or filename wrap rather than pushing the button off the row. */
-.owned-list li > :first-child { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-.owned-list li > :last-child { flex: none; margin-left: auto; }
+.owned-list > li > :first-child { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.owned-list > li > :last-child { flex: none; margin-left: auto; }
+
+/*
+   A connected assistant's row (Settings > AI assistants): its name over what it was
+   given, its two actions at the right, and under them, when "Change access" is
+   pressed, the consent screen's two questions.
+
+   A block and not the list's own flex row, because the editor opens inside the item,
+   under the row it belongs to: the list's rule puts an item's last child at the right
+   edge, which is right for a passkey's one button and wrong for a form.
+*/
+.owned-list > li.connected-app { display: block; }
+/* And its two children are a row and a form, not the name and the button the list's
+   rule sizes: undone here, so the form is not pushed to the right edge. */
+.owned-list > li.connected-app > :last-child { margin-left: 0; }
+.connected-app-row {
+  display: flex;
+  align-items: center;
+  /* Wraps on a phone, actions under the name, and a long name never squeezes them. */
+  flex-wrap: wrap;
+  gap: 0.35rem 0.75rem;
+}
+.connected-app-what {
+  flex: 1 1 14rem;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  overflow-wrap: anywhere;
+}
+.connected-app-actions { display: flex; gap: 0.25rem; flex: none; margin-left: auto; }
+/* The quiet buttons have padding and no border, so at the row's edge their label sat
+   in from where the rule under the row ends; pulled out by that padding, the last
+   label ends where the row does. On a phone the pair wraps under the name and stays
+   at the right, where a row's actions are at every width. */
+.connected-app-actions { margin-right: -0.5rem; }
+.connected-app-edit {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1rem;
+  padding: 1rem 0 0.5rem;
+}
 
 /*
    Settings › About: a label down the side and its value beside it, ruled like the passkey
