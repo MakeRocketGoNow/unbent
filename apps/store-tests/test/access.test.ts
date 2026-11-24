@@ -203,6 +203,17 @@ describe('a restricted connection reads only what it was given', () => {
     // The account's own list has the rest, so this is the grant's doing.
     expect((await s.stub.listTags()).map((t) => t.name).sort()).toEqual(['kitchen', 'loose', 'only-outside', 'shared']);
 
+    // A grant of most of the library is counted from what it leaves out, and must say
+    // the same: here everything but the Ledger and the loose note.
+    const most = { notebooks: [s.letters.id, s.recipes.id], unfiled: false };
+    await s.stub.remove(s.loose.id);
+    await s.stub.remove(s.entry.id);
+    const extra = await s.stub.create({ id: crypto.randomUUID(), title: 'Another ledger entry', body: '', tags: ['shared', 'only-outside'], notebook: 'Ledger' });
+    // Three live notes, two of them the grant's: more than half, so the other side is read.
+    expect(await s.stub.count()).toBe(3);
+    expect((await as<Array<{ name: string; count: number }>>(s.stub, most, 'listTags')).map((t) => [t.name, t.count])).toEqual([['shared', 2], ['kitchen', 1]]);
+    await s.stub.remove(extra.id);
+
     expect(await as(s.stub, s.grant, 'tagCounts', { tags: ['shared'] })).toMatchObject([{ name: 'kitchen', count: 1 }]);
     expect(await as(s.stub, s.grant, 'tagCounts', { notebook: 'Ledger' })).toEqual([]);
   });

@@ -2665,18 +2665,64 @@ export class NotesStore {
   listTags(): Array<{ id: string; name: string; count: number; color: number | null }> {
     // The stored counts are of every notebook's notes, and a tag's name is itself
     // something a note says: a restricted connection is answered from the notes it may
-    // see, so a tag used only outside its grant is not listed and one used on both sides
-    // is counted on its own. That reads the grant's notes and their links, as
-    // `tagCounts` does for a notebook, where this is a row per tag.
-    if (this.access.current) return this.countTags({}, true);
-    // The count is the triggers', one row per tag. A tag whose notes are all in the trash
-    // has a count of zero and is left out, as it was when this joined the notes to count.
+    // see. See `tagsWithin`.
+    const access = this.access.current;
+    if (access) return this.tagsWithin(access);
     return this.sql.exec<{ id: string; name: string; count: number; color: number | null }>(
       `SELECT id, name, note_count AS count, color
          FROM tags
         WHERE note_count > 0
         ORDER BY note_count DESC, name COLLATE NOCASE`,
     );
+  }
+
+  /**
+   * `listTags` for a restricted connection (MAK-264): the tags its notes carry, counted
+   * over those notes alone, so a tag used only outside the grant is not named and one
+   * used on both sides is counted on its own.
+   *
+   * No stored count answers that, so notes and their tag links are read, and the side
+   * read is whichever is smaller. A small grant is counted directly. A grant of most of
+   * the library is counted as the stored per-tag counts less the tags of what it leaves
+   * out, which is the same number: a connection given everything but one notebook then
+   * reads that one notebook, where counting its own notes read nearly the whole
+   * archive on every call, about two and a half rows a note. `list_tags` is among the
+   * first things an assistant asks.
+   */
+  private tagsWithin(access: StoreAccess): Array<{ id: string; name: string; count: number; color: number | null }> {
+    const direct = this.grantSize(access) * 2 <= this.totals().live;
+    const side = direct ? access : this.complementOf(access);
+    const binds: Bind[] = [];
+    const where = accessCondition(side, binds, 'n.notebook_id');
+    // The notes of that side first, by the notebooks' own index, then each one's links
+    // by the primary key: the order `tagCounts` pins, for its reason.
+    const counted = new Map(
+      this.sql
+        .exec<{ tag_id: string; count: number }>(
+          `SELECT nt.tag_id, COUNT(*) AS count
+             FROM notes n
+            CROSS JOIN note_tags nt ON nt.note_id = n.id
+            WHERE n.deleted_at IS NULL AND ${where}
+            GROUP BY nt.tag_id`,
+          ...binds,
+        )
+        .map((r) => [r.tag_id, r.count]),
+    );
+    // Every tag with a live note, a row a tag, as the unrestricted list reads them.
+    const stored = this.sql.exec<{ id: string; name: string; count: number; color: number | null }>(
+      `SELECT id, name, note_count AS count, color FROM tags WHERE note_count > 0`,
+    );
+    return stored
+      .map((tag) => ({ ...tag, count: direct ? (counted.get(tag.id) ?? 0) : tag.count - (counted.get(tag.id) ?? 0) }))
+      .filter((tag) => tag.count > 0)
+      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+  }
+
+  /** Everything a grant leaves out, as a grant: the other notebooks, and the unfiled notes if it has none of them. */
+  private complementOf(access: StoreAccess): StoreAccess {
+    const granted = new Set(access.notebooks);
+    const rest = this.sql.exec<{ id: string }>(`SELECT id FROM notebooks`).filter((nb) => !granted.has(nb.id));
+    return { notebooks: rest.map((nb) => nb.id), unfiled: !access.unfiled };
   }
 
   /**
@@ -2708,14 +2754,6 @@ export class NotesStore {
     notebook?: string | undefined;
     tags?: string[] | undefined;
   }): Array<{ id: string; name: string; count: number }> {
-    return this.countTags(filter, false);
-  }
-
-  /** `tagCounts`, with each tag's colour when `colors` asks: what `listTags` answers a restricted connection with. */
-  private countTags<C extends boolean>(
-    filter: { notebook?: string | undefined; tags?: string[] | undefined },
-    colors: C,
-  ): Array<{ id: string; name: string; count: number } & (C extends true ? { color: number | null } : unknown)> {
     const binds: Bind[] = [];
     const conditions = [
       liveCondition(false, filter.tags),
@@ -2728,8 +2766,8 @@ export class NotesStore {
     // Counted by tag id first and named after, so the tags table is read once per tag in
     // the set rather than once per link: a third of the reads for a notebook of notes
     // with one or two tags each.
-    return this.sql.exec<{ id: string; name: string; count: number } & (C extends true ? { color: number | null } : unknown)>(
-      `SELECT t.id, t.name, c.count${colors ? ', t.color' : ''}
+    return this.sql.exec<{ id: string; name: string; count: number }>(
+      `SELECT t.id, t.name, c.count
          FROM (SELECT nt.tag_id, COUNT(*) AS count
                  FROM notes n
                 CROSS JOIN note_tags nt ON nt.note_id = n.id

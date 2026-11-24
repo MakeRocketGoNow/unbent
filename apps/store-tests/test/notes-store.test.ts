@@ -1575,6 +1575,9 @@ describe('rows read on an archive-sized store', () => {
       await measure('restricted: search of a tiny grant', () => stub.scoped({ notebooks: ['nb5'], unfiled: false }, 'search', ['receipt', 50])),
       await measure('restricted: search of a large grant', () => stub.scoped({ notebooks: ['nb0', 'nb1', 'nb2', 'nb3'], unfiled: false }, 'search', ['receipt', 50])),
       await measure('restricted: tags of a tiny grant', () => stub.scoped({ notebooks: ['nb5'], unfiled: false }, 'listTags', [])),
+      // Everything but the small notebook: counted from what it leaves out, not from its own 2,970 notes.
+      await measure('restricted: tags of nearly everything', () => stub.scoped({ notebooks: ['nb0', 'nb1', 'nb2', 'nb3', 'nb4'], unfiled: true }, 'listTags', [])),
+      await measure('restricted: tags of half the library', () => stub.scoped({ notebooks: ['nb0', 'nb1'], unfiled: false }, 'listTags', [])),
       await measure('restricted: a note by id', () => stub.scoped({ notebooks: ['nb5', 'nb3'], unfiled: false }, 'get', ['n00003'])),
       await measure('restricted: a note outside the grant', () => stub.scoped({ notebooks: ['nb5', 'nb3'], unfiled: false }, 'get', ['n00002'])),
     ];
@@ -1793,8 +1796,15 @@ describe('rows read on an archive-sized store', () => {
       'restricted: rare tag page': 60,
       'restricted: search of a tiny grant': 600,
       'restricted: search of a large grant': 400,
-      // Thirty notes and their links, as a small notebook's tags are (77).
+      // Thirty notes and their links, as a small notebook's tags are (77), and a row
+      // for each tag's name and colour.
       'restricted: tags of a tiny grant': 120,
+      // A grant's tags are counted from the smaller of what it holds and what it leaves
+      // out. Everything but the thirty-note notebook reads those thirty (102); counted
+      // from its own 2,970 notes it was about 7,500. Half the library is the worst a
+      // grant can be, and costs what half the library's tags cost: 3,104 for 1,188 notes.
+      'restricted: tags of nearly everything': 200,
+      'restricted: tags of half the library': 3500,
       // The note, and one row more to ask whether the grant reaches it; a note it does
       // not reach is that row and nothing of the note.
       'restricted: a note by id': 20,
