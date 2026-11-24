@@ -260,6 +260,19 @@ describe('a restricted connection writes only where it was given', () => {
     expect(again).toMatchObject({ existing: true, note: { title: 'A letter' } });
   });
 
+  it('will not say a title is taken in a notebook it was not given', async () => {
+    const s = await library('access-skip');
+    // Skipping what is already there answers with the note that is: its id and title.
+    await expect(as(s.stub, s.grant, 'createMany', [input({ title: 'A ledger entry', notebook: 'Ledger' })], { skipExisting: true })).rejects.toMatchObject(refused('notebook'));
+    await expect(as(s.stub, s.grant, 'createMany', [input({ title: 'A loose note' })], { skipExisting: true })).rejects.toMatchObject(refused('unfiled'));
+    // And refused the same for a title that is not there, so the refusal says nothing.
+    await expect(as(s.stub, s.grant, 'createMany', [input({ title: 'No such entry', notebook: 'Ledger' })], { skipExisting: true })).rejects.toMatchObject(refused('notebook'));
+    // In its own notebook a skip is a skip, as for anyone.
+    const own = await as<Array<{ id: string; skipped: boolean }>>(s.stub, s.grant, 'createMany', [input({ title: 'a letter', notebook: 'Letters' })], { skipExisting: true });
+    expect(own).toEqual([{ id: s.letter.id, title: 'A letter', skipped: true }]);
+    expect(await s.stub.count()).toBe(4);
+  });
+
   it('changes, trashes and restores only notes it can see', async () => {
     const s = await library('access-update');
     expect(await as<Note>(s.stub, s.grant, 'update', s.letter.id, { title: 'A letter, edited' })).toMatchObject({ title: 'A letter, edited' });

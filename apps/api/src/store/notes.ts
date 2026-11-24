@@ -1160,6 +1160,14 @@ export class NotesStore {
     admit?: (adding: number) => void,
   ): Array<{ id: string; title: string; skipped: boolean }> {
     return this.sql.tx(() => {
+      // A restricted connection's batch has every destination settled before any title
+      // is matched (MAK-264). `liveTitleIn` below reads whatever notebook it is asked
+      // about, and a skip answers with the note that is already there, its id and its
+      // own spelling of the title: asked about a notebook outside the grant, that was a
+      // way to learn a note of that title is in it, without the create (and so
+      // `resolveNotebook`'s refusal) ever running. Under a grant the resolver writes
+      // nothing, so asking it first costs a row an input and makes no notebook.
+      if (this.access.current) for (const input of inputs) this.resolveNotebook(input.notebook);
       // Folded as SQLite's NOCASE folds, ASCII only, so the batch and the index agree on
       // what a duplicate is.
       const key = (notebook: string | null | undefined, title: string) =>
