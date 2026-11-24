@@ -8,11 +8,11 @@ const nb = (id: string, name: string, count = 3): NotebookSummary => ({ id, name
 const library = { notebooks: [nb('a', 'Coupons', 12), nb('b', 'Receipts', 7), nb('c', 'Travel', 26)], unfiled: 172 };
 
 /** The picker, holding its own value as the consent screen does, with the last value it gave on show. */
-function Harness({ start = FULL_GRANT, loading = false, error }: { start?: AssistantGrant; loading?: boolean; error?: string }) {
+function Harness({ start = FULL_GRANT, loading = false, failed = false, error }: { start?: AssistantGrant; loading?: boolean; failed?: boolean; error?: string }) {
   const [value, setValue] = useState(start);
   return (
     <>
-      <AssistantAccess value={value} onChange={setValue} notebooks={loading ? undefined : library} error={error} />
+      <AssistantAccess value={value} onChange={setValue} notebooks={loading || failed ? undefined : library} failed={failed} error={error} />
       {/* Not an <output>, which is a status of its own and would be found beside the picker's. */}
       <pre data-testid="value">{JSON.stringify(value)}</pre>
     </>
@@ -85,11 +85,15 @@ describe('AssistantAccess', () => {
     expect(value().readOnly).toBe(false);
   });
 
-  it('drops the id of a notebook that is gone the first time the list is changed', () => {
-    render(<Harness start={{ notebooks: ['a', 'deleted-since'], unfiled: false, readOnly: false }} />);
+  // An id the page has no row for is a deleted notebook, or one this device has not been
+  // sent yet. Either way a tick elsewhere is not a reason to take it out of the grant.
+  it('keeps a granted notebook it has no row for when another box is ticked', () => {
+    render(<Harness start={{ notebooks: ['a', 'not-here-yet'], unfiled: false, readOnly: false }} />);
     expect(screen.getByRole('status').textContent).toBe('1 of 3 notebooks picked');
     fireEvent.click(screen.getByRole('checkbox', { name: /Receipts/ }));
-    expect(value().notebooks).toEqual(['a', 'b']);
+    expect(value().notebooks).toEqual(['a', 'b', 'not-here-yet']);
+    fireEvent.click(screen.getByRole('checkbox', { name: /Coupons/ }));
+    expect(value().notebooks).toEqual(['b', 'not-here-yet']);
   });
 
   it('says why it cannot be allowed, tied to the list it is about', () => {
@@ -103,5 +107,11 @@ describe('AssistantAccess', () => {
     render(<Harness start={{ notebooks: [], unfiled: false, readOnly: false }} loading />);
     expect(screen.getByText('Loading your notebooks…')).toBeTruthy();
     expect(screen.queryByRole('list', { name: 'Notebooks it can see' })).toBeNull();
+  });
+
+  it('says so when the notebooks could not be loaded, and does not go on saying "Loading"', () => {
+    render(<Harness start={{ notebooks: [], unfiled: false, readOnly: false }} failed />);
+    expect(screen.getByRole('alert').textContent).toContain('could not be loaded');
+    expect(screen.queryByText('Loading your notebooks…')).toBeNull();
   });
 });

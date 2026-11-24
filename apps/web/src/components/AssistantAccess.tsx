@@ -5,8 +5,10 @@ import { InboxRowIcon, NotebookGlyph } from './icons.js';
 interface AssistantAccessProps {
   value: AssistantGrant;
   onChange: (next: AssistantGrant) => void;
-  /** The account's notebooks and how many notes are in none; undefined while they load. */
+  /** The account's notebooks and how many notes are in none; undefined while they load, or when `failed`. */
   notebooks: { notebooks: NotebookSummary[]; unfiled: number } | undefined;
+  /** The notebooks could not be read: said in place of the list, which would otherwise say "Loading" for good. */
+  failed?: boolean;
   disabled?: boolean;
   /** Shown under the notebook list, and tied to it for a screen reader: why this cannot be allowed yet. */
   error?: string | null;
@@ -42,7 +44,7 @@ interface AssistantAccessProps {
  * Controlled, and it saves nothing: the consent screen saves on Allow and Settings on
  * Save, each with its own failure to report.
  */
-export function AssistantAccess({ value, onChange, notebooks, disabled, error }: AssistantAccessProps) {
+export function AssistantAccess({ value, onChange, notebooks, failed, disabled, error }: AssistantAccessProps) {
   const id = useId();
   const [query, setQuery] = useState('');
   const some = value.notebooks !== null;
@@ -58,8 +60,18 @@ export function AssistantAccess({ value, onChange, notebooks, disabled, error }:
     const next = new Set(picked);
     if (next.has(notebookId)) next.delete(notebookId);
     else next.add(notebookId);
-    // In the notebooks' own order, and without the ids of notebooks that are gone.
-    onChange({ ...value, notebooks: all.filter((nb) => next.has(nb.id)).map((nb) => nb.id) });
+    // The notebooks shown, in their own order, then any id this device does not hold.
+    // Such an id is either a notebook since deleted, which grants nothing and costs
+    // nothing to keep, or one this device has not been sent yet: a library still
+    // filling on a phone, or a notebook made elsewhere a moment ago. Dropping those
+    // (which this did at first) took a notebook away from an assistant because a
+    // different box was ticked, with no sign of it on the page. A tick changes the box
+    // it was made in and no other.
+    const shown = new Set(all.map((nb) => nb.id));
+    onChange({
+      ...value,
+      notebooks: [...all.filter((nb) => next.has(nb.id)).map((nb) => nb.id), ...(value.notebooks ?? []).filter((id) => !shown.has(id))],
+    });
   };
 
   return (
@@ -89,7 +101,7 @@ export function AssistantAccess({ value, onChange, notebooks, disabled, error }:
           <span>
             <span className="access-choice-name">Only some notebooks</span>
             <span className="access-choice-hint">
-              Just the ones you pick. A notebook you add later is not included until you add it here.
+              Just the ones you pick. A notebook you add later is not included until you pick it too.
             </span>
           </span>
         </label>
@@ -110,7 +122,9 @@ export function AssistantAccess({ value, onChange, notebooks, disabled, error }:
               />
             </search>
             {!notebooks ? (
-              <p className="muted small access-empty">Loading your notebooks…</p>
+              <p className={`small access-empty ${failed ? 'bad' : 'muted'}`} role={failed ? 'alert' : undefined}>
+                {failed ? 'Your notebooks could not be loaded, so there is nothing to pick from. Try again in a moment.' : 'Loading your notebooks…'}
+              </p>
             ) : (
               <ul
                 className="access-list"
