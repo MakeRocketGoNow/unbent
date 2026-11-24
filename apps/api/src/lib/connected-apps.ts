@@ -37,7 +37,7 @@ export class ConnectedAppsRepo {
    * matters more here because the id arrives from the browser.
    *
    * Refresh tokens go first. They are what lets a client mint new access tokens, so if only
-   * one of the three deletes were to land, that is the one worth having.
+   * one of the deletes were to land, that is the one worth having.
    */
   async disconnect(consentId: string): Promise<boolean> {
     const consent = await this.db
@@ -57,6 +57,16 @@ export class ConnectedAppsRepo {
     await this.db
       .prepare(`DELETE FROM oauthConsent WHERE id = ?1 AND userId = ?2`)
       .bind(consentId, this.userId)
+      .run();
+    // And what it was given (MAK-264). With the consent gone the row grants nothing,
+    // but left behind it would be what a reconnect started from: someone who gave an
+    // assistant two notebooks, disconnected it, and later connected it again choosing
+    // nothing in particular would find it still held to the two. Last, so a failure
+    // before it leaves a grant with no consent, which is harmless, and never the
+    // reverse.
+    await this.db
+      .prepare(`DELETE FROM assistant_grants WHERE user_id = ?1 AND client_id = ?2`)
+      .bind(this.userId, consent.clientId)
       .run();
     return true;
   }

@@ -45,7 +45,9 @@ const READS: ReadonlySet<string> = new Set(['GET', 'HEAD', 'OPTIONS']);
  *     notebook, a tag, a file, a note's history) and the way back out of the trash,
  *     which creates nothing and is the undo of the one write that is allowed;
  *   - the account itself: signing in and out, passkeys, its name, deleting it
- *     (Better Auth's routes), agreeing to the terms, disconnecting an app;
+ *     (Better Auth's routes), agreeing to the terms, disconnecting an app, and saying
+ *     what a connected app may reach, which writes no note and is how someone takes a
+ *     notebook back from an assistant, whatever their plan;
  *   - the way out of being lapsed: the checkout, the portal, the webhook;
  *   - a read that travels as a POST, because its arguments are a body: the search index's
  *     fetch of files' text;
@@ -68,6 +70,7 @@ const EXEMPT: ReadonlyArray<[method: string, pattern: string]> = [
   ['*', '/api/billing/*'],
   ['POST', '/api/legal/agree'],
   ['POST', '/api/connected-apps/:x/disconnect'],
+  ['PUT', '/api/connected-apps/grants/:x'],
   ['POST', '/api/client-errors'],
   ['*', '/api/admin/*'],
   ['*', '/api/mcp'],

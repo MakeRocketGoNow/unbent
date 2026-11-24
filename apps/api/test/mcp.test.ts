@@ -1759,3 +1759,242 @@ describe('get_attachment on a scanned PDF', () => {
     expect(answer.next).toMatch(/That was the last page/);
   });
 });
+
+/**
+ * A connection given some notebooks and not the whole library (MAK-264), end to end:
+ * the grant saved over HTTP as the consent screen saves it, the token minted the
+ * ordinary way, and every tool the endpoint offers called as that connection.
+ *
+ * The store's own suite (apps/store-tests/test/access.test.ts) proves each method. What
+ * only this can prove is that nothing between a tool and the store goes round it: a
+ * tool that read through some other path, an answer that carried a name the store
+ * never returned, a route the token should not open. So the test is written against
+ * the tool list the server gives, not against a list kept here: a tool added later is
+ * called with no arguments chosen for it and the test fails by name until it has some.
+ */
+describe('a connection given only some notebooks', () => {
+  const stamp = Date.now();
+  /** In the private note's title, body, tag, field name and field value, and in nothing a call here passes in. */
+  const SECRET = `zebrafinch${stamp}`;
+  const shared = `Shelf ${stamp}`;
+  const vault = `Vault ${stamp}`;
+
+  let cookie: string;
+  let trusted: string;
+  let restricted: string;
+  let restrictedClientId: string;
+  let sharedId: string;
+  let vaultId: string;
+  let vaultFieldId: string;
+  let sharedNoteId: string;
+  let vaultNoteId: string;
+  let vaultTrashedId: string;
+  let looseNoteId: string;
+
+  const call = async (token: string, name: string, args: Record<string, unknown> = {}) => {
+    const res = await mcp(token, 'tools/call', { name, arguments: args });
+    return { raw: JSON.stringify(res.body), isError: res.body.result?.isError === true || 'error' in res.body, text: toolText(res.body) };
+  };
+  const parsed = async (token: string, name: string, args: Record<string, unknown> = {}) => JSON.parse((await call(token, name, args)).text);
+  const saveGrant = (clientId: string, grant: { notebooks: string[] | null; unfiled: boolean; readOnly: boolean }) =>
+    fetch(`${BASE}/api/connected-apps/grants/${clientId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Cookie: cookie, Origin: ORIGIN },
+      body: JSON.stringify(grant),
+    });
+  const toolNames = async (token: string) =>
+    ((await mcp(token, 'tools/list')).body.result.tools as Array<{ name: string }>).map((t) => t.name).sort();
+
+  beforeAll(async () => {
+    cookie = await signUp(`mcp-grant-${stamp}@example.test`, 'carol-password-123', 'Carol');
+    trusted = await tokenFor(cookie, await registerClient('Trusted Assistant'), RESOURCE);
+
+    sharedId = (await parsed(trusted, 'create_notebook', { name: shared })).id;
+    vaultId = (await parsed(trusted, 'create_notebook', { name: vault })).id;
+    vaultFieldId = (await parsed(trusted, 'create_notebook_field', { notebookId: vaultId, name: `Owner ${SECRET}`, type: 'text' })).id;
+    sharedNoteId = (await parsed(trusted, 'create_note', { title: 'On the shelf', body: 'harbour lights', notebook: shared, tags: [`both-${stamp}`] })).id;
+    vaultNoteId = (
+      await parsed(trusted, 'create_note', {
+        title: `Deed ${SECRET}`,
+        body: `harbour lights ${SECRET}`,
+        notebook: vault,
+        tags: [`both-${stamp}`, `tag-${SECRET}`],
+        fields: { [`Owner ${SECRET}`]: `value ${SECRET}` },
+      })
+    ).id;
+    vaultTrashedId = (await parsed(trusted, 'create_note', { title: `Binned ${SECRET}`, body: SECRET, notebook: vault })).id;
+    await call(trusted, 'delete_note', { noteId: vaultTrashedId });
+    looseNoteId = (await parsed(trusted, 'create_note', { title: `Loose ${SECRET}`, body: `harbour lights ${SECRET}` })).id;
+
+    // The grant first and the consent second, as the consent screen does it: there is
+    // never a moment with a token and without the limits.
+    restrictedClientId = await registerClient('Restricted Assistant');
+    expect((await saveGrant(restrictedClientId, { notebooks: [sharedId], unfiled: false, readOnly: false })).status).toBe(204);
+    restricted = await tokenFor(cookie, restrictedClientId, RESOURCE);
+  }, 60_000);
+
+  it('answers the account with the grants it has saved, and no other account\'s', async () => {
+    const mine = await fetch(`${BASE}/api/connected-apps/grants`, { headers: { Cookie: cookie, Origin: ORIGIN } });
+    expect(await mine.json()).toEqual({ grants: { [restrictedClientId]: { notebooks: [sharedId], unfiled: false, readOnly: false } } });
+    // Alice has connected an assistant of her own and restricted nothing.
+    const hers = await fetch(`${BASE}/api/connected-apps/grants`, { headers: { Cookie: alice.cookie, Origin: ORIGIN } });
+    expect(await hers.json()).toEqual({ grants: {} });
+    // And cannot be given a grant for a client that does not exist, or one that is not a grant.
+    expect((await saveGrant('no-such-client', { notebooks: [], unfiled: false, readOnly: true })).status).toBe(404);
+    const malformed = await fetch(`${BASE}/api/connected-apps/grants/${restrictedClientId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Cookie: cookie, Origin: ORIGIN },
+      body: JSON.stringify({ notebooks: 'all' }),
+    });
+    expect(malformed.status).toBe(400);
+  });
+
+  it('does not let the connection\'s token reach the account any other way', async () => {
+    for (const path of ['/api/notes', '/api/notebooks', `/api/notes/${vaultNoteId}`, '/api/connected-apps/grants', '/api/changes?since=0']) {
+      const res = await fetch(`${BASE}${path}`, { headers: { Authorization: `Bearer ${restricted}`, Origin: ORIGIN } });
+      expect(res.status, path).toBe(401);
+    }
+    // Above all, not to widen its own grant.
+    const widen = await fetch(`${BASE}/api/connected-apps/grants/${restrictedClientId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${restricted}`, Origin: ORIGIN },
+      body: JSON.stringify({ notebooks: null, unfiled: true, readOnly: false }),
+    });
+    expect(widen.status).toBe(401);
+  });
+
+  it('sees its own notebook and works in it', async () => {
+    const notebooks = await parsed(restricted, 'list_notebooks');
+    expect(notebooks.notebooks.map((n: { name: string }) => n.name)).toEqual([shared]);
+    const found = await parsed(restricted, 'search_notes', { query: 'harbour' });
+    expect(found.results.map((r: { id: string }) => r.id)).toEqual([sharedNoteId]);
+    const listed = await parsed(restricted, 'list_notes', {});
+    expect(listed.notes.map((n: { id: string }) => n.id)).toEqual([sharedNoteId]);
+    expect(listed.total).toBe(1);
+    const made = await parsed(restricted, 'create_note', { title: 'Filed by the restricted one', notebook: shared });
+    expect((await parsed(trusted, 'get_note', { noteId: made.id })).notebook).toBe(shared);
+    await call(trusted, 'delete_note', { noteId: made.id });
+  });
+
+  /**
+   * Every tool, called as the restricted connection with arguments that point at what
+   * it was not given: the private note by id, the private notebook by id and by name,
+   * the tag only private notes carry. Several calls a tool where it has several ways
+   * in. `SECRET` is in none of these arguments, so if it is in an answer the answer
+   * read it from the store.
+   */
+  const reaches = (): Record<string, Array<Record<string, unknown>>> => ({
+    search_notes: [{ query: 'harbour' }, { query: 'zebrafinch*' }, { query: 'harbour', notebook: vault }, { query: 'harbour', attachmentSummaries: true }, { query: 'Deed' }, { query: 'value' }, { query: 'Owner' }],
+    list_notes: [{}, { notebook: vault }, { trashed: true }, { tag: [`both-${stamp}`] }, { untagged: true }, { compact: true, limit: 500 }, { sort: 'title', order: 'asc' }, { attachmentSummaries: true }],
+    get_note: [{ noteId: vaultNoteId }, { noteId: vaultTrashedId }, { noteId: looseNoteId }],
+    get_attachment_text: [{ noteId: vaultNoteId, filename: 'scan.pdf' }],
+    get_attachment: [{ noteId: vaultNoteId, filename: 'scan.pdf' }],
+    list_notebooks: [{}],
+    list_tags: [{}, { notebook: vault }, { tag: [`both-${stamp}`] }],
+    create_note: [{ title: 'Reaching in', notebook: vault }, { title: 'Reaching nowhere' }, { title: 'Making a notebook', notebook: `Made ${stamp}` }],
+    create_notes: [{ notes: [{ title: 'Batch in', notebook: shared }, { title: 'Batch out', notebook: vault }] }],
+    update_note: [{ noteId: vaultNoteId, title: 'Reached' }, { noteId: sharedNoteId, notebook: vault }, { noteId: sharedNoteId, notebook: null }],
+    edit_note: [{ noteId: vaultNoteId, mode: 'append', content: 'reached' }, { noteId: vaultNoteId, mode: 'replace', find: 'harbour', content: 'reached' }],
+    update_note_tags: [{ noteIds: [vaultNoteId, looseNoteId], add: ['reached'] }, { noteIds: [vaultNoteId], remove: [`both-${stamp}`] }],
+    update_note_fields: [{ noteIds: [vaultNoteId], fields: { Anything: 'reached' } }],
+    rename_tag: [{ tag: `both-${stamp}`, name: 'reached' }],
+    delete_tag: [{ tag: `both-${stamp}` }],
+    move_notes: [{ noteIds: [vaultNoteId, looseNoteId], notebook: shared }, { noteIds: [sharedNoteId], notebook: vault }, { noteIds: [sharedNoteId], notebook: null }],
+    delete_note: [{ noteId: vaultNoteId }, { noteId: looseNoteId }],
+    restore_note: [{ noteId: vaultTrashedId }],
+    delete_notes: [{ noteIds: [vaultNoteId, looseNoteId] }],
+    restore_notes: [{ noteIds: [vaultTrashedId] }],
+    create_notebook: [{ name: `Made ${stamp}` }],
+    update_notebook: [{ notebookId: vaultId, purpose: 'reached' }, { notebookId: vaultId, name: `Renamed ${stamp}` }],
+    delete_notebook: [{ notebookId: vaultId }, { notebookId: sharedId }, { notebookId: vaultId, trashNotes: true }],
+    create_notebook_field: [{ notebookId: vaultId, name: 'Reached', type: 'text' }],
+    update_notebook_field: [{ notebookId: vaultId, fieldId: vaultFieldId, name: 'Reached' }],
+    set_attachment_text: [{ noteId: vaultNoteId, filename: 'scan.pdf', text: 'reached' }],
+    add_attachment: [{ noteId: vaultNoteId, url: 'https://example.com/reached.pdf' }],
+    prepare_attachment_upload: [{ noteId: vaultNoteId, filename: 'reached.pdf' }],
+    clip_web_page: [{ url: 'http://127.0.0.1:9/nothing-listens-here', notebook: vault }],
+    send_feedback: [],
+  });
+
+  it('is shown nothing of a notebook it was not given, by any tool', async () => {
+    const attempts = reaches();
+    const offered = await toolNames(restricted);
+    expect(offered.filter((name) => !(name in attempts)), 'tools this test has no reach for').toEqual([]);
+
+    const leaks: string[] = [];
+    for (const name of offered) {
+      for (const args of attempts[name]!) {
+        const answer = await call(restricted, name, args);
+        if (answer.raw.includes(SECRET)) leaks.push(`${name} ${JSON.stringify(args)}`);
+        // The private notebook's name too, wherever the call did not itself say it.
+        if (!JSON.stringify(args).includes(vault) && answer.raw.includes(vault)) leaks.push(`${name} ${JSON.stringify(args)} (notebook name)`);
+      }
+    }
+    expect(leaks).toEqual([]);
+  }, 120_000);
+
+  it('has changed nothing outside it, after all of that', async () => {
+    const deed = await parsed(trusted, 'get_note', { noteId: vaultNoteId });
+    expect(deed).toMatchObject({ title: `Deed ${SECRET}`, body: `harbour lights ${SECRET}`, notebook: vault });
+    expect([...deed.tags].sort()).toEqual([`both-${stamp}`, `tag-${SECRET}`].sort());
+    expect(JSON.stringify(deed.fields)).toContain(`value ${SECRET}`);
+    expect((await parsed(trusted, 'get_note', { noteId: looseNoteId })).notebook ?? null).toBeNull();
+    // Still in the trash, and still there.
+    expect((await parsed(trusted, 'list_notes', { trashed: true })).notes.map((n: { id: string }) => n.id)).toContain(vaultTrashedId);
+
+    const notebooks = (await parsed(trusted, 'list_notebooks')).notebooks as Array<{ id: string; name: string; purpose: string | null; fields?: Array<{ name: string }> }>;
+    expect(notebooks.map((n) => n.name).sort()).toEqual([shared, vault].sort());
+    const kept = notebooks.find((n) => n.id === vaultId)!;
+    expect(kept.purpose ?? null).toBeNull();
+    expect(JSON.stringify(kept)).toContain(`Owner ${SECRET}`);
+    expect(JSON.stringify(kept)).not.toContain('Reached');
+
+    const tags = (await parsed(trusted, 'list_tags')).tags as Array<{ name: string }>;
+    expect(tags.map((t) => t.name)).toEqual(expect.arrayContaining([`both-${stamp}`, `tag-${SECRET}`]));
+    expect(tags.map((t) => t.name)).not.toContain('reached');
+    // Its own note was its to move, and the two moves out of the grant were refused.
+    expect((await parsed(trusted, 'get_note', { noteId: sharedNoteId })).notebook).toBe(shared);
+  });
+
+  it('is held to a changed grant from its very next call, on the token it already has', async () => {
+    expect((await saveGrant(restrictedClientId, { notebooks: [sharedId, vaultId], unfiled: false, readOnly: false })).status).toBe(204);
+    expect((await parsed(restricted, 'get_note', { noteId: vaultNoteId })).title).toBe(`Deed ${SECRET}`);
+    expect((await call(restricted, 'get_note', { noteId: looseNoteId })).isError).toBe(true);
+
+    expect((await saveGrant(restrictedClientId, { notebooks: [sharedId], unfiled: false, readOnly: false })).status).toBe(204);
+    expect((await call(restricted, 'get_note', { noteId: vaultNoteId })).isError).toBe(true);
+  });
+
+  it('is given no tool that writes once it is read only', async () => {
+    const before = await toolNames(restricted);
+    expect((await saveGrant(restrictedClientId, { notebooks: [sharedId], unfiled: false, readOnly: true })).status).toBe(204);
+    const after = await toolNames(restricted);
+    expect(after).toEqual(['get_attachment', 'get_attachment_text', 'get_note', 'list_notebooks', 'list_notes', 'list_tags', 'search_notes', 'send_feedback']);
+    expect(before.length).toBeGreaterThan(after.length);
+    // Not merely unlisted: a client that calls one by name anyway is refused.
+    expect((await call(restricted, 'delete_note', { noteId: sharedNoteId })).isError).toBe(true);
+    expect((await parsed(trusted, 'get_note', { noteId: sharedNoteId })).title).toBe('On the shelf');
+    // The whole library, read only, is a grant too.
+    expect((await saveGrant(restrictedClientId, { notebooks: null, unfiled: true, readOnly: true })).status).toBe(204);
+    expect(await toolNames(restricted)).toEqual(after);
+    expect((await parsed(restricted, 'get_note', { noteId: vaultNoteId })).title).toBe(`Deed ${SECRET}`);
+  });
+
+  it('is unrestricted again when given everything, which leaves no row', async () => {
+    expect((await saveGrant(restrictedClientId, { notebooks: null, unfiled: true, readOnly: false })).status).toBe(204);
+    const mine = await fetch(`${BASE}/api/connected-apps/grants`, { headers: { Cookie: cookie, Origin: ORIGIN } });
+    expect(await mine.json()).toEqual({ grants: {} });
+    expect((await parsed(restricted, 'get_note', { noteId: looseNoteId })).title).toBe(`Loose ${SECRET}`);
+  });
+
+  it('forgets what a connection was given when it is disconnected', async () => {
+    await saveGrant(restrictedClientId, { notebooks: [sharedId], unfiled: false, readOnly: true });
+    const consents = (await (await fetch(`${BASE}/api/auth/oauth2/get-consents`, { headers: { Cookie: cookie, Origin: ORIGIN } })).json()) as Array<{ id: string; clientId: string }>;
+    const consent = consents.find((c) => c.clientId === restrictedClientId)!;
+    const gone = await fetch(`${BASE}/api/connected-apps/${consent.id}/disconnect`, { method: 'POST', headers: { Cookie: cookie, Origin: ORIGIN } });
+    expect(gone.status).toBe(204);
+    const mine = await fetch(`${BASE}/api/connected-apps/grants`, { headers: { Cookie: cookie, Origin: ORIGIN } });
+    expect(await mine.json()).toEqual({ grants: {} });
+    expect((await mcp(restricted, 'tools/list')).status).toBe(401);
+  });
+});
