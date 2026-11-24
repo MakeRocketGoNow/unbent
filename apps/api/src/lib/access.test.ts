@@ -27,6 +27,9 @@ describe('what a restricted connection is told', () => {
     const some = connectionInstructions({ notebooks: ['nb-1'], unfiled: false, readOnly: false })!;
     expect(some).toContain('only some of their notebooks');
     expect(some).not.toContain('read only');
+    // Said as the store has it: what is refused, and what a model might wrongly think is.
+    expect(some).toContain('cannot be created, renamed or deleted');
+    expect(some).toContain('purpose, emoji and fields can still be changed');
     // No id, and no count: the instructions say that there is a limit, not what is past it.
     expect(some).not.toContain('nb-1');
     const readOnly = connectionInstructions({ notebooks: null, unfiled: true, readOnly: true })!;

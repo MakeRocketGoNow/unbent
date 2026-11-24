@@ -19,7 +19,7 @@ const SENTENCES: Record<AccessRefusalReason, string> = {
   unfiled:
     'This connection was given only some notebooks, so it cannot leave a note outside a notebook. Call list_notebooks and file the note in one of those.',
   manage:
-    'This connection was given only some notebooks, so it cannot create or delete a notebook, or rename or delete a tag. The person can change what it may reach in Unbent, in Settings under AI assistants.',
+    'This connection was given only some notebooks, so it cannot create, rename or delete a notebook, or rename or delete a tag. The person can change what it may reach in Unbent, in Settings under AI assistants.',
   method: 'This connection was given only some notebooks, and that is not something it can do with them.',
 };
 
@@ -64,7 +64,7 @@ export function connectionInstructions(grant: AssistantGrant): string | undefine
   const lines: string[] = [];
   if (grant.notebooks !== null) {
     lines.push(
-      'The person gave this connection only some of their notebooks. Every tool here works within those: list_notebooks shows them, and notes anywhere else are not found, as if they did not exist. Notes can be filed only in those notebooks, and notebooks and tags cannot be created, renamed or deleted from here.',
+      'The person gave this connection only some of their notebooks. Every tool here works within those: list_notebooks shows them, and notes anywhere else are not found, as if they did not exist. Notes can be filed only in those notebooks. A notebook cannot be created, renamed or deleted from here, and a tag cannot be renamed or deleted; a notebook\'s purpose, emoji and fields can still be changed, and notes can still be tagged.',
     );
   }
   if (grant.readOnly) {

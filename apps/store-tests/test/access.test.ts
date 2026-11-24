@@ -316,6 +316,13 @@ describe('a restricted connection writes only where it was given', () => {
     await expect(as(s.stub, s.grant, 'createNotebook', 'Another')).rejects.toMatchObject(refused('manage'));
     // Its own notebook too: deleting it unfiles or trashes notes, and its views go with it.
     await expect(as(s.stub, s.grant, 'deleteNotebook', s.letters.id)).rejects.toMatchObject(refused('manage'));
+    // A rename is checked against every notebook's name, so its answer would say whether
+    // a name outside the grant is taken: refused whether it is ('Ledger') or not, and
+    // for a notebook outside the grant as for one inside it.
+    for (const name of ['Ledger', 'Nobody has this name']) {
+      await expect(as(s.stub, s.grant, 'updateNotebook', s.letters.id, { name })).rejects.toMatchObject(refused('manage'));
+      await expect(as(s.stub, s.grant, 'updateNotebook', s.ledger.id, { name })).rejects.toMatchObject(refused('manage'));
+    }
     await expect(as(s.stub, s.grant, 'renameTag', shared.id, 'renamed')).rejects.toMatchObject(refused('manage'));
     await expect(as(s.stub, s.grant, 'deleteTag', shared.id)).rejects.toMatchObject(refused('manage'));
     expect((await s.stub.listNotebooks()).map((n) => n.name).sort()).toEqual(['Ledger', 'Letters', 'Recipes']);

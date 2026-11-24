@@ -168,8 +168,10 @@ An assistant given only some notebooks works as if the rest were not there:
 - Tags are listed and counted from the notes it can see, so a tag used only elsewhere is
   not named.
 - It files notes only in its notebooks, and cannot move one out of them.
-- It cannot create or delete a notebook, or rename or delete a tag: a tag is on notes in
-  every notebook, and those reach past what it was given.
+- It cannot create, rename or delete a notebook, or rename or delete a tag. A tag is on
+  notes in every notebook, and a notebook's name has to differ from every other
+  notebook's, so each of those would reach past what it was given or say something
+  about it. A notebook's purpose, emoji and fields are still its to change.
 - The trash follows the same rule: it sees and restores only trashed notes from its
   notebooks.
 

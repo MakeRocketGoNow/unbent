@@ -1230,18 +1230,25 @@ export class UserStore extends DurableObject<StoreEnv> {
     removeMany: (ids) => this.removeMany(this.seen(ids)),
     restoreMany: (ids) => this.restoreMany(this.seen(ids)),
 
-    // A granted notebook's own settings and fields are the connection's to change, as
+    // A granted notebook's purpose, emoji and fields are the connection's to change, as
     // its notes are. Any other notebook is `missing`, which is each method's own answer
     // for an id that names none.
-    updateNotebook: (id, patch, limit) => (this.grants(id) ? this.updateNotebook(id, patch, limit) : 'missing'),
+    //
+    // Its name is not. A notebook's name is unique across every notebook, so a rename is
+    // checked against the ones the grant withholds too, and "that name is taken" would
+    // say one of them is called that: rename to a guess, read the answer, rename back.
+    // Refused before the notebook is looked at, so the refusal says nothing either.
+    updateNotebook: (id, patch, limit) =>
+      patch.name !== undefined ? this.refuse('manage') : this.grants(id) ? this.updateNotebook(id, patch, limit) : 'missing',
     createField: (notebookId, input, limit) => (this.grants(notebookId) ? this.createField(notebookId, input, limit) : 'missing'),
     updateField: (notebookId, fieldId, patch, limit) => (this.grants(notebookId) ? this.updateField(notebookId, fieldId, patch, limit) : 'missing'),
     editFieldOptions: (notebookId, fieldId, edit, patch, limit) =>
       this.grants(notebookId) ? this.editFieldOptions(notebookId, fieldId, edit, patch, limit) : 'missing',
 
     // What reaches past any one notebook. A new notebook would be one more than the
-    // person gave; a deleted one unfiles or trashes its notes; a tag's name is on notes
-    // in every notebook, so renaming or deleting it rewrites notes the grant cannot see.
+    // person gave, and its name is checked against every notebook as a rename's is; a
+    // deleted one unfiles or trashes its notes; a tag's name is on notes in every
+    // notebook, so renaming or deleting it rewrites notes the grant cannot see.
     createNotebook: () => this.refuse('manage'),
     deleteNotebook: () => this.refuse('manage'),
     renameTag: () => this.refuse('manage'),

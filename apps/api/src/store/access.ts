@@ -127,8 +127,8 @@ export const ACCESS_REFUSED_CODE = 'ACCESS_REFUSED';
  *   file a note in. Not told apart, so a refusal does not say which names are taken.
  * - `unfiled`: it would have left a note in no notebook, and its grant does not cover
  *   those.
- * - `manage`: it asked for something that reaches past any one notebook (making or
- *   deleting a notebook, renaming or deleting a tag).
+ * - `manage`: it asked for something that reaches past any one notebook (making,
+ *   renaming or deleting a notebook, renaming or deleting a tag).
  * - `method`: it called something no rule here covers. Never a person's doing: a tool
  *   reached a store method that `UserStore.scoped` has not been taught, and the answer
  *   to that is a refusal by name, not an unrestricted call.
