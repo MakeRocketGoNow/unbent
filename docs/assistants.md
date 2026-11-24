@@ -161,9 +161,9 @@ the same two again under Change access:
 A change in Settings holds from the assistant's very next call: what it can reach is
 checked every time, so there is nothing to reconnect and no token to wait out. What the
 assistant is *shown* is slower to catch up. An assistant reads its list of tools when a
-conversation starts, so after a change to or from Read only it may still offer a tool it
-no longer has (the call is refused) or not yet offer one it now does, until its next
-conversation.
+conversation starts, so after a change to or from Read only, or between All notebooks and
+Only some, it may still offer a tool it no longer has (the call is refused) or not yet
+offer one it now does, until its next conversation.
 
 An assistant given only some notebooks works as if the rest were not there:
 

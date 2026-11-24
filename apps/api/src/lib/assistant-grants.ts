@@ -124,9 +124,9 @@ export class AssistantGrantsRepo {
   async save(clientId: string, grant: AssistantGrant): Promise<boolean> {
     const client = await this.db.prepare(`SELECT 1 AS ok FROM oauthClient WHERE clientId = ?1`).bind(clientId).first<{ ok: number }>();
     if (!client) return false;
-    await this.closeUploadLinks();
     if (!grantIsRestricted(grant)) {
       await this.clear(clientId);
+      await this.closeUploadLinks();
       return true;
     }
     await this.db
@@ -147,6 +147,9 @@ export class AssistantGrantsRepo {
         Date.now(),
       )
       .run();
+    // After the write, not before it: a link minted in between was checked against
+    // the grant as it now stands.
+    await this.closeUploadLinks();
     return true;
   }
 
@@ -158,6 +161,10 @@ export class AssistantGrantsRepo {
    * the assistant's and is not asked about a grant. So a link minted a minute before a
    * notebook was taken away, or before the connection was made read only, would still
    * put a file on that note, and "from its next call" would not be true of it.
+   *
+   * One case is left: a call already under way that read the old grant and mints its
+   * link after this has run. Closing that would need the PUT to ask about the grant
+   * again, which a link that does not say which assistant asked for it cannot do.
    *
    * All of the account's, not one client's: a link does not record which assistant
    * asked for it, and the cost of closing one too many is an assistant asking for

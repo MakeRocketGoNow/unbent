@@ -2688,6 +2688,11 @@ export class NotesStore {
    * reads that one notebook, where counting its own notes read nearly the whole
    * archive on every call, about two and a half rows a note. `list_tags` is among the
    * first things an assistant asks.
+   *
+   * That second way trusts the stored counts, as the unrestricted list does: a count
+   * that had drifted above the truth would name a tag here that only notes outside the
+   * grant carry. The triggers are what keep that from happening, and `recountNotes` is
+   * what puts it right if they ever do not; the direct count cannot be wrong that way.
    */
   private tagsWithin(access: StoreAccess): Array<{ id: string; name: string; count: number; color: number | null }> {
     const direct = this.grantSize(access) * 2 <= this.totals().live;
