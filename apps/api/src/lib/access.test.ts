@@ -12,7 +12,8 @@ describe('what a restricted connection is told', () => {
     expect(new AccessRefused('unfiled').message).toContain('list_notebooks');
     expect(new AccessRefused('manage').message).toContain('Settings under AI assistants');
     expect(new AccessRefused('method').message).toContain('only some notebooks');
-    for (const reason of ['notebook', 'unfiled', 'manage', 'method']) expect(isAccessRefusalReason(reason)).toBe(true);
+    expect(new AccessRefused('values').message).toContain('Nothing was changed');
+    for (const reason of ['notebook', 'unfiled', 'manage', 'values', 'method']) expect(isAccessRefusalReason(reason)).toBe(true);
     for (const not of ['later', '', 'toString', 'constructor', undefined, 3]) expect(isAccessRefusalReason(not)).toBe(false);
   });
 

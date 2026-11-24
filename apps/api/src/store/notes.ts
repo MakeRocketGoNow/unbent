@@ -3771,13 +3771,30 @@ export class NotesStore {
     return row ? rowToField(row) : null;
   }
 
+  /**
+   * Every value held for a field, to be rewritten: a conversion's, a removed option's,
+   * a renamed or merged option's. Nothing else reads the values this way.
+   *
+   * A field's values are not all on its notebook's notes. A note moved out keeps what
+   * it held (see `duplicate`), so a field of a notebook a restricted connection was
+   * given can hold a value on a note in a notebook it was not (MAK-264). Such a change
+   * is refused whole. The two ways of letting it through are both worse: rewriting
+   * every row writes to a note the connection cannot see and counts it in the answer,
+   * and rewriting only the rows it can see leaves one field with values of two types.
+   * The refusal does say such a note exists, which is one bit about a field that is
+   * the connection's own to manage; the person can make the change themselves.
+   */
   private fieldValueRows(fieldId: string): Array<{ noteId: string; text: string }> {
-    return this.sql
+    const rows = this.sql
       .exec<{ note_id: string; value_text: string }>(
         `SELECT note_id, value_text FROM note_fields WHERE field_id = ?1`,
         fieldId,
       )
       .map((r) => ({ noteId: r.note_id, text: r.value_text }));
+    if (this.access.current && this.visible(rows.map((r) => r.noteId)).size < new Set(rows.map((r) => r.noteId)).size) {
+      throw new AccessRefusal('values');
+    }
+    return rows;
   }
 
   /**

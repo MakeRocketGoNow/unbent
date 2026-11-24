@@ -323,6 +323,28 @@ describe('a restricted connection writes only where it was given', () => {
     expect((await s.stub.listNotebooks()).find((n) => n.id === s.ledger.id)!.purpose ?? null).toBeNull();
   });
 
+  // A note moved out of a notebook keeps the values it held for that notebook's fields.
+  it('will not rewrite a field\'s value on a note that has left for a notebook it was not given', async () => {
+    const s = await library('access-values');
+    const kind = (await s.stub.createField(s.letters.id, { name: 'Kind', type: 'select', options: ['bill', 'card'] })) as { id: string };
+    await s.stub.update(s.letter.id, { fields: { [kind.id]: 'bill', [s.sender.id]: '42' } });
+    const moved = await s.stub.create({ id: crypto.randomUUID(), title: 'Was a letter', body: '', tags: [], notebook: 'Letters', fields: { [kind.id]: 'bill', [s.sender.id]: 'not a number' } });
+    await s.stub.update(moved.id, { notebook: 'Ledger' });
+
+    await expect(as(s.stub, s.grant, 'editFieldOptions', s.letters.id, kind.id, { rename: [{ from: 'bill', to: 'invoice' }] })).rejects.toMatchObject(refused('values'));
+    await expect(as(s.stub, s.grant, 'updateField', s.letters.id, s.sender.id, { type: 'number' })).rejects.toMatchObject(refused('values'));
+    // Refused whole: neither the note it cannot see nor the one it can was rewritten.
+    const valueOf = async (id: string, fieldId: string) => (await s.stub.get(id))!.fields?.find((f) => f.fieldId === fieldId)?.value;
+    expect(await valueOf(moved.id, kind.id)).toBe('bill');
+    expect(await valueOf(s.letter.id, kind.id)).toBe('bill');
+    expect((await s.stub.listFields(s.letters.id))!.find((f) => f.id === s.sender.id)!.type).toBe('text');
+
+    // What rewrites no value is still its to do, and so is all of it once the note is back.
+    expect(await as(s.stub, s.grant, 'editFieldOptions', s.letters.id, kind.id, { add: ['receipt'] })).toMatchObject({ added: ['receipt'] });
+    await s.stub.update(moved.id, { notebook: 'Letters' });
+    expect(await as(s.stub, s.grant, 'editFieldOptions', s.letters.id, kind.id, { rename: [{ from: 'bill', to: 'invoice' }] })).toMatchObject({ renamed: [{ from: 'bill', to: 'invoice', notes: 2 }] });
+  });
+
   it('refuses what reaches past any one notebook', async () => {
     const s = await library('access-past');
     const shared = (await s.stub.listTags()).find((t) => t.name === 'shared')!;

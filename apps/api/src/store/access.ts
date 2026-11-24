@@ -129,11 +129,14 @@ export const ACCESS_REFUSED_CODE = 'ACCESS_REFUSED';
  *   those.
  * - `manage`: it asked for something that reaches past any one notebook (making,
  *   renaming or deleting a notebook, renaming or deleting a tag).
+ * - `values`: it asked for a change to one of its notebooks' fields that would rewrite
+ *   that field's value on a note outside its grant (a note moved out of a notebook
+ *   keeps the values it held). See `NotesStore.fieldValueRows`.
  * - `method`: it called something no rule here covers. Never a person's doing: a tool
  *   reached a store method that `UserStore.scoped` has not been taught, and the answer
  *   to that is a refusal by name, not an unrestricted call.
  */
-export type AccessRefusalReason = 'notebook' | 'unfiled' | 'manage' | 'method';
+export type AccessRefusalReason = 'notebook' | 'unfiled' | 'manage' | 'values' | 'method';
 
 /**
  * A restricted connection's call, refused. Own properties, as `StoreFull` has, since a

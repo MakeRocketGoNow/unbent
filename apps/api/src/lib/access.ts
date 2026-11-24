@@ -20,6 +20,8 @@ const SENTENCES: Record<AccessRefusalReason, string> = {
     'This connection was given only some notebooks, so it cannot leave a note outside a notebook. Call list_notebooks and file the note in one of those.',
   manage:
     'This connection was given only some notebooks, so it cannot create, rename or delete a notebook, or rename or delete a tag. The person can change what it may reach in Unbent, in Settings under AI assistants.',
+  values:
+    'This connection was given only some notebooks, and that change would rewrite this field on notes outside them, so it was not made. Nothing was changed. The person can make it themselves in Unbent, in the notebook\'s settings.',
   method: 'This connection was given only some notebooks, and that is not something it can do with them.',
 };
 
