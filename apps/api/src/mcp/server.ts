@@ -1,5 +1,6 @@
 import { McpServer, createMcpHandler } from '@modelcontextprotocol/server';
 import type { AssistantGrant } from '@unbent/shared';
+import { connectionInstructions } from '../lib/access.js';
 import { appLinks } from '../lib/app-links.js';
 import { storeAccessOf } from '../lib/assistant-grants.js';
 import { canUseLlm } from '../lib/llm.js';
@@ -48,7 +49,10 @@ export function createUnbentMcpHandler(
   // rather than answering every tool with an address that goes nowhere.
   const links = appLinks(env.APP_URL);
   return createMcpHandler(() => {
-    const server = new McpServer({ name: 'unbent', version: '1.0.0' });
+    // A restricted connection is told what it was not given when it connects, so the
+    // first it hears of a limit is not a refusal (`connectionInstructions`).
+    const instructions = connectionInstructions(grant);
+    const server = new McpServer({ name: 'unbent', version: '1.0.0' }, instructions ? { instructions } : {});
     // The plan row, read once per request and only where billing is on: this endpoint
     // has no row on a context (every tool is one POST), and the gate, the store's room
     // (MAK-234) and the quota on files all come off the same row. A read that fails is
@@ -62,7 +66,7 @@ export function createUnbentMcpHandler(
     // connection given a list has no other way to its notes (`StoreRepo`), so no tool
     // below has to know whether it is restricted, and none can forget to ask.
     const { notes, attachments } = reposFor(env, userId, async () => writeLimitsOf(env, await plan()), storeAccessOf(grant));
-    registerReadTools(server, notes, attachments, links, { vision: canUseLlm(env) });
+    registerReadTools(server, notes, attachments, links, { vision: canUseLlm(env), partial: grant.notebooks !== null });
     // The write tools go through the plan's gate (mcp/plan-gate.ts). Most are held to
     // the free plan in the store, through the limits the repos carry, and never ask it;
     // one that is not is refused a lapsed account, as an unlisted HTTP route is. Nothing

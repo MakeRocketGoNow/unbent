@@ -49,7 +49,7 @@ describe('translateStoreError', () => {
     const arrived = Object.assign(new Error('refused for a restricted connection: manage'), { name: 'AccessRefusal', code: 'ACCESS_REFUSED', reason: 'manage' });
     const translated = translateStoreError(arrived);
     expect(translated).toBeInstanceOf(AccessRefused);
-    expect((translated as AccessRefused).message).toContain('Connected apps');
+    expect((translated as AccessRefused).message).toContain('Settings under AI assistants');
     // A reason this build does not know is not dressed up as one it does.
     const unknown = Object.assign(new Error('x'), { code: 'ACCESS_REFUSED', reason: 'later' });
     expect(translateStoreError(unknown)).toBe(unknown);

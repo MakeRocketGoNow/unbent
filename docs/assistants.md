@@ -5,7 +5,9 @@ anything else that speaks the protocol can work with your notes directly. The se
 `https://unbent.app/api/mcp`: no trailing slash, and no API key to copy anywhere.
 
 Connecting runs the ordinary OAuth flow: the client registers itself, a browser opens on the
-consent screen, and approving it hands the client a token of its own. The tools cover
+consent screen, and approving it hands the client a token of its own. That screen is also
+where you say [what the assistant gets](#what-an-assistant-gets): every notebook or only
+some, and whether it may change anything. The tools cover
 search and list, reading a note in full, create, edit, tag, move, trash and restore (create
 and the last four for several notes at once), attaching a file, clipping a web page, and notebook management. Note bodies are Markdown and pass whole in both
 directions, so an assistant writes a complete note in one call. Once it is connected,
@@ -135,13 +137,63 @@ account named. An account's assistants may send twenty a day and the same words 
 the whole instance keeps five hundred a day, and the rows go after ninety days or with the
 account. The privacy policy says what is kept and for how long.
 
-**Approving a client gives it standing access to everything.** It can read every note,
-create and change notes, and move them to the trash, from then on and without asking again.
-Settings › AI assistants lists what is connected and disconnects any of it; disconnecting
-deletes the app's tokens, and the endpoint checks the grant on every call, so access ends
-rather than lingering until a token expires. There is deliberately no tool that deletes
-permanently: the trash is as far as an assistant can go. And what an assistant's edit
-replaces is kept: see [Undoing an edit](history-and-trash.md#undoing-an-edit).
+**Approving a client gives it standing access to what you chose for it.** It acts from then
+on and without asking again. Settings › AI assistants lists what is connected, says what
+each was given, and disconnects any of it; disconnecting deletes the app's tokens, and the
+endpoint checks the grant on every call, so access ends rather than lingering until a token
+expires. There is deliberately no tool that deletes permanently: the trash is as far as an
+assistant can go. And what an assistant's edit replaces is kept: see
+[Undoing an edit](history-and-trash.md#undoing-an-edit).
+
+## What an assistant gets
+
+Not every assistant deserves the same trust, so each connection is given its own access.
+The consent screen asks two things before you allow one, and Settings › AI assistants asks
+the same two again under Change access:
+
+- **What it can see.** *All notebooks*, which is every note you have and every notebook
+  you add later, or *Only some notebooks*, which is the ones you tick. The Inbox (notes
+  filed in no notebook) is a row of its own in that list, and is left out unless you tick
+  it.
+- **What it can do.** *Read and change*, or *Read only*, which gives the assistant no tool
+  that creates, edits, moves or deletes.
+
+A change in Settings holds from the assistant's very next call. There is nothing to
+reconnect and no token to wait out.
+
+An assistant given only some notebooks works as if the rest were not there:
+
+- A note outside them is not found, by search, by a list, or by its id. It is never
+  "refused", which would say the note exists.
+- Tags are listed and counted from the notes it can see, so a tag used only elsewhere is
+  not named.
+- It files notes only in its notebooks, and cannot move one out of them.
+- It cannot create or delete a notebook, or rename or delete a tag: a tag is on notes in
+  every notebook, and those reach past what it was given.
+- The trash follows the same rule: it sees and restores only trashed notes from its
+  notebooks.
+
+It is told that what it sees is partial, so that it says "not found in the notebooks I can
+see" where it would otherwise tell you a note does not exist. It is not told how many
+notebooks it was not given, or anything about them.
+
+Three things this does not do, so you can decide with them in mind:
+
+- **It limits what leaves Unbent, not what happens after.** Whatever is in a notebook you
+  give an assistant goes to that assistant's provider the moment it is read, and Unbent
+  has no say over it from there.
+- **A list does not grow.** A notebook you make later is not in "only some" until you add
+  it, and a note you move into a given notebook is visible from that moment.
+- **It does not make an assistant careful.** Inside the notebooks it was given, an
+  assistant that reads something misleading can still be led to change or trash notes
+  there. Read only removes that; otherwise the note's history and the trash are the way
+  back.
+
+For the people running an instance: the grant is a row in D1 beside the OAuth consent
+(`assistant_grants`, read with the consent on every call), and it is enforced in the
+account's note store, where a restricted connection can reach only the methods listed
+for it (`UserStore.scoped`). A connection made before this existed has no row, which is
+the whole library with writes, as it always had.
 
 Client registration is open, because clients register themselves at connect time and there
 is no way to pre-provision credentials for software you have never heard of. A registered

@@ -14,6 +14,7 @@ import {
   type FieldFilter,
 } from '@unbent/shared';
 import type { McpServer } from '@modelcontextprotocol/server';
+import { PARTIAL_NOTICE } from '../../lib/access.js';
 import type { AppLinks } from '../../lib/app-links.js';
 import type { AttachmentsRepo } from '../../lib/attachments-repo.js';
 import { nextCursor, type FileSummary, type NotesRepo } from '../../lib/notes-repo.js';
@@ -232,9 +233,16 @@ export function registerReadTools(
   notes: NotesRepo,
   attachments: AttachmentsRepo,
   links: AppLinks,
-  /** Whether the instance has the vision model, which decides what a file is still `pending` for. */
-  readers: { vision: boolean },
+  /**
+   * `vision` is whether the instance has the vision model, which decides what a file is
+   * still `pending` for. `partial` is set for a connection that was given only some
+   * notebooks (MAK-264): the tools that list then say so beside what they list.
+   */
+  readers: { vision: boolean; partial?: boolean },
 ): void {
+  // On every answer that lists, and only for a connection that sees part of the
+  // account: see `PARTIAL_NOTICE` for why an assistant has to be told.
+  const partial = readers.partial ? { access: PARTIAL_NOTICE } : {};
   server.registerTool(
     'search_notes',
     {
@@ -269,6 +277,7 @@ export function registerReadTools(
         ? await notes.searchWithFiles(query, limit, filters, { vision: readers.vision })
         : { results: await notes.search(query, limit, filters), summaries: undefined };
       return jsonResult({
+        ...partial,
         count: results.length,
         results: results.map((r) => ({
           id: r.id,
@@ -424,6 +433,7 @@ export function registerReadTools(
       // cannot disagree with the sort that produced the page.
       const cursorForNext = nextCursor(items, { limit, sort, trashed });
       return jsonResult({
+        ...partial,
         ...(total === null ? {} : { total }),
         returned: items.length,
         ...(cursorForNext ? { cursor: cursorForNext } : {}),
@@ -596,6 +606,7 @@ export function registerReadTools(
     async () => {
       const { notebooks, unfiled, fields = [] } = await notes.notebooksOverview({ fields: true });
       return jsonResult({
+        ...partial,
         notebooks: notebooks.map((nb) => ({
           id: nb.id,
           name: nb.name,
@@ -646,7 +657,7 @@ export function registerReadTools(
     async ({ notebook, tag }) => {
       // The unfiltered list is the stored per-tag counts, one row a tag; any filter has
       // to walk the notes in the set, so it only happens when one is asked for.
-      if (notebook === undefined && !tag?.length) return jsonResult({ tags: await notes.listTags() });
+      if (notebook === undefined && !tag?.length) return jsonResult({ ...partial, tags: await notes.listTags() });
       const tags = await notes.tagCounts({ notebook, tags: tag?.length ? tag : undefined });
       // An empty answer for a notebook that does not exist reads as "its notes have no
       // tags", which is a finding an assistant would repeat. Checked only when the answer
@@ -654,7 +665,7 @@ export function registerReadTools(
       if (tags.length === 0 && notebook !== undefined && notebook !== UNFILED) {
         if (!(await notes.notebookByName(notebook))) return toolError(`No such notebook: ${notebook}`);
       }
-      return jsonResult({ tags });
+      return jsonResult({ ...partial, tags });
     },
   );
 }

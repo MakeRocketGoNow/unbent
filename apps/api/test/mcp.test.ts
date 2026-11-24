@@ -1871,6 +1871,14 @@ describe('a connection given only some notebooks', () => {
     const listed = await parsed(restricted, 'list_notes', {});
     expect(listed.notes.map((n: { id: string }) => n.id)).toEqual([sharedNoteId]);
     expect(listed.total).toBe(1);
+    // Told that what it lists is partial, which the assistant given everything is not.
+    expect(notebooks.access).toContain('only some of this account');
+    expect(found.access).toBe(notebooks.access);
+    expect('access' in (await parsed(trusted, 'list_notebooks'))).toBe(false);
+    // And told so once when it connects, before any tool is called.
+    const hello = { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'test', version: '1' } };
+    expect((await mcp(restricted, 'initialize', hello)).body.result.instructions).toContain('only some of their notebooks');
+    expect((await mcp(trusted, 'initialize', hello)).body.result.instructions).toBeUndefined();
     const made = await parsed(restricted, 'create_note', { title: 'Filed by the restricted one', notebook: shared });
     expect((await parsed(trusted, 'get_note', { noteId: made.id })).notebook).toBe(shared);
     await call(trusted, 'delete_note', { noteId: made.id });

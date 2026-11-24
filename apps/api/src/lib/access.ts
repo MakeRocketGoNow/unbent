@@ -1,3 +1,4 @@
+import type { AssistantGrant } from '@unbent/shared';
 import type { AccessRefusalReason } from '../store/access.js';
 
 export { ACCESS_REFUSED_CODE, type AccessRefusalReason, type StoreAccess } from '../store/access.js';
@@ -18,7 +19,7 @@ const SENTENCES: Record<AccessRefusalReason, string> = {
   unfiled:
     'This connection was given only some notebooks, so it cannot leave a note outside a notebook. Call list_notebooks and file the note in one of those.',
   manage:
-    'This connection was given only some notebooks, so it cannot create or delete a notebook, or rename or delete a tag. The person can change what it may reach in Settings, under Connected apps.',
+    'This connection was given only some notebooks, so it cannot create or delete a notebook, or rename or delete a tag. The person can change what it may reach in Unbent, in Settings under AI assistants.',
   method: 'This connection was given only some notebooks, and that is not something it can do with them.',
 };
 
@@ -38,4 +39,36 @@ export class AccessRefused extends Error {
 
 export function isAccessRefusalReason(value: unknown): value is AccessRefusalReason {
   return typeof value === 'string' && Object.hasOwn(SENTENCES, value);
+}
+
+/**
+ * What a listing says to a connection that was given only some notebooks, beside what
+ * it lists: that the list is partial, and what to say when something is not in it.
+ *
+ * Without it an assistant reports the absence as a fact. "You have no note about the
+ * boiler" is a wrong answer about someone's archive when the note is in a notebook the
+ * assistant was not given, and it is the one failure a restriction would otherwise
+ * introduce: everything it cannot see, it would confidently say is not there. It does
+ * not say how many notebooks are withheld, or anything else about them.
+ */
+export const PARTIAL_NOTICE =
+  'This connection was given only some of this account\'s notebooks, so this is not everything in it. If something is not here, say it was not found in the notebooks you can see, not that it does not exist.';
+
+/**
+ * The server's instructions for a restricted connection, which a client shows its model
+ * once, when it connects: what it was not given, said up front, so the first thing an
+ * assistant learns of a limit is not a refusal. Nothing for a connection given
+ * everything, which is told what it always was: nothing.
+ */
+export function connectionInstructions(grant: AssistantGrant): string | undefined {
+  const lines: string[] = [];
+  if (grant.notebooks !== null) {
+    lines.push(
+      'The person gave this connection only some of their notebooks. Every tool here works within those: list_notebooks shows them, and notes anywhere else are not found, as if they did not exist. Notes can be filed only in those notebooks, and notebooks and tags cannot be created, renamed or deleted from here.',
+    );
+  }
+  if (grant.readOnly) {
+    lines.push('The person made this connection read only. It has no tool that creates, changes or deletes anything; if asked to, say that it was connected read only and that they can change that in Unbent, in Settings under AI assistants.');
+  }
+  return lines.length > 0 ? lines.join(' ') : undefined;
 }
