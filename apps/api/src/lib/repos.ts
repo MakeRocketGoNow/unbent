@@ -1,3 +1,4 @@
+import type { StoreAccess } from './access.js';
 import { AttachmentsRepo } from './attachments-repo.js';
 import { NotesRepo, type WriteLimitsSource } from './notes-repo.js';
 import { storeFor } from './store-client.js';
@@ -20,12 +21,21 @@ import type { Env } from '../types.js';
  * account's store may take before they write a note or a file's text (MAK-234), and the
  * free plan's limits while no plan holds. The plan's, from the context or the database,
  * or `noWriteLimits` for a caller that only reads. Required, so the caller says which.
+ *
+ * `access` is the grant of a connected assistant that was given only some notebooks
+ * (MAK-264): both facades are then held to it, in the store, on every call. Only the
+ * MCP endpoint passes one. Left out, the repos are the account's own, which is what the
+ * person signed in to the app, and an assistant given everything, both are.
  */
 export function reposFor(
   env: Pick<Env, 'USER_STORE' | 'STORE_JURISDICTION'>,
   userId: string,
   limits: WriteLimitsSource,
+  access: StoreAccess | null = null,
 ): { notes: NotesRepo; attachments: AttachmentsRepo } {
   const store = storeFor(env, userId);
-  return { notes: new NotesRepo(store, userId, limits), attachments: new AttachmentsRepo(store, userId, limits) };
+  return {
+    notes: new NotesRepo(store, userId, limits, access),
+    attachments: new AttachmentsRepo(store, userId, limits, access),
+  };
 }

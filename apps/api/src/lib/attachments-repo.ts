@@ -1,6 +1,7 @@
 import type { ReadBy } from '@unbent/shared';
 import type { AttachmentInfo } from '@unbent/shared';
 import type { WriteLimitsSource } from './notes-repo.js';
+import type { StoreAccess } from './access.js';
 import { StoreRepo } from './store-client.js';
 import type { AttachmentRow, AttachmentsStore, FileRead, PendingFile, AssistantWrite } from '../store/attachments.js';
 import type { UsageEntry } from '../store/llm-usage.js';
@@ -34,8 +35,10 @@ export class AttachmentsRepo extends StoreRepo {
     store: ConstructorParameters<typeof StoreRepo>[0],
     userId: string,
     private readonly limits: WriteLimitsSource,
+    /** The grant of the connection this repo acts for, when it was given only some notebooks; see `StoreRepo`. */
+    access: StoreAccess | null = null,
   ) {
-    super(store, userId);
+    super(store, userId, access);
   }
 
   /**

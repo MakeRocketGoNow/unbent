@@ -19,6 +19,7 @@ import {
   PLAN_INACTIVE_CODE,
   STORAGE_FULL_CODE,
 } from '@unbent/shared';
+import { AccessRefusal, AccessScope, checkedAccess, type StoreAccess } from './access.js';
 import { AttachmentsStore, type FileSummary } from './attachments.js';
 import { DeletedBlobs } from './deleted-blobs.js';
 import { LlmUsageCounter, type PressLimits, type UsageEntry } from './llm-usage.js';
@@ -317,6 +318,8 @@ export class UserStore extends DurableObject<StoreEnv> {
   private deletedBlobs: DeletedBlobs;
   private llmUsage: LlmUsageCounter;
   private views: ViewsStore;
+  /** The grant the running call is held to, for a restricted connection's; see `scoped`. */
+  private readonly access = new AccessScope();
   private wiped = false;
   private loading: LoadMarker | null = null;
   private loadInFlight: LoadInFlight | null = null;
@@ -338,7 +341,7 @@ export class UserStore extends DurableObject<StoreEnv> {
     // Before the notes, which hold it for the cascades a tag's, a field's or a
     // notebook's management runs on the views that name them.
     this.views = new ViewsStore(this.sql, this.feed);
-    this.notes = new NotesStore(this.sql, this.feed, this.deletedBlobs, this.views);
+    this.notes = new NotesStore(this.sql, this.feed, this.deletedBlobs, this.views, this.access);
     this.attachments = new AttachmentsStore(this.sql, this.feed, this.deletedBlobs);
     this.llmUsage = new LlmUsageCounter(this.sql, name);
     ctx.blockConcurrencyWhile(async () => {
@@ -1083,6 +1086,120 @@ export class UserStore extends DurableObject<StoreEnv> {
       }
     }
   }
+
+  // --- A restricted connection's calls ---------------------------------------------------
+
+  /**
+   * One call, made for a connected assistant that was given some notebooks and not the
+   * whole library (MAK-264): `method` of this object with `args`, held to `access`.
+   *
+   * This is the only way such a connection reaches the store. The Worker's facades send
+   * every call of a restricted repo here (`StoreRepo.call`), and what runs is the entry
+   * for that name in `restricted` below, never the method itself: a name with no entry
+   * is refused, so a method nobody has decided about cannot be called on a restricted
+   * connection's behalf, and a new method is closed to it until it is listed. That is
+   * the opposite default from the object's own surface, where a new method is open to
+   * its user, and it is the point: forgetting here must fail shut.
+   *
+   * Every entry is one of four things, and says which by how it is written:
+   *
+   * - A note's method is asked only about notes `sees` allows, and answers as it does
+   *   for a note that does not exist when it does not. Never a refusal: "you may not"
+   *   would say the note is there.
+   * - A method that filters notes runs as it is. Its queries read the grant themselves
+   *   (`NotesStore.filters`), which is what `access.within` puts in force.
+   * - A notebook's method is run only for a notebook in the grant, and its answer is
+   *   cut to those where it lists them.
+   * - What reaches past any one notebook is refused by name.
+   *
+   * Synchronous, like every data method here, and that is load-bearing: see
+   * `AccessScope`. An entry that answered with a promise would let another call run
+   * while the grant was still in force, so one that does is refused where it would
+   * otherwise have been believed.
+   */
+  scoped(access: StoreAccess, method: string, args: unknown[]): unknown {
+    const grant = checkedAccess(access);
+    const entries = this.restricted as Record<string, ((...a: never[]) => unknown) | undefined>;
+    const run = Object.hasOwn(entries, method) ? entries[method] : undefined;
+    if (!run) throw new AccessRefusal('method', method);
+    this.ready();
+    return this.access.within(grant, () => {
+      const result = run(...(args as never[]));
+      if (result instanceof Promise) throw new AccessRefusal('method', `${method} is not synchronous`);
+      return result;
+    });
+  }
+
+  /** Whether the running call may see this note; see `NotesStore.visible`. */
+  private sees(noteId: string): boolean {
+    return this.notes.visible([noteId]).has(noteId);
+  }
+
+  /** `ids` cut to the notes the running call may see, in the order given. */
+  private seen(ids: string[]): string[] {
+    const visible = this.notes.visible(ids);
+    return ids.filter((id) => visible.has(id));
+  }
+
+  /** Whether the running call's grant names this notebook. */
+  private grants(notebookId: string): boolean {
+    return this.access.current?.notebooks.includes(notebookId) ?? true;
+  }
+
+  /**
+   * What a restricted connection may call, and how each is held to its grant; see
+   * `scoped`. Typed as this object's own methods, so an entry takes what its method
+   * takes and answers what it answers, and a renamed method is a compile error here
+   * rather than a tool that quietly stopped working.
+   *
+   * The reads, in this order: notes by id, notes by filter, notebooks and their fields,
+   * tags, a note's files, and the account's own numbers.
+   */
+  private readonly restricted: { [K in keyof UserStore]?: UserStore[K] } = {
+    get: (id, opts) => (this.sees(id) ? this.get(id, opts) : null),
+    getWithFiles: (id, opts) => (this.sees(id) ? this.getWithFiles(id, opts) : null),
+    linkedFilenames: (id) => (this.sees(id) ? this.linkedFilenames(id) : null),
+    // Where a set of notes is filed: asked of the ones it may see, so the answer names
+    // no notebook and counts no note outside the grant.
+    fieldTargets: (ids) => this.fieldTargets(this.seen(ids)),
+
+    listPage: (list, count, opts) => this.listPage(list, count, opts),
+    search: (query, limit, filters, max) => this.search(query, limit, filters, max),
+    searchWithFiles: (query, limit, filters, max, opts) => this.searchWithFiles(query, limit, filters, max, opts),
+
+    listNotebooks: () => this.listNotebooks().filter((nb) => this.grants(nb.id)),
+    // The unfiled count is a fact about notes the grant may not reach: nothing, then,
+    // which is also what a page of them would show it.
+    notebooksOverview: (opts) => {
+      const all = this.notebooksOverview(opts);
+      return {
+        notebooks: all.notebooks.filter((nb) => this.grants(nb.id)),
+        unfiled: this.access.current?.unfiled ? all.unfiled : 0,
+        ...('fields' in all && all.fields ? { fields: all.fields.filter((f) => this.grants(f.notebookId)) } : {}),
+      };
+    },
+    // By name, and a name outside the grant is no notebook, as a name nobody has used is.
+    notebookByName: (name) => {
+      const found = this.notebookByName(name);
+      return found && this.grants(found.id) ? found : null;
+    },
+    listFields: (notebookId, opts) => (this.grants(notebookId) ? this.listFields(notebookId, opts) : null),
+
+    listTags: () => this.listTags(),
+    tagCounts: (filter) => this.tagCounts(filter),
+
+    resolveAttachment: (noteId, filename, opts) => (this.sees(noteId) ? this.resolveAttachment(noteId, filename, opts) : null),
+    resolveWithRead: (noteId, filename, vision) => (this.sees(noteId) ? this.resolveWithRead(noteId, filename, vision) : null),
+    textWithRead: (noteId, filename, vision) => (this.sees(noteId) ? this.textWithRead(noteId, filename, vision) : null),
+    listAttachments: (noteId) => (this.sees(noteId) ? this.listAttachments(noteId) : []),
+    ownsNote: (noteId) => this.sees(noteId) && this.ownsNote(noteId),
+
+    // The account's bytes and counts, which the Worker reads to hold a write to the
+    // plan. Numbers about the whole account, and no tool shows them to an assistant
+    // except as "you are out of room", which is the person's own limit either way.
+    attachmentBytes: () => this.attachmentBytes(),
+    usage: () => this.usage(),
+  };
 
   // --- Notes: the repository, one for one -----------------------------------------------
   //

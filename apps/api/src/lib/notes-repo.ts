@@ -24,6 +24,7 @@ import type {
   UpdateView,
   ViewQuery,
 } from '@unbent/shared';
+import type { StoreAccess } from './access.js';
 import { StoreRepo } from './store-client.js';
 import type { FileSummary } from '../store/attachments.js';
 import type { PressLimits, UsageEntry } from '../store/llm-usage.js';
@@ -89,8 +90,10 @@ export class NotesRepo extends StoreRepo {
     store: ConstructorParameters<typeof StoreRepo>[0],
     userId: string,
     private readonly limits: WriteLimitsSource,
+    /** The grant of the connection this repo acts for, when it was given only some notebooks; see `StoreRepo`. */
+    access: StoreAccess | null = null,
   ) {
-    super(store, userId);
+    super(store, userId, access);
   }
 
   /**

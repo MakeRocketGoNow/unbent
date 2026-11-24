@@ -131,6 +131,7 @@ const EXEMPT: Record<string, string> = {
   loadFinish: 'names a new epoch itself, so every client starts over from the loaded rows',
   autofillPrelude: 'counts an Auto-fill press against the day\'s cap, which is metering no client holds',
   recordLlmUsage: 'counts what the language model cost, which is metering no client holds',
+  scoped: 'runs another method of the object for a restricted connection (MAK-264); a write it runs is that method, recording as it does for anyone',
 };
 
 /** Reads, composites and the operator surface: nothing to record. */

@@ -45,6 +45,7 @@ import {
   foldNoCase,
   leastUsedColor,
 } from '@unbent/shared';
+import { accessCondition, GRANT_DRIVEN_MAX, type AccessScope, type StoreAccess } from './access.js';
 import type { DeletedBlobs } from './deleted-blobs.js';
 import type { Change, Feed } from './feed.js';
 import { Revisions } from './revisions.js';
@@ -224,8 +225,119 @@ export class NotesStore {
     private readonly feed: Feed,
     private readonly deletedBlobs: DeletedBlobs,
     private readonly views: ViewsStore,
+    /**
+     * The grant the running call is held to, when a restricted connection made it
+     * (MAK-264); see `AccessScope`. The object's one, set by `UserStore.scoped`. Every
+     * query here that filters notes goes through `filters`, which reads it, and the
+     * methods that answer by id are asked through `visible` before they are called.
+     */
+    private readonly access: AccessScope,
   ) {
     this.revisions = new Revisions(sql);
+  }
+
+  /**
+   * `filterConditions` for the running call: the same clauses, and the grant's beside
+   * them when the call is a restricted connection's.
+   *
+   * Every query that filters notes builds its conditions here, never from
+   * `filterConditions` itself, so there is one place a grant is applied and a new query
+   * cannot leave it out.
+   *
+   * A filter that already names a notebook settles it by a lookup: one outside the grant
+   * matches nothing, and one inside it needs no second condition, so every plan measured
+   * for a notebook's own page stands as it was. Otherwise the grant is a condition on
+   * the note's notebook, and `lead` says whether it may be the way into the query:
+   *
+   * - `always`, for a query that reads every match anyway (a count, a notebook's tags,
+   *   a small search scope): starting from the granted notebooks reads exactly them.
+   * - `sized`, for a page under a LIMIT: only while the grant is small. See
+   *   `GRANT_DRIVEN_MAX`.
+   * - `never`, where the query starts somewhere better: a full-text match.
+   *
+   * A tag or a list of ids beside it is always the better way in, whatever `lead` says.
+   */
+  private filters(
+    opts: Parameters<typeof filterConditions>[0],
+    binds: Bind[],
+    lead: 'always' | 'sized' | 'never',
+  ): string[] {
+    const access = this.accessFor(opts.notebook);
+    if (access === 'none') return ['0'];
+    const conditions = filterConditions(opts, binds);
+    if (!access) return conditions;
+    const byKey = (opts.tags && opts.tags.length > 0) || (opts.ids && opts.ids.length > 0);
+    const leads = !byKey && (lead === 'always' || (lead === 'sized' && this.grantLeads(access)));
+    conditions.push(accessCondition(access, binds, leads ? 'n.notebook_id' : '+n.notebook_id'));
+    return conditions;
+  }
+
+  /**
+   * What the running call's grant asks of a query filtered to `notebook` (a name,
+   * `UNFILED`, or nothing): null for no condition (an unrestricted call, or a notebook
+   * the grant covers), `'none'` when nothing can match, and the grant itself when the
+   * filter names no notebook and the grant has to.
+   */
+  private accessFor(notebook: string | undefined): StoreAccess | null | 'none' {
+    const access = this.access.current;
+    if (!access) return null;
+    if (notebook === UNFILED) return access.unfiled ? null : 'none';
+    if (!notebook) return access;
+    const row = this.sql.first<{ id: string }>(`SELECT id FROM notebooks WHERE name = ?1 COLLATE NOCASE`, notebook);
+    return row && access.notebooks.includes(row.id) ? null : 'none';
+  }
+
+  /**
+   * How many live notes a grant covers, from the counts the triggers keep: a row per
+   * granted notebook by its primary key, and the one counts row for the unfiled. Counted
+   * once a call (`AccessScope.size`), since a page and its count both ask.
+   */
+  private grantSize(access: StoreAccess): number {
+    return this.access.size(() => {
+      const filed =
+        access.notebooks.length === 0
+          ? 0
+          : (this.sql.first<{ n: number }>(
+              `SELECT COALESCE(SUM(note_count), 0) AS n FROM notebooks WHERE id IN (SELECT value FROM json_each(?1))`,
+              JSON.stringify(access.notebooks),
+            )?.n ?? 0);
+      return filed + (access.unfiled ? this.totals().unfiled : 0);
+    });
+  }
+
+  /**
+   * Whether a page of notes starts from the grant. One notebook always does: its index
+   * holds its notes in every order a page is asked in, so the page stops when it is
+   * full, as the app's own page of that notebook does.
+   */
+  private grantLeads(access: StoreAccess): boolean {
+    if (access.notebooks.length === 1 && !access.unfiled) return true;
+    return this.grantSize(access) <= GRANT_DRIVEN_MAX;
+  }
+
+  /**
+   * Which of `ids` the running call may see: all of them for an unrestricted call, and
+   * for a restricted one the notes filed where its grant reaches, live or trashed (a
+   * note in the trash keeps its notebook, so the trash follows the same rule). An id
+   * that names no note is not in the answer either way it is asked.
+   *
+   * By primary key, one bind for the list; the grant's condition hides its column so
+   * the ids stay the way in.
+   */
+  visible(ids: string[]): Set<string> {
+    const access = this.access.current;
+    if (!access) return new Set(ids);
+    if (ids.length === 0) return new Set();
+    const binds: Bind[] = [JSON.stringify([...new Set(ids)])];
+    const condition = accessCondition(access, binds, '+n.notebook_id');
+    return new Set(
+      this.sql
+        .exec<{ id: string }>(
+          `SELECT n.id FROM notes n WHERE n.id IN (SELECT value FROM json_each(?1)) AND ${condition}`,
+          ...binds,
+        )
+        .map((r) => r.id),
+    );
   }
 
   /** The copies kept of what a write replaced; see `Revisions.keep`. */
@@ -437,7 +549,7 @@ export class NotesStore {
     }
     conditions.push(
       // The range applies to the column being sorted, so the filter and the order agree.
-      ...filterConditions({ tags, notebook, fields, untagged, from, to, ids, dateColumn: spec.dateColumn }, binds),
+      ...this.filters({ tags, notebook, fields, untagged, from, to, ids, dateColumn: spec.dateColumn }, binds, 'sized'),
     );
     binds.push(limit);
     const limitBind = `?${binds.length}`;
@@ -739,15 +851,25 @@ export class NotesStore {
    * had drifted would be telling the user something false at the one moment it matters.
    */
   count(opts: CountOptions = {}): number {
+    // A restricted connection's count of everything it may see is its grant's size,
+    // from the same stored counts; filtered to a notebook, the grant either covers it,
+    // and the notebook's own stored count below is right, or the count is nothing.
+    // Anything else is counted from the rows, with the grant among the conditions.
+    const access = this.accessFor(opts.notebook);
+    if (access === 'none') return 0;
     if (!opts.exact) {
       const stored = this.storedCount(opts);
-      if (stored !== undefined) return stored;
+      if (stored !== undefined) {
+        if (!access) return stored;
+        const plain = !opts.trashed && !(opts.tags && opts.tags.length > 0);
+        if (plain) return this.grantSize(access);
+      }
     }
 
     const binds: Bind[] = [];
     const conditions = [
       liveCondition(opts.trashed, opts.tags, opts.ids),
-      ...filterConditions(
+      ...this.filters(
         {
           ids: opts.ids,
           tags: opts.tags,
@@ -763,6 +885,7 @@ export class NotesStore {
               : SORTS[opts.sort ?? DEFAULT_NOTE_SORT].dateColumn,
         },
         binds,
+        'always',
       ),
     ];
 
@@ -2212,7 +2335,7 @@ export class NotesStore {
      * would let the other leak notes from outside the current scope.
      */
     const binds: Bind[] = [query, limit];
-    const scope = filterConditions(filters, binds);
+    const scope = this.filters(filters, binds, 'never');
     const scoped = scope.length > 0 ? `AND ${scope.join(' AND ')}` : '';
     const held = `?${binds.length + 1}`;
 
@@ -2349,7 +2472,7 @@ export class NotesStore {
    */
   private searchScope(query: string, limit: number, filters: SearchFilters): SearchResult[] {
     const binds: Bind[] = [];
-    const scope = filterConditions(filters, binds);
+    const scope = this.filters(filters, binds, 'always');
     const notes = this.sql.exec<{ rid: number; id: string; title: string; updated_at: number }>(
       `SELECT n.rowid AS rid, n.id, n.title, n.updated_at
          FROM notes n
@@ -2382,13 +2505,19 @@ export class NotesStore {
       binds.push(tag);
       sizes.push(`(SELECT note_count FROM tags WHERE name = ?${binds.length} COLLATE NOCASE)`);
     }
-    if (sizes.length === 0) return false;
+    // A restricted connection's grant is a scope too, with a stored size of its own:
+    // a search of two small notebooks out of an archive is asked of their notes, not
+    // of every match in the archive with each one tested against the grant. A filter
+    // naming a notebook has already settled the grant (`accessFor`) and adds nothing.
+    const access = this.accessFor(filters.notebook);
+    const granted = access && access !== 'none' ? this.grantSize(access) : null;
+    if (sizes.length === 0) return granted !== null && granted <= max;
 
     const row = this.sql.first<{ size: number }>(
       `SELECT MIN(${sizes.map((s) => `COALESCE(${s}, 0)`).join(', ')}) AS size`,
       ...binds,
     );
-    return (row?.size ?? 0) <= max;
+    return Math.min(row?.size ?? 0, granted ?? Infinity) <= max;
   }
 
   /**
@@ -2511,6 +2640,12 @@ export class NotesStore {
    * rather than by whatever the query planner returns.
    */
   listTags(): Array<{ id: string; name: string; count: number; color: number | null }> {
+    // The stored counts are of every notebook's notes, and a tag's name is itself
+    // something a note says: a restricted connection is answered from the notes it may
+    // see, so a tag used only outside its grant is not listed and one used on both sides
+    // is counted on its own. That reads the grant's notes and their links, as
+    // `tagCounts` does for a notebook, where this is a row per tag.
+    if (this.access.current) return this.countTags({}, true);
     // The count is the triggers', one row per tag. A tag whose notes are all in the trash
     // has a count of zero and is left out, as it was when this joined the notes to count.
     return this.sql.exec<{ id: string; name: string; count: number; color: number | null }>(
@@ -2550,10 +2685,18 @@ export class NotesStore {
     notebook?: string | undefined;
     tags?: string[] | undefined;
   }): Array<{ id: string; name: string; count: number }> {
+    return this.countTags(filter, false);
+  }
+
+  /** `tagCounts`, with each tag's colour when `colors` asks: what `listTags` answers a restricted connection with. */
+  private countTags<C extends boolean>(
+    filter: { notebook?: string | undefined; tags?: string[] | undefined },
+    colors: C,
+  ): Array<{ id: string; name: string; count: number } & (C extends true ? { color: number | null } : unknown)> {
     const binds: Bind[] = [];
     const conditions = [
       liveCondition(false, filter.tags),
-      ...filterConditions({ tags: filter.tags, notebook: filter.notebook }, binds),
+      ...this.filters({ tags: filter.tags, notebook: filter.notebook }, binds, 'always'),
     ];
     const named = (filter.tags ?? []).map((name) => {
       binds.push(name);
@@ -2562,8 +2705,8 @@ export class NotesStore {
     // Counted by tag id first and named after, so the tags table is read once per tag in
     // the set rather than once per link: a third of the reads for a notebook of notes
     // with one or two tags each.
-    return this.sql.exec<{ id: string; name: string; count: number }>(
-      `SELECT t.id, t.name, c.count
+    return this.sql.exec<{ id: string; name: string; count: number } & (C extends true ? { color: number | null } : unknown)>(
+      `SELECT t.id, t.name, c.count${colors ? ', t.color' : ''}
          FROM (SELECT nt.tag_id, COUNT(*) AS count
                  FROM notes n
                 CROSS JOIN note_tags nt ON nt.note_id = n.id

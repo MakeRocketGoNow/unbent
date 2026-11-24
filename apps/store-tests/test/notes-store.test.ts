@@ -1562,6 +1562,21 @@ describe('rows read on an archive-sized store', () => {
       await measure('view create', () => stub.createView('nb2', 'Fresh view', { tag: ['rare'] })),
       await measure('view move', () => stub.updateView('view-1-3', { position: 0 })),
       await measure('view delete', () => stub.deleteView('view-4-0')),
+      // A connected assistant given some notebooks (MAK-264). Its calls go through
+      // `scoped`, and each of these is the grant deciding the plan: one notebook is its
+      // own index, a small grant is the way in, a large one is tested against the page's
+      // own order, and a search of a small grant is asked of its notes, not of every
+      // match in the archive.
+      await measure('restricted: page of one notebook', () => stub.scoped({ notebooks: ['nb3'], unfiled: false }, 'listPage', [{ limit: 50 }, {}])),
+      await measure('restricted: page of a small grant', () => stub.scoped({ notebooks: ['nb5', 'nb3'], unfiled: false }, 'listPage', [{ limit: 50 }, {}])),
+      await measure('restricted: page of a large grant', () => stub.scoped({ notebooks: ['nb0', 'nb1', 'nb2', 'nb3'], unfiled: false }, 'listPage', [{ limit: 50 }, {}])),
+      await measure('restricted: page of a tiny grant and the unfiled', () => stub.scoped({ notebooks: ['nb5'], unfiled: true }, 'listPage', [{ limit: 50 }, {}])),
+      await measure('restricted: rare tag page', () => stub.scoped({ notebooks: ['nb5', 'nb3'], unfiled: false }, 'listPage', [{ limit: 50, tags: ['rare'] }, { tags: ['rare'] }])),
+      await measure('restricted: search of a tiny grant', () => stub.scoped({ notebooks: ['nb5'], unfiled: false }, 'search', ['receipt', 50])),
+      await measure('restricted: search of a large grant', () => stub.scoped({ notebooks: ['nb0', 'nb1', 'nb2', 'nb3'], unfiled: false }, 'search', ['receipt', 50])),
+      await measure('restricted: tags of a tiny grant', () => stub.scoped({ notebooks: ['nb5'], unfiled: false }, 'listTags', [])),
+      await measure('restricted: a note by id', () => stub.scoped({ notebooks: ['nb5', 'nb3'], unfiled: false }, 'get', ['n00003'])),
+      await measure('restricted: a note outside the grant', () => stub.scoped({ notebooks: ['nb5', 'nb3'], unfiled: false }, 'get', ['n00002'])),
     ];
     console.log(results.map((r) => `${r.label}: ${r.rowsRead} read, ${r.rowsWritten} written`).join('\n'));
     // The store's limit must not fire for an archive that only filed what it scanned:
@@ -1764,6 +1779,26 @@ describe('rows read on an archive-sized store', () => {
       'view move': 30,
       // The row, the views after it in its notebook moved up one, the feed (22).
       'view delete': 30,
+      // A restricted connection's (MAK-264), measured 2026-11-24. One notebook pages as
+      // the notebook's own page does (261 against 258). A small grant is read whole to
+      // sort a page out of it, which is its size and no more (423 for 624 notes; the
+      // archive would be 3,000). A large one walks the sort index and tests each note:
+      // the first page's cost (308 against 309), not the grant's 2,376. A search of a
+      // tiny grant is asked of its thirty notes (441); left to the full-text index it
+      // would test every match in the archive against the grant to find them.
+      'restricted: page of one notebook': 400,
+      'restricted: page of a small grant': 700,
+      'restricted: page of a large grant': 400,
+      'restricted: page of a tiny grant and the unfiled': 350,
+      'restricted: rare tag page': 60,
+      'restricted: search of a tiny grant': 600,
+      'restricted: search of a large grant': 400,
+      // Thirty notes and their links, as a small notebook's tags are (77).
+      'restricted: tags of a tiny grant': 120,
+      // The note, and one row more to ask whether the grant reaches it; a note it does
+      // not reach is that row and nothing of the note.
+      'restricted: a note by id': 20,
+      'restricted: a note outside the grant': 10,
     };
     for (const r of results) {
       if (r.label === 'dump') continue;
