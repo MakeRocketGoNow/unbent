@@ -1,6 +1,8 @@
 import { createResourceServerChallenge } from '@better-auth/oauth-provider';
 import { verifyJwsAccessToken } from 'better-auth/oauth2';
+import type { AssistantGrant } from '@unbent/shared';
 import { getAuth, mcpIssuer, mcpResource } from '../auth.js';
+import { connectionGrant } from '../lib/assistant-grants.js';
 import type { Env } from '../types.js';
 
 /**
@@ -46,7 +48,7 @@ const jwksCacheKey = {};
  */
 export function protectMcp(
   env: Env,
-  handler: (request: Request, claims: AccessTokenClaims) => Promise<Response>,
+  handler: (request: Request, claims: AccessTokenClaims, grant: AssistantGrant) => Promise<Response>,
 ): (request: Request) => Promise<Response> {
   const resource = mcpResource(env);
 
@@ -64,11 +66,12 @@ export function protectMcp(
         verifyOptions: { issuer: await issuerFor(env, request), audience: resource },
       })) as AccessTokenClaims;
 
-      if (!(await grantStillStands(env, claims))) {
+      const grant = await grantFor(env, claims);
+      if (!grant) {
         throw new Error('this application has been disconnected');
       }
 
-      return await handler(request, claims);
+      return await handler(request, claims, grant);
     } catch (error) {
       return challenge(error, resource);
     }
@@ -100,29 +103,26 @@ async function issuerFor(env: Env, request: Request): Promise<string> {
 }
 
 /**
- * Whether the user still wants this application to have access.
+ * What the user lets this application do, or null when they have disconnected it.
  *
- * Signature checking alone cannot answer that. A token is valid for its whole lifetime by
- * construction, so someone who disconnects an assistant in Settings would otherwise keep
- * being read for up to an hour afterwards, and "disconnect" would mean "disconnect
- * shortly", which is not what the word promises or what the settings page says.
+ * Signature checking alone cannot answer either half. A token is valid for its whole
+ * lifetime by construction, so someone who disconnects an assistant in Settings would
+ * otherwise keep being read for up to an hour afterwards, and "disconnect" would mean
+ * "disconnect shortly", which is not what the word promises or what the settings page
+ * says. The same goes for what a connection may reach (MAK-264): someone who takes a
+ * notebook away from an assistant means now.
  *
- * So each call checks that the consent row is still there. That is one indexed lookup on
- * (clientId, userId), against the cost of the alternative: the user watching an app they
- * just revoked continue to work. Tokens with no client id are refused rather than waved
- * through, since a token that cannot be attributed cannot be revoked either.
+ * So each call reads the consent row, and the grant beside it, in one indexed lookup on
+ * (clientId, userId): see `connectionGrant`. That is the cost, against the alternative:
+ * the user watching an app they just revoked, or just restricted, carry on as before.
+ * Tokens with no client id are refused rather than waved through, since a token that
+ * cannot be attributed cannot be revoked either.
  */
-async function grantStillStands(env: Env, claims: AccessTokenClaims): Promise<boolean> {
+async function grantFor(env: Env, claims: AccessTokenClaims): Promise<AssistantGrant | null> {
   const clientId = typeof claims.client_id === 'string' ? claims.client_id : null;
   const userId = typeof claims.sub === 'string' ? claims.sub : null;
-  if (!clientId || !userId) return false;
-
-  const row = await env.DB.prepare(
-    `SELECT 1 AS ok FROM oauthConsent WHERE clientId = ?1 AND userId = ?2 LIMIT 1`,
-  )
-    .bind(clientId, userId)
-    .first<{ ok: number }>();
-  return row !== null;
+  if (!clientId || !userId) return null;
+  return connectionGrant(env.DB, clientId, userId);
 }
 
 /**
@@ -192,7 +192,7 @@ export function userIdFrom(claims: AccessTokenClaims): string {
 /**
  * The OAuth client a verified token was issued to: which assistant is calling. Only the
  * feedback tool reads it, to say which assistant a report came from. A token without one
- * never gets this far (`grantStillStands` refuses it), so the throw is the same loud
+ * never gets this far (`grantFor` refuses it), so the throw is the same loud
  * failure as `userIdFrom`'s rather than a case to handle.
  */
 export function clientIdFrom(claims: AccessTokenClaims): string {

@@ -1,6 +1,38 @@
 {
   "level": 5,
   "requests": {
+    "assistantGrantSchema": {
+      "type": "object",
+      "properties": {
+        "notebooks": {
+          "anyOf": [
+            {
+              "maxItems": 2000,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "unfiled": {
+          "type": "boolean"
+        },
+        "readOnly": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "notebooks",
+        "unfiled",
+        "readOnly"
+      ]
+    },
     "attachmentTextsSchema": {
       "type": "object",
       "properties": {

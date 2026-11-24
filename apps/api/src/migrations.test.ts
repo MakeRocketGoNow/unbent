@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { OPERATOR_SORTS } from '@unbent/shared';
+import { CONNECTION_GRANT_SQL } from './lib/assistant-grants.js';
 import { DUMP_SQL, OPERATOR_PAGE_SQL, operatorPageSql } from './lib/directory.js';
 import { LAPSE_DUE_SQL, planUpdateSql } from './lib/plan.js';
 import { RESTORES_SQL } from './lib/restores.js';
@@ -315,5 +316,39 @@ describe.skipIf(!sqlite3)('the restore history', () => {
     expect(plan(RESTORES_SQL.undone.replace('?1', "'u'").replace('?2', "'b'"))).toContain('SEARCH restores USING INDEX idx_restores_user (user_id=?)');
     // The newest row's id, checked inside every start: the index alone, which carries the rowid.
     expect(plan(RESTORES_SQL.newest.replace('?1', "'u'"))).toContain('SEARCH restores USING COVERING INDEX idx_restores_user (user_id=?)');
+  });
+});
+
+/**
+ * A connected assistant's grant (0049, MAK-264) is read with its consent on every tool
+ * call, so the pair has to stay two seeks: the consent by its (client, user) index, as
+ * it was before the grant joined it, and the grant by its primary key.
+ */
+describe.skipIf(!sqlite3)('a connection\'s grant', () => {
+  let run: (sql: string) => string;
+  beforeAll(() => {
+    const file = join(mkdtempSync(join(tmpdir(), 'unbent-grants-')), 'd1.sqlite');
+    run = db(file).run;
+    for (const f of files) run(migration(f));
+  });
+
+  it('is found beside its consent by key, never by a scan', () => {
+    const plan = run(`EXPLAIN QUERY PLAN ${CONNECTION_GRANT_SQL.replace('?1', "'c'").replace('?2', "'u'")}`);
+    expect(plan).toContain('SEARCH c USING COVERING INDEX idx_oauthConsent_client_user (clientId=? AND userId=?)');
+    expect(plan).toContain('SEARCH g USING INDEX sqlite_autoindex_assistant_grants_1 (user_id=? AND client_id=?)');
+    expect(plan).not.toContain('SCAN');
+  });
+
+  it('goes with its account and with its client', () => {
+    run(`
+      INSERT INTO user (id, name, email, emailVerified, createdAt, updatedAt) VALUES ('u1', 'U', 'u1@example.com', 1, '2026-01-01', '2026-01-01');
+      INSERT INTO user (id, name, email, emailVerified, createdAt, updatedAt) VALUES ('u2', 'U', 'u2@example.com', 1, '2026-01-01', '2026-01-01');
+      INSERT INTO oauthClient (id, clientId, redirectUris) VALUES ('row-a', 'client-a', '[]'), ('row-b', 'client-b', '[]');
+      INSERT INTO assistant_grants (user_id, client_id, notebooks, updated_at) VALUES ('u1', 'client-a', '["nb"]', 1), ('u2', 'client-a', NULL, 1), ('u2', 'client-b', '[]', 1);
+    `);
+    run(`DELETE FROM user WHERE id = 'u1'`);
+    expect(run(`SELECT user_id || ':' || client_id FROM assistant_grants ORDER BY 1`)).toBe(['u2:client-a', 'u2:client-b'].join('\n'));
+    run(`DELETE FROM oauthClient WHERE clientId = 'client-a'`);
+    expect(run(`SELECT user_id || ':' || client_id FROM assistant_grants`)).toBe('u2:client-b');
   });
 });

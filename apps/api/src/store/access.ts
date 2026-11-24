@@ -1,3 +1,4 @@
+import { ASSISTANT_GRANT_MAX_NOTEBOOKS } from '@unbent/shared';
 import type { Bind } from './sql.js';
 
 /**
@@ -16,12 +17,6 @@ export interface StoreAccess {
   unfiled: boolean;
 }
 
-/**
- * How many notebooks a grant may name. A bound on what crosses RPC with every call and
- * on the JSON one bind carries, far past any library: a grant naming more is refused
- * where it is saved, and here again, since this is the side that would pay for it.
- */
-export const ACCESS_MAX_NOTEBOOKS = 2000;
 
 /**
  * A grant counted this small is the way into a page of notes; a larger one is tested
@@ -84,7 +79,8 @@ export function checkedAccess(value: unknown): StoreAccess {
     !v ||
     typeof v !== 'object' ||
     !Array.isArray(v.notebooks) ||
-    v.notebooks.length > ACCESS_MAX_NOTEBOOKS ||
+    // Refused where a grant is saved, and here again: this is the side that would pay for it.
+    v.notebooks.length > ASSISTANT_GRANT_MAX_NOTEBOOKS ||
     !v.notebooks.every((id) => typeof id === 'string') ||
     typeof v.unfiled !== 'boolean'
   ) {

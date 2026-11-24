@@ -1,5 +1,7 @@
 import { McpServer, createMcpHandler } from '@modelcontextprotocol/server';
+import type { AssistantGrant } from '@unbent/shared';
 import { appLinks } from '../lib/app-links.js';
+import { storeAccessOf } from '../lib/assistant-grants.js';
 import { canUseLlm } from '../lib/llm.js';
 import { billingOn } from '../lib/stripe.js';
 import { refuseIfPastFree } from '../lib/free-plan.js';
@@ -23,6 +25,10 @@ import { registerWriteTools } from './tools/write.js';
  * and the reason a tool never takes a user id as an argument. Isolation is then structural rather than
  * something each tool has to remember.
  *
+ * The same goes for a connection the person gave only some notebooks: its repos are
+ * bound to that grant as they are bound to the user, so what it may reach is settled
+ * here, once, for every tool.
+ *
  * `legacy` is left at its default so both the 2025 and the 2026-07-28 protocol revisions are
  * served. Clients are spread across both right now, and rejecting the older one would mean
  * refusing connections for no benefit to anyone.
@@ -32,6 +38,8 @@ export function createUnbentMcpHandler(
   userId: string,
   /** The OAuth client calling, which only the feedback tool reads (to say which assistant wrote). */
   clientId: string,
+  /** What the person gave this connection (MAK-264): read with the consent on every call, by `protectMcp`. */
+  grant: AssistantGrant,
   // Structural rather than the platform's ExecutionContext: Hono hands the route a
   // narrower type, and waitUntil is the only member anything here calls.
   ctx: { waitUntil(promise: Promise<unknown>): void },
@@ -50,7 +58,10 @@ export function createUnbentMcpHandler(
       row = undefined;
       throw err;
     }));
-    const { notes, attachments } = reposFor(env, userId, async () => writeLimitsOf(env, await plan()));
+    // Both repos are held to the grant's notebooks, in the store, on every call: a
+    // connection given a list has no other way to its notes (`StoreRepo`), so no tool
+    // below has to know whether it is restricted, and none can forget to ask.
+    const { notes, attachments } = reposFor(env, userId, async () => writeLimitsOf(env, await plan()), storeAccessOf(grant));
     registerReadTools(server, notes, attachments, links, { vision: canUseLlm(env) });
     // The write tools go through the plan's gate (mcp/plan-gate.ts). Most are held to
     // the free plan in the store, through the limits the repos carry, and never ask it;
