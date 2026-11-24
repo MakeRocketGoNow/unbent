@@ -336,6 +336,13 @@ describe('a restricted connection writes only where it was given', () => {
     expect(await as(s.stub, s.grant, 'recordAttachment', file('f-new', s.letter.id))).toMatchObject({ filename: 'card.jpg' });
     expect(await as(s.stub, s.grant, 'writeAssistantText', s.letter.id, 'card.jpg', 'a business card')).toMatchObject({ ok: true });
 
+    // What the server reads off a file it was just given, after the tool has answered.
+    await as(s.stub, s.grant, 'recordAttachment', { ...file('f-pdf', s.letter.id), filename: 'added.pdf', contentType: 'application/pdf' });
+    await as(s.stub, s.grant, 'recordText', { attachmentId: 'f-pdf', noteId: s.letter.id, filename: 'added.pdf', text: 'a lighthouse keeper' });
+    expect(titles(await as<SearchResult[]>(s.stub, s.grant, 'search', 'lighthouse', 50))).toEqual(['A letter']);
+    await expect(as(s.stub, s.grant, 'recordText', { attachmentId: 'f-out', noteId: s.entry.id, filename: 'scan.pdf', text: 'reached' })).rejects.toMatchObject(refused('method'));
+    expect(await s.stub.textFor(s.entry.id, 'scan.pdf')).toBe('the harbour invoice');
+
     await expect(as(s.stub, s.grant, 'availableFilename', s.entry.id, 'scan.pdf')).rejects.toMatchObject(refused('method'));
     await expect(as(s.stub, s.grant, 'recordAttachment', file('f-reach', s.entry.id))).rejects.toMatchObject(refused('method'));
     expect(await as(s.stub, s.grant, 'writeAssistantText', s.entry.id, 'scan.pdf', 'reached')).toMatchObject({ ok: false, reason: 'missing' });
@@ -405,5 +412,5 @@ const HELD = [
   'update', 'appendToBody', 'remove', 'restore', 'updateMany', 'removeMany', 'restoreMany',
   'updateNotebook', 'createField', 'updateField', 'editFieldOptions',
   'createNotebook', 'deleteNotebook', 'renameTag', 'deleteTag',
-  'availableFilename', 'recordAttachment', 'writeAssistantText',
+  'availableFilename', 'recordAttachment', 'recordText', 'writeAssistantText',
 ];

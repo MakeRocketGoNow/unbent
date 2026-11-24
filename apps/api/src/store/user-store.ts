@@ -1259,6 +1259,13 @@ export class UserStore extends DurableObject<StoreEnv> {
     availableFilename: (noteId, desired) => (this.sees(noteId) ? this.availableFilename(noteId, desired) : this.refuse('method', 'a file for a note outside the grant')),
     recordAttachment: (input, opts, limit) =>
       this.sees(input.noteId) ? this.recordAttachment(input, opts, limit) : this.refuse('method', 'a file for a note outside the grant'),
+    // The text the server reads off a file the connection just added, after the answer
+    // has gone (`storeAttachment`'s background read): for a note it can see, as the file
+    // itself was. Not a tool's own call, which is how it was left off this list at
+    // first: every PDF an assistant attached then waited, unread and unsearchable,
+    // for the person to open the app.
+    recordText: (input, usage, limit) =>
+      this.sees(input.noteId) ? this.recordText(input, usage, limit) : this.refuse('method', 'text for a note outside the grant'),
     writeAssistantText: (noteId, filename, text, limit) =>
       this.sees(noteId)
         ? this.writeAssistantText(noteId, filename, text, limit)
