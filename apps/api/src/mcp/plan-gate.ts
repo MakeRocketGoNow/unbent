@@ -1,5 +1,6 @@
 import { PLAN_INACTIVE_MESSAGE } from '@unbent/shared';
 import type { McpServer } from '@modelcontextprotocol/server';
+import { AccessRefused } from '../lib/access.js';
 import { PlanRefused } from '../lib/free-plan.js';
 import { StorageFull } from '../lib/quota.js';
 import { toolError } from './tools/result.js';
@@ -64,6 +65,28 @@ export const HELD_IN_STORE_TOOLS: ReadonlySet<string> = new Set([
   'clip_web_page',
 ]);
 
+/**
+ * The one tool that is not a read and that a read-only connection keeps (MAK-264).
+ * "Read only" is the person's promise that this assistant changes nothing of theirs,
+ * and `send_feedback` writes the operator's table, not the account: an assistant that
+ * has been given less is, if anything, the one with more to report. Everything else
+ * that does not say `readOnlyHint: true` is withheld, `set_attachment_text` included:
+ * what it records is derived, but it is what search then finds, so it is a change.
+ */
+export const KEPT_READ_ONLY: ReadonlySet<string> = new Set(['send_feedback']);
+
+/**
+ * The tools a connection given only some notebooks is not shown (MAK-264): the ones
+ * the store refuses it outright, whatever their arguments, because each reaches past
+ * any one notebook. For the reason a read-only connection is not shown its write tools:
+ * an assistant plans with what it is shown, and these four could only ever be refused.
+ * The store's refusal stays behind them (`restricted` in store/user-store.ts), so this
+ * list is what the assistant sees and that one is what holds. `update_notebook` stays:
+ * a notebook's purpose and emoji are still the connection's to set, and only its name
+ * is refused.
+ */
+export const WITHHELD_PARTIAL: ReadonlySet<string> = new Set(['create_notebook', 'delete_notebook', 'rename_tag', 'delete_tag']);
+
 /** Answers the sentence to refuse with, or null to let the call through. */
 export type PlanGate = () => Promise<string | null>;
 
@@ -77,15 +100,26 @@ export type Registrar = { registerTool: RegisterTool };
 
 /**
  * A `registerTool` that puts `gate` in front of every write tool's handler, and the
- * store's own refusal of a write (`StorageFull`) behind it. The write modules take this
+ * store's own refusal of a write (`StorageFull`) behind it. For a read-only
+ * `connection` it registers no write tool at all, and for one given only some
+ * notebooks (`partial`) none of `WITHHELD_PARTIAL`. The write modules take this
  * in place of the server, so the choice of what is gated is made here and not in
  * twenty handlers. `registerTool` is overloaded on the schema library in use,
  * which is why the wrapper is written untyped and cast: it changes nothing about the
  * arguments, and the test calls the handlers it registers.
  */
-export function gatedRegistrar(server: McpServer, gate: PlanGate): Registrar {
+export function gatedRegistrar(server: McpServer, gate: PlanGate, connection: { readOnly?: boolean; partial?: boolean } = {}): Registrar {
   const registerTool = (name: string, config: { annotations?: { readOnlyHint?: boolean } }, cb: (...args: unknown[]) => unknown) => {
     const readOnly = config.annotations?.readOnlyHint === true;
+    // A connection the person made read only is not given its write tools at all
+    // (MAK-264), which is better than refusing each: an assistant plans with the tools
+    // it is shown, and one shown `delete_note` will reach for it, be refused, and try
+    // another way round. By the same annotation the plan's gate reads, so a new tool
+    // that does not say it only reads is withheld without anyone listing it. The
+    // modules ignore what `registerTool` answers, so there is nothing to hand back.
+    if (connection.readOnly && !readOnly && !KEPT_READ_ONLY.has(name)) return undefined;
+    // And one given only some notebooks is not shown what it could only be refused.
+    if (connection.partial && WITHHELD_PARTIAL.has(name)) return undefined;
     if (readOnly || ALLOWED_INACTIVE.has(name)) return server.registerTool(name, config as never, cb as never);
     const asksGate = !HELD_IN_STORE_TOOLS.has(name);
     const guarded = async (...args: unknown[]) => {
@@ -102,6 +136,9 @@ export function gatedRegistrar(server: McpServer, gate: PlanGate): Registrar {
         // And the free plan's (an account past it, or a note past its count), which the
         // store decides from the limits the repos carry: the same kind of sentence.
         if (err instanceof PlanRefused) return toolError(err.message);
+        // And a write past the notebooks a connection was given (MAK-264), which the
+        // store refuses with the reason: the sentence says what it may do instead.
+        if (err instanceof AccessRefused) return toolError(err.message);
         throw err;
       }
     };

@@ -1,5 +1,6 @@
 import { DEFAULT_NOTE_SORT } from '@unbent/shared';
 import type {
+  AssistantGrant,
   AccountPlan,
   AppConfig,
   AttachmentInfo,
@@ -1451,4 +1452,30 @@ export async function resyncDevices(userId: string): Promise<{ user: string; epo
   return json<{ user: string; epoch: string }>(
     await request(`/api/admin/store/feed-epoch?user=${encodeURIComponent(userId)}`, { method: 'POST' }),
   );
+}
+
+/**
+ * The connected assistants of this account that were given less than everything
+ * (MAK-264), by OAuth client id. One not in the answer has the whole library and may
+ * write: see `AssistantGrant`.
+ */
+export async function listAssistantGrants(): Promise<Record<string, AssistantGrant>> {
+  return (await json<{ grants: Record<string, AssistantGrant> }>(await request('/api/connected-apps/grants'))).grants;
+}
+
+/**
+ * Says what one connected assistant may see and do, the whole grant each time. Called by
+ * the consent screen before it allows the connection, so there is never a moment when
+ * the assistant is connected and not yet held to this, and by Settings afterwards.
+ */
+export async function saveAssistantGrant(clientId: string, grant: AssistantGrant): Promise<void> {
+  const res = await request(`/api/connected-apps/grants/${encodeURIComponent(clientId)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(grant),
+  });
+  if (!res.ok) {
+    const { message, code, of } = await httpErrorDetail(res);
+    throw new ApiError(res.status, message, code, of);
+  }
 }

@@ -970,3 +970,30 @@ describe('create_notes (MAK-214)', () => {
     expect(result.content[0]!.text).toContain('Year must be a number.');
   });
 });
+
+/*
+ * A connection given only some notebooks cannot rename one (MAK-264), so the tool it is
+ * given does not offer to: an assistant plans from the description and the schema.
+ */
+describe('update_notebook for a connection given only some notebooks', () => {
+  function config(partial: boolean): { description: string; inputSchema: { shape: Record<string, unknown> } } {
+    let found: unknown;
+    const server = {
+      registerTool(name: string, cfg: unknown) {
+        if (name === 'update_notebook') found = cfg;
+        return {} as never;
+      },
+    };
+    registerWriteTools(server as never, {} as NotesRepo, appLinks(APP_URL), { partial });
+    return found as { description: string; inputSchema: { shape: Record<string, unknown> } };
+  }
+
+  it('takes no name and says so, where anyone else\'s still does', () => {
+    const restricted = config(true);
+    expect(Object.keys(restricted.inputSchema.shape).sort()).toEqual(['emoji', 'notebookId', 'purpose']);
+    expect(restricted.description).toContain('Its name cannot be changed from this connection');
+    const whole = config(false);
+    expect(Object.keys(whole.inputSchema.shape).sort()).toEqual(['emoji', 'name', 'notebookId', 'purpose']);
+    expect(whole.description).toContain('its name, its purpose, its emoji');
+  });
+});

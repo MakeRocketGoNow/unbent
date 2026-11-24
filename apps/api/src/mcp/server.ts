@@ -1,5 +1,8 @@
 import { McpServer, createMcpHandler } from '@modelcontextprotocol/server';
+import type { AssistantGrant } from '@unbent/shared';
+import { connectionInstructions } from '../lib/access.js';
 import { appLinks } from '../lib/app-links.js';
+import { storeAccessOf } from '../lib/assistant-grants.js';
 import { canUseLlm } from '../lib/llm.js';
 import { billingOn } from '../lib/stripe.js';
 import { refuseIfPastFree } from '../lib/free-plan.js';
@@ -23,6 +26,10 @@ import { registerWriteTools } from './tools/write.js';
  * and the reason a tool never takes a user id as an argument. Isolation is then structural rather than
  * something each tool has to remember.
  *
+ * The same goes for a connection the person gave only some notebooks: its repos are
+ * bound to that grant as they are bound to the user, so what it may reach is settled
+ * here, once, for every tool.
+ *
  * `legacy` is left at its default so both the 2025 and the 2026-07-28 protocol revisions are
  * served. Clients are spread across both right now, and rejecting the older one would mean
  * refusing connections for no benefit to anyone.
@@ -32,6 +39,8 @@ export function createUnbentMcpHandler(
   userId: string,
   /** The OAuth client calling, which only the feedback tool reads (to say which assistant wrote). */
   clientId: string,
+  /** What the person gave this connection (MAK-264): read with the consent on every call, by `protectMcp`. */
+  grant: AssistantGrant,
   // Structural rather than the platform's ExecutionContext: Hono hands the route a
   // narrower type, and waitUntil is the only member anything here calls.
   ctx: { waitUntil(promise: Promise<unknown>): void },
@@ -40,7 +49,10 @@ export function createUnbentMcpHandler(
   // rather than answering every tool with an address that goes nowhere.
   const links = appLinks(env.APP_URL);
   return createMcpHandler(() => {
-    const server = new McpServer({ name: 'unbent', version: '1.0.0' });
+    // A restricted connection is told what it was not given when it connects, so the
+    // first it hears of a limit is not a refusal (`connectionInstructions`).
+    const instructions = connectionInstructions(grant);
+    const server = new McpServer({ name: 'unbent', version: '1.0.0' }, instructions ? { instructions } : {});
     // The plan row, read once per request and only where billing is on: this endpoint
     // has no row on a context (every tool is one POST), and the gate, the store's room
     // (MAK-234) and the quota on files all come off the same row. A read that fails is
@@ -50,8 +62,11 @@ export function createUnbentMcpHandler(
       row = undefined;
       throw err;
     }));
-    const { notes, attachments } = reposFor(env, userId, async () => writeLimitsOf(env, await plan()));
-    registerReadTools(server, notes, attachments, links, { vision: canUseLlm(env) });
+    // Both repos are held to the grant's notebooks, in the store, on every call: a
+    // connection given a list has no other way to its notes (`StoreRepo`), so no tool
+    // below has to know whether it is restricted, and none can forget to ask.
+    const { notes, attachments } = reposFor(env, userId, async () => writeLimitsOf(env, await plan()), storeAccessOf(grant));
+    registerReadTools(server, notes, attachments, links, { vision: canUseLlm(env), partial: grant.notebooks !== null });
     // The write tools go through the plan's gate (mcp/plan-gate.ts). Most are held to
     // the free plan in the store, through the limits the repos carry, and never ask it;
     // one that is not is refused a lapsed account, as an unlisted HTTP route is. Nothing
@@ -60,8 +75,10 @@ export function createUnbentMcpHandler(
       const current = await plan();
       return current && lapsed(current, Date.now()) ? INACTIVE_TOOL_MESSAGE : null;
     };
-    const gated = gatedRegistrar(server, gate);
-    registerWriteTools(gated, notes, links);
+    // A read-only connection is given no write tool by this registrar, and one given only
+    // some notebooks none of the tools that reach past them; see `gatedRegistrar`.
+    const gated = gatedRegistrar(server, gate, { readOnly: grant.readOnly, partial: grant.notebooks !== null });
+    registerWriteTools(gated, notes, links, { partial: grant.notebooks !== null });
     // Upload links stay in D1: the token is looked up before anyone knows whose it is.
     const uploads = new UploadGrantsRepo(env.DB, userId);
     registerAttachmentTools(

@@ -3,7 +3,9 @@ import type { McpServer } from '@modelcontextprotocol/server';
 import { StorageFull } from '../lib/quota.js';
 import { appLinks } from '../lib/app-links.js';
 import { PlanRefused } from '../lib/free-plan.js';
-import { ALLOWED_INACTIVE, HELD_IN_STORE_TOOLS, gatedRegistrar } from './plan-gate.js';
+import { AccessRefused } from '../lib/access.js';
+import { ALLOWED_INACTIVE, HELD_IN_STORE_TOOLS, KEPT_READ_ONLY, WITHHELD_PARTIAL, gatedRegistrar } from './plan-gate.js';
+import { registerReadTools } from './tools/read.js';
 import { registerAttachmentTools } from './tools/attachments.js';
 import { registerClipTool } from './tools/clip.js';
 import { registerFeedbackTool } from './tools/feedback.js';
@@ -108,5 +110,69 @@ describe('gatedRegistrar', () => {
       'send_feedback',
       'set_attachment_text',
     ]);
+  });
+
+  it('answers a write past a connection\'s notebooks as a tool error that says what it may do', async () => {
+    const { server, tools } = fakeServer();
+    const gated = gatedRegistrar(server, async () => null);
+    gated.registerTool('create_note', { annotations: { readOnlyHint: false } } as never, (async () => {
+      throw new AccessRefused('notebook');
+    }) as never);
+    const refused = (await tools.get('create_note')!()) as { isError: boolean; content: Array<{ text: string }> };
+    expect(refused.isError).toBe(true);
+    expect(refused.content[0]!.text).toContain('list_notebooks');
+  });
+});
+
+/**
+ * A connection the person made read only (MAK-264): what it is given is read off the
+ * modules themselves, as the plan's lists are above, so a new tool is in this test the
+ * day it is written.
+ */
+describe('a read-only connection', () => {
+  const links = appLinks('https://example.com');
+  /** Every tool the endpoint registers through `registrar`, with whether it says it only reads. */
+  function registered(readOnly: boolean, partial = false) {
+    const tools = new Map<string, boolean>();
+    const server = {
+      registerTool: (name: string, config: { annotations?: { readOnlyHint?: boolean } }) => {
+        tools.set(name, config.annotations?.readOnlyHint === true);
+      },
+    } as unknown as McpServer;
+    const gated = gatedRegistrar(server, async () => null, { readOnly, partial });
+    registerReadTools(server, {} as never, {} as never, links, { vision: false });
+    registerWriteTools(gated, {} as never, links);
+    registerAttachmentTools(gated, {} as never, { waitUntil: () => {} }, {} as never, links, async () => null);
+    registerClipTool(gated, { WEB_CLIP: '1' } as never, { waitUntil: () => {} }, {} as never, links, async () => null);
+    registerFeedbackTool(gated, {} as never, { userId: 'u1', clientId: 'c1' });
+    return tools;
+  }
+
+  it('is given every tool that only reads, feedback, and nothing else', () => {
+    const all = registered(false);
+    const given = registered(true);
+    const reads = [...all].filter(([, onlyReads]) => onlyReads).map(([name]) => name);
+    expect(reads.length).toBeGreaterThan(5);
+    expect([...given.keys()].sort()).toEqual([...reads, ...KEPT_READ_ONLY].sort());
+    // The tools an assistant would otherwise reach for.
+    for (const name of ['create_note', 'update_note', 'delete_note', 'move_notes', 'add_attachment', 'set_attachment_text', 'clip_web_page']) {
+      expect(all.has(name), name).toBe(true);
+      expect(given.has(name), name).toBe(false);
+    }
+  });
+
+  it('keeps only what writes nothing of the account\'s', () => {
+    expect([...KEPT_READ_ONLY]).toEqual(['send_feedback']);
+  });
+
+  // The other half of a grant: some notebooks only. It keeps its tools but the four the
+  // store refuses it whatever it passes.
+  it('is not shown, when given only some notebooks, the tools it could only be refused', () => {
+    const all = registered(false);
+    const given = registered(false, true);
+    expect([...all.keys()].filter((name) => !given.has(name)).sort()).toEqual([...WITHHELD_PARTIAL].sort());
+    for (const name of WITHHELD_PARTIAL) expect(all.has(name), name).toBe(true);
+    // Its own notebooks' settings and notes are still its to change.
+    for (const name of ['update_notebook', 'create_note', 'move_notes', 'update_note_tags']) expect(given.has(name), name).toBe(true);
   });
 });

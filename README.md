@@ -73,9 +73,12 @@ keeps what was deleted.
 
 Unbent is an [MCP](https://modelcontextprotocol.io) server, so Claude, ChatGPT, Cursor or
 anything else that speaks the protocol can work in your notes the moment you connect it.
-Connecting is an ordinary OAuth consent; Settings › AI assistants lists what you have let
-in and disconnects any of it, and access ends on the next call rather than when a token
-expires. About thirty tools, under the same rules the app has:
+Connecting is an ordinary OAuth consent, and it asks what that assistant gets: every
+notebook or only the ones you pick, and whether it may change anything or only read, so
+the assistant you trust and the one you are trying out need not get the same. Settings ›
+AI assistants lists what you have let in, changes what each can reach, and disconnects any
+of it, and a change holds from the next call rather than when a token expires. About
+thirty tools, under the same rules the app has:
 
 - **Read:** search notes (full text, inside files too, with filters on notebook, tag, date
   and field), list notes a page at a time with a one-line summary of each file (a receipt's

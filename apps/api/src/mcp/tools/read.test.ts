@@ -579,3 +579,50 @@ describe('get_attachment_text with maxChars and offset (MAK-173)', () => {
     expect(result).toMatchObject({ text: TEXT, totalChars: TEXT.length, truncated: false });
   });
 });
+
+/*
+ * A connection given only some notebooks (MAK-264) is told so beside everything that
+ * lists, since an assistant reports what a list leaves out as not existing. One given
+ * everything gets the answers it always did, with no field added.
+ */
+describe('a restricted connection\'s listings', () => {
+  const repo = {
+    search: async () => [],
+    listPage: async () => ({ items: [], total: 0 }),
+    notebooksOverview: async () => ({ notebooks: [], unfiled: 0, fields: [] }),
+    listTags: async () => [],
+    tagCounts: async () => [{ id: 't', name: 'kept', count: 1 }],
+  } as unknown as NotesRepo;
+  function tools(partial: boolean): Map<string, Handler> {
+    const registered = new Map<string, Handler>();
+    const server = {
+      registerTool(name: string, _config: unknown, handler: Handler) {
+        registered.set(name, handler);
+        return {} as never;
+      },
+    };
+    registerReadTools(server as never, repo, {} as never, appLinks(APP_URL), { vision: false, partial });
+    return registered;
+  }
+  const calls: Array<[string, Record<string, unknown>]> = [
+    ['search_notes', { query: 'boiler', limit: 20 }],
+    ['list_notes', { limit: 50, sort: 'updated', order: 'desc' }],
+    ['list_notebooks', {}],
+    ['list_tags', {}],
+    ['list_tags', { tag: ['kept'] }],
+  ];
+
+  it('say they are partial, on every tool that lists', async () => {
+    for (const [name, args] of calls) {
+      const answer = JSON.parse((await tools(true).get(name)!(args)).content[0]!.text);
+      expect(answer.access, name).toContain('only some of this account');
+    }
+  });
+
+  it('say nothing of it for a connection given everything', async () => {
+    for (const [name, args] of calls) {
+      const answer = JSON.parse((await tools(false).get(name)!(args)).content[0]!.text);
+      expect('access' in answer, name).toBe(false);
+    }
+  });
+});

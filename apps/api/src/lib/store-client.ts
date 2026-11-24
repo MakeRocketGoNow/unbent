@@ -1,6 +1,7 @@
 import { FREE_NOTES_FULL_CODE, InvalidFieldValue, PLAN_INACTIVE_CODE, STORAGE_FULL_CODE } from '@unbent/shared';
 import type { UserStore } from '../store/user-store.js';
 import type { Env } from '../types.js';
+import { ACCESS_REFUSED_CODE, AccessRefused, isAccessRefusalReason, type StoreAccess } from './access.js';
 import { PlanRefused } from './free-plan.js';
 import { StorageFull } from './quota.js';
 
@@ -79,6 +80,7 @@ export function translateStoreError(err: unknown): unknown {
       notes?: unknown;
       attachmentBytes?: unknown;
       adding?: unknown;
+      reason?: unknown;
     };
     if (e.name === 'InvalidFieldValue' && typeof e.fieldName === 'string') {
       return new InvalidFieldValue(e.fieldName, typeof e.message === 'string' ? e.message : '');
@@ -95,6 +97,9 @@ export function translateStoreError(err: unknown): unknown {
     if ((e.code === PLAN_INACTIVE_CODE || e.code === FREE_NOTES_FULL_CODE) && typeof e.notes === 'number' && typeof e.attachmentBytes === 'number') {
       return new PlanRefused(e.code, { notes: e.notes, attachmentBytes: e.attachmentBytes }, typeof e.adding === 'number' ? e.adding : 0);
     }
+    // A restricted connection's call the store would not make (`AccessRefusal` in
+    // store/access.ts), rebuilt with the sentence an assistant is given.
+    if (e.code === ACCESS_REFUSED_CODE && isAccessRefusalReason(e.reason)) return new AccessRefused(e.reason);
     if (e.retryable === true || e.overloaded === true) return new StoreUnavailable(err);
     if (typeof e.message === 'string' && TRANSIENT.test(e.message)) return new StoreUnavailable(err);
   }
@@ -105,20 +110,48 @@ export function translateStoreError(err: unknown): unknown {
  * Base for the two facades. `call` is the one place a stub is invoked, so every RPC
  * error passes through `translateStoreError` and the facades themselves are one line
  * per method.
+ *
+ * It is also the one place a restricted connection's grant is applied (MAK-264). A repo
+ * built with an `access` hands its methods not the stub but a stand-in whose every
+ * method is `UserStore.scoped`, carrying the grant and the name of the method that was
+ * asked for. So no facade method knows whether it is restricted, none can forget to
+ * say so, and a repo that is restricted has no way to make an unrestricted call: the
+ * real stub is never given to it. What each method may then do is the store's to
+ * decide, in the list beside `scoped`, and a method not on it is refused there.
  */
 export abstract class StoreRepo {
+  private readonly target: DurableObjectStub<UserStore>;
+
   constructor(
-    protected readonly store: DurableObjectStub<UserStore>,
+    store: DurableObjectStub<UserStore>,
     protected readonly userId: string,
+    access: StoreAccess | null = null,
   ) {
     if (!userId) throw new Error('Refusing to construct a repo without a user id');
+    this.target = access ? restrictedStub(store, access) : store;
   }
 
   protected async call<T>(fn: (store: DurableObjectStub<UserStore>) => Promise<T>): Promise<T> {
     try {
-      return await fn(this.store);
+      return await fn(this.target);
     } catch (err) {
       throw translateStoreError(err);
     }
   }
+}
+
+/**
+ * The stand-in a restricted repo calls in place of its store's stub: any method asked
+ * of it is one `scoped` call on the real one. A `Proxy` with nothing behind it, so there
+ * is no property of the stub it could hand out by accident; typed as the stub, since
+ * `scoped` runs the method of that name and answers what it answers.
+ */
+function restrictedStub(store: DurableObjectStub<UserStore>, access: StoreAccess): DurableObjectStub<UserStore> {
+  return new Proxy(Object.create(null) as object, {
+    get: (_target, method) => {
+      // Awaiting a value asks it for `then`; a stand-in that answered would be taken for a promise.
+      if (typeof method !== 'string' || method === 'then') return undefined;
+      return (...args: unknown[]) => store.scoped(access, method, args);
+    },
+  }) as DurableObjectStub<UserStore>;
 }
