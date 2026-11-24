@@ -209,7 +209,21 @@ function refusedValue(patch: NoteFieldsPatch, defs: FieldDef[]): string | null {
   return null;
 }
 
-export function registerWriteTools(server: Pick<McpServer, 'registerTool'>, notes: NotesRepo, links: AppLinks): void {
+/** What `update_notebook` takes. A connection given only some notebooks is given it without `name`. */
+const updateNotebookInput = z.object({
+  notebookId: z.string().min(1),
+  name: notebookNameSchema.optional(),
+  purpose: notebookPurposeSchema.optional(),
+  emoji: notebookEmojiSchema.optional(),
+});
+
+export function registerWriteTools(
+  server: Pick<McpServer, 'registerTool'>,
+  notes: NotesRepo,
+  links: AppLinks,
+  /** `partial` for a connection given only some notebooks (MAK-264), which cannot rename one: see `update_notebook`. */
+  connection: { partial?: boolean } = {},
+): void {
   server.registerTool(
     'create_note',
     {
@@ -855,8 +869,15 @@ export function registerWriteTools(server: Pick<McpServer, 'registerTool'>, note
     'update_notebook',
     {
       title: 'Update a notebook',
+      // A connection given only some notebooks is refused any rename (a notebook's name
+      // is checked against every notebook's, hidden ones included), so it is not
+      // offered one: an assistant plans from this description and this schema, and a
+      // `name` it can pass is a rename it will try. The same reasoning as the tools it
+      // is not shown at all (`WITHHELD_PARTIAL`).
       description:
-        'Change a notebook by id: its name, its purpose, its emoji, or any of them. Get the ' +
+        (connection.partial
+          ? 'Change a notebook by id: its purpose, its emoji, or both. Its name cannot be changed from this connection. Get the '
+          : 'Change a notebook by id: its name, its purpose, its emoji, or any of them. Get the ') +
         'id from list_notebooks. The purpose is a sentence saying what belongs in the notebook ' +
         'and, as helpfully, what does not (e.g. "Things I want to buy someday; not receipts or ' +
         'purchases"). It is shown to the person and read by auto-fill when it decides where ' +
@@ -864,17 +885,14 @@ export function registerWriteTools(server: Pick<McpServer, 'registerTool'>, note
         'mislead. The emoji is a single emoji (e.g. "🧾") drawn in place of the notebook icon ' +
         'wherever the notebook is listed. Pass purpose:null or emoji:null to clear one. Omit a ' +
         'field to leave it unchanged.',
-      inputSchema: z.object({
-        notebookId: z.string().min(1),
-        name: notebookNameSchema.optional(),
-        purpose: notebookPurposeSchema.optional(),
-        emoji: notebookEmojiSchema.optional(),
-      }),
+      // Typed as the whole schema either way, so the handler below is written once: a
+      // restricted connection's simply never carries a name.
+      inputSchema: (connection.partial ? updateNotebookInput.omit({ name: true }) : updateNotebookInput) as typeof updateNotebookInput,
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
     async ({ notebookId, name, purpose, emoji }) => {
       if (name === undefined && purpose === undefined && emoji === undefined) {
-        return toolError('Give a name, a purpose or an emoji to change.');
+        return toolError(connection.partial ? 'Give a purpose or an emoji to change.' : 'Give a name, a purpose or an emoji to change.');
       }
       const outcome = await notes.updateNotebook(notebookId, { name, purpose, emoji });
       if (outcome === 'missing') return notFound('notebook', notebookId);

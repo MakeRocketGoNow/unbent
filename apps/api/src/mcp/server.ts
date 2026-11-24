@@ -78,7 +78,7 @@ export function createUnbentMcpHandler(
     // A read-only connection is given no write tool by this registrar, and one given only
     // some notebooks none of the tools that reach past them; see `gatedRegistrar`.
     const gated = gatedRegistrar(server, gate, { readOnly: grant.readOnly, partial: grant.notebooks !== null });
-    registerWriteTools(gated, notes, links);
+    registerWriteTools(gated, notes, links, { partial: grant.notebooks !== null });
     // Upload links stay in D1: the token is looked up before anyone knows whose it is.
     const uploads = new UploadGrantsRepo(env.DB, userId);
     registerAttachmentTools(
