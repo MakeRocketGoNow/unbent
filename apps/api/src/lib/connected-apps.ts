@@ -58,6 +58,10 @@ export class ConnectedAppsRepo {
       .prepare(`DELETE FROM oauthConsent WHERE id = ?1 AND userId = ?2`)
       .bind(consentId, this.userId)
       .run();
+    // Its outstanding upload links too: one works by itself for half an hour, with no
+    // token to have been deleted above. All of the account's, since a link does not
+    // say which app asked for it; see `AssistantGrantsRepo.closeUploadLinks`.
+    await this.db.prepare(`DELETE FROM attachment_uploads WHERE user_id = ?1`).bind(this.userId).run();
     // And what it was given (MAK-264). With the consent gone the row grants nothing,
     // but left behind it would be what a reconnect started from: someone who gave an
     // assistant two notebooks, disconnected it, and later connected it again choosing

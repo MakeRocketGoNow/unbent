@@ -124,6 +124,7 @@ export class AssistantGrantsRepo {
   async save(clientId: string, grant: AssistantGrant): Promise<boolean> {
     const client = await this.db.prepare(`SELECT 1 AS ok FROM oauthClient WHERE clientId = ?1`).bind(clientId).first<{ ok: number }>();
     if (!client) return false;
+    await this.closeUploadLinks();
     if (!grantIsRestricted(grant)) {
       await this.clear(clientId);
       return true;
@@ -147,6 +148,23 @@ export class AssistantGrantsRepo {
       )
       .run();
     return true;
+  }
+
+  /**
+   * Closes every upload link this account's assistants are holding, used or not.
+   *
+   * `prepare_attachment_upload` checks the note against the grant when it mints a link,
+   * and the link then works for half an hour by itself: the PUT carries no token of
+   * the assistant's and is not asked about a grant. So a link minted a minute before a
+   * notebook was taken away, or before the connection was made read only, would still
+   * put a file on that note, and "from its next call" would not be true of it.
+   *
+   * All of the account's, not one client's: a link does not record which assistant
+   * asked for it, and the cost of closing one too many is an assistant asking for
+   * another, which it does by calling the tool again. Only assistants mint these.
+   */
+  private async closeUploadLinks(): Promise<void> {
+    await this.db.prepare(`DELETE FROM attachment_uploads WHERE user_id = ?1`).bind(this.userId).run();
   }
 
   /** Forgets what a client was given, leaving it unrestricted if it is still connected. */

@@ -1979,6 +1979,18 @@ describe('a connection given only some notebooks', () => {
     expect((await call(restricted, 'get_note', { noteId: vaultNoteId })).isError).toBe(true);
   });
 
+  // A link works by itself once minted, so taking a notebook away has to close it.
+  it('cannot use an upload link it was given before its access changed', async () => {
+    const link = await parsed(restricted, 'prepare_attachment_upload', { noteId: sharedNoteId, filename: 'later.txt', contentType: 'text/plain' });
+    const url = String(link.uploadUrl ?? link.url ?? '');
+    expect(url).toContain('/api/uploads/');
+    expect((await saveGrant(restrictedClientId, { notebooks: [sharedId], unfiled: false, readOnly: true })).status).toBe(204);
+    const put = await fetch(url.replace(ORIGIN, BASE), { method: 'PUT', headers: { 'Content-Type': 'text/plain' }, body: 'too late' });
+    expect(put.ok).toBe(false);
+    expect((await parsed(trusted, 'get_note', { noteId: sharedNoteId })).attachments ?? []).toEqual([]);
+    expect((await saveGrant(restrictedClientId, { notebooks: [sharedId], unfiled: false, readOnly: false })).status).toBe(204);
+  });
+
   it('is given no tool that writes once it is read only', async () => {
     const before = await toolNames(restricted);
     expect((await saveGrant(restrictedClientId, { notebooks: [sharedId], unfiled: false, readOnly: true })).status).toBe(204);
