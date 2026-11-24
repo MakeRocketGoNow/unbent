@@ -158,8 +158,12 @@ the same two again under Change access:
 - **What it can do.** *Read and change*, or *Read only*, which gives the assistant no tool
   that creates, edits, moves or deletes.
 
-A change in Settings holds from the assistant's very next call. There is nothing to
-reconnect and no token to wait out.
+A change in Settings holds from the assistant's very next call: what it can reach is
+checked every time, so there is nothing to reconnect and no token to wait out. What the
+assistant is *shown* is slower to catch up. An assistant reads its list of tools when a
+conversation starts, so after a change to or from Read only it may still offer a tool it
+no longer has (the call is refused) or not yet offer one it now does, until its next
+conversation.
 
 An assistant given only some notebooks works as if the rest were not there:
 
@@ -174,18 +178,28 @@ An assistant given only some notebooks works as if the rest were not there:
   about it. A notebook's purpose, emoji and fields are still its to change.
 - The trash follows the same rule: it sees and restores only trashed notes from its
   notebooks.
+- It will not change a field in a way that rewrites that field on a note outside its
+  notebooks (a note moved out of a notebook keeps the values it held). That one change
+  is refused and left for you to make.
+
+The four tools it could only ever be refused (create or delete a notebook, rename or
+delete a tag) are not offered to it at all.
 
 It is told that what it sees is partial, so that it says "not found in the notebooks I can
 see" where it would otherwise tell you a note does not exist. It is not told how many
 notebooks it was not given, or anything about them.
 
-Three things this does not do, so you can decide with them in mind:
+Four things this does not do, so you can decide with them in mind:
 
 - **It limits what leaves Unbent, not what happens after.** Whatever is in a notebook you
   give an assistant goes to that assistant's provider the moment it is read, and Unbent
   has no say over it from there.
 - **A list does not grow.** A notebook you make later is not in "only some" until you add
   it, and a note you move into a given notebook is visible from that moment.
+- **Tag names are shared.** A tag is one tag across every notebook. An assistant is not
+  shown a tag that only notes outside its notebooks carry, but if it tags one of its own
+  notes with a name that already exists elsewhere, the note takes the existing tag, in
+  its existing spelling. Someone guessing a name can learn that way that it is in use.
 - **It does not make an assistant careful.** Inside the notebooks it was given, an
   assistant that reads something misleading can still be led to change or trash notes
   there. Read only removes that; otherwise the note's history and the trash are the way
