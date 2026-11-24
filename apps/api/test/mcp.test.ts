@@ -1879,6 +1879,10 @@ describe('a connection given only some notebooks', () => {
     const hello = { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'test', version: '1' } };
     expect((await mcp(restricted, 'initialize', hello)).body.result.instructions).toContain('only some of their notebooks');
     expect((await mcp(trusted, 'initialize', hello)).body.result.instructions).toBeUndefined();
+    // Not shown the tools that reach past its notebooks, which it could only be refused.
+    const offered = await toolNames(restricted);
+    for (const name of ['create_notebook', 'delete_notebook', 'rename_tag', 'delete_tag']) expect(offered, name).not.toContain(name);
+    expect(await toolNames(trusted)).toEqual(expect.arrayContaining(['create_notebook', 'delete_notebook', 'rename_tag', 'delete_tag']));
     const made = await parsed(restricted, 'create_note', { title: 'Filed by the restricted one', notebook: shared });
     expect((await parsed(trusted, 'get_note', { noteId: made.id })).notebook).toBe(shared);
     await call(trusted, 'delete_note', { noteId: made.id });
@@ -1930,7 +1934,9 @@ describe('a connection given only some notebooks', () => {
     expect(offered.filter((name) => !(name in attempts)), 'tools this test has no reach for').toEqual([]);
 
     const leaks: string[] = [];
-    for (const name of offered) {
+    // Every tool it is offered, and every one it is not: a client can call a tool by
+    // name whether or not it was listed, and the answer must say as little.
+    for (const name of Object.keys(attempts)) {
       for (const args of attempts[name]!) {
         const answer = await call(restricted, name, args);
         if (answer.raw.includes(SECRET)) leaks.push(`${name} ${JSON.stringify(args)}`);

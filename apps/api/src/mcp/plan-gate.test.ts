@@ -4,7 +4,7 @@ import { StorageFull } from '../lib/quota.js';
 import { appLinks } from '../lib/app-links.js';
 import { PlanRefused } from '../lib/free-plan.js';
 import { AccessRefused } from '../lib/access.js';
-import { ALLOWED_INACTIVE, HELD_IN_STORE_TOOLS, KEPT_READ_ONLY, gatedRegistrar } from './plan-gate.js';
+import { ALLOWED_INACTIVE, HELD_IN_STORE_TOOLS, KEPT_READ_ONLY, WITHHELD_PARTIAL, gatedRegistrar } from './plan-gate.js';
 import { registerReadTools } from './tools/read.js';
 import { registerAttachmentTools } from './tools/attachments.js';
 import { registerClipTool } from './tools/clip.js';
@@ -132,14 +132,14 @@ describe('gatedRegistrar', () => {
 describe('a read-only connection', () => {
   const links = appLinks('https://example.com');
   /** Every tool the endpoint registers through `registrar`, with whether it says it only reads. */
-  function registered(readOnly: boolean) {
+  function registered(readOnly: boolean, partial = false) {
     const tools = new Map<string, boolean>();
     const server = {
       registerTool: (name: string, config: { annotations?: { readOnlyHint?: boolean } }) => {
         tools.set(name, config.annotations?.readOnlyHint === true);
       },
     } as unknown as McpServer;
-    const gated = gatedRegistrar(server, async () => null, { readOnly });
+    const gated = gatedRegistrar(server, async () => null, { readOnly, partial });
     registerReadTools(server, {} as never, {} as never, links, { vision: false });
     registerWriteTools(gated, {} as never, links);
     registerAttachmentTools(gated, {} as never, { waitUntil: () => {} }, {} as never, links, async () => null);
@@ -163,5 +163,16 @@ describe('a read-only connection', () => {
 
   it('keeps only what writes nothing of the account\'s', () => {
     expect([...KEPT_READ_ONLY]).toEqual(['send_feedback']);
+  });
+
+  // The other half of a grant: some notebooks only. It keeps its tools but the four the
+  // store refuses it whatever it passes.
+  it('is not shown, when given only some notebooks, the tools it could only be refused', () => {
+    const all = registered(false);
+    const given = registered(false, true);
+    expect([...all.keys()].filter((name) => !given.has(name)).sort()).toEqual([...WITHHELD_PARTIAL].sort());
+    for (const name of WITHHELD_PARTIAL) expect(all.has(name), name).toBe(true);
+    // Its own notebooks' settings and notes are still its to change.
+    for (const name of ['update_notebook', 'create_note', 'move_notes', 'update_note_tags']) expect(given.has(name), name).toBe(true);
   });
 });
