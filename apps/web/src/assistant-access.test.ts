@@ -97,6 +97,24 @@ describe('answerConsent', () => {
     expect(deps.calls).toEqual(['consent false']);
   });
 
+  // An app that is already connected has a consent whatever this screen does, so what
+  // was saved is in force at once and a failure has to take it back.
+  it('puts back what an already-connected app had when the provider fails', async () => {
+    const everything = grant();
+    for (const consent of [async () => ({ error: { message: 'expired' } }), async () => ({ data: {} }), async () => Promise.reject(new Error('offline'))]) {
+      const deps = io({ consent });
+      expect('error' in (await answerConsent(true, 'client-1', everything, deps, limited))).toBe(true);
+      expect(deps.calls).toEqual([`save client-1 ${JSON.stringify(everything)}`, 'consent true', `save client-1 ${JSON.stringify(limited)}`]);
+    }
+    // Nothing to put back when the save itself failed, or when it all worked.
+    const unsaved = io({ save: async () => Promise.reject(new Error('offline')) });
+    await answerConsent(true, 'client-1', everything, unsaved, limited);
+    expect(unsaved.calls).toHaveLength(1);
+    const fine = io();
+    await answerConsent(true, 'client-1', everything, fine, limited);
+    expect(fine.calls).toEqual([`save client-1 ${JSON.stringify(everything)}`, 'consent true']);
+  });
+
   it('reports what the provider refused, and an answer with nowhere to go', async () => {
     expect(await answerConsent(true, 'c', limited, io({ consent: async () => ({ error: { message: 'expired' } }) }))).toEqual({ error: 'expired' });
     expect(await answerConsent(true, 'c', limited, io({ consent: async () => ({ data: {} }) }))).toEqual({ error: 'The sign-in service did not say where to go next.' });

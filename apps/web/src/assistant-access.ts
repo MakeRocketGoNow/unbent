@@ -77,11 +77,19 @@ export function grantIsEmpty(grant: AssistantGrant): boolean {
  * provider told. Here rather than in the screen so the order has a test, because the
  * order is the safety of it.
  *
- * A saved grant does nothing until the provider records a consent, so saving first and
- * failing after gives the app nothing. Consenting first would connect it with the whole
- * library and restrict it a moment later, or not at all if the second request failed.
- * So a grant that does not save ends it: the provider is never asked. A refusal saves
- * nothing, and leaves whatever the app had been given before as it was.
+ * For an app connecting for the first time, a saved grant does nothing until the
+ * provider records a consent, so saving first and failing after gives the app nothing.
+ * Consenting first would connect it with the whole library and restrict it a moment
+ * later, or not at all if the second request failed. So a grant that does not save ends
+ * it: the provider is never asked. A refusal saves nothing.
+ *
+ * An app that is already connected is the other case, and the provider can bring
+ * someone back here for one. Its consent stands whatever happens on this screen, so the
+ * grant saved here is in force the moment it is saved. If the provider then fails, the
+ * person is told it did not work, and it must not have: `before`, what the app had been
+ * given when the screen opened, is put back. Without that, choosing "All notebooks" for
+ * an app held to two and then meeting an error would leave it with the library under a
+ * message saying nothing happened.
  *
  * Answers with where the browser goes next, which is the provider's to say.
  */
@@ -93,15 +101,26 @@ export async function answerConsent(
     save: (clientId: string, grant: AssistantGrant) => Promise<void>;
     consent: (accept: boolean) => Promise<{ data?: { url?: string } | null; error?: { message?: string } | null }>;
   },
+  before?: AssistantGrant,
 ): Promise<{ url: string } | { error: string }> {
   const failed = 'That did not work. Try connecting again.';
+  let saved = false;
+  // What the app had before, back in place; its own failure changes nothing we can say.
+  const undo = async () => {
+    if (saved && before) await io.save(clientId, before).catch(() => {});
+  };
   try {
-    if (accept) await io.save(clientId, grant);
+    if (accept) {
+      await io.save(clientId, grant);
+      saved = true;
+    }
     const result = await io.consent(accept);
-    if (result.error) return { error: result.error.message || failed };
-    const url = result.data?.url;
-    return url ? { url } : { error: 'The sign-in service did not say where to go next.' };
+    const url = result.error ? undefined : result.data?.url;
+    if (url) return { url };
+    await undo();
+    return { error: result.error ? result.error.message || failed : 'The sign-in service did not say where to go next.' };
   } catch (err) {
+    await undo();
     return { error: (err as Error).message || failed };
   }
 }

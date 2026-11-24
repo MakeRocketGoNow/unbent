@@ -71,6 +71,8 @@ function ConsentPage() {
   const [grant, setGrant] = useState<AssistantGrant>(FULL_GRANT);
   // Whether what this app was given before has been read; Allow waits for it.
   const [ready, setReady] = useState(false);
+  // What it was given before, if it was restricted: put back should Allow fail part way.
+  const [before, setBefore] = useState<AssistantGrant | undefined>(undefined);
   // Set by a press of Allow with nothing picked, and cleared by the next change.
   const [pickSome, setPickSome] = useState(false);
   const notebooks = useQuery(notebooksQuery());
@@ -90,15 +92,22 @@ function ConsentPage() {
     void listAssistantGrants()
       .then((grants) => {
         if (cancelled) return;
-        const before = grants[clientId];
-        if (before) setGrant(before);
+        const had = grants[clientId];
+        if (had) {
+          setGrant(had);
+          setBefore(had);
+        }
         setReady(true);
       })
       .catch(() => {
-        // Not known, which is not the same as nothing: say so, and leave the choice to
-        // be made on the page. Whatever is allowed is saved over what was there.
+        // Not known, which is not the same as nothing. The screen cannot open on what
+        // the app had, and must not open on everything: this may be an app someone
+        // held to two notebooks, and Allow on a page that defaulted to the library
+        // would undo that. So it opens on nothing picked, which cannot be allowed as it
+        // stands, and the choice is made on purpose.
         if (cancelled) return;
-        setError('Could not check whether this app was given a limit before. What you choose below is what it gets.');
+        setGrant({ notebooks: [], unfiled: false, readOnly: false });
+        setError('Could not check whether this app was given a limit before, so nothing is picked. Choose what it gets.');
         setReady(true);
       });
     return () => {
@@ -116,10 +125,13 @@ function ConsentPage() {
     setBusy(true);
     setError(null);
     // The limits first, and the provider only if they saved: see `answerConsent`.
-    const result = await answerConsent(accept, clientId!, grant, {
-      save: saveAssistantGrant,
-      consent: (yes) => oauth2.consent({ accept: yes }),
-    });
+    const result = await answerConsent(
+      accept,
+      clientId!,
+      grant,
+      { save: saveAssistantGrant, consent: (yes) => oauth2.consent({ accept: yes }) },
+      before,
+    );
     if ('error' in result) {
       setError(result.error);
       setBusy(false);
