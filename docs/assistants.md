@@ -195,7 +195,8 @@ Four things this does not do, so you can decide with them in mind:
   give an assistant goes to that assistant's provider the moment it is read, and Unbent
   has no say over it from there.
 - **A list does not grow.** A notebook you make later is not in "only some" until you add
-  it, and a note you move into a given notebook is visible from that moment.
+  it, and a note you move into a given notebook is visible from that moment. A note you
+  move out is not, including an upload link minted while it was still in.
 - **Tag names are shared.** A tag is one tag across every notebook. An assistant is not
   shown a tag that only notes outside its notebooks carry, but if it tags one of its own
   notes with a name that already exists elsewhere, the note takes the existing tag, in

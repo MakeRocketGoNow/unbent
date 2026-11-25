@@ -1,0 +1,15 @@
+-- Which assistant minted each upload link, so PUT /api/uploads can ask about its
+-- grant again (MAK-264).
+--
+-- A link used to work for half an hour by itself once minted, which was enough when
+-- every connection had the whole library. Once a connection can be held to some
+-- notebooks, a note moved out of them (or a grant narrowed after a mint that had
+-- already read the old one) would still take a file: the PUT carried no token of
+-- the assistant's, and closing every link on a grant save does not see a note
+-- move. The token still names the note; this names who asked.
+--
+-- Not a foreign key. The PUT re-checks the consent row, a dangling client id is a
+-- spent link, and ALTER TABLE cannot add a REFERENCES clause the way CREATE can.
+-- Nullable so existing unused rows still load; those cannot be asked and are
+-- refused rather than trusted.
+ALTER TABLE attachment_uploads ADD COLUMN client_id TEXT;

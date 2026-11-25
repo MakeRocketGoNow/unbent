@@ -9,6 +9,7 @@ import { planFor } from '../lib/plan.js';
 import { reposFor } from '../lib/repos.js';
 import { StorageFull, quotaOf, storageFullBody, writeLimitsOf } from '../lib/quota.js';
 import { storeAttachment } from '../lib/store-attachment.js';
+import { connectionGrant, uploadAccess } from '../lib/assistant-grants.js';
 import { claimUploadGrant } from '../lib/upload-grants.js';
 import type { AppEnv } from '../types.js';
 
@@ -44,11 +45,13 @@ const anyOrigin = cors({
  * Where a file goes that an assistant holds on its own machine: the other half of the MCP
  * tool prepare_attachment_upload, which mints the link this route is reached by.
  *
- * Authorized by the token in the path and nothing else: no cookie, no bearer token. That
- * is the point of it: the request comes from curl in an agent's shell, or from a page in a
- * browser, which has the file but should never hold the OAuth token its client signed in
- * with. The token names one note of one user's and works once; see lib/upload-grants.ts
- * and migration 0029.
+ * Authorized by the token in the path, not a cookie or a bearer token. That is the
+ * point of it: the request comes from curl in an agent's shell, or from a page in a
+ * browser, which has the file but should never hold the OAuth token its client signed
+ * in with. The token names one note of one user's and works once; see
+ * lib/upload-grants.ts and migration 0029. The connection that minted it is asked
+ * again before the bytes are stored, so a note that has left that grant (moved, or
+ * the grant narrowed) is refused the same way a later tool call would be.
  *
  * The link stores and links the file itself, rather than waiting for a third step that
  * confirms it. Object stores that hand out presigned URLs need that step because nothing of
@@ -82,6 +85,21 @@ export const uploads = new Hono<AppEnv>().use('/uploads/*', anyOrigin).put('/upl
   }
 
   /*
+     The connection that minted the link, as it stands now. The token is spent on the
+     claim above, so a refusal here still costs the assistant another mint, which is
+     the same as a grant save closing the row. Asked here rather than trusted from
+     mint time: a note can leave the grant without a save (it is moved), and a
+     read-only grant is not the store's to refuse (`storeAccessOf`).
+  */
+  const held = uploadAccess(
+    grant.clientId,
+    grant.clientId ? await connectionGrant(c.env.DB, grant.clientId, grant.userId) : null,
+  );
+  if (!held.ok) {
+    return c.json({ error: `This upload link is unknown, already used, or expired. ${ASK_AGAIN}` }, 404);
+  }
+
+  /*
      The plan, since this route has no session for `requireActivePlan` to read: the link
      was minted by a tool the gate let through, but a plan can end in the minutes between.
      Its limits go with the repos, as any other write's do, and the store decides when the
@@ -93,8 +111,8 @@ export const uploads = new Hono<AppEnv>().use('/uploads/*', anyOrigin).put('/upl
   // The same row answers the quota; `quotaFor` would read it a second time.
   const quota = quotaOf(c.env, plan);
 
-  const { attachments, notes } = reposFor(c.env, grant.userId, () => writeLimitsOf(c.env, plan));
-  // Trashed, or gone, in the minutes since the link was made.
+  const { attachments, notes } = reposFor(c.env, grant.userId, () => writeLimitsOf(c.env, plan), held.access);
+  // Trashed, gone, or no longer in this connection's notebooks, in the minutes since.
   if (!(await attachments.ownsNote(grant.noteId))) {
     return c.json({ error: 'The note this link was for is no longer there.' }, 404);
   }

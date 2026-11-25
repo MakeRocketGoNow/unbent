@@ -18,6 +18,12 @@ export interface UploadGrant {
   /** As the assistant declared it, or null to go by the filename's extension. */
   contentType: string | null;
   link: boolean;
+  /**
+   * The OAuth client that minted the link, so the PUT can re-check that
+   * connection's grant (MAK-264). Null on rows from before 0050, which cannot
+   * be asked and are refused.
+   */
+  clientId: string | null;
 }
 
 interface GrantRow {
@@ -26,6 +32,7 @@ interface GrantRow {
   filename: string;
   content_type: string | null;
   link: number;
+  client_id: string | null;
 }
 
 /** Hex SHA-256: the form the token is stored and looked up in. See 0029 for why hashed. */
@@ -45,8 +52,18 @@ function newToken(): string {
 
 /** Minting links, for the signed-in user. The caller has checked the note is theirs. */
 export class UploadGrantsRepo extends ScopedRepo {
+  constructor(
+    db: D1Database,
+    userId: string,
+    /** The OAuth client minting the link, stored on the row so the PUT can re-check its grant. */
+    private readonly clientId: string,
+  ) {
+    super(db, userId);
+    if (!clientId) throw new Error('UploadGrantsRepo requires a client id');
+  }
+
   async create(
-    grant: Omit<UploadGrant, 'userId'>,
+    grant: Omit<UploadGrant, 'userId' | 'clientId'>,
     now = Date.now(),
   ): Promise<{ token: string; expiresAt: number }> {
     const token = newToken();
@@ -59,8 +76,8 @@ export class UploadGrantsRepo extends ScopedRepo {
       this.db
         .prepare(
           `INSERT INTO attachment_uploads
-             (token_hash, user_id, note_id, filename, content_type, link, expires_at)
-           VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)`,
+             (token_hash, user_id, note_id, filename, content_type, link, expires_at, client_id)
+           VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)`,
         )
         .bind(
           await hashToken(token),
@@ -70,6 +87,7 @@ export class UploadGrantsRepo extends ScopedRepo {
           grant.contentType,
           grant.link ? 1 : 0,
           expiresAt,
+          this.clientId,
         ),
     ]);
     return { token, expiresAt };
@@ -97,7 +115,7 @@ export async function claimUploadGrant(
     .prepare(
       `DELETE FROM attachment_uploads
         WHERE token_hash = ?1 AND expires_at > ?2
-        RETURNING user_id, note_id, filename, content_type, link`,
+        RETURNING user_id, note_id, filename, content_type, link, client_id`,
     )
     .bind(await hashToken(token), now)
     .first<GrantRow>();
@@ -108,5 +126,6 @@ export async function claimUploadGrant(
     filename: row.filename,
     contentType: row.content_type,
     link: row.link === 1,
+    clientId: row.client_id,
   };
 }
