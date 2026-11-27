@@ -7512,11 +7512,18 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
    No cap of its own, unlike `.settings`: each panel carries its own measure and centres
    itself, and a wrapper the full width of the column puts the scrollbar at the column's
    edge rather than beside a centred card.
+
+   A flex column, as `.shell-main` is, because that is what sized the panels. A flex
+   item centred with `margin-inline: auto` shrinks to its content, so each card was as
+   wide as its text; in a plain block the same margins stretch it to its cap, and the
+   first version of this wrapper drew the consent screen 78rem wide.
 */
 .page-scroll {
   width: 100%;
   min-height: 0;
   overflow-y: auto;
+  display: flex;
+  flex-direction: column;
 }
 
 /*
