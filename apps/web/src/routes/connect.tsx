@@ -2,6 +2,7 @@ import { createFileRoute } from '@tanstack/react-router';
 import { z } from 'zod';
 import { useState } from 'react';
 import { Button } from '../components/Button.js';
+import { ScrollPage } from '../components/ScrollPage.js';
 import { mintConnectToken } from '../device-api.js';
 
 /**
@@ -14,7 +15,13 @@ const search = z.object({
 
 export const Route = createFileRoute('/connect')({
   validateSearch: search,
-  component: ConnectPage,
+  // In a scroll box of its own: the app frame clips, and this page is not settings,
+  // which brings its own. See `ScrollPage`.
+  component: () => (
+    <ScrollPage>
+      <ConnectPage />
+    </ScrollPage>
+  ),
 });
 
 /**

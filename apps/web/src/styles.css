@@ -7502,6 +7502,24 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 }
 
 /*
+   The same scroll box for the signed-in pages that stand alone: the consent screen, and
+   connecting a phone or a device. Each is one panel drawn straight into the app frame,
+   which clips at the window and does not scroll, for the reason `.settings` gives above.
+   They were short enough that nobody noticed, until the consent screen gained its two
+   questions (MAK-264): on a laptop its foot, Read only and the Allow button with it, sat
+   below the window with no way to reach it.
+
+   No cap of its own, unlike `.settings`: each panel carries its own measure and centres
+   itself, and a wrapper the full width of the column puts the scrollbar at the column's
+   edge rather than beside a centred card.
+*/
+.page-scroll {
+  width: 100%;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/*
    The heading row, and on a phone the arrow that leaves.
 
    `space-between` and a baseline here were for the "Back to notes" link that used to sit

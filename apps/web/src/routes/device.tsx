@@ -2,6 +2,7 @@ import { createFileRoute, Link } from '@tanstack/react-router';
 import { z } from 'zod';
 import { useCallback, useEffect, useState } from 'react';
 import { Button } from '../components/Button.js';
+import { ScrollPage } from '../components/ScrollPage.js';
 import {
   approveDeviceCode,
   claimDeviceCode,
@@ -21,7 +22,13 @@ const search = z.object({
 
 export const Route = createFileRoute('/device')({
   validateSearch: search,
-  component: DevicePage,
+  // In a scroll box of its own: the app frame clips, and this page is not settings,
+  // which brings its own. See `ScrollPage`.
+  component: () => (
+    <ScrollPage>
+      <DevicePage />
+    </ScrollPage>
+  ),
 });
 
 type Outcome = 'approved' | 'denied';
