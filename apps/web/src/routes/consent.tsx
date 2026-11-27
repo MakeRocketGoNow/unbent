@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { FULL_GRANT, type AssistantGrant } from '@unbent/shared';
 import { AssistantAccess } from '../components/AssistantAccess.js';
 import { Button } from '../components/Button.js';
+import { ScrollPage } from '../components/ScrollPage.js';
 import { answerConsent, grantIsEmpty, grantSentence, PICK_SOME_MESSAGE } from '../assistant-access.js';
 import { oauth2 } from '../auth-client.js';
 import { listAssistantGrants, saveAssistantGrant } from '../notes-api.js';
@@ -29,7 +30,13 @@ const search = z.looseObject({
 
 export const Route = createFileRoute('/consent')({
   validateSearch: search,
-  component: ConsentPage,
+  // In a scroll box of its own: the app frame clips, and this page is not settings,
+  // which brings its own. See `ScrollPage`.
+  component: () => (
+    <ScrollPage>
+      <ConsentPage />
+    </ScrollPage>
+  ),
 });
 
 /**
