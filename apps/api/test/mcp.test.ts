@@ -1991,6 +1991,42 @@ describe('a connection given only some notebooks', () => {
     expect((await saveGrant(restrictedClientId, { notebooks: [sharedId], unfiled: false, readOnly: false })).status).toBe(204);
   });
 
+  // Closing links on a grant save does not see this: the grant is unchanged, the note moved.
+  it('cannot use an upload link after the note is moved out of the notebooks it was given', async () => {
+    const link = await parsed(restricted, 'prepare_attachment_upload', {
+      noteId: sharedNoteId,
+      filename: 'moved.txt',
+      contentType: 'text/plain',
+      link: true,
+    });
+    const url = String(link.uploadUrl ?? link.url ?? '');
+    expect(url).toContain('/api/uploads/');
+    await parsed(trusted, 'update_note', { noteId: sharedNoteId, notebook: vault });
+    expect((await parsed(trusted, 'get_note', { noteId: sharedNoteId })).notebook).toBe(vault);
+    const put = await fetch(url.replace(ORIGIN, BASE), { method: 'PUT', headers: { 'Content-Type': 'text/plain' }, body: 'too late' });
+    expect(put.ok).toBe(false);
+    const moved = await parsed(trusted, 'get_note', { noteId: sharedNoteId });
+    expect(moved.attachments ?? []).toEqual([]);
+    expect(moved.body).toBe('harbour lights');
+    await parsed(trusted, 'update_note', { noteId: sharedNoteId, notebook: shared });
+    expect((await parsed(trusted, 'get_note', { noteId: sharedNoteId })).notebook).toBe(shared);
+    const again = await parsed(restricted, 'prepare_attachment_upload', {
+      noteId: sharedNoteId,
+      filename: 'still-in.txt',
+      contentType: 'text/plain',
+      link: false,
+    });
+    const ok = await fetch(String(again.uploadUrl ?? again.url ?? '').replace(ORIGIN, BASE), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'text/plain' },
+      body: 'still allowed',
+    });
+    expect(ok.status).toBe(201);
+    expect(((await parsed(trusted, 'get_note', { noteId: sharedNoteId })).attachments ?? []).map((f: { filename: string }) => f.filename)).toContain(
+      'still-in.txt',
+    );
+  });
+
   it('is given no tool that writes once it is read only', async () => {
     const before = await toolNames(restricted);
     expect((await saveGrant(restrictedClientId, { notebooks: [sharedId], unfiled: false, readOnly: true })).status).toBe(204);

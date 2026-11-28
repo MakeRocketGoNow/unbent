@@ -322,10 +322,13 @@ The MCP endpoint's cases live beside it in `apps/api/test/mcp.test.ts`, which ne
 OAuth flow before it can call anything and would otherwise swamp the suite it belongs to.
 
 One route finds its user another way. `PUT /api/uploads/:token`, the other half of
-`prepare_attachment_upload`, is authorized by the token in its path and nothing else. The
-token is looked up once, deleted as it is read, and yields the user id the scoped repos are
-then built from, exactly as a session does everywhere else. Its cases are in `mcp.test.ts`
-too, since only the tool can mint one.
+`prepare_attachment_upload`, is authorized by the token in its path, not a cookie or a
+bearer token. The token is looked up once, deleted as it is read, and yields the user id
+the scoped repos are then built from, exactly as a session does everywhere else. The
+row also names the OAuth client that minted it, so the PUT can re-check that
+connection's grant (a note moved out of the notebooks it was given, or a grant made
+read only) before the bytes are stored. Its cases are in `mcp.test.ts` too, since only
+the tool can mint one.
 
 ## Durability
 

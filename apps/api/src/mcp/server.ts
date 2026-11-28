@@ -37,7 +37,7 @@ import { registerWriteTools } from './tools/write.js';
 export function createUnbentMcpHandler(
   env: Env,
   userId: string,
-  /** The OAuth client calling, which only the feedback tool reads (to say which assistant wrote). */
+  /** The OAuth client calling: the feedback tool names it, and each upload link it mints carries it so the PUT can re-check its grant. */
   clientId: string,
   /** What the person gave this connection (MAK-264): read with the consent on every call, by `protectMcp`. */
   grant: AssistantGrant,
@@ -80,7 +80,8 @@ export function createUnbentMcpHandler(
     const gated = gatedRegistrar(server, gate, { readOnly: grant.readOnly, partial: grant.notebooks !== null });
     registerWriteTools(gated, notes, links, { partial: grant.notebooks !== null });
     // Upload links stay in D1: the token is looked up before anyone knows whose it is.
-    const uploads = new UploadGrantsRepo(env.DB, userId);
+    // The client goes on the row so the PUT can re-check this connection's grant.
+    const uploads = new UploadGrantsRepo(env.DB, userId, clientId);
     registerAttachmentTools(
       gated,
       env,

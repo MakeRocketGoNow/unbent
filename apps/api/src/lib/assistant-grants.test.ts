@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ASSISTANT_GRANT_MAX_NOTEBOOKS } from '@unbent/shared';
-import { grantOf, storeAccessOf } from './assistant-grants.js';
+import { grantOf, storeAccessOf, uploadAccess } from './assistant-grants.js';
 
 /**
  * A grant row read back (MAK-264). The rule under every case: a row this code cannot
@@ -33,5 +33,24 @@ describe('storeAccessOf', () => {
     expect(storeAccessOf({ notebooks: [], unfiled: false, readOnly: false })).toEqual({ notebooks: [], unfiled: false });
     // Read only is not the store's: it is the tools that are withheld.
     expect(storeAccessOf({ notebooks: null, unfiled: true, readOnly: true })).toBeNull();
+  });
+});
+
+describe('uploadAccess', () => {
+  const client = 'client-1';
+  const limited = { notebooks: ['nb-1'], unfiled: false, readOnly: false };
+
+  it('holds a live connection to the grant it has now', () => {
+    expect(uploadAccess(client, limited)).toEqual({ ok: true, access: { notebooks: ['nb-1'], unfiled: false } });
+    expect(uploadAccess(client, { notebooks: null, unfiled: true, readOnly: false })).toEqual({ ok: true, access: null });
+  });
+
+  it('refuses a link that cannot name its assistant, a disconnected one, and a read-only one', () => {
+    expect(uploadAccess(null, limited)).toEqual({ ok: false });
+    expect(uploadAccess('', limited)).toEqual({ ok: false });
+    expect(uploadAccess(client, null)).toEqual({ ok: false });
+    // The store would still take the write: read only is the tools, not the notebooks.
+    expect(uploadAccess(client, { notebooks: null, unfiled: true, readOnly: true })).toEqual({ ok: false });
+    expect(uploadAccess(client, { ...limited, readOnly: true })).toEqual({ ok: false });
   });
 });

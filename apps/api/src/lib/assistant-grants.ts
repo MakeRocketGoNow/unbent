@@ -53,6 +53,30 @@ export function storeAccessOf(grant: AssistantGrant): StoreAccess | null {
   return grant.notebooks === null ? null : { notebooks: grant.notebooks, unfiled: grant.unfiled };
 }
 
+/**
+ * What a PUT of a minted upload link is held to, given the connection that asked for
+ * it as it stands now (MAK-264).
+ *
+ * The link itself does not carry the grant: it used to work for half an hour by
+ * itself, which was enough when every connection had the library. Once a connection
+ * can be held to some notebooks, a note moved out of them (or a grant made read only
+ * after a mint that had already read the old one) would still take a file. So the
+ * PUT asks again, with the client id stored on the row.
+ *
+ * No client id (a row from before that column) cannot be asked, and is refused
+ * rather than trusted: a link that cannot name its assistant cannot be held to one.
+ * No grant is a disconnected app. Read only is not the store's (`storeAccessOf`
+ * ignores it, which is how a full-library read-only connection still writes if
+ * only the notebooks are checked), so it is refused here.
+ */
+export function uploadAccess(
+  clientId: string | null,
+  grant: AssistantGrant | null,
+): { ok: false } | { ok: true; access: StoreAccess | null } {
+  if (!clientId || !grant || grant.readOnly) return { ok: false };
+  return { ok: true, access: storeAccessOf(grant) };
+}
+
 /** `connectionGrant`'s statement, apart so migrations.test.ts can ask for its plan: it runs on every tool call. */
 export const CONNECTION_GRANT_SQL = `SELECT g.user_id AS granted, g.notebooks, g.unfiled, g.read_only
    FROM oauthConsent c
@@ -156,19 +180,15 @@ export class AssistantGrantsRepo {
   /**
    * Closes every upload link this account's assistants are holding, used or not.
    *
-   * `prepare_attachment_upload` checks the note against the grant when it mints a link,
-   * and the link then works for half an hour by itself: the PUT carries no token of
-   * the assistant's and is not asked about a grant. So a link minted a minute before a
-   * notebook was taken away, or before the connection was made read only, would still
-   * put a file on that note, and "from its next call" would not be true of it.
+   * `prepare_attachment_upload` checks the note against the grant when it mints a link.
+   * The PUT then asks again (`uploadAccess`), because a note can leave the grant
+   * without a save here (it is moved, its notebook is deleted). Closing the rows
+   * still matters on a grant save: a link that will be refused is spent on the
+   * claim, and the assistant should mint another rather than PUT first.
    *
-   * One case is left: a call already under way that read the old grant and mints its
-   * link after this has run. Closing that would need the PUT to ask about the grant
-   * again, which a link that does not say which assistant asked for it cannot do.
-   *
-   * All of the account's, not one client's: a link does not record which assistant
-   * asked for it, and the cost of closing one too many is an assistant asking for
-   * another, which it does by calling the tool again. Only assistants mint these.
+   * All of the account's, not one client's: the cost of closing one too many is an
+   * assistant asking for another, which it does by calling the tool again. Only
+   * assistants mint these.
    */
   private async closeUploadLinks(): Promise<void> {
     await this.db.prepare(`DELETE FROM attachment_uploads WHERE user_id = ?1`).bind(this.userId).run();
